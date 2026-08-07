@@ -120,6 +120,20 @@
     if(lista.length > 0){
       window.PRODUCTS = lista;
     }
+
+    // Avisar de cambios de precio en productos ya existentes (después de la
+    // carga inicial) — no avisa de productos nuevos, solo de precios que cambian.
+    if(window.__lrSync.productosListos){
+      var prevMapaProd = window.__lrSync.ultimoProductosSnapshot || {};
+      mapa && Object.keys(mapa).forEach(function(nombre){
+        var antes = prevMapaProd[nombre];
+        var ahora = mapa[nombre];
+        if(antes && ahora && antes.pventa !== ahora.pventa && typeof mostrarNotifAdmin==='function'){
+          mostrarNotifAdmin('<b>'+nombre+'</b>: '+fmt(antes.pventa)+' → '+fmt(ahora.pventa), '💲');
+        }
+      });
+    }
+
     window.__lrSync.ultimoProductosSnapshot = mapa;
     window.__lrSync.productosListos = true;
     refrescarPantallaVentaSiExiste();
@@ -380,6 +394,18 @@
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+
+    // Avisar de pagos nuevos (después de la carga inicial)
+    if(window.__lrSync.egresosListos){
+      var prevMapaEgr = window.__lrSync.ultimoEgresosSnapshot || {};
+      lista.forEach(function(e){
+        if(!prevMapaEgr[String(e.id)] && typeof mostrarNotifAdmin==='function'){
+          var nombreProv = e.proveedor || e.prov || 'proveedor';
+          mostrarNotifAdmin('Pago registrado a <b>'+nombreProv+'</b> — '+fmt(e.monto||0), '💸');
+        }
+      });
+    }
+
     window.__lrEgresosCache = lista;
     window.__lrSync.ultimoEgresosSnapshot = mapa;
     window.__lrSync.egresosListos = true;
@@ -590,6 +616,19 @@
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+
+    // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
+    // cualquier dispositivo que tenga el panel abierto — no solo en el que
+    // hizo la recepción.
+    if(window.__lrSync.movimientosListos){
+      var prevMapaMov = window.__lrSync.ultimoMovimientosSnapshot || {};
+      lista.forEach(function(m){
+        if(!prevMapaMov[String(m.id)] && m.tipo==='ingreso' && typeof mostrarNotifAdmin==='function'){
+          mostrarNotifAdmin(m.resumen || 'Mercadería recibida', '📦');
+        }
+      });
+    }
+
     window.__lrMovimientosCache = lista;
     window.__lrSync.ultimoMovimientosSnapshot = mapa;
     window.__lrSync.movimientosListos = true;
@@ -1176,6 +1215,7 @@ mark{background:rgba(245,194,0,.28);color:var(--white);border-radius:2px;padding
 /* ADMIN PANEL */
 .modal{background:var(--surface);border:2px solid var(--red);border-radius:5px;padding:22px;width:100%;max-width:340px;margin:auto;animation:up .2s ease}
 @keyframes up{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes notifIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
 .modal h3{font-family:'Oswald',sans-serif;font-size:1.3rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:6px}
 .modal h3 span{color:var(--red)}
 .admin-panel{background:var(--surface);border-top:2px solid var(--red);padding:16px 18px;width:100%;animation:up .25s ease;height:100%;overflow-y:auto}
@@ -2151,6 +2191,7 @@ body.night-on{background:#080005}
 </style>
 </head>
 <body class="night-on">
+<div id="adminNotifStack" style="position:fixed;top:12px;left:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center"></div>
 <div id="lrLoadingOverlay" style="position:fixed;inset:0;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#F4B400;font-family:system-ui,sans-serif;">
   <div style="font-size:40px;margin-bottom:16px;">⚡</div>
   <div style="font-size:18px;">Cargando datos de Limay Rock...</div>
@@ -4661,6 +4702,29 @@ function showToast(msg,err) {
   var t=document.getElementById('toast');
   t.textContent=msg; t.className='toast show'+(err?' error':'');
   clearTimeout(t._t); t._t=setTimeout(function(){t.className='toast';},3000);
+}
+
+// Avisos en vivo para quien tenga el panel admin abierto (netbook o celu):
+// pagos a proveedores, mercadería recibida, cambios de precio, etc.
+// Solo se ve mientras la app está abierta (no despierta el celu bloqueado).
+function mostrarNotifAdmin(texto, icono){
+  // Solo le interesa a quien está en el panel admin (vos) — no a un
+  // empleado en medio de una venta en la netbook.
+  var enAdmin = window.__lrAdminSinTurno || (document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open'));
+  if(!enAdmin) return;
+  var stack = document.getElementById('adminNotifStack');
+  if(!stack) return;
+  var el = document.createElement('div');
+  el.style.cssText = 'pointer-events:auto;background:#161616;border:1.5px solid var(--gold);border-radius:8px;padding:10px 16px;max-width:420px;width:calc(100% - 24px);box-shadow:0 4px 20px rgba(0,0,0,.5);font-family:Barlow,sans-serif;font-size:.85rem;color:#fff;display:flex;align-items:center;gap:10px;animation:notifIn .25s ease';
+  el.innerHTML = '<span style="font-size:1.2rem">'+(icono||'🔔')+'</span><span style="flex:1">'+texto+'</span>';
+  stack.appendChild(el);
+  if(navigator.vibrate) navigator.vibrate(120);
+  setTimeout(function(){
+    el.style.transition = 'opacity .3s, transform .3s';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-10px)';
+    setTimeout(function(){ el.remove(); }, 300);
+  }, 6000);
 }
 function turnoActual() {
   var h=new Date().getHours();
