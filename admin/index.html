@@ -3765,6 +3765,7 @@ body.night-on{background:#080005}
       <div class="prod-modal-box">
         <h3 id="prodModalTitulo">Editar producto</h3>
         <input type="hidden" id="prodModalIdx" value="-1">
+        <input type="hidden" id="prodModalNombreOriginal" value="">
         <div class="field">
           <label>Nombre del producto</label>
           <input type="text" id="pmNombre" placeholder="Nombre completo">
@@ -13571,6 +13572,7 @@ function abrirProdModal(idx) {
     ALL_CATS.forEach(function(c){ var o=document.createElement('option'); o.value=c; o.textContent=c; catSel.appendChild(o); });
   }
   document.getElementById('prodModalIdx').value=idx!==null?idx:-1;
+  document.getElementById('prodModalNombreOriginal').value = (idx!==null && PRODUCTS[idx]) ? PRODUCTS[idx].name : '';
   var del=document.getElementById('prodModalDel');
   if(idx!==null && PRODUCTS[idx]){
     var p=PRODUCTS[idx];
@@ -14076,7 +14078,16 @@ function guardarProdModal() {
   var margen=parseFloat(document.getElementById('pmMargen').value)||50;
   var pnoc=parseFloat(document.getElementById('pmNoc').value)||0;
   var manual=parseFloat(document.getElementById('pmPventa').value)||0;
-  var idx=parseInt(document.getElementById('prodModalIdx').value);
+  var idxAbierto=parseInt(document.getElementById('prodModalIdx').value);
+  var nombreOriginal=document.getElementById('prodModalNombreOriginal').value;
+  // El índice puede haber quedado desactualizado si el catálogo se
+  // actualizó en vivo (desde otro dispositivo) mientras el modal estaba
+  // abierto. Se busca la posición REAL por nombre, que es estable.
+  var idx = idxAbierto;
+  if(nombreOriginal){
+    var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombreOriginal; });
+    if(idxReal!==-1) idx = idxReal;
+  }
   if(!nombre){ showToast('Ingresá el nombre',true); return; }
   if(!cat){ showToast('Seleccioná una categoría',true); return; }
     var esBebAlc = (cat === 'Bebidas Alcohólicas');
@@ -14894,6 +14905,7 @@ function abrirRecepProdModal(idx) {
   box.innerHTML =
     '<h3>'+p.name+'</h3>'+
     '<input type="hidden" id="recepIdx" value="'+idx+'">'+
+    '<input type="hidden" id="recepNombreOriginal" value="'+p.name.replace(/"/g,'&quot;')+'">'+
     '<div class="field-row">'+
       '<div class="field"><label>Categoría</label><select id="recepCat" onchange="recalcRecepPrecio('+idx+')">'+catOpts2+'</select></div>'+
       '<div class="field"><label>Costo ($)</label><input type="number" id="recepCosto" value="'+(p.costo||'')+'" placeholder="0" min="0" oninput="recalcRecepPrecio('+idx+')"></div>'+
@@ -14975,7 +14987,13 @@ function updateRecepNocPreview() {
 
 // ── Guardar edición de producto existente ─────────────────────────────────
 function guardarRecepEdicion(idx) {
+  var nombreOriginal = (document.getElementById('recepNombreOriginal')||{}).value;
+  if(nombreOriginal){
+    var idxReal = PRODUCTS.findIndex(function(x){ return x.name===nombreOriginal; });
+    if(idxReal!==-1) idx = idxReal;
+  }
   var p = PRODUCTS[idx];
+  if(!p){ showToast('El producto ya no existe, cerrá y volvé a intentar', true); return; }
   var costoAntes  = p.costo;
   var pventaAntes = p.pventa;
   var pnocAntes   = p.pnoc;
