@@ -237,6 +237,7 @@
     if(typeof currentEmp !== 'undefined' && currentEmp && mapa[currentEmp.nombre]){
       currentEmp = mapa[currentEmp.nombre];
       if(typeof updateRecepBtn==='function') updateRecepBtn();
+    if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
     }
     window.__lrSync.ultimoEmpleadosSnapshot = mapa;
     window.__lrSync.empleadosListos = true;
@@ -625,9 +626,10 @@
     });
   };
 
-  // Delivery activo/inactivo — lo lee también el catálogo público (sin login)
+  // Delivery activo/inactivo + costo de envío — lo lee también el catálogo público (sin login)
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
+    window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
     window.__lrSync.deliveryActivoListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -635,8 +637,8 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveDeliveryActivo = function(activo){
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo}).catch(function(e){
+  window.__lrSaveDeliveryActivo = function(activo, costoEnvio){
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0}).catch(function(e){
       console.error('Error guardando delivery activo', e);
     });
   };
@@ -650,6 +652,9 @@
     window.__lrPedidosWebCache = lista;
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
     window.__lrSync.pedidosWebListos = true;
+    if(document.getElementById('searchInput') && typeof actualizarDeliveryPendBadge==='function'){
+      actualizarDeliveryPendBadge();
+    }
     if(typeof renderDeliveryPanel==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDeliveryPanel();
     }
@@ -2129,6 +2134,7 @@ body.night-on{background:#080005}
       <span class="turno-badge">👤 <span id="empActual">Martin · Nocturno</span></span>
       <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
       <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
+      <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
     </div>
   </div>
   <div class="controls">
@@ -3999,6 +4005,15 @@ body.night-on{background:#080005}
   </div>
 </div>
 
+<!-- PEDIDOS DE DELIVERY PENDIENTES (del catálogo web) -->
+<div class="overlay" id="deliveryPendModal">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;max-width:460px;width:100%;max-height:85vh;overflow-y:auto">
+    <h3 style="font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:1px;text-transform:uppercase;color:var(--green);margin:0 0 14px">🛵 Pedidos de delivery pendientes</h3>
+    <div id="deliveryPendList"></div>
+    <button onclick="document.getElementById('deliveryPendModal').classList.remove('open')" style="width:100%;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:11px;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer;margin-top:12px">Cerrar</button>
+  </div>
+</div>
+
 <!-- AVISO DE TOPE DE CONSUMO -->
 <div class="arqueo-modal" id="topeConsumoModal" style="z-index:730">
   <div class="arqueo-box" style="text-align:center">
@@ -4714,7 +4729,7 @@ function retomarSesionInterrumpida() {
   startSessionTimer();
   cart=[]; pagoSel=null; tipoOp='venta';
   updateCart();
-  buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); iniciarBackupAutomatico();
+  buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); actualizarDeliveryPendBadge(); iniciarBackupAutomatico();
   _mensajesDelTurno = [];
   actualizarBadgeMensajes();
   showToast('↩️ Turno retomado — seguís donde lo dejaste');
@@ -6565,7 +6580,7 @@ function confirmarEfectivoInicial() {
   cart=[]; pagoSel=null; tipoOp='venta';
   document.querySelectorAll('.pago-btn').forEach(function(b){b.classList.remove('selected');});
   updateCart();
-  buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); iniciarBackupAutomatico();
+  buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); actualizarDeliveryPendBadge(); iniciarBackupAutomatico();
 
   if(monto > 0) {
     showToast('Turno iniciado con $'+Number(monto).toLocaleString('es-AR')+' en caja');
@@ -7547,9 +7562,15 @@ function marcarPedidoWebResuelto(id) {
 // Prender/apagar el delivery del catálogo público, desde el dashboard admin
 function cambiarDeliveryActivo(activo) {
   window.__lrDeliveryActivo = activo;
-  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo);
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo, window.__lrCostoEnvio||0);
   showToast(activo ? '🛵 Delivery activado' : '🛵 Delivery pausado');
   if(typeof renderDashboard==='function') renderDashboard();
+}
+function cambiarCostoEnvio(valor) {
+  var num = parseFloat(valor) || 0;
+  window.__lrCostoEnvio = num;
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, num);
+  showToast('🛵 Costo de envío actualizado: '+fmt(num));
 }
 var SK_LIQUIDEZ    = 'lr_liquidez_cfg';
 var SK_CIERRES_MES = 'lr_cierres_mes';
@@ -13027,10 +13048,16 @@ function renderDashboard() {
 
   // Botones de caja (solo visibles desde el panel admin)
   var retiroBtn = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
     '<label style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer">'+
       '<input type="checkbox" id="deliveryActivoChk" '+(window.__lrDeliveryActivo!==false?'checked':'')+' onchange="cambiarDeliveryActivo(this.checked)" style="accent-color:var(--green);width:16px;height:16px">'+
       '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🛵 Delivery '+(window.__lrDeliveryActivo!==false?'activo':'pausado')+' (catálogo web)</span>'+
     '</label>'+
+    '<div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.72rem;color:var(--gray)">Costo envío</span>'+
+      '<input type="number" id="costoEnvioInput" value="'+(window.__lrCostoEnvio||0)+'" onchange="cambiarCostoEnvio(this.value)" style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-family:Oswald,sans-serif;font-size:.8rem">'+
+    '</div>'+
+    '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button onclick="abrirIngresoModal()" style="background:var(--card);border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
     '💵 Ingreso de efectivo</button>'+
@@ -15098,6 +15125,67 @@ function updateRecepBtn() {
   var btn = document.getElementById('btnGoRecepcion');
   if(!btn) return;
   btn.style.display = (currentEmp && currentEmp.accesoRecepcion) ? 'inline-block' : 'none';
+}
+
+function actualizarDeliveryPendBadge() {
+  var btn = document.getElementById('btnDeliveryPend');
+  if(!btn) return;
+  if(!currentEmp){ btn.style.display='none'; return; }
+  var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && p.estado !== 'cargado'; });
+  var countEl = document.getElementById('deliveryPendCount');
+  if(countEl) countEl.textContent = pendientes.length;
+  btn.style.display = pendientes.length>0 ? 'inline-block' : 'none';
+}
+
+function abrirDeliveryPendModal() {
+  var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && p.estado !== 'cargado'; });
+  var cont = document.getElementById('deliveryPendList');
+  if(!pendientes.length){
+    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;font-size:.85rem">No hay pedidos pendientes</div>';
+  } else {
+    cont.innerHTML = pendientes.map(function(p){
+      var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+      return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">'+
+        '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
+        '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
+          '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+' · '+hora+'</span>'+
+          '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }
+  document.getElementById('deliveryPendModal').classList.add('open');
+}
+
+function cargarPedidoAlCarrito(id) {
+  var pedidos = getPedidosWeb();
+  var pedido = pedidos.find(function(p){ return p.id===id; });
+  if(!pedido) return;
+
+  (pedido.items||[]).forEach(function(it){
+    var prod = PRODUCTS.find(function(p){ return p.name===it.nombre; });
+    var precio = prod ? ((isNocturno() && prod.pnoc) ? prod.pnoc : prod.pventa) : it.precio;
+    var existing = cart.find(function(i){ return i.name===it.nombre; });
+    if(existing){ existing.qty += it.cantidad; existing.subtotal = existing.precio*existing.qty; }
+    else { cart.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
+  });
+
+  // El costo de envío que ya se le cobró a este cliente en el catálogo
+  var subtotalItems = (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
+  var envioDelPedido = (pedido.total||0) - subtotalItems;
+  if(envioDelPedido > 0){
+    _deliveryActivo = true;
+    _deliveryMonto = envioDelPedido;
+  }
+
+  updateCart();
+  pedido.estado = 'cargado';
+  savePedidosWeb(pedidos);
+  document.getElementById('deliveryPendModal').classList.remove('open');
+  showToast('🛵 Pedido de '+pedido.nombre+' cargado al carrito');
+  actualizarDeliveryPendBadge();
 }
 
 function abrirRecepDesdeApp() {

@@ -17,10 +17,16 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .header{padding:20px 16px 12px;text-align:center;border-bottom:2px solid var(--red)}
 .header img{height:70px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 2px 10px rgba(204,0,0,.6));margin-bottom:6px}
 .header .sub{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase}
+.delivery-banner{text-align:center;padding:8px 14px;font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;background:rgba(46,204,113,.1);color:var(--green);border-bottom:1px solid rgba(46,204,113,.25)}
 .wrap{max-width:600px;margin:0 auto;padding:14px}
 #searchInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.95rem;outline:none;margin-bottom:14px}
 #searchInput:focus{border-color:var(--red)}
-.cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:18px 0 8px;padding-left:2px}
+
+.promo-title{font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:4px 0 8px;padding-left:2px}
+.promo-card{background:linear-gradient(135deg,rgba(210,32,31,.15),rgba(244,180,0,.08));border:1.5px solid var(--gold);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.promo-card .prod-name{color:var(--gold);font-weight:600}
+
+.cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:20px 0 8px;padding-left:2px;border-bottom:1px solid var(--border);padding-bottom:6px}
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:.9rem;color:var(--white)}
@@ -42,8 +48,9 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto}
 .modal h3{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:0 0 14px}
 .cart-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:.85rem}
-.cart-item .rm{color:var(--red);cursor:pointer;font-size:1.1rem;margin-left:10px}
-.modal .total-row{display:flex;justify-content:space-between;font-family:'Oswald',sans-serif;font-size:1.1rem;margin-top:14px;padding-top:14px;border-top:2px solid var(--red)}
+.modal .subtotal-row{display:flex;justify-content:space-between;font-size:.85rem;color:var(--light);margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.modal .envio-row{display:flex;justify-content:space-between;font-size:.85rem;color:var(--gray);margin-top:4px}
+.modal .total-row{display:flex;justify-content:space-between;font-family:'Oswald',sans-serif;font-size:1.15rem;margin-top:10px;padding-top:10px;border-top:2px solid var(--red)}
 .modal .total-row b{color:var(--gold)}
 .field{margin-top:14px}
 .field label{display:block;font-size:.75rem;color:var(--gray);margin-bottom:5px}
@@ -55,7 +62,6 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 
 .status-screen{position:fixed;inset:0;background:var(--black);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
 .status-screen.show{display:flex}
-.status-screen img{height:60px;object-fit:contain;mix-blend-mode:screen;margin-bottom:20px}
 .status-screen h2{font-family:'Oswald',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--gold);margin:0 0 10px}
 .status-screen p{color:var(--gray);font-size:.85rem;max-width:340px;line-height:1.5}
 .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}
@@ -81,7 +87,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 
 <div id="thanksScreen" class="status-screen">
   <h2>✅ ¡Pedido enviado!</h2>
-  <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. ¡Gracias por elegirnos!</p>
+  <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega. ¡Gracias por elegirnos!</p>
 </div>
 
 <div id="mainContent" style="display:none">
@@ -89,9 +95,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <img src="../icon-512.png" alt="Limay Rock">
     <div class="sub">Pedí tu delivery</div>
   </div>
+  <div class="delivery-banner">🛵 Delivery activo — hacé tu pedido</div>
 
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
+    <div id="promoContainer"></div>
     <div id="listContainer"></div>
   </div>
 </div>
@@ -101,14 +109,17 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <button onclick="abrirCarrito()">Ver pedido</button>
 </div>
 
+<!-- Paso 1: carrito -->
 <div class="overlay" id="cartOverlay">
   <div class="modal">
     <h3>🛒 Tu pedido</h3>
     <div id="cartItemsList"></div>
+    <div class="subtotal-row"><span>Subtotal productos</span><span id="cartSubtotalModal">$0</span></div>
+    <div class="envio-row" id="envioRow"><span>Costo de envío</span><span id="cartEnvioModal">$0</span></div>
     <div class="total-row"><span>Total</span><b id="cartTotalModal">$0</b></div>
 
     <div class="field">
-      <label>Tu nombre</label>
+      <label>Tu nombre y apellido</label>
       <input type="text" id="clienteNombre" placeholder="Nombre y apellido">
     </div>
     <div class="field">
@@ -117,8 +128,23 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     </div>
     <div class="error-msg" id="checkoutError"></div>
 
-    <button class="btn-primary" onclick="confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
+    <button class="btn-primary" onclick="irAConfirmar()">Realizar pedido</button>
     <button class="btn-secondary" onclick="cerrarCarrito()">Seguir viendo el catálogo</button>
+  </div>
+</div>
+
+<!-- Paso 2: confirmación final antes de WhatsApp -->
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h3>✅ Confirmá tu pedido</h3>
+    <div id="confirmItemsList"></div>
+    <div class="total-row"><span>Total a pagar</span><b id="confirmTotal">$0</b></div>
+    <p style="font-size:.78rem;color:var(--gray);margin-top:14px;line-height:1.5">
+      Al confirmar se va a abrir WhatsApp con este pedido ya escrito, listo para que lo envíes.
+      Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega.
+    </p>
+    <button class="btn-primary" onclick="confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
+    <button class="btn-secondary" onclick="volverAlCarrito()">Volver</button>
   </div>
 </div>
 
@@ -141,37 +167,40 @@ const NUMERO_WHATSAPP = "5492995026557";
 const DURACION_SESION_MIN = 8;
 
 let PRODUCTOS = [];
+let PROMOS = [];
 let STOCK = {};
-let CARRITO = {}; // { nombreProducto: {nombre, precio, cantidad} }
+let CARRITO = {};
+let COSTO_ENVIO = 0;
 let sesionVencida = false;
 
 function fmt(n){ return '$' + Number(n||0).toLocaleString('es-AR'); }
-
 function idSeguro(s){ return String(s).replace(/\//g, '-'); }
+function escJs(s){ return String(s).replace(/'/g, "\\'"); }
 
-// ── Temporizador de 8 minutos ──────────────────────────────────────────
 setTimeout(function(){
   sesionVencida = true;
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('cartBar').classList.remove('show');
   document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('expiredScreen').classList.add('show');
 }, DURACION_SESION_MIN * 60 * 1000);
 
-// ── Cargar delivery activo/inactivo, productos y stock ─────────────────
-let deliveryListo = false, productosListos = false, stockListos = false;
+let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false;
 
 function chequearListo(){
   if(sesionVencida) return;
-  if(deliveryListo && productosListos && stockListos){
+  if(deliveryListo && productosListos && stockListos && promosListos){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'block';
+    renderPromos();
     renderList();
   }
 }
 
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
-  var activo = doc.exists ? (doc.data().activo !== false) : true; // por defecto activo si nunca se configuró
+  var activo = doc.exists ? (doc.data().activo !== false) : true;
+  COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
   if(!activo && !sesionVencida){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'none';
@@ -210,7 +239,37 @@ db.collection('inventario').onSnapshot(function(snap){
   if(document.getElementById('mainContent').style.display==='block') renderList();
 });
 
-// ── Render de la lista ──────────────────────────────────────────────────
+db.collection('promos').onSnapshot(function(snap){
+  var lista = [];
+  snap.forEach(function(doc){
+    var d = doc.data();
+    if(d.activa !== false) lista.push(d);
+  });
+  PROMOS = lista;
+  promosListos = true;
+  chequearListo();
+  if(document.getElementById('mainContent').style.display==='block') renderPromos();
+}, function(err){
+  console.error('Error cargando promos (se continúa sin mostrarlas):', err);
+  PROMOS = [];
+  promosListos = true;
+  chequearListo();
+});
+
+function renderPromos(){
+  var cont = document.getElementById('promoContainer');
+  if(!PROMOS.length){ cont.innerHTML = ''; return; }
+  var html = '<div class="promo-title">🔥 Promociones</div>';
+  PROMOS.forEach(function(p){
+    html += '<div class="promo-card">'+
+      '<div class="prod-info"><div class="prod-name">'+p.nombre+'</div>'+
+      (p.descripcion ? '<div style="font-size:.78rem;color:var(--light);margin-top:2px">'+p.descripcion+'</div>' : '')+
+      '<div class="prod-price">'+fmt(p.precio)+'</div></div>'+
+    '</div>';
+  });
+  cont.innerHTML = html;
+}
+
 function renderList(){
   if(sesionVencida) return;
   var term = (document.getElementById('searchInput').value || '').toLowerCase().trim();
@@ -227,16 +286,27 @@ function renderList(){
     return;
   }
 
-  var html = '';
+  var porCat = {};
+  var ordenCats = [];
   disponibles.forEach(function(p){
-    var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
-    html += '<div class="prod-row">'+
-      '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(p.precio)+'</div></div>'+
-      '<div class="qty-ctrl">'+
-        (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+p.name.replace(/'/g,"\\'")+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
-        '<button class="qty-btn add" onclick="cambiarCantidad(\''+p.name.replace(/'/g,"\\'")+'\',1)">+</button>'+
-      '</div>'+
-    '</div>';
+    var cat = p.cat || 'General';
+    if(!porCat[cat]){ porCat[cat] = []; ordenCats.push(cat); }
+    porCat[cat].push(p);
+  });
+
+  var html = '';
+  ordenCats.forEach(function(cat){
+    html += '<div class="cat-title">'+cat+'</div>';
+    porCat[cat].forEach(function(p){
+      var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
+      html += '<div class="prod-row">'+
+        '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(p.precio)+'</div></div>'+
+        '<div class="qty-ctrl">'+
+          (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
+          '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
+        '</div>'+
+      '</div>';
+    });
   });
   cont.innerHTML = html;
 }
@@ -251,11 +321,12 @@ function cambiarCantidad(nombre, delta){
   actualizarCartBar();
 }
 
-function totalCarrito(){
+function subtotalCarrito(){
   var total = 0;
   Object.keys(CARRITO).forEach(function(k){ total += CARRITO[k].precio * CARRITO[k].cantidad; });
   return total;
 }
+function totalConEnvio(){ return subtotalCarrito() + (cantidadCarrito()>0 ? COSTO_ENVIO : 0); }
 function cantidadCarrito(){
   var cant = 0;
   Object.keys(CARRITO).forEach(function(k){ cant += CARRITO[k].cantidad; });
@@ -268,21 +339,27 @@ function actualizarCartBar(){
   if(cant > 0){
     bar.classList.add('show');
     document.getElementById('cartCount').textContent = cant;
-    document.getElementById('cartTotalBar').textContent = fmt(totalCarrito());
+    document.getElementById('cartTotalBar').textContent = fmt(subtotalCarrito());
   } else {
     bar.classList.remove('show');
   }
 }
 
-function abrirCarrito(){
-  var cont = document.getElementById('cartItemsList');
+function armarListaItemsHtml(){
   var html = '';
   Object.keys(CARRITO).forEach(function(k){
     var it = CARRITO[k];
     html += '<div class="cart-item"><span>'+it.nombre+' ×'+it.cantidad+'</span><span>'+fmt(it.precio*it.cantidad)+'</span></div>';
   });
-  cont.innerHTML = html;
-  document.getElementById('cartTotalModal').textContent = fmt(totalCarrito());
+  return html;
+}
+
+function abrirCarrito(){
+  document.getElementById('cartItemsList').innerHTML = armarListaItemsHtml();
+  document.getElementById('cartSubtotalModal').textContent = fmt(subtotalCarrito());
+  document.getElementById('cartEnvioModal').textContent = fmt(COSTO_ENVIO);
+  document.getElementById('envioRow').style.display = COSTO_ENVIO>0 ? 'flex' : 'none';
+  document.getElementById('cartTotalModal').textContent = fmt(totalConEnvio());
   document.getElementById('checkoutError').style.display = 'none';
   document.getElementById('cartOverlay').classList.add('show');
 }
@@ -290,8 +367,7 @@ function cerrarCarrito(){
   document.getElementById('cartOverlay').classList.remove('show');
 }
 
-function confirmarPedido(){
-  if(sesionVencida) return;
+function irAConfirmar(){
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
   var errEl = document.getElementById('checkoutError');
@@ -307,17 +383,35 @@ function confirmarPedido(){
     return;
   }
 
+  document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml();
+  document.getElementById('confirmTotal').textContent = fmt(totalConEnvio());
+  document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('confirmOverlay').classList.add('show');
+}
+function volverAlCarrito(){
+  document.getElementById('confirmOverlay').classList.remove('show');
+  document.getElementById('cartOverlay').classList.add('show');
+}
+
+function confirmarPedido(){
+  if(sesionVencida) return;
+  var nombre = document.getElementById('clienteNombre').value.trim();
+  var telefono = document.getElementById('clienteTelefono').value.trim();
+
   var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
-  var total = totalCarrito();
+  var subtotal = subtotalCarrito();
+  var envio = COSTO_ENVIO;
+  var total = totalConEnvio();
   var pedidoId = Date.now();
 
-  // Guardar el pedido en Firebase para que aparezca en el panel admin
   var pedido = {
     id: pedidoId,
     fecha: new Date().toISOString(),
     nombre: nombre,
     telefono: telefono,
     items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
+    subtotal: subtotal,
+    envio: envio,
     total: total,
     estado: 'pendiente',
     origen: 'catalogo-web'
@@ -326,19 +420,20 @@ function confirmarPedido(){
     console.error('Error guardando pedido web', e);
   });
 
-  // Armar el mensaje de WhatsApp
   var msg = '¡Hola Limay Rock! 👋 Quiero hacer este pedido:\n\n';
   items.forEach(function(it){
     msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
   });
-  msg += '\n*Total: '+fmt(total)+'*\n\n';
+  msg += '\nSubtotal: '+fmt(subtotal)+'\n';
+  if(envio>0) msg += 'Envío: '+fmt(envio)+'\n';
+  msg += '*Total: '+fmt(total)+'*\n\n';
   msg += 'Nombre: '+nombre+'\n';
   msg += 'Teléfono: '+telefono;
 
   var url = 'https://wa.me/'+NUMERO_WHATSAPP+'?text='+encodeURIComponent(msg);
   window.open(url, '_blank');
 
-  cerrarCarrito();
+  document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('cartBar').classList.remove('show');
   document.getElementById('thanksScreen').classList.add('show');
