@@ -1971,6 +1971,57 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 ::-webkit-scrollbar-track{background:var(--black)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 body.night-on{background:#080005}
+
+/* ── ADAPTACIÓN A CELULARES (Panel Admin) ──────────────────────────────
+   Muchas filas de datos del panel admin usan columnas de ancho fijo,
+   pensadas para la pantalla ancha de la netbook. En un celu (~360-400px
+   de ancho) eso obliga a hacer zoom y desplazar el dedo para el costado.
+   Acá se reacomodan en una sola columna, apiladas, más fáciles de leer
+   con el pulgar. Se activa solo en pantallas angostas — en la netbook
+   sigue viéndose exactamente igual que siempre. */
+@media (max-width: 560px) {
+  .admin-panel{padding:10px 10px}
+  .overlay{padding:0}
+
+  .edit-row{
+    grid-template-columns: 1fr 1fr;
+    row-gap: 4px;
+  }
+  .edit-row > *:first-child{ grid-column: 1 / -1; }
+
+  .venta-row,
+  .top-prod-row,
+  .consumo-row,
+  .emp-admin-row,
+  .stock-alert-row{
+    grid-template-columns: 1fr;
+    row-gap: 3px;
+    text-align: left;
+  }
+  .venta-row > *,
+  .top-prod-row > *,
+  .consumo-row > *,
+  .emp-admin-row > *,
+  .stock-alert-row > *{
+    justify-self: start;
+  }
+
+  .reporte-header,
+  .field-row,
+  .field-row-3,
+  .export-btns,
+  .stat-grid{
+    grid-template-columns: 1fr;
+  }
+
+  .dash-grid{
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Cualquier tabla ancha que se nos haya escapado: que scrollee ella
+     sola adentro de su recuadro, en vez de correr toda la pantalla. */
+  .admin-panel table{ display:block; overflow-x:auto; white-space:nowrap; }
+}
 </style>
 </head>
 <body class="night-on">
