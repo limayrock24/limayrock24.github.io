@@ -17849,6 +17849,20 @@ document.addEventListener('keydown', function(ev) {
 
 initCatsFromStorage(); initLogin(); updateStockNotif();
 
+// Atajo para tu celu: si la dirección tiene ?admin=1, entra directo al
+// panel admin apenas termina de cargar todo, sin mostrar el login ni
+// pedir el 0000. Pensado para un acceso directo separado en tu celu.
+if(new URLSearchParams(window.location.search).get('admin') === '1'){
+  (function esperarYAbrirAdmin(){
+    var overlay = document.getElementById('lrLoadingOverlay');
+    if(overlay && overlay.style.display === 'none'){
+      abrirAdminSinTurno();
+    } else {
+      setTimeout(esperarYAbrirAdmin, 300);
+    }
+  })();
+}
+
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(function(e){ console.error('Error registrando service worker:', e); });
 }
