@@ -34,6 +34,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .cat-pill.active{background:var(--red);border-color:var(--red);color:var(--white);font-weight:700}
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
 .prod-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0}
+.sin-stock-tag{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--red);border:1px solid rgba(210,32,31,.4);border-radius:5px;padding:5px 10px;white-space:nowrap;flex-shrink:0}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:.9rem;color:var(--white)}
 .prod-price{font-family:'Oswald',sans-serif;font-size:1rem;color:var(--green);font-weight:600;margin-top:2px}
@@ -314,10 +315,9 @@ function renderList(){
   var cont = document.getElementById('listContainer');
 
   var disponibles = PRODUCTOS.filter(function(p){
-    var stockOk = !(p.name in STOCK) || STOCK[p.name] > 0;
     var matchTexto = !term || p.name.toLowerCase().indexOf(term) !== -1;
     var matchCat = CATEGORIA_SEL==='Todas' || (p.cat||'General')===CATEGORIA_SEL;
-    return stockOk && matchTexto && matchCat;
+    return matchTexto && matchCat;
   });
 
   if(!disponibles.length){
@@ -337,17 +337,21 @@ function renderList(){
   ordenCats.forEach(function(cat){
     if(CATEGORIA_SEL==='Todas') html += '<div class="cat-title">'+cat+'</div>';
     porCat[cat].forEach(function(p){
+      var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
       var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
       var imgSrc = IMAGENES_PRODUCTOS[p.name];
-      var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="">' : '';
-      html += '<div class="prod-row">'+
+      var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="" style="'+(sinStock?'opacity:.35':'')+'">' : '';
+      var ctrlHtml = sinStock
+        ? '<span class="sin-stock-tag">Sin stock</span>'
+        : '<div class="qty-ctrl">'+
+            (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
+            '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
+          '</div>';
+      html += '<div class="prod-row" style="'+(sinStock?'opacity:.55':'')+'">'+
         imgHtml+
         '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
-        '<div class="qty-ctrl">'+
-          (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
-          '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
-        '</div>'+
+        ctrlHtml+
       '</div>';
     });
   });
