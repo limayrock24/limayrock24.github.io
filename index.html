@@ -81,6 +81,7 @@
     deliveryActivoListos: false,
     pedidosWebListos: false,
     promosListos: false,
+    itemsManualesListos: false,
     ultimoProductosSnapshot: {},
     ultimoInventarioSnapshot: {},
     ultimoEmpleadosSnapshot: {},
@@ -100,7 +101,7 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
-    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos){
+    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
     }
@@ -707,6 +708,43 @@
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
         window.__lrDB.collection('promos').doc(idSeguro(key)).delete().catch(function(e){ console.error('Error borrando promo', key, e); });
+      }
+    });
+  };
+
+  // Productos "manuales" del catálogo público — fiambrería, frutas y
+  // verduras, snacks sueltos, etc. Se muestran sin precio fijo (el cliente
+  // escribe la cantidad/peso que quiere) y llegan como nota para cargar a
+  // mano, en vez de sumarse solos al total.
+  window.__lrDB.collection('itemsManualesCatalogo').onSnapshot(function(snap){
+    var lista = [], mapa = {};
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
+    window.__lrItemsManualesCache = lista;
+    window.__lrSync.ultimoItemsManualesSnapshot = mapa;
+    window.__lrSync.itemsManualesListos = true;
+    if(typeof renderItemsManualesAdmin==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
+      renderItemsManualesAdmin();
+    }
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando items manuales:', err); window.__lrSync.itemsManualesListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveItemsManuales = function(lista){
+    var prev = window.__lrSync.ultimoItemsManualesSnapshot || {};
+    var vistos = {};
+    lista.forEach(function(it){
+      try{
+        var key = String(it.id);
+        vistos[key] = true;
+        var antes = prev[key];
+        if(!antes || JSON.stringify(antes) !== JSON.stringify(it)){
+          window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).set(limpiarUndefined(it)).catch(function(e){ console.error('Error guardando item manual', key, e); });
+        }
+      }catch(e){ console.error('Error preparando item manual', it && it.id, e); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).delete().catch(function(e){ console.error('Error borrando item manual', key, e); });
       }
     });
   };
@@ -3238,6 +3276,20 @@ body.night-on{background:#080005}
         <input type="number" id="promoPrecioInput" placeholder="Precio" style="flex:1;min-width:80px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:8px 10px;font-size:.8rem">
         <button onclick="agregarPromo()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
       </div>
+
+      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin:14px 0 8px">📝 Productos sueltos / por peso (catálogo web)</div>
+      <div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Se muestran sin precio fijo — el cliente escribe la cantidad/peso que quiere, y llega como nota para cargar a mano (no se suma solo al total).</div>
+      <div id="itemsManualesCardsAdmin"></div>
+      <div style="display:flex;gap:6px;margin:10px 0 18px;flex-wrap:wrap">
+        <select id="imCategoriaInput" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+          <option value="Fiambrería">Fiambrería</option>
+          <option value="Frutas y Verduras">Frutas y Verduras</option>
+          <option value="Snacks sueltos">Snacks sueltos</option>
+        </select>
+        <input type="text" id="imNombreInput" placeholder="Nombre del producto" style="flex:2;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+        <button onclick="agregarItemManual()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
+      </div>
+
       <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:6px 0 8px">🎁 Combos</div>
       <div id="comboCards"></div>
     </div>
@@ -7635,6 +7687,27 @@ function togglePromoActiva(id) {
   if(p) p.activa = !p.activa;
   savePromos(promos);
   if(typeof renderPromosAdmin==='function') renderPromosAdmin();
+}
+
+// Productos "manuales" del catálogo (fiambrería, frutas/verduras, snacks sueltos)
+function getItemsManuales() { return (window.__lrSync && window.__lrSync.itemsManualesListos && Array.isArray(window.__lrItemsManualesCache)) ? window.__lrItemsManualesCache : []; }
+function saveItemsManuales(l) { window.__lrItemsManualesCache = l; if(window.__lrSaveItemsManuales) window.__lrSaveItemsManuales(l); }
+
+function agregarItemManual() {
+  var categoria = document.getElementById('imCategoriaInput').value;
+  var nombre = document.getElementById('imNombreInput').value.trim();
+  if(!nombre){ showToast('Escribí el nombre del producto'); return; }
+  var items = getItemsManuales();
+  items.push({id: Date.now(), categoria: categoria, nombre: nombre, activo: true});
+  saveItemsManuales(items);
+  document.getElementById('imNombreInput').value = '';
+  showToast('📝 '+nombre+' agregado a '+categoria);
+  if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
+}
+function eliminarItemManual(id) {
+  var items = getItemsManuales().filter(function(i){ return i.id!==id; });
+  saveItemsManuales(items);
+  if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
 
 // Prender/apagar el delivery del catálogo público, desde el dashboard admin
@@ -15235,9 +15308,16 @@ function abrirDeliveryPendModal() {
       var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
       var envioTxt = p.envio>0 ? ' <span style="color:var(--gray)">(productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+')</span>' : '';
+      var notasHtml = (p.notasManuales && p.notasManuales.length)
+        ? '<div style="background:rgba(210,32,31,.08);border:1px solid rgba(210,32,31,.3);border-radius:6px;padding:8px 10px;margin:6px 0;font-size:.76rem">'+
+            '<div style="color:var(--red);font-weight:700;margin-bottom:3px">📝 Cargar a mano:</div>'+
+            p.notasManuales.map(function(n){ return '<div style="color:var(--light)">• '+n.nombre+': <b>'+n.texto+'</b></div>'; }).join('')+
+          '</div>'
+        : '';
       return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
-        '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>'+
+        (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
+        notasHtml+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
           '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+envioTxt+' · '+hora+'</span>'+
           '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
@@ -15698,8 +15778,35 @@ function renderPromosAdmin() {
   }).join('');
 }
 
+function renderItemsManualesAdmin() {
+  var el = document.getElementById('itemsManualesCardsAdmin');
+  if(!el) return;
+  var items = getItemsManuales();
+  if(!items.length) {
+    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.78rem">Sin productos sueltos cargados todavía</div>';
+    return;
+  }
+  var porCat = {};
+  var orden = [];
+  items.forEach(function(it){
+    var cat = it.categoria || 'Sin categoría';
+    if(!porCat[cat]){ porCat[cat] = []; orden.push(cat); }
+    porCat[cat].push(it);
+  });
+  el.innerHTML = orden.map(function(cat){
+    return '<div style="font-size:.7rem;color:var(--gold);margin:8px 0 4px">'+cat+'</div>'+
+      porCat[cat].map(function(it){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px">'+
+          '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+'</span>'+
+          '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
+        '</div>';
+      }).join('');
+  }).join('');
+}
+
 function renderCombos() {
   COMBOS = getCombos();
+  renderItemsManualesAdmin();
   renderPromosAdmin();
   var el = document.getElementById('comboCards');
   if(!el) return;
@@ -16354,12 +16461,19 @@ function renderDeliveryPanel() {
         var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
         var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
         var envioTxt = p.envio>0 ? '<div style="font-size:.68rem;color:var(--gray)">Productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+'</div>' : '';
+        var notasTxt = (p.notasManuales && p.notasManuales.length)
+          ? '<div style="background:rgba(210,32,31,.08);border-radius:4px;padding:5px 8px;margin-top:4px;font-size:.7rem">'+
+              '<span style="color:var(--red);font-weight:700">📝 A mano: </span>'+
+              p.notasManuales.map(function(n){ return n.nombre+' ('+n.texto+')'; }).join(', ')+
+            '</div>'
+          : '';
         return '<div style="border-bottom:1px solid rgba(255,255,255,.06);padding:8px 0">'+
           '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'+
             '<div style="flex:1;min-width:0">'+
               '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · <a href="https://wa.me/549'+p.telefono.replace(/\D/g,'')+'" target="_blank" style="color:var(--green);text-decoration:none">📞 '+p.telefono+'</a></div>'+
               '<div style="font-size:.76rem;color:var(--gray);margin-top:2px">'+itemsTxt+'</div>'+
               envioTxt+
+              notasTxt+
               '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+hora+'</div>'+
             '</div>'+
             '<div style="text-align:right">'+

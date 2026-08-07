@@ -35,6 +35,14 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
 .prod-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0}
 .sin-stock-tag{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--red);border:1px solid rgba(210,32,31,.4);border-radius:5px;padding:5px 10px;white-space:nowrap;flex-shrink:0}
+
+.manual-title{font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin:28px 0 4px;padding-left:2px}
+.manual-sub{font-size:.72rem;color:var(--gray);margin-bottom:12px;line-height:1.4}
+.manual-cat-title{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin:14px 0 6px}
+.manual-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px}
+.manual-row .manual-name{flex:1;font-size:.88rem;color:var(--white)}
+.manual-row input{width:110px;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.82rem;outline:none}
+.manual-row input:focus{border-color:var(--red)}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:.9rem;color:var(--white)}
 .prod-price{font-family:'Oswald',sans-serif;font-size:1rem;color:var(--green);font-weight:600;margin-top:2px}
@@ -109,6 +117,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <div id="promoContainer"></div>
     <div class="cat-pills" id="catPills"></div>
     <div id="listContainer"></div>
+    <div id="itemsManualesContainer"></div>
   </div>
 </div>
 
@@ -184,8 +193,10 @@ const IMAGENES_PRODUCTOS = {
   "Coca Cola 3L": "imagenes/coca-cola-3l.jpg"
 };
 let PROMOS = [];
+let ITEMS_MANUALES = [];
 let STOCK = {};
 let CARRITO = {};
+let CARRITO_MANUAL = {}; // { itemId: {nombre, categoria, texto} }
 let COSTO_ENVIO = 0;
 let PRECIO_NOCTURNO = false;
 let sesionVencida = false;
@@ -223,16 +234,17 @@ setTimeout(function(){
   document.getElementById('expiredScreen').classList.add('show');
 }, DURACION_SESION_MIN * 60 * 1000);
 
-let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false;
+let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false, itemsManualesListos = false;
 
 function chequearListo(){
   if(sesionVencida) return;
-  if(deliveryListo && productosListos && stockListos && promosListos){
+  if(deliveryListo && productosListos && stockListos && promosListos && itemsManualesListos){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'block';
     renderPromos();
     renderCatPills();
     renderList();
+    renderItemsManuales();
   }
 }
 
@@ -292,6 +304,23 @@ db.collection('promos').onSnapshot(function(snap){
   console.error('Error cargando promos (se continúa sin mostrarlas):', err);
   PROMOS = [];
   promosListos = true;
+  chequearListo();
+});
+
+db.collection('itemsManualesCatalogo').onSnapshot(function(snap){
+  var lista = [];
+  snap.forEach(function(doc){
+    var d = doc.data();
+    if(d.activo !== false) lista.push(d);
+  });
+  ITEMS_MANUALES = lista;
+  itemsManualesListos = true;
+  chequearListo();
+  if(document.getElementById('mainContent').style.display==='block') renderItemsManuales();
+}, function(err){
+  console.error('Error cargando items manuales (se continúa sin mostrarlos):', err);
+  ITEMS_MANUALES = [];
+  itemsManualesListos = true;
   chequearListo();
 });
 
@@ -358,6 +387,44 @@ function renderList(){
   cont.innerHTML = html;
 }
 
+function renderItemsManuales(){
+  var cont = document.getElementById('itemsManualesContainer');
+  if(!ITEMS_MANUALES.length){ cont.innerHTML = ''; return; }
+
+  var porCat = {};
+  var orden = [];
+  ITEMS_MANUALES.forEach(function(it){
+    var cat = it.categoria || 'Otros';
+    if(!porCat[cat]){ porCat[cat] = []; orden.push(cat); }
+    porCat[cat].push(it);
+  });
+
+  var html = '<div class="manual-title">📝 Fiambrería, frutas/verduras y sueltos</div>'+
+    '<div class="manual-sub">Estos productos se venden por peso o por unidad — escribí la cantidad que querés (ej. "200g", "2 unidades", "medio kilo"). No tienen precio fijo: te confirmamos el costo por WhatsApp antes de armar el pedido.</div>';
+
+  orden.forEach(function(cat){
+    html += '<div class="manual-cat-title">'+cat+'</div>';
+    porCat[cat].forEach(function(it){
+      var valorActual = CARRITO_MANUAL[it.id] ? CARRITO_MANUAL[it.id].texto : '';
+      html += '<div class="manual-row">'+
+        '<span class="manual-name">'+it.nombre+'</span>'+
+        '<input type="text" placeholder="Cantidad" value="'+valorActual.replace(/"/g,'&quot;')+'" oninput="actualizarItemManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\',this.value)">'+
+      '</div>';
+    });
+  });
+  cont.innerHTML = html;
+}
+
+function actualizarItemManual(id, nombre, categoria, valor){
+  if(valor.trim()){
+    CARRITO_MANUAL[id] = {nombre:nombre, categoria:categoria, texto:valor.trim()};
+  } else {
+    delete CARRITO_MANUAL[id];
+  }
+  actualizarCartBar();
+}
+function cantidadItemsManuales(){ return Object.keys(CARRITO_MANUAL).length; }
+
 function cambiarCantidad(nombre, delta){
   var prod = PRODUCTOS.find(function(p){ return p.name === nombre; });
   if(!prod) return;
@@ -383,10 +450,11 @@ function cantidadCarrito(){
 
 function actualizarCartBar(){
   var cant = cantidadCarrito();
+  var cantManual = cantidadItemsManuales();
   var bar = document.getElementById('cartBar');
-  if(cant > 0){
+  if(cant > 0 || cantManual > 0){
     bar.classList.add('show');
-    document.getElementById('cartCount').textContent = cant;
+    document.getElementById('cartCount').textContent = cant + (cantManual>0 ? ' + '+cantManual+' 📝' : '');
     document.getElementById('cartTotalBar').textContent = fmt(subtotalCarrito());
   } else {
     bar.classList.remove('show');
@@ -402,8 +470,19 @@ function armarListaItemsHtml(){
   return html;
 }
 
+function armarListaManualHtml(){
+  var keys = Object.keys(CARRITO_MANUAL);
+  if(!keys.length) return '';
+  var html = '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--red);text-transform:uppercase;margin-top:14px;margin-bottom:6px">📝 Pedido especial (a confirmar)</div>';
+  keys.forEach(function(k){
+    var it = CARRITO_MANUAL[k];
+    html += '<div class="cart-item"><span>'+it.nombre+'</span><span style="color:var(--gray)">'+it.texto+'</span></div>';
+  });
+  return html;
+}
+
 function abrirCarrito(){
-  document.getElementById('cartItemsList').innerHTML = armarListaItemsHtml();
+  document.getElementById('cartItemsList').innerHTML = armarListaItemsHtml() + armarListaManualHtml();
   document.getElementById('cartSubtotalModal').textContent = fmt(subtotalCarrito());
   document.getElementById('cartEnvioModal').textContent = fmt(COSTO_ENVIO);
   document.getElementById('envioRow').style.display = COSTO_ENVIO>0 ? 'flex' : 'none';
@@ -425,13 +504,13 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  if(cantidadCarrito() === 0){
+  if(cantidadCarrito() === 0 && cantidadItemsManuales() === 0){
     errEl.textContent = 'Tu carrito está vacío.';
     errEl.style.display = 'block';
     return;
   }
 
-  document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml();
+  document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml() + armarListaManualHtml();
   document.getElementById('confirmTotal').textContent = fmt(totalConEnvio());
   document.getElementById('cartOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.add('show');
@@ -447,6 +526,7 @@ function confirmarPedido(){
   var telefono = document.getElementById('clienteTelefono').value.trim();
 
   var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
+  var notasManuales = Object.keys(CARRITO_MANUAL).map(function(k){ return CARRITO_MANUAL[k]; });
   var subtotal = subtotalCarrito();
   var envio = COSTO_ENVIO;
   var total = totalConEnvio();
@@ -458,6 +538,7 @@ function confirmarPedido(){
     nombre: nombre,
     telefono: telefono,
     items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
+    notasManuales: notasManuales,
     subtotal: subtotal,
     envio: envio,
     total: total,
@@ -472,9 +553,15 @@ function confirmarPedido(){
   items.forEach(function(it){
     msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
   });
+  if(notasManuales.length){
+    msg += '\n📝 Pedido especial (a confirmar):\n';
+    notasManuales.forEach(function(it){
+      msg += '• '+it.nombre+': '+it.texto+'\n';
+    });
+  }
   msg += '\nSubtotal: '+fmt(subtotal)+'\n';
   if(envio>0) msg += 'Envío: '+fmt(envio)+'\n';
-  msg += '*Total: '+fmt(total)+'*\n\n';
+  msg += '*Total (sin contar lo especial): '+fmt(total)+'*\n\n';
   msg += 'Nombre: '+nombre+'\n';
   msg += 'Teléfono: '+telefono;
 
@@ -487,6 +574,7 @@ function confirmarPedido(){
   document.getElementById('thanksScreen').classList.add('show');
 
   CARRITO = {};
+  CARRITO_MANUAL = {};
 }
 </script>
 </body>
