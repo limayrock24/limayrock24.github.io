@@ -6125,13 +6125,13 @@ function buildEditList() {
     row.innerHTML=
       '<input type="text" value="'+p.name.replace(/"/g,'&quot;')+'" placeholder="Nombre"'+
         ' style="background:var(--dark);border:1.5px solid var(--border);border-radius:3px;padding:4px 6px;color:var(--white);font-family:Barlow,sans-serif;font-size:.75rem;outline:none;width:100%"'+
-        ' data-idx="'+idx+'" data-field="name" oninput="updProd(this)">'+
+        ' data-idx="'+idx+'" data-field="name" oninput="updProd(this)" onchange="saveLocal()">'+
       '<select style="background:var(--dark);border:1.5px solid var(--border);border-radius:3px;padding:4px 4px;color:var(--white);font-family:Barlow,sans-serif;font-size:.72rem;outline:none;width:100%;appearance:auto"'+
-        ' data-idx="'+idx+'" data-field="cat" onchange="updProd(this)">'+catOpts+'</select>'+
-      '<input type="number" value="'+(p.costo&&p.costo>0?p.costo:'')+'" min="0" placeholder="—" style="color:#aaa" data-idx="'+idx+'" data-field="costo" oninput="updProd(this);autoRecalc('+idx+',this)">'+
-      '<input type="number" value="'+margen+'" min="1" max="200" class="margen-inp" data-idx="'+idx+'" data-field="margin" oninput="updMargen(this)">'+
-      '<input type="number" value="'+(p.pventa||'')+'" min="0" placeholder="Precio" style="color:var(--green)" data-idx="'+idx+'" data-field="pventa" id="pv_'+idx+'" oninput="updProd(this)">'+
-      '<input type="number" value="'+(p.pnoc||'')+'" min="0" placeholder="—" style="color:var(--red)" data-idx="'+idx+'" data-field="pnoc" oninput="updProd(this)">'+
+        ' data-idx="'+idx+'" data-field="cat" onchange="updProd(this);saveLocal()">'+catOpts+'</select>'+
+      '<input type="number" value="'+(p.costo&&p.costo>0?p.costo:'')+'" min="0" placeholder="—" style="color:#aaa" data-idx="'+idx+'" data-field="costo" oninput="updProd(this);autoRecalc('+idx+',this)" onchange="saveLocal()">'+
+      '<input type="number" value="'+margen+'" min="1" max="200" class="margen-inp" data-idx="'+idx+'" data-field="margin" oninput="updMargen(this)" onchange="saveLocal()">'+
+      '<input type="number" value="'+(p.pventa||'')+'" min="0" placeholder="Precio" style="color:var(--green)" data-idx="'+idx+'" data-field="pventa" id="pv_'+idx+'" oninput="updProd(this)" onchange="saveLocal()">'+
+      '<input type="number" value="'+(p.pnoc||'')+'" min="0" placeholder="—" style="color:var(--red)" data-idx="'+idx+'" data-field="pnoc" oninput="updProd(this)" onchange="saveLocal()">'+
       '<button class="btn-danger2" onclick="delProd('+idx+')">✕</button>';
     list.appendChild(row);
   });
@@ -6186,6 +6186,7 @@ function delProd(idx) {
     var nombre = PRODUCTS[idx].name;
     PRODUCTS.splice(idx,1);
     limpiarReferenciasProducto(nombre);
+    if(window.__lrSaveProductos) window.__lrSaveProductos(PRODUCTS);
     buildEditList(); filterAll(); showToast('PRODUCTO ELIMINADO');
   });
 }
