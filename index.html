@@ -627,10 +627,11 @@
     });
   };
 
-  // Delivery activo/inactivo + costo de envío — lo lee también el catálogo público (sin login)
+  // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+    window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
     window.__lrSync.deliveryActivoListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -638,8 +639,8 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveDeliveryActivo = function(activo, costoEnvio){
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0}).catch(function(e){
+  window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno){
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno}).catch(function(e){
       console.error('Error guardando delivery activo', e);
     });
   };
@@ -683,6 +684,7 @@
     window.__lrPromosCache = lista;
     window.__lrSync.ultimoPromosSnapshot = mapa;
     window.__lrSync.promosListos = true;
+    refrescarPantallaVentaSiExiste();
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
     }
@@ -7628,15 +7630,21 @@ function togglePromoActiva(id) {
 // Prender/apagar el delivery del catálogo público, desde el dashboard admin
 function cambiarDeliveryActivo(activo) {
   window.__lrDeliveryActivo = activo;
-  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo, window.__lrCostoEnvio||0);
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo);
   showToast(activo ? '🛵 Delivery activado' : '🛵 Delivery pausado');
   if(typeof renderDashboard==='function') renderDashboard();
 }
 function cambiarCostoEnvio(valor) {
   var num = parseFloat(valor) || 0;
   window.__lrCostoEnvio = num;
-  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, num);
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, num, window.__lrPrecioNocturnoCatalogo);
   showToast('🛵 Costo de envío actualizado: '+fmt(num));
+}
+function cambiarPrecioNocturnoCatalogo(nocturno) {
+  window.__lrPrecioNocturnoCatalogo = nocturno;
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0, nocturno);
+  showToast(nocturno ? '🌙 Catálogo mostrando precio nocturno' : '☀️ Catálogo mostrando precio diurno');
+  if(typeof renderDashboard==='function') renderDashboard();
 }
 var SK_LIQUIDEZ    = 'lr_liquidez_cfg';
 var SK_CIERRES_MES = 'lr_cierres_mes';
@@ -13123,6 +13131,10 @@ function renderDashboard() {
       '<span style="font-family:Oswald,sans-serif;font-size:.72rem;color:var(--gray)">Costo envío</span>'+
       '<input type="number" id="costoEnvioInput" value="'+(window.__lrCostoEnvio||0)+'" onchange="cambiarCostoEnvio(this.value)" style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-family:Oswald,sans-serif;font-size:.8rem">'+
     '</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer">'+
+      '<input type="checkbox" id="precioNocturnoChk" '+(window.__lrPrecioNocturnoCatalogo?'checked':'')+' onchange="cambiarPrecioNocturnoCatalogo(this.checked)" style="accent-color:var(--gold);width:16px;height:16px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🌙 Precio '+(window.__lrPrecioNocturnoCatalogo?'nocturno':'diurno')+' en catálogo</span>'+
+    '</label>'+
     '</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button onclick="abrirIngresoModal()" style="background:var(--card);border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
@@ -15235,11 +15247,12 @@ function abrirDeliveryPendModal() {
     cont.innerHTML = pendientes.map(function(p){
       var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+      var envioTxt = p.envio>0 ? ' <span style="color:var(--gray)">(productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+')</span>' : '';
       return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
         '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
-          '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+' · '+hora+'</span>'+
+          '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+envioTxt+' · '+hora+'</span>'+
           '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
         '</div>'+
       '</div>';
@@ -15702,9 +15715,20 @@ function buildCombosGrid() {
   var grid = document.getElementById('combosGrid');
   if(!section || !grid) return;
   var activeCombos = COMBOS.filter(function(c){ return c.activo !== false; });
-  if(!activeCombos.length) { section.style.display='none'; return; }
+  var activePromos = (typeof getPromos==='function' ? getPromos() : []).filter(function(p){ return p.activa !== false; });
+  if(!activeCombos.length && !activePromos.length) { section.style.display='none'; return; }
   section.style.display = 'block';
   grid.innerHTML = '';
+  activePromos.forEach(function(promo) {
+    var btn = document.createElement('div');
+    btn.className = 'combo-fav';
+    btn.innerHTML =
+      '<div class="cf-icon">🔥</div>'+
+      '<div class="cf-name">'+promo.nombre+'</div>'+
+      '<div class="cf-price">'+fmt(promo.precio||0)+'</div>';
+    btn.onclick = function() { addPromoToCart(promo); };
+    grid.appendChild(btn);
+  });
   activeCombos.forEach(function(combo) {
     var btn = document.createElement('div');
     btn.className = 'combo-fav';
@@ -15715,6 +15739,23 @@ function buildCombosGrid() {
     btn.onclick = function() { addComboToCart(combo); };
     grid.appendChild(btn);
   });
+}
+
+function addPromoToCart(promo) {
+  var cartItem = {
+    name: '🔥 '+promo.nombre,
+    precio: promo.precio||0,
+    qty: 1,
+    subtotal: promo.precio||0,
+    cat: 'Promo',
+    esPromo: true
+  };
+  var existing = cart.find(function(i){ return i.name === cartItem.name && i.esPromo; });
+  if(existing) { existing.qty++; existing.subtotal = existing.precio * existing.qty; }
+  else { cart.push(cartItem); }
+  updateCart();
+  syncConfirmarBtn();
+  showToast('🔥 '+promo.nombre+' agregada');
 }
 
 function addComboToCart(combo) {
@@ -16293,11 +16334,13 @@ function renderDeliveryPanel() {
       pedidosWeb.map(function(p){
         var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
         var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+        var envioTxt = p.envio>0 ? '<div style="font-size:.68rem;color:var(--gray)">Productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+'</div>' : '';
         return '<div style="border-bottom:1px solid rgba(255,255,255,.06);padding:8px 0">'+
           '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'+
             '<div style="flex:1;min-width:0">'+
               '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · <a href="https://wa.me/549'+p.telefono.replace(/\D/g,'')+'" target="_blank" style="color:var(--green);text-decoration:none">📞 '+p.telefono+'</a></div>'+
               '<div style="font-size:.76rem;color:var(--gray);margin-top:2px">'+itemsTxt+'</div>'+
+              envioTxt+
               '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+hora+'</div>'+
             '</div>'+
             '<div style="text-align:right">'+

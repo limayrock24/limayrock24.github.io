@@ -177,6 +177,7 @@ let PROMOS = [];
 let STOCK = {};
 let CARRITO = {};
 let COSTO_ENVIO = 0;
+let PRECIO_NOCTURNO = false;
 let sesionVencida = false;
 let CATEGORIA_SEL = 'Todas';
 
@@ -228,6 +229,7 @@ function chequearListo(){
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+  PRECIO_NOCTURNO = doc.exists ? !!doc.data().precioNocturno : false;
   if(!activo && !sesionVencida){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'none';
@@ -245,7 +247,7 @@ db.collection('productos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
     var d = doc.data();
-    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, cat:d.cat||'General'});
+    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, precioNoc:d.pnoc||d.pventa, cat:d.cat||'General'});
   });
   lista.sort(function(a,b){ return a.name.localeCompare(b.name); });
   PRODUCTOS = lista;
@@ -327,8 +329,9 @@ function renderList(){
     if(CATEGORIA_SEL==='Todas') html += '<div class="cat-title">'+cat+'</div>';
     porCat[cat].forEach(function(p){
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
+      var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
       html += '<div class="prod-row">'+
-        '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(p.precio)+'</div></div>'+
+        '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
         '<div class="qty-ctrl">'+
           (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
           '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
@@ -342,7 +345,8 @@ function renderList(){
 function cambiarCantidad(nombre, delta){
   var prod = PRODUCTOS.find(function(p){ return p.name === nombre; });
   if(!prod) return;
-  if(!CARRITO[nombre]) CARRITO[nombre] = {nombre:nombre, precio:prod.precio, cantidad:0};
+  var precioUsar = PRECIO_NOCTURNO ? prod.precioNoc : prod.precio;
+  if(!CARRITO[nombre]) CARRITO[nombre] = {nombre:nombre, precio:precioUsar, cantidad:0};
   CARRITO[nombre].cantidad += delta;
   if(CARRITO[nombre].cantidad <= 0) delete CARRITO[nombre];
   renderList();
