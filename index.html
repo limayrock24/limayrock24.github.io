@@ -82,6 +82,9 @@
     pedidosWebListos: false,
     promosListos: false,
     itemsManualesListos: false,
+    manualPresetsListos: false,
+    semanasColchonListos: false,
+    stockMovsListos: false,
     ultimoProductosSnapshot: {},
     ultimoInventarioSnapshot: {},
     ultimoEmpleadosSnapshot: {},
@@ -101,7 +104,7 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
-    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos){
+    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos && s.stockMovsListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
     }
@@ -748,6 +751,58 @@
       if(!vistos[key]){
         window.__lrDB.collection('promos').doc(idSeguro(key)).delete().catch(function(e){ console.error('Error borrando promo', key, e); });
       }
+    });
+  };
+
+  // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
+  window.__lrDB.collection('stockMovsHistorial').onSnapshot(function(snap){
+    var lista = [], mapa = {};
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+    window.__lrStockMovsCache = lista;
+    window.__lrSync.ultimoStockMovsSnapshot = mapa;
+    window.__lrSync.stockMovsListos = true;
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando historial de stock:', err); window.__lrSync.stockMovsListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveStockMovs = function(lista){
+    var prev = window.__lrSync.ultimoStockMovsSnapshot || {};
+    if(lista.length>2000) lista = lista.slice(-2000);
+    lista.forEach(function(m){
+      try{
+        var key = String(m.id);
+        var antes = prev[key];
+        if(!antes || JSON.stringify(antes) !== JSON.stringify(m)){
+          window.__lrDB.collection('stockMovsHistorial').doc(idSeguro(key)).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando movimiento de stock', key, e); });
+        }
+      }catch(e){ console.error('Error preparando movimiento de stock', m && m.id, e); }
+    });
+  };
+
+  // Semanas de colchón para el cálculo de pedidos sugeridos
+  window.__lrDB.collection(window.__lrCOL.config).doc('semanasColchon').onSnapshot(function(doc){
+    window.__lrSemanasColchonCache = (doc.exists && doc.data().valor>0) ? doc.data().valor : 1;
+    window.__lrSync.semanasColchonListos = true;
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando semanas colchón:', err); window.__lrSync.semanasColchonListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveSemanasColchon = function(v){
+    window.__lrDB.collection(window.__lrCOL.config).doc('semanasColchon').set({valor: v}).catch(function(e){
+      console.error('Error guardando semanas colchón', e);
+    });
+  };
+
+  // Presets rápidos de "ítem manual" (los botones tipo Pan/Fiambre/etc.)
+  window.__lrDB.collection(window.__lrCOL.config).doc('manualPresets').onSnapshot(function(doc){
+    window.__lrManualPresetsCache = (doc.exists && Array.isArray(doc.data().lista)) ? doc.data().lista : ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras'];
+    window.__lrSync.manualPresetsListos = true;
+    refrescarPantallaVentaSiExiste();
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando presets manuales:', err); window.__lrSync.manualPresetsListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveManualPresets = function(arr){
+    window.__lrDB.collection(window.__lrCOL.config).doc('manualPresets').set({lista: arr}).catch(function(e){
+      console.error('Error guardando presets manuales', e);
     });
   };
 
@@ -9989,10 +10044,9 @@ function toggleManualForm() {
 // ── ÍTEMS MANUALES PREDETERMINADOS (pan, fiambre, etc.) ─────────────────────
 var SK_MANUAL_PRESETS = 'lr_manual_presets';
 function getManualPresets() {
-  try { var r = JSON.parse(localStorage.getItem(SK_MANUAL_PRESETS)||'null'); return Array.isArray(r)?r:['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras']; }
-  catch(e){ return ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras']; }
+  return (window.__lrSync && window.__lrSync.manualPresetsListos && Array.isArray(window.__lrManualPresetsCache)) ? window.__lrManualPresetsCache : ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras'];
 }
-function saveManualPresets(arr) { localStorage.setItem(SK_MANUAL_PRESETS, JSON.stringify(arr)); }
+function saveManualPresets(arr) { window.__lrManualPresetsCache = arr; if(window.__lrSaveManualPresets) window.__lrSaveManualPresets(arr); }
 
 var _manualPresetSel = null;
 var _manualPresetSel2 = null;
@@ -11464,14 +11518,16 @@ function selFiltroPedido(f) {
 }
 
 // ── MOTOR DE CÁLCULO DE PEDIDOS ─────────────────────────────────────────────
+function getStockMovs() { return (window.__lrSync && window.__lrSync.stockMovsListos && Array.isArray(window.__lrStockMovsCache)) ? window.__lrStockMovsCache : []; }
+function saveStockMovs(arr) { window.__lrStockMovsCache = arr; if(window.__lrSaveStockMovs) window.__lrSaveStockMovs(arr); }
 var DIAS_SEMANA_PEDIDO = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 
 function getSemanasColchonPedido() {
-  var v = parseFloat(localStorage.getItem('lr_semanas_colchon_pedido'));
-  return (v && v>0) ? v : 1;
+  return (window.__lrSync && window.__lrSync.semanasColchonListos && window.__lrSemanasColchonCache>0) ? window.__lrSemanasColchonCache : 1;
 }
 function setSemanasColchonPedido(v) {
-  localStorage.setItem('lr_semanas_colchon_pedido', String(v));
+  window.__lrSemanasColchonCache = v;
+  if(window.__lrSaveSemanasColchon) window.__lrSaveSemanasColchon(v);
 }
 function cambiarColchonPedido() {
   var inp = document.getElementById('pedidosColchonInput');
@@ -12585,7 +12641,7 @@ function collectAllData() {
     liquidezCfg:      JSON.stringify(getLiquidezCfg()),
     catsCustom:       JSON.stringify(ALL_CATS),
     logCatalogo:      JSON.stringify(getLogCatalogo()),
-    semanasColchon:   localStorage.getItem('lr_semanas_colchon_pedido')
+    semanasColchon:   String(getSemanasColchonPedido())
   };
 }
 
@@ -12618,7 +12674,7 @@ function restoreAllData(data) {
   if(data.liquidezCfg)     { try{ saveLiquidezCfg(JSON.parse(data.liquidezCfg)); }catch(e){} }
   if(data.catsCustom)      { try{ var cc=JSON.parse(data.catsCustom); ALL_CATS=cc; if(window.__lrSaveCatsCustom) window.__lrSaveCatsCustom(cc); }catch(e){} }
   if(data.logCatalogo)     { try{ saveLogCatalogo(JSON.parse(data.logCatalogo)); }catch(e){} }
-  if(data.semanasColchon)  localStorage.setItem('lr_semanas_colchon_pedido', data.semanasColchon);
+  if(data.semanasColchon)  setSemanasColchonPedido(parseFloat(data.semanasColchon)||1);
   if(data.valoresHora){
     var vh = JSON.parse(data.valoresHora||'{}');
     Object.keys(vh).forEach(function(n){
@@ -12845,9 +12901,9 @@ function previsualizarArchivado() {
   if(!fechaVal){ showToast('Elegí una fecha',true); return; }
   var corte = new Date(fechaVal+'T00:00:00');
 
-  var ventas    = JSON.parse(localStorage.getItem('lr_ventas')||'[]');
+  var ventas    = VENTAS;
   var cierres   = getCierres();
-  var movs      = JSON.parse(localStorage.getItem('lr_movimientos')||'[]');
+  var movs      = getMovimientos();
 
   var ventasViejas  = ventas.filter(function(v){ return new Date(v.fecha) < corte; });
   var ventasNuevas  = ventas.filter(function(v){ return new Date(v.fecha) >= corte; });
@@ -13613,17 +13669,10 @@ function quitarPmProveedor(nombreProv) {
 function closeProdModal() { document.getElementById('prodModalOverlay').classList.remove('open'); }
 
 // ── GESTIÓN DE CATEGORÍAS ──────────────────────────────────────────────────
-var SK_CATS = 'lr_cats_custom';
-
-function getCustomCats() {
-  var saved = localStorage.getItem(SK_CATS);
-  return saved ? JSON.parse(saved) : null;
-}
-
-function initCatsFromStorage() {
-  var custom = getCustomCats();
-  if(custom && Array.isArray(custom)) ALL_CATS = custom; // siempre usar localStorage si existe (aunque esté vacío)
-}
+// Las categorías ya viven en Firebase (config/categorias) y se sincronizan
+// solas. Esta función queda solo por compatibilidad con el nombre que se
+// llama al arrancar — ya no toca localStorage ni pisa nada.
+function initCatsFromStorage() {}
 
 function abrirCatModal() {
   renderCatModalList();
@@ -14060,10 +14109,10 @@ function guardarProdModal() {
   if(!inv[nombre].stock || inv[nombre].stock !== nuevoStock) {
     // Registrar movimiento si cambió
     if(stockAntes !== null && stockAntes !== nuevoStock) {
-      var movs = JSON.parse(localStorage.getItem('lr_stock_movs')||'[]');
+      var movs = getStockMovs();
       movs.push({id:Date.now(),ts:new Date().toISOString(),producto:nombre,tipo:'ajuste',stockAntes:stockAntes,stockDespues:nuevoStock,diferencia:nuevoStock-stockAntes,nota:'Ajuste desde catálogo',responsable:currentEmp?currentEmp.nombre:'Admin'});
       if(movs.length>500) movs=movs.slice(-500);
-      localStorage.setItem('lr_stock_movs', JSON.stringify(movs));
+      saveStockMovs(movs);
     }
   }
   inv[nombre].stock  = nuevoStock;
@@ -15154,7 +15203,7 @@ function confirmarRecepMerc() {
   saveStockInv(inv);
 
   // Registrar en movimientos de stock
-  var movs = JSON.parse(localStorage.getItem('lr_stock_movs')||'[]');
+  var movs = getStockMovs();
   recibidos.forEach(function(r){
     movs.push({id:Date.now()+Math.random(),ts:new Date().toISOString(),
       producto:r.nombre,tipo:'recepcion',stockAntes:r.antes,stockDespues:r.despues,
@@ -15162,7 +15211,7 @@ function confirmarRecepMerc() {
       responsable:currentEmp?currentEmp.nombre:'Recepción'});
   });
   if(movs.length>5000) movs=movs.slice(-5000);
-  localStorage.setItem('lr_stock_movs', JSON.stringify(movs));
+  saveStockMovs(movs);
 
   updateStockNotif();
   cerrarRecepMerc();
@@ -15949,12 +15998,12 @@ function addPromoToCart(promo) {
 }
 
 function addComboToCart(combo) {
-  var stock = JSON.parse(localStorage.getItem('lr_stock_alerts')||'[]');
+  var inv = getStockInv();
   var warnings = [];
   (combo.items||[]).forEach(function(item) {
-    var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
-    if(prod && prod.stock !== undefined && prod.stock < item.qty) {
-      warnings.push(item.nombre+' (stock: '+prod.stock+', necesita: '+item.qty+')');
+    var stockActual = inv[item.nombre] ? inv[item.nombre].stock : undefined;
+    if(stockActual !== undefined && stockActual < item.qty) {
+      warnings.push(item.nombre+' (stock: '+stockActual+', necesita: '+item.qty+')');
     }
   });
   if(warnings.length) showToast('⚠️ Stock bajo: '+warnings.join(', '), true);
@@ -17886,10 +17935,10 @@ function confirmarAjusteStock() {
   inv[_ajusteStockProd].stock = stockDespues;
   saveStockInv(inv);
 
-  var movs = JSON.parse(localStorage.getItem('lr_stock_movs')||'[]');
+  var movs = getStockMovs();
   movs.push({id:Date.now(),ts:new Date().toISOString(),producto:_ajusteStockProd,tipo:'entrada',stockAntes:stockAntes,stockDespues:stockDespues,diferencia:cant,nota:nota,responsable:currentEmp?currentEmp.nombre:'Admin'});
   if(movs.length>500) movs=movs.slice(-500);
-  localStorage.setItem('lr_stock_movs', JSON.stringify(movs));
+  saveStockMovs(movs);
 
   document.getElementById('ajusteStockModal').classList.remove('open');
   renderInventario();
@@ -17933,7 +17982,7 @@ function confirmarRetiroVencido() {
   saveStockInv(inv);
 
   // Se registra SOLO como movimiento de stock — nunca toca ventas, ingresos ni fiados/deuda
-  var movs = JSON.parse(localStorage.getItem('lr_stock_movs')||'[]');
+  var movs = getStockMovs();
   movs.push({
     id: Date.now(), ts: new Date().toISOString(), producto: _retiroVencidoProd,
     tipo: 'baja', motivo: motivo,
@@ -17942,7 +17991,7 @@ function confirmarRetiroVencido() {
     responsable: (typeof _recepEmp!=='undefined' && _recepEmp) ? _recepEmp.nombre : (currentEmp?currentEmp.nombre:'Admin')
   });
   if(movs.length>500) movs = movs.slice(-500);
-  localStorage.setItem('lr_stock_movs', JSON.stringify(movs));
+  saveStockMovs(movs);
 
   cerrarRetiroVencido();
   if(typeof renderInventario==='function') renderInventario();
