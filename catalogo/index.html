@@ -27,6 +27,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .promo-card .prod-name{color:var(--gold);font-weight:600}
 
 .cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:20px 0 8px;padding-left:2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+
+.cat-pills{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none}
+.cat-pills::-webkit-scrollbar{display:none}
+.cat-pill{flex-shrink:0;background:var(--card);border:1.5px solid var(--border);color:var(--light);border-radius:20px;padding:8px 16px;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.cat-pill.active{background:var(--red);border-color:var(--red);color:var(--white);font-weight:700}
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:.9rem;color:var(--white)}
@@ -100,6 +105,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
     <div id="promoContainer"></div>
+    <div class="cat-pills" id="catPills"></div>
     <div id="listContainer"></div>
   </div>
 </div>
@@ -172,6 +178,26 @@ let STOCK = {};
 let CARRITO = {};
 let COSTO_ENVIO = 0;
 let sesionVencida = false;
+let CATEGORIA_SEL = 'Todas';
+
+function renderCatPills(){
+  var cats = [];
+  PRODUCTOS.forEach(function(p){
+    var c = p.cat || 'General';
+    if(cats.indexOf(c) === -1) cats.push(c);
+  });
+  cats.sort();
+  var todas = ['Todas'].concat(cats);
+  var cont = document.getElementById('catPills');
+  cont.innerHTML = todas.map(function(c){
+    return '<div class="cat-pill'+(c===CATEGORIA_SEL?' active':'')+'" onclick="seleccionarCategoria(\''+escJs(c)+'\')">'+c+'</div>';
+  }).join('');
+}
+function seleccionarCategoria(cat){
+  CATEGORIA_SEL = cat;
+  renderCatPills();
+  renderList();
+}
 
 function fmt(n){ return '$' + Number(n||0).toLocaleString('es-AR'); }
 function idSeguro(s){ return String(s).replace(/\//g, '-'); }
@@ -194,6 +220,7 @@ function chequearListo(){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'block';
     renderPromos();
+    renderCatPills();
     renderList();
   }
 }
@@ -224,7 +251,7 @@ db.collection('productos').onSnapshot(function(snap){
   PRODUCTOS = lista;
   productosListos = true;
   chequearListo();
-  if(document.getElementById('mainContent').style.display==='block') renderList();
+  if(document.getElementById('mainContent').style.display==='block'){ renderCatPills(); renderList(); }
 });
 
 db.collection('inventario').onSnapshot(function(snap){
@@ -278,7 +305,8 @@ function renderList(){
   var disponibles = PRODUCTOS.filter(function(p){
     var stockOk = !(p.name in STOCK) || STOCK[p.name] > 0;
     var matchTexto = !term || p.name.toLowerCase().indexOf(term) !== -1;
-    return stockOk && matchTexto;
+    var matchCat = CATEGORIA_SEL==='Todas' || (p.cat||'General')===CATEGORIA_SEL;
+    return stockOk && matchTexto && matchCat;
   });
 
   if(!disponibles.length){
@@ -296,7 +324,7 @@ function renderList(){
 
   var html = '';
   ordenCats.forEach(function(cat){
-    html += '<div class="cat-title">'+cat+'</div>';
+    if(CATEGORIA_SEL==='Todas') html += '<div class="cat-title">'+cat+'</div>';
     porCat[cat].forEach(function(p){
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
       html += '<div class="prod-row">'+
