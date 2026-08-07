@@ -78,6 +78,8 @@
     logCatalogoListos: false,
     stockAlertsListos: false,
     prodCountListos: false,
+    deliveryActivoListos: false,
+    pedidosWebListos: false,
     ultimoProductosSnapshot: {},
     ultimoInventarioSnapshot: {},
     ultimoEmpleadosSnapshot: {},
@@ -97,7 +99,7 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
-    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos){
+    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
     }
@@ -620,6 +622,50 @@
   window.__lrSaveCatsCustom = function(lista){
     window.__lrDB.collection(window.__lrCOL.config).doc('categorias').set(limpiarUndefined({ lista: lista })).catch(function(e){
       console.error('Error guardando categorías', e);
+    });
+  };
+
+  // Delivery activo/inactivo — lo lee también el catálogo público (sin login)
+  window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
+    window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
+    window.__lrSync.deliveryActivoListos = true;
+    if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
+      renderDashboard();
+    }
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveDeliveryActivo = function(activo){
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo}).catch(function(e){
+      console.error('Error guardando delivery activo', e);
+    });
+  };
+
+  // Pedidos hechos desde el catálogo público (sin login, por eso van en su
+  // propia colección — no se mezclan con nada que dependa de un empleado)
+  window.__lrDB.collection('pedidosWeb').onSnapshot(function(snap){
+    var lista = [], mapa = {};
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
+    window.__lrPedidosWebCache = lista;
+    window.__lrSync.ultimoPedidosWebSnapshot = mapa;
+    window.__lrSync.pedidosWebListos = true;
+    if(typeof renderDeliveryPanel==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
+      renderDeliveryPanel();
+    }
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando pedidos web:', err); window.__lrSync.pedidosWebListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSavePedidosWeb = function(lista){
+    var prev = window.__lrSync.ultimoPedidosWebSnapshot || {};
+    lista.forEach(function(p){
+      try{
+        var key = String(p.id);
+        var antes = prev[key];
+        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+          window.__lrDB.collection('pedidosWeb').doc(idSeguro(key)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando pedido web', key, e); });
+        }
+      }catch(e){ console.error('Error preparando pedido web', p && p.id, e); }
     });
   };
 
@@ -7486,6 +7532,25 @@ var SK_RETIROS     = 'lr_retiros_caja';
 var SK_DELIVERY    = 'lr_delivery';
 function getDeliveries() { return (window.__lrSync && window.__lrSync.deliveryListos && Array.isArray(window.__lrDeliveryCache)) ? window.__lrDeliveryCache : []; }
 function saveDeliveries(d) { window.__lrDeliveryCache = d; if(window.__lrSaveDelivery) window.__lrSaveDelivery(d); }
+
+// Pedidos hechos por clientes desde el catálogo público (sin login)
+function getPedidosWeb() { return (window.__lrSync && window.__lrSync.pedidosWebListos && Array.isArray(window.__lrPedidosWebCache)) ? window.__lrPedidosWebCache : []; }
+function savePedidosWeb(p) { window.__lrPedidosWebCache = p; if(window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(p); }
+function marcarPedidoWebResuelto(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(p) p.estado = 'resuelto';
+  savePedidosWeb(pedidos);
+  if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+}
+
+// Prender/apagar el delivery del catálogo público, desde el dashboard admin
+function cambiarDeliveryActivo(activo) {
+  window.__lrDeliveryActivo = activo;
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo);
+  showToast(activo ? '🛵 Delivery activado' : '🛵 Delivery pausado');
+  if(typeof renderDashboard==='function') renderDashboard();
+}
 var SK_LIQUIDEZ    = 'lr_liquidez_cfg';
 var SK_CIERRES_MES = 'lr_cierres_mes';
 function getRetirosCaja() { return (window.__lrSync && window.__lrSync.retirosCajaListos && Array.isArray(window.__lrRetirosCajaCache)) ? window.__lrRetirosCajaCache : []; }
@@ -12961,11 +13026,16 @@ function renderDashboard() {
   }
 
   // Botones de caja (solo visibles desde el panel admin)
-  var retiroBtn = '<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">'+
+  var retiroBtn = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
+    '<label style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer">'+
+      '<input type="checkbox" id="deliveryActivoChk" '+(window.__lrDeliveryActivo!==false?'checked':'')+' onchange="cambiarDeliveryActivo(this.checked)" style="accent-color:var(--green);width:16px;height:16px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🛵 Delivery '+(window.__lrDeliveryActivo!==false?'activo':'pausado')+' (catálogo web)</span>'+
+    '</label>'+
+    '<div style="display:flex;gap:8px">'+
     '<button onclick="abrirIngresoModal()" style="background:var(--card);border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
     '💵 Ingreso de efectivo</button>'+
     '<button onclick="abrirRetiroModal()" style="background:var(--card);border:1px solid rgba(245,194,0,.4);color:var(--gold);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
-    '💵 Registrar retiro de caja</button></div>';
+    '💵 Registrar retiro de caja</button></div></div>';
 
   // Turno abierto en este momento (con reloj en vivo) — para ver desde
   // cualquier dispositivo quién está trabajando, hace cuánto, y qué hay
@@ -16038,7 +16108,32 @@ function renderDeliveryPanel() {
   var hoyD = deliveriesTodas.filter(function(d){ return new Date(d.fecha)>=hoy; });
   var totalHoy = hoyD.reduce(function(s,d){ return s+d.monto; },0);
 
-  resEl.innerHTML =
+  var pedidosWeb = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+  var pedidosWebHtml = '';
+  if(pedidosWeb.length){
+    pedidosWebHtml = '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 14px;margin-bottom:14px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--green);text-transform:uppercase;margin-bottom:10px">📲 Pedidos del catálogo web ('+pedidosWeb.length+')</div>'+
+      pedidosWeb.map(function(p){
+        var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+        var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+        return '<div style="border-bottom:1px solid rgba(255,255,255,.06);padding:8px 0">'+
+          '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · <a href="https://wa.me/549'+p.telefono.replace(/\D/g,'')+'" target="_blank" style="color:var(--green);text-decoration:none">📞 '+p.telefono+'</a></div>'+
+              '<div style="font-size:.76rem;color:var(--gray);margin-top:2px">'+itemsTxt+'</div>'+
+              '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+hora+'</div>'+
+            '</div>'+
+            '<div style="text-align:right">'+
+              '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+'</div>'+
+              '<button onclick="marcarPedidoWebResuelto('+p.id+')" style="margin-top:4px;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Resuelto</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  resEl.innerHTML = pedidosWebHtml +
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+
       '<div style="background:var(--card);border:1px solid rgba(231,76,60,.3);border-radius:6px;padding:12px;text-align:center">'+
         '<div style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">Pedidos del período</div>'+

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Limay Rock — Pedí tu delivery</title>
+<link rel="icon" href="../icon-192.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Barlow:wght@400;500;600;700&display=swap');
+:root{
+  --black:#0a0a0a; --dark:#141414; --card:#1a1a1a; --surface:#161616;
+  --border:rgba(255,255,255,.08); --red:#D2201F; --gold:#F4B400;
+  --green:#2ecc71; --white:#fff; --light:#ddd; --gray:#888;
+}
+*{box-sizing:border-box}
+body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;margin:0;padding-bottom:90px;min-height:100vh}
+.header{padding:20px 16px 12px;text-align:center;border-bottom:2px solid var(--red)}
+.header img{height:70px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 2px 10px rgba(204,0,0,.6));margin-bottom:6px}
+.header .sub{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase}
+.wrap{max-width:600px;margin:0 auto;padding:14px}
+#searchInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.95rem;outline:none;margin-bottom:14px}
+#searchInput:focus{border-color:var(--red)}
+.cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:18px 0 8px;padding-left:2px}
+.prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.prod-info{flex:1;min-width:0}
+.prod-name{font-size:.9rem;color:var(--white)}
+.prod-price{font-family:'Oswald',sans-serif;font-size:1rem;color:var(--green);font-weight:600;margin-top:2px}
+.qty-ctrl{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.qty-btn{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--red);background:transparent;color:var(--red);font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.qty-btn.add{background:var(--red);color:var(--white)}
+.qty-num{font-family:'Oswald',sans-serif;font-size:1rem;min-width:20px;text-align:center}
+.empty-msg{text-align:center;padding:40px 20px;color:var(--gray);font-size:.85rem}
+
+.cart-bar{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:2px solid var(--red);padding:12px 16px;display:none;align-items:center;justify-content:space-between;gap:12px;z-index:100}
+.cart-bar.show{display:flex}
+.cart-bar .info{font-family:'Oswald',sans-serif;font-size:.85rem}
+.cart-bar .total{color:var(--gold);font-weight:700}
+.cart-bar button{background:var(--red);color:var(--white);border:none;border-radius:6px;padding:11px 20px;font-family:'Oswald',sans-serif;font-size:.8rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-weight:700}
+
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;align-items:center;justify-content:center;padding:16px}
+.overlay.show{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto}
+.modal h3{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:0 0 14px}
+.cart-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:.85rem}
+.cart-item .rm{color:var(--red);cursor:pointer;font-size:1.1rem;margin-left:10px}
+.modal .total-row{display:flex;justify-content:space-between;font-family:'Oswald',sans-serif;font-size:1.1rem;margin-top:14px;padding-top:14px;border-top:2px solid var(--red)}
+.modal .total-row b{color:var(--gold)}
+.field{margin-top:14px}
+.field label{display:block;font-size:.75rem;color:var(--gray);margin-bottom:5px}
+.field input{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:11px 12px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.9rem;outline:none}
+.field input:focus{border-color:var(--red)}
+.btn-primary{width:100%;background:var(--red);color:var(--white);border:none;border-radius:6px;padding:13px;font-family:'Oswald',sans-serif;font-size:.85rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-weight:700;margin-top:18px}
+.btn-secondary{width:100%;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:6px;padding:11px;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer;margin-top:8px}
+.error-msg{color:var(--red);font-size:.78rem;margin-top:8px;display:none}
+
+.status-screen{position:fixed;inset:0;background:var(--black);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
+.status-screen.show{display:flex}
+.status-screen img{height:60px;object-fit:contain;mix-blend-mode:screen;margin-bottom:20px}
+.status-screen h2{font-family:'Oswald',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--gold);margin:0 0 10px}
+.status-screen p{color:var(--gray);font-size:.85rem;max-width:340px;line-height:1.5}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="loadingScreen" class="status-screen show">
+  <div class="spinner"></div>
+  <h2>Cargando catálogo...</h2>
+</div>
+
+<div id="expiredScreen" class="status-screen">
+  <h2>⏱ Este catálogo expiró</h2>
+  <p>Por seguridad, el link deja de mostrar precios después de unos minutos.<br>Volvé a abrir el link que te pasamos para verlo de nuevo.</p>
+</div>
+
+<div id="noDeliveryScreen" class="status-screen">
+  <h2>🚫 Delivery no disponible</h2>
+  <p>En este momento no estamos tomando pedidos de delivery. Probá más tarde, ¡gracias!</p>
+</div>
+
+<div id="thanksScreen" class="status-screen">
+  <h2>✅ ¡Pedido enviado!</h2>
+  <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. ¡Gracias por elegirnos!</p>
+</div>
+
+<div id="mainContent" style="display:none">
+  <div class="header">
+    <img src="../icon-512.png" alt="Limay Rock">
+    <div class="sub">Pedí tu delivery</div>
+  </div>
+
+  <div class="wrap">
+    <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
+    <div id="listContainer"></div>
+  </div>
+</div>
+
+<div class="cart-bar" id="cartBar">
+  <div class="info"><span id="cartCount">0</span> producto(s) · <span class="total" id="cartTotalBar">$0</span></div>
+  <button onclick="abrirCarrito()">Ver pedido</button>
+</div>
+
+<div class="overlay" id="cartOverlay">
+  <div class="modal">
+    <h3>🛒 Tu pedido</h3>
+    <div id="cartItemsList"></div>
+    <div class="total-row"><span>Total</span><b id="cartTotalModal">$0</b></div>
+
+    <div class="field">
+      <label>Tu nombre</label>
+      <input type="text" id="clienteNombre" placeholder="Nombre y apellido">
+    </div>
+    <div class="field">
+      <label>Tu teléfono</label>
+      <input type="tel" id="clienteTelefono" placeholder="Ej. 2995551234">
+    </div>
+    <div class="error-msg" id="checkoutError"></div>
+
+    <button class="btn-primary" onclick="confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
+    <button class="btn-secondary" onclick="cerrarCarrito()">Seguir viendo el catálogo</button>
+  </div>
+</div>
+
+<!-- ═══════════════ FIREBASE ═══════════════ -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
+  authDomain: "limay-rock-852cb.firebaseapp.com",
+  projectId: "limay-rock-852cb",
+  storageBucket: "limay-rock-852cb.firebasestorage.app",
+  messagingSenderId: "391677998496",
+  appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const NUMERO_WHATSAPP = "5492995026557";
+const DURACION_SESION_MIN = 8;
+
+let PRODUCTOS = [];
+let STOCK = {};
+let CARRITO = {}; // { nombreProducto: {nombre, precio, cantidad} }
+let sesionVencida = false;
+
+function fmt(n){ return '$' + Number(n||0).toLocaleString('es-AR'); }
+
+function idSeguro(s){ return String(s).replace(/\//g, '-'); }
+
+// ── Temporizador de 8 minutos ──────────────────────────────────────────
+setTimeout(function(){
+  sesionVencida = true;
+  document.getElementById('mainContent').style.display = 'none';
+  document.getElementById('cartBar').classList.remove('show');
+  document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('expiredScreen').classList.add('show');
+}, DURACION_SESION_MIN * 60 * 1000);
+
+// ── Cargar delivery activo/inactivo, productos y stock ─────────────────
+let deliveryListo = false, productosListos = false, stockListos = false;
+
+function chequearListo(){
+  if(sesionVencida) return;
+  if(deliveryListo && productosListos && stockListos){
+    document.getElementById('loadingScreen').classList.remove('show');
+    document.getElementById('mainContent').style.display = 'block';
+    renderList();
+  }
+}
+
+db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
+  var activo = doc.exists ? (doc.data().activo !== false) : true; // por defecto activo si nunca se configuró
+  if(!activo && !sesionVencida){
+    document.getElementById('loadingScreen').classList.remove('show');
+    document.getElementById('mainContent').style.display = 'none';
+    document.getElementById('noDeliveryScreen').classList.add('show');
+    return;
+  }
+  if(activo){
+    document.getElementById('noDeliveryScreen').classList.remove('show');
+  }
+  deliveryListo = true;
+  chequearListo();
+});
+
+db.collection('productos').onSnapshot(function(snap){
+  var lista = [];
+  snap.forEach(function(doc){
+    var d = doc.data();
+    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, cat:d.cat||'General'});
+  });
+  lista.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  PRODUCTOS = lista;
+  productosListos = true;
+  chequearListo();
+  if(document.getElementById('mainContent').style.display==='block') renderList();
+});
+
+db.collection('inventario').onSnapshot(function(snap){
+  var inv = {};
+  snap.forEach(function(doc){
+    var d = doc.data();
+    inv[d.nombre] = d.stock || 0;
+  });
+  STOCK = inv;
+  stockListos = true;
+  chequearListo();
+  if(document.getElementById('mainContent').style.display==='block') renderList();
+});
+
+// ── Render de la lista ──────────────────────────────────────────────────
+function renderList(){
+  if(sesionVencida) return;
+  var term = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  var cont = document.getElementById('listContainer');
+
+  var disponibles = PRODUCTOS.filter(function(p){
+    var stockOk = !(p.name in STOCK) || STOCK[p.name] > 0;
+    var matchTexto = !term || p.name.toLowerCase().indexOf(term) !== -1;
+    return stockOk && matchTexto;
+  });
+
+  if(!disponibles.length){
+    cont.innerHTML = '<div class="empty-msg">No encontramos productos con ese nombre.</div>';
+    return;
+  }
+
+  var html = '';
+  disponibles.forEach(function(p){
+    var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
+    html += '<div class="prod-row">'+
+      '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(p.precio)+'</div></div>'+
+      '<div class="qty-ctrl">'+
+        (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+p.name.replace(/'/g,"\\'")+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
+        '<button class="qty-btn add" onclick="cambiarCantidad(\''+p.name.replace(/'/g,"\\'")+'\',1)">+</button>'+
+      '</div>'+
+    '</div>';
+  });
+  cont.innerHTML = html;
+}
+
+function cambiarCantidad(nombre, delta){
+  var prod = PRODUCTOS.find(function(p){ return p.name === nombre; });
+  if(!prod) return;
+  if(!CARRITO[nombre]) CARRITO[nombre] = {nombre:nombre, precio:prod.precio, cantidad:0};
+  CARRITO[nombre].cantidad += delta;
+  if(CARRITO[nombre].cantidad <= 0) delete CARRITO[nombre];
+  renderList();
+  actualizarCartBar();
+}
+
+function totalCarrito(){
+  var total = 0;
+  Object.keys(CARRITO).forEach(function(k){ total += CARRITO[k].precio * CARRITO[k].cantidad; });
+  return total;
+}
+function cantidadCarrito(){
+  var cant = 0;
+  Object.keys(CARRITO).forEach(function(k){ cant += CARRITO[k].cantidad; });
+  return cant;
+}
+
+function actualizarCartBar(){
+  var cant = cantidadCarrito();
+  var bar = document.getElementById('cartBar');
+  if(cant > 0){
+    bar.classList.add('show');
+    document.getElementById('cartCount').textContent = cant;
+    document.getElementById('cartTotalBar').textContent = fmt(totalCarrito());
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function abrirCarrito(){
+  var cont = document.getElementById('cartItemsList');
+  var html = '';
+  Object.keys(CARRITO).forEach(function(k){
+    var it = CARRITO[k];
+    html += '<div class="cart-item"><span>'+it.nombre+' ×'+it.cantidad+'</span><span>'+fmt(it.precio*it.cantidad)+'</span></div>';
+  });
+  cont.innerHTML = html;
+  document.getElementById('cartTotalModal').textContent = fmt(totalCarrito());
+  document.getElementById('checkoutError').style.display = 'none';
+  document.getElementById('cartOverlay').classList.add('show');
+}
+function cerrarCarrito(){
+  document.getElementById('cartOverlay').classList.remove('show');
+}
+
+function confirmarPedido(){
+  if(sesionVencida) return;
+  var nombre = document.getElementById('clienteNombre').value.trim();
+  var telefono = document.getElementById('clienteTelefono').value.trim();
+  var errEl = document.getElementById('checkoutError');
+
+  if(!nombre || !telefono){
+    errEl.textContent = 'Completá tu nombre y teléfono para poder confirmarte el pedido.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(cantidadCarrito() === 0){
+    errEl.textContent = 'Tu carrito está vacío.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
+  var total = totalCarrito();
+  var pedidoId = Date.now();
+
+  // Guardar el pedido en Firebase para que aparezca en el panel admin
+  var pedido = {
+    id: pedidoId,
+    fecha: new Date().toISOString(),
+    nombre: nombre,
+    telefono: telefono,
+    items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
+    total: total,
+    estado: 'pendiente',
+    origen: 'catalogo-web'
+  };
+  db.collection('pedidosWeb').doc(idSeguro(String(pedidoId))).set(pedido).catch(function(e){
+    console.error('Error guardando pedido web', e);
+  });
+
+  // Armar el mensaje de WhatsApp
+  var msg = '¡Hola Limay Rock! 👋 Quiero hacer este pedido:\n\n';
+  items.forEach(function(it){
+    msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
+  });
+  msg += '\n*Total: '+fmt(total)+'*\n\n';
+  msg += 'Nombre: '+nombre+'\n';
+  msg += 'Teléfono: '+telefono;
+
+  var url = 'https://wa.me/'+NUMERO_WHATSAPP+'?text='+encodeURIComponent(msg);
+  window.open(url, '_blank');
+
+  cerrarCarrito();
+  document.getElementById('mainContent').style.display = 'none';
+  document.getElementById('cartBar').classList.remove('show');
+  document.getElementById('thanksScreen').classList.add('show');
+
+  CARRITO = {};
+}
+</script>
+</body>
+</html>
