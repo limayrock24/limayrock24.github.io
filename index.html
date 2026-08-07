@@ -685,8 +685,8 @@
     window.__lrSync.ultimoPromosSnapshot = mapa;
     window.__lrSync.promosListos = true;
     refrescarPantallaVentaSiExiste();
-    if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
-      renderDashboard();
+    if(typeof renderPromosAdmin==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
+      renderPromosAdmin();
     }
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando promos:', err); window.__lrSync.promosListos = true; ocultarCargaSiListo(); });
@@ -3230,6 +3230,15 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:6px 14px" onclick="abrirComboModal(null)">+ Nuevo combo</button>
       </div>
       <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Los combos aparecen en Recepción como botones de acceso rápido. Al cobrarse, se descuenta el stock de cada producto individualmente.</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin:14px 0 8px">🔥 Promos (catálogo web y panel de venta)</div>
+      <div id="promoCardsAdmin"></div>
+      <div style="display:flex;gap:6px;margin:10px 0 18px;flex-wrap:wrap">
+        <input type="text" id="promoNombreInput" placeholder="Nombre de la promo" style="flex:2;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+        <input type="text" id="promoDescInput" placeholder="Descripción (opcional)" style="flex:2;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+        <input type="number" id="promoPrecioInput" placeholder="Precio" style="flex:1;min-width:80px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:8px 10px;font-size:.8rem">
+        <button onclick="agregarPromo()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
+      </div>
+      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:6px 0 8px">🎁 Combos</div>
       <div id="comboCards"></div>
     </div>
 
@@ -7612,19 +7621,19 @@ function agregarPromo() {
   document.getElementById('promoDescInput').value = '';
   document.getElementById('promoPrecioInput').value = '';
   showToast('🔥 Promo agregada');
-  if(typeof renderDashboard==='function') renderDashboard();
+  if(typeof renderPromosAdmin==='function') renderPromosAdmin();
 }
 function eliminarPromo(id) {
   var promos = getPromos().filter(function(p){ return p.id!==id; });
   savePromos(promos);
-  if(typeof renderDashboard==='function') renderDashboard();
+  if(typeof renderPromosAdmin==='function') renderPromosAdmin();
 }
 function togglePromoActiva(id) {
   var promos = getPromos();
   var p = promos.find(function(x){ return x.id===id; });
   if(p) p.activa = !p.activa;
   savePromos(promos);
-  if(typeof renderDashboard==='function') renderDashboard();
+  if(typeof renderPromosAdmin==='function') renderPromosAdmin();
 }
 
 // Prender/apagar el delivery del catálogo público, desde el dashboard admin
@@ -13142,29 +13151,6 @@ function renderDashboard() {
     '<button onclick="abrirRetiroModal()" style="background:var(--card);border:1px solid rgba(245,194,0,.4);color:var(--gold);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
     '💵 Registrar retiro de caja</button></div></div>';
 
-  // Promociones del catálogo web
-  var promosActuales = getPromos();
-  var promosHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">'+
-    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">🔥 Promos del catálogo web</div>'+
-    (promosActuales.length ? promosActuales.map(function(p){
-      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);opacity:'+(p.activa!==false?'1':'.45')+'">'+
-        '<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:var(--white)">'+p.nombre+'</div>'+
-        (p.descripcion?'<div style="font-size:.72rem;color:var(--gray)">'+p.descripcion+'</div>':'')+'</div>'+
-        '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
-          '<span style="font-family:Oswald,sans-serif;color:var(--green);font-weight:700">'+fmt(p.precio)+'</span>'+
-          '<button onclick="togglePromoActiva('+p.id+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">'+(p.activa!==false?'Pausar':'Activar')+'</button>'+
-          '<button onclick="eliminarPromo('+p.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✕</button>'+
-        '</div>'+
-      '</div>';
-    }).join('') : '<div style="font-size:.78rem;color:var(--gray);padding:6px 0">Sin promos cargadas todavía</div>')+
-    '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
-      '<input type="text" id="promoNombreInput" placeholder="Nombre de la promo" style="flex:2;min-width:120px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:7px 8px;font-size:.78rem">'+
-      '<input type="text" id="promoDescInput" placeholder="Descripción (opcional)" style="flex:2;min-width:120px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:7px 8px;font-size:.78rem">'+
-      '<input type="number" id="promoPrecioInput" placeholder="Precio" style="flex:1;min-width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:7px 8px;font-size:.78rem">'+
-      '<button onclick="agregarPromo()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">+ Agregar</button>'+
-    '</div>'+
-  '</div>';
-
   // Turno abierto en este momento (con reloj en vivo) — para ver desde
   // cualquier dispositivo quién está trabajando, hace cuánto, y qué hay
   // en vivo en cada cuenta — sin que el empleado tenga que cargar nada de
@@ -13242,7 +13228,7 @@ function renderDashboard() {
     turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>';
   }
 
-  el.innerHTML = turnoVivoHtml + retiroBtn + promosHtml +
+  el.innerHTML = turnoVivoHtml + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
@@ -15680,8 +15666,30 @@ function saveCombos(c) { window.__lrCombosCache = c; if(window.__lrSaveCombos) w
 
 var COMBOS = getCombos();
 
+function renderPromosAdmin() {
+  var el = document.getElementById('promoCardsAdmin');
+  if(!el) return;
+  var promos = getPromos();
+  if(!promos.length) {
+    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.78rem">Sin promos cargadas todavía</div>';
+    return;
+  }
+  el.innerHTML = promos.map(function(p){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:6px;opacity:'+(p.activa!==false?'1':'.45')+'">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:var(--white)">'+p.nombre+'</div>'+
+      (p.descripcion?'<div style="font-size:.72rem;color:var(--gray)">'+p.descripcion+'</div>':'')+'</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+        '<span style="font-family:Oswald,sans-serif;color:var(--green);font-weight:700">'+fmt(p.precio)+'</span>'+
+        '<button onclick="togglePromoActiva('+p.id+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">'+(p.activa!==false?'Pausar':'Activar')+'</button>'+
+        '<button onclick="eliminarPromo('+p.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
 function renderCombos() {
   COMBOS = getCombos();
+  renderPromosAdmin();
   var el = document.getElementById('comboCards');
   if(!el) return;
   el.innerHTML = '';
