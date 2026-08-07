@@ -33,6 +33,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .cat-pill{flex-shrink:0;background:var(--card);border:1.5px solid var(--border);color:var(--light);border-radius:20px;padding:8px 16px;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
 .cat-pill.active{background:var(--red);border-color:var(--red);color:var(--white);font-weight:700}
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.prod-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0}
 .prod-info{flex:1;min-width:0}
 .prod-name{font-size:.9rem;color:var(--white)}
 .prod-price{font-family:'Oswald',sans-serif;font-size:1rem;color:var(--green);font-weight:600;margin-top:2px}
@@ -173,6 +174,14 @@ const NUMERO_WHATSAPP = "5492995026557";
 const DURACION_SESION_MIN = 8;
 
 let PRODUCTOS = [];
+
+// Imágenes de producto, cargadas de a poco. La clave tiene que ser
+// EXACTAMENTE igual al nombre del producto en el sistema. Si un producto
+// no está acá, el catálogo lo muestra igual, solo que sin foto.
+const IMAGENES_PRODUCTOS = {
+  "Cerveza Corona Botella 710cc": "imagenes/corona-710cc.jpg",
+  "Coca Cola 3L": "imagenes/coca-cola-3l.jpg"
+};
 let PROMOS = [];
 let STOCK = {};
 let CARRITO = {};
@@ -330,7 +339,10 @@ function renderList(){
     porCat[cat].forEach(function(p){
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
       var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
+      var imgSrc = IMAGENES_PRODUCTOS[p.name];
+      var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="">' : '';
       html += '<div class="prod-row">'+
+        imgHtml+
         '<div class="prod-info"><div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
         '<div class="qty-ctrl">'+
           (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
