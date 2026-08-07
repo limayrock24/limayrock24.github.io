@@ -16874,8 +16874,22 @@ function calcularLiquidez() {
     efectivoBase = sesionParaCalculo.efectivoInicial || 0;
     desdeTsEfec  = new Date(sesionParaCalculo.turnoInicio);
   } else {
-    efectivoBase = cfg.saldoEfec || 0;
-    desdeTsEfec  = desdeTs;
+    // Sin turno abierto: la plata sigue físicamente en la caja desde el
+    // último cierre, así que se parte de lo que ese cierre dio como
+    // resultado — lo efectivamente contado (o lo esperado, si fue un
+    // cierre automático sin conteo manual) — no de un valor de
+    // configuración desactualizado.
+    var cierresOrdenados = getCierres().slice().sort(function(a,b){ return new Date(b.horaFin||b.fecha) - new Date(a.horaFin||a.fecha); });
+    var ultimoCierre = cierresOrdenados[0];
+    if(ultimoCierre && ultimoCierre.arqueo){
+      var contadoUltimo = ultimoCierre.arqueo.contado;
+      efectivoBase = (contadoUltimo!=null) ? contadoUltimo : (ultimoCierre.arqueo.esperado||0);
+      desdeTsEfec  = new Date(ultimoCierre.horaFin || ultimoCierre.fecha);
+    } else {
+      // Nunca hubo un cierre — no hay forma de saber cuánto hay, arranca en 0
+      efectivoBase = 0;
+      desdeTsEfec  = desdeTs;
+    }
   }
 
   var ventas       = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha) >= desdeTs; });
