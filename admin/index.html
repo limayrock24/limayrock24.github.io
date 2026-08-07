@@ -12741,7 +12741,7 @@ async function cargarDesdeArchivo() {
       restoreAllData(data);
       VENTAS    = getVentas();
       EMPLEADOS = getEmpleados();
-      try{ PRODUCTS = JSON.parse(data.productos||'[]'); }catch(e){}
+      try{ PRODUCTS = JSON.parse(data.productos||'[]'); saveLocal(); }catch(e){}
       filterAll(); buildFavs(); updateStockNotif();
       showToast('✅ Datos restaurados correctamente');
     });
