@@ -15261,15 +15261,25 @@ function cargarPedidoAlCarrito(id) {
     else { cart.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
   });
 
-  // El costo de envío que ya se le cobró a este cliente en el catálogo
-  var subtotalItems = (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
-  var envioDelPedido = (pedido.total||0) - subtotalItems;
+  // El costo de envío que ya se le cobró a este cliente en el catálogo.
+  // Se usa el campo guardado directamente (más confiable que recalcularlo
+  // restando total - productos, que puede dar mal si algún dato viejo no
+  // tenía esos campos completos).
+  var envioDelPedido = (typeof pedido.envio === 'number') ? pedido.envio
+    : (pedido.total||0) - (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
   if(envioDelPedido > 0){
     _deliveryActivo = true;
     _deliveryMonto = envioDelPedido;
+    var box = document.getElementById('deliveryBox');
+    var btn = document.getElementById('btnDelivery');
+    var inp = document.getElementById('deliveryMonto');
+    if(box) box.classList.add('show');
+    if(btn) btn.classList.add('active');
+    if(inp) inp.value = envioDelPedido;
   }
 
   updateCart();
+  if(typeof syncConfirmarBtn==='function') syncConfirmarBtn();
   pedido.estado = 'cargado';
   savePedidosWeb(pedidos);
   document.getElementById('deliveryPendModal').classList.remove('open');
