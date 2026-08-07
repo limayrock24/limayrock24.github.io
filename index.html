@@ -6308,14 +6308,20 @@ function buildEditList() {
   });
 }
 
+function guardarLocalDebounced() {
+  clearTimeout(window._saveLocalDebounceTimer);
+  window._saveLocalDebounceTimer = setTimeout(function(){ saveLocal(); }, 700);
+}
+
 function updProd(inp) {
   var idx=parseInt(inp.dataset.idx); var field=inp.dataset.field;
-  if(field==='name'){ PRODUCTS[idx].name=inp.value; return; }
-  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  return; }
+  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(); return; }
+  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(); return; }
   var val=inp.value?parseFloat(inp.value):null;
   if(field==='pventa') PRODUCTS[idx].pventa=val?Math.round(val):0;
   else if(field==='pnoc') PRODUCTS[idx].pnoc=val?Math.round(val):null;
   else if(field==='costo') PRODUCTS[idx].costo=val||null;
+  guardarLocalDebounced();
 }
 function updMargen(inp) {
   var idx=parseInt(inp.dataset.idx); var margen=parseFloat(inp.value)||0;
@@ -6327,6 +6333,7 @@ function updMargen(inp) {
     var el=document.getElementById('pv_'+idx);
     if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
   }
+  guardarLocalDebounced();
 }
 function autoRecalc(idx,inp) {
   var costo=parseFloat(inp.value)||0; if(costo<=0) return;
@@ -6334,6 +6341,7 @@ function autoRecalc(idx,inp) {
   var nuevo=calcPrice(costo,margen); PRODUCTS[idx].pventa=nuevo; PRODUCTS[idx].costo=costo;
   var el=document.getElementById('pv_'+idx);
   if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
+  guardarLocalDebounced();
 }
 
 // Al borrar un producto del catálogo, lo saca también de Stock y de cualquier proveedor que lo tuviera
