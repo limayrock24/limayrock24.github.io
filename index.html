@@ -5524,10 +5524,10 @@ function updateAdminDots() { for(var i=0;i<4;i++) document.getElementById('ad'+i
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────
 function openAdmin() {
-  updateFSAStatus("sin-arch");
-  actualizarStorageStatus();
-  renderDashboard();
   document.getElementById('adminOverlay').classList.add('open');
+  try { updateFSAStatus("sin-arch"); } catch(e) { console.error('updateFSAStatus falló:', e); }
+  try { actualizarStorageStatus(); } catch(e) { console.error('actualizarStorageStatus falló:', e); }
+  try { renderDashboard(); } catch(e) { console.error('renderDashboard falló:', e); }
   // Setear fecha de hoy en el selector
   var hoy = new Date();
   var yyyy = hoy.getFullYear();
@@ -5535,12 +5535,12 @@ function openAdmin() {
   var dd = String(hoy.getDate()).padStart(2,'0');
   var fechaEl = document.getElementById('fechaFiltro');
   if(fechaEl && !fechaEl.value) fechaEl.value = yyyy+'-'+mm+'-'+dd;
-  renderVentas();
-  renderTopProds();
-  renderEmpAdmin();
-  buildEditList();
-  updateStockNotif();
-  renderInventario();
+  try { renderVentas(); } catch(e) { console.error('renderVentas falló:', e); }
+  try { renderTopProds(); } catch(e) { console.error('renderTopProds falló:', e); }
+  try { renderEmpAdmin(); } catch(e) { console.error('renderEmpAdmin falló:', e); }
+  try { buildEditList(); } catch(e) { console.error('buildEditList falló:', e); }
+  try { updateStockNotif(); } catch(e) { console.error('updateStockNotif falló:', e); }
+  try { renderInventario(); } catch(e) { console.error('renderInventario falló:', e); }
 }
 function closeAdmin() {
   document.getElementById('adminOverlay').classList.remove('open');
@@ -17853,12 +17853,15 @@ initCatsFromStorage(); initLogin(); updateStockNotif();
 // panel admin apenas termina de cargar todo, sin mostrar el login ni
 // pedir el 0000. Pensado para un acceso directo separado en tu celu.
 if(new URLSearchParams(window.location.search).get('admin') === '1'){
-  (function esperarYAbrirAdmin(){
+  (function esperarYAbrirAdmin(intentos){
+    intentos = intentos || 0;
     var overlay = document.getElementById('lrLoadingOverlay');
     if(overlay && overlay.style.display === 'none'){
-      abrirAdminSinTurno();
+      try { abrirAdminSinTurno(); } catch(e) { console.error('abrirAdminSinTurno falló:', e); }
+    } else if(intentos < 100){
+      setTimeout(function(){ esperarYAbrirAdmin(intentos+1); }, 300);
     } else {
-      setTimeout(esperarYAbrirAdmin, 300);
+      console.error('El sistema tardó demasiado en cargar, no se pudo abrir el panel admin automáticamente.');
     }
   })();
 }
