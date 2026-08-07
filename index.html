@@ -17526,6 +17526,9 @@ document.addEventListener('keydown', function(ev) {
 
 initCatsFromStorage(); initLogin(); updateStockNotif();
 
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(function(e){ console.error('Error registrando service worker:', e); });
+}
 
 </script>
 
