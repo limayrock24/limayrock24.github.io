@@ -180,6 +180,20 @@
   // el nombre tal cual está.
   function idSeguro(s){ return String(s).replace(/\//g, '-'); }
 
+  // JSON.stringify normal depende del ORDEN en que se armó el objeto — dos
+  // objetos con los mismos datos pero armados en distinto orden dan strings
+  // distintos, y el sistema los trataba como "cambiados" aunque no lo
+  // estuvieran. Esto causaba que CADA guardado reescribiera TODO el
+  // catálogo entero (850+ productos) en vez de solo lo que realmente
+  // cambió. stringifyOrdenado ordena las claves primero, así la
+  // comparación es siempre confiable sin importar el orden interno.
+  function stringifyOrdenado(obj){
+    if(obj === null || typeof obj !== 'object') return JSON.stringify(obj);
+    if(Array.isArray(obj)) return '[' + obj.map(stringifyOrdenado).join(',') + ']';
+    var claves = Object.keys(obj).sort();
+    return '{' + claves.map(function(k){ return JSON.stringify(k)+':'+stringifyOrdenado(obj[k]); }).join(',') + '}';
+  }
+
   // Refresca en vivo lo que ve el empleado en la pantalla de venta (catálogo,
   // categorías, combos) cuando algo cambia desde OTRO dispositivo — por
   // ejemplo, vos cargando un producto o creando un combo desde el celu con
@@ -202,7 +216,7 @@
       try{
         vistos[p.name] = true;
         var antes = prev[p.name];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(p.name)).set(limpiarUndefined(p)).catch(function(e){
             console.error('Error guardando producto', p.name, e);
           });
@@ -274,7 +288,7 @@
       try{
         vistos[e.nombre] = true;
         var antes = prev[e.nombre];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(e)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
           window.__lrDB.collection(window.__lrCOL.empleados).doc(e.nombre).set(limpiarUndefined(e)).catch(function(err){
             console.error('Error guardando empleado', e.nombre, err);
           });
@@ -317,7 +331,7 @@
       try{
         var key = String(v.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(v)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(v)){
           window.__lrDB.collection(window.__lrCOL.ventas).doc(key).set(limpiarUndefined(v)).catch(function(e){
             console.error('Error guardando venta', key, e);
           });
@@ -352,7 +366,7 @@
       try{
         vistos[c.fecha] = true;
         var antes = prev[c.fecha];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.cierres).doc(String(c.fecha)).set(limpiarUndefined(c)).catch(function(e){
             console.error('Error guardando cierre', c.fecha, e);
           });
@@ -385,7 +399,7 @@
       try{
         var key = String(c.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.consumos).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando consumo', key, e); });
         }
       }catch(e){ console.error('Error preparando consumo', c && c.id, e); }
@@ -421,7 +435,7 @@
       try{
         var key = String(e.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(e)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
           window.__lrDB.collection(window.__lrCOL.egresos).doc(key).set(limpiarUndefined(e)).catch(function(err){ console.error('Error guardando egreso', key, err); });
         }
       }catch(err){ console.error('Error preparando egreso', e && e.id, err); }
@@ -445,7 +459,7 @@
       try{
         var key = String(f.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(f)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(f)){
           window.__lrDB.collection(window.__lrCOL.fiados).doc(key).set(limpiarUndefined(f)).catch(function(err){ console.error('Error guardando fiado', key, err); });
         }
       }catch(err){ console.error('Error preparando fiado', f && f.id, err); }
@@ -469,7 +483,7 @@
       try{
         var key = String(d.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(d)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(d)){
           window.__lrDB.collection(window.__lrCOL.delivery).doc(key).set(limpiarUndefined(d)).catch(function(e){ console.error('Error guardando delivery', key, e); });
         }
       }catch(e){ console.error('Error preparando delivery', d && d.id, e); }
@@ -493,7 +507,7 @@
       try{
         var key = String(p.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           window.__lrDB.collection(window.__lrCOL.prestamos).doc(key).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando préstamo', key, e); });
         }
       }catch(e){ console.error('Error preparando préstamo', p && p.id, e); }
@@ -517,7 +531,7 @@
       try{
         var key = String(t.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(t)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(t)){
           window.__lrDB.collection(window.__lrCOL.transferCuentas).doc(key).set(limpiarUndefined(t)).catch(function(e){ console.error('Error guardando transferencia', key, e); });
         }
       }catch(e){ console.error('Error preparando transferencia', t && t.id, e); }
@@ -541,7 +555,7 @@
       try{
         var key = String(c.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.cargasVirtuales).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando carga virtual', key, e); });
         }
       }catch(e){ console.error('Error preparando carga virtual', c && c.id, e); }
@@ -565,7 +579,7 @@
       try{
         var key = String(m.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(m)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje programado', key, e); });
         }
       }catch(e){ console.error('Error preparando mensaje programado', m && m.id, e); }
@@ -606,7 +620,7 @@
       try{
         var key = String(m.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(m)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje puntual', key, e); });
         }
       }catch(e){ console.error('Error preparando mensaje puntual', m && m.id, e); }
@@ -647,7 +661,7 @@
       try{
         var key = String(m.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(m)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection(window.__lrCOL.movimientos).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando movimiento', key, e); });
         }
       }catch(e){ console.error('Error preparando movimiento', m && m.id, e); }
@@ -712,7 +726,7 @@
       try{
         var key = String(p.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           window.__lrDB.collection('pedidosWeb').doc(idSeguro(key)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando pedido web', key, e); });
         }
       }catch(e){ console.error('Error preparando pedido web', p && p.id, e); }
@@ -742,7 +756,7 @@
         var key = String(p.id);
         vistos[key] = true;
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           window.__lrDB.collection('promos').doc(idSeguro(key)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando promo', key, e); });
         }
       }catch(e){ console.error('Error preparando promo', p && p.id, e); }
@@ -772,7 +786,7 @@
       try{
         var key = String(m.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(m)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection('stockMovsHistorial').doc(idSeguro(key)).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando movimiento de stock', key, e); });
         }
       }catch(e){ console.error('Error preparando movimiento de stock', m && m.id, e); }
@@ -831,7 +845,7 @@
         var key = String(it.id);
         vistos[key] = true;
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(it)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(it)){
           window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).set(limpiarUndefined(it)).catch(function(e){ console.error('Error guardando item manual', key, e); });
         }
       }catch(e){ console.error('Error preparando item manual', it && it.id, e); }
@@ -897,7 +911,7 @@
       try{
         var key = String(r.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(r)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(r)){
           window.__lrDB.collection(window.__lrCOL.retirosCaja).doc(key).set(limpiarUndefined(r)).catch(function(e){ console.error('Error guardando retiro de caja', key, e); });
         }
       }catch(e){ console.error('Error preparando retiro de caja', r && r.id, e); }
@@ -921,7 +935,7 @@
       try{
         vistos[c.dni] = true;
         var antes = prev[c.dni];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.clientes).doc(c.dni).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando cliente', c.dni, e); });
         }
       }catch(e){ console.error('Error preparando cliente', c && c.dni, e); }
@@ -950,7 +964,7 @@
       try{
         var key = String(s.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(s)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(s)){
           window.__lrDB.collection(window.__lrCOL.sorteos).doc(key).set(limpiarUndefined(s)).catch(function(e){ console.error('Error guardando sorteo', key, e); });
         }
       }catch(e){ console.error('Error preparando sorteo', s && s.id, e); }
@@ -974,7 +988,7 @@
       try{
         vistos[p.nombre] = true;
         var antes = prev[p.nombre];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(p)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(p.nombre)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando proveedor', p.nombre, e); });
         }
       }catch(e){ console.error('Error preparando proveedor', p && p.nombre, e); }
@@ -1004,7 +1018,7 @@
       try{
         vistos[c.nombre] = true;
         var antes = prev[c.nombre];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(c.nombre)).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando combo', c.nombre, e); });
         }
       }catch(e){ console.error('Error preparando combo', c && c.nombre, e); }
@@ -1033,7 +1047,7 @@
       try{
         var key = String(c.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(c)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.cierresMes).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando cierre mensual', key, e); });
         }
       }catch(e){ console.error('Error preparando cierre mensual', c && c.id, e); }
@@ -1057,7 +1071,7 @@
       try{
         var key = String(l.id);
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(l)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(l)){
           window.__lrDB.collection(window.__lrCOL.logCatalogo).doc(key).set(limpiarUndefined(l)).catch(function(e){ console.error('Error guardando log de catálogo', key, e); });
         }
       }catch(e){ console.error('Error preparando log de catálogo', l && l.id, e); }
@@ -1083,7 +1097,7 @@
         var key = claveStockAlert(a);
         vistos[key] = true;
         var antes = prev[key];
-        if(!antes || JSON.stringify(antes) !== JSON.stringify(a)){
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(a)){
           window.__lrDB.collection(window.__lrCOL.stockAlerts).doc(key).set(limpiarUndefined(a)).catch(function(e){ console.error('Error guardando alerta de stock', key, e); });
         }
       }catch(e){ console.error('Error preparando alerta de stock', a, e); }
