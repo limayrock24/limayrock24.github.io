@@ -4843,7 +4843,19 @@ setInterval(function(){
   clockEl.textContent = (h > 0 ? h + 'h ' : '') + pad2(m) + ':' + pad2(s);
 }, 1000);
 function getSesionActivaGuardada() {
-  try { return JSON.parse(localStorage.getItem(SK_SESION_ACTIVA)||'null'); } catch(e){ return null; }
+  try {
+    var local = JSON.parse(localStorage.getItem(SK_SESION_ACTIVA)||'null');
+    if(local) return local;
+  } catch(e){}
+  // Si no hay nada local (por ejemplo, se borraron los datos del navegador
+  // sin cerrar turno antes), usamos la copia que ya vive en Firebase — no
+  // tiene TODOS los datos del empleado (PIN, etc.), pero sí lo esencial
+  // para poder cerrar el turno correctamente: con quién, desde cuándo, y
+  // con cuánto efectivo abrió.
+  if(window.__lrSesionActivaCache && window.__lrSesionActivaCache.turnoInicio){
+    return window.__lrSesionActivaCache;
+  }
+  return null;
 }
 
 // Cierra en el sistema un turno que quedó interrumpido, calculando lo mejor posible
