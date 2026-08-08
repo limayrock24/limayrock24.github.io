@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Restaurar Productos — Limay Rock</title>
+<style>
+  body{background:#0a0a0a;color:#eee;font-family:Arial,sans-serif;max-width:700px;margin:30px auto;padding:0 16px}
+  h1{color:#F4B400;font-size:1.3rem}
+  .box{background:#161616;border:1px solid #333;border-radius:8px;padding:18px;margin-bottom:16px}
+  button{background:#2ecc71;color:#000;border:none;border-radius:6px;padding:14px 24px;font-size:1.05rem;cursor:pointer;font-weight:bold}
+  button:disabled{background:#555;cursor:not-allowed;color:#999}
+  #log{background:#000;border:1px solid #333;border-radius:6px;padding:12px;height:340px;overflow-y:auto;font-family:monospace;font-size:.78rem;white-space:pre-wrap;margin-top:14px}
+  .ok{color:#2ecc71} .err{color:#ff5555} .info{color:#7ab8ff}
+</style>
+</head>
+<body>
+<h1>🆘 Restaurar Productos e Inventario</h1>
+<div class="box">
+  <b>Esto SOLO restaura productos y stock</b> desde el backup de esta mañana (5/8, 10:15am).
+  No toca ventas, cierres, empleados ni nada más.
+  <br><br>
+  <button id="btn" onclick="restaurar()">🚀 Restaurar productos ahora</button>
+  <div id="log"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
+  authDomain: "limay-rock-852cb.firebaseapp.com",
+  projectId: "limay-rock-852cb",
+  storageBucket: "limay-rock-852cb.firebasestorage.app",
+  messagingSenderId: "391677998496",
+  appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function idSeguro(s){ return String(s).replace(/\//g, '-'); }
+function log(msg, cls){
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+function limpiarUndefined(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+async function restaurar(){
+  document.getElementById('btn').disabled = true;
+  try{
+    log('Cargando backup...', 'info');
+    const resp = await fetch('backup.json');
+    const data = await resp.json();
+
+    const productos = JSON.parse(data.productos || '[]');
+    log('Productos en el backup: ' + productos.length, 'info');
+
+    const LOTE = 400;
+    let hechos = 0;
+    for(let i=0; i<productos.length; i+=LOTE){
+      const chunk = productos.slice(i, i+LOTE);
+      const batch = db.batch();
+      chunk.forEach(function(p){
+        if(!p.name) return;
+        const ref = db.collection('productos').doc(idSeguro(p.name));
+        batch.set(ref, limpiarUndefined(p));
+      });
+      await batch.commit();
+      hechos += chunk.length;
+      log('Productos restaurados: ' + hechos + ' / ' + productos.length);
+    }
+    log('✓ Productos completos', 'ok');
+
+    const stockInv = JSON.parse(data.stockInv || '{}');
+    const stockItems = Object.keys(stockInv).map(function(nombre){
+      const v = stockInv[nombre] || {};
+      return {nombre: nombre, stock: v.stock||0, minimo: v.minimo||0, historial: v.historial||[]};
+    });
+    log('Items de stock en el backup: ' + stockItems.length, 'info');
+    let hechosStock = 0;
+    for(let i=0; i<stockItems.length; i+=LOTE){
+      const chunk = stockItems.slice(i, i+LOTE);
+      const batch = db.batch();
+      chunk.forEach(function(item){
+        const ref = db.collection('inventario').doc(idSeguro(item.nombre));
+        batch.set(ref, limpiarUndefined(item));
+      });
+      await batch.commit();
+      hechosStock += chunk.length;
+      log('Stock restaurado: ' + hechosStock + ' / ' + stockItems.length);
+    }
+    log('✓ Stock completo', 'ok');
+
+    log('', '');
+    log('🎉 RESTAURACIÓN COMPLETA', 'ok');
+    log('Ya podés volver a la netbook y confirmar que los productos aparecen.', 'ok');
+  }catch(err){
+    log('❌ ERROR: ' + err.message, 'err');
+  }
+}
+</script>
+</body>
+</html>
