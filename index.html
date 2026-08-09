@@ -14148,6 +14148,9 @@ function guardarProdModal() {
   if(idx>=0&&PRODUCTS[idx]){
     var antes = Object.assign({}, PRODUCTS[idx]);
     PRODUCTS[idx]=Object.assign(PRODUCTS[idx],prod);
+    if(true){
+      alert('DIAGNÓSTICO:\n\nÍndice usado: '+idx+'\nNombre en esa posición: '+PRODUCTS[idx].name+'\n\nCategoría ANTES: '+antes.cat+'\nCategoría DESPUÉS (en memoria): '+PRODUCTS[idx].cat+'\n\n¿Coincide el nombre con el producto que edité? Si NO coincide, ahí está el problema.');
+    }
     var cambios=[];
     if(antes.costo!==prod.costo) cambios.push({campo:'Costo',antes:antes.costo||0,despues:prod.costo||0});
     if(antes.margin!==prod.margin) cambios.push({campo:'Margen',antes:(antes.margin||0)+'%',despues:prod.margin+'%'});
