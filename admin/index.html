@@ -1188,7 +1188,8 @@
   --gray:#888;--light:#CCC;--green:#00CC44;--blue:#3498DB;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;min-height:100vh;padding-bottom:80px}
+html{overflow-x:hidden}
+body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;min-height:100vh;padding-bottom:80px;overflow-x:hidden}
 
 /* ── LOGIN ── */
 #loginScreen{position:fixed;inset:0;background:var(--black);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
@@ -2297,6 +2298,24 @@ body.night-on{background:#080005}
 
   .dash-grid{
     grid-template-columns: 1fr !important;
+  }
+
+  /* Red de seguridad amplia: mucho contenido del panel admin usa estilos
+     puestos directo en el HTML (no en clases), así que las reglas de
+     arriba no los alcanzaban. Esto fuerza a CUALQUIER grid o fila
+     horizontal dentro del panel a acomodarse en pantallas de celu, sin
+     tener que salir a tocar cada estilo en línea uno por uno. */
+  .admin-panel [style*="grid-template-columns"]{
+    grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+  }
+  .admin-panel [style*="display:flex"]{
+    flex-wrap: wrap !important;
+  }
+  .admin-panel *{
+    max-width: 100%;
+  }
+  .admin-panel{
+    overflow-x: hidden;
   }
 
   /* Cualquier tabla ancha que se nos haya escapado: que scrollee ella
