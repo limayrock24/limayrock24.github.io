@@ -13513,7 +13513,7 @@ function renderDashboard() {
       var inicioTs = new Date(sesionViva.turnoInicio).getTime();
       var claveExpandido = 'exp_'+nombreEmp;
 
-      var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha).getTime() >= inicioTs; });
+      var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs; });
       var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s+v.total; },0);
 
       var detalleTurno = getMovimientos().filter(function(m){ return new Date(m.fecha).getTime() >= inicioTs; })
