@@ -4906,6 +4906,15 @@ function limpiarSesionActiva(nombre) {
   if(!nombre || (currentEmp && currentEmp.nombre === nombre)) {
     localStorage.removeItem(SK_SESION_ACTIVA);
   }
+  // Limpiar también la copia en memoria AL INSTANTE — el aviso a Firebase
+  // (abajo) tarda unos milisegundos en confirmarse, y si alguien intenta
+  // loguearse en ese ínterin, no tiene que ver el dato viejo todavía.
+  var quienBorrar = nombre || (currentEmp && currentEmp.nombre);
+  if(quienBorrar && window.__lrSesionesActivasCache){
+    delete window.__lrSesionesActivasCache[quienBorrar];
+    var clavesRestantes = Object.keys(window.__lrSesionesActivasCache);
+    window.__lrSesionActivaCache = clavesRestantes.length===1 ? window.__lrSesionesActivasCache[clavesRestantes[0]] : null;
+  }
   if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva(nombre);
 }
 // Reloj en vivo del turno abierto, visible en el panel admin (local o
