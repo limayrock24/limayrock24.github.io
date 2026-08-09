@@ -403,14 +403,21 @@
 
   window.__lrSaveConsumos = function(lista){
     var prev = window.__lrSync.ultimoConsumosSnapshot || {};
+    var vistos = {};
     lista.forEach(function(c){
       try{
         var key = String(c.id);
+        vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           window.__lrDB.collection(window.__lrCOL.consumos).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando consumo', key, e); });
         }
       }catch(e){ console.error('Error preparando consumo', c && c.id, e); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection(window.__lrCOL.consumos).doc(key).delete().catch(function(e){ console.error('Error borrando consumo', key, e); });
+      }
     });
   };
 
@@ -439,14 +446,21 @@
 
   window.__lrSaveEgresos = function(lista){
     var prev = window.__lrSync.ultimoEgresosSnapshot || {};
+    var vistos = {};
     lista.forEach(function(e){
       try{
         var key = String(e.id);
+        vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
           window.__lrDB.collection(window.__lrCOL.egresos).doc(key).set(limpiarUndefined(e)).catch(function(err){ console.error('Error guardando egreso', key, err); });
         }
       }catch(err){ console.error('Error preparando egreso', e && e.id, err); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection(window.__lrCOL.egresos).doc(key).delete().catch(function(err){ console.error('Error borrando egreso', key, err); });
+      }
     });
   };
 
@@ -463,14 +477,21 @@
 
   window.__lrSaveFiados = function(lista){
     var prev = window.__lrSync.ultimoFiadosSnapshot || {};
+    var vistos = {};
     lista.forEach(function(f){
       try{
         var key = String(f.id);
+        vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(f)){
           window.__lrDB.collection(window.__lrCOL.fiados).doc(key).set(limpiarUndefined(f)).catch(function(err){ console.error('Error guardando fiado', key, err); });
         }
       }catch(err){ console.error('Error preparando fiado', f && f.id, err); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection(window.__lrCOL.fiados).doc(key).delete().catch(function(err){ console.error('Error borrando fiado', key, err); });
+      }
     });
   };
 
@@ -583,14 +604,21 @@
 
   window.__lrSaveMensajesProg = function(lista){
     var prev = window.__lrSync.ultimoMensajesProgSnapshot || {};
+    var vistos = {};
     lista.forEach(function(m){
       try{
         var key = String(m.id);
+        vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje programado', key, e); });
         }
       }catch(e){ console.error('Error preparando mensaje programado', m && m.id, e); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).delete().catch(function(e){ console.error('Error borrando mensaje programado', key, e); });
+      }
     });
   };
 
@@ -624,14 +652,21 @@
 
   window.__lrSaveMensajesPunt = function(lista){
     var prev = window.__lrSync.ultimoMensajesPuntSnapshot || {};
+    var vistos = {};
     lista.forEach(function(m){
       try{
         var key = String(m.id);
+        vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
           window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje puntual', key, e); });
         }
       }catch(e){ console.error('Error preparando mensaje puntual', m && m.id, e); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).delete().catch(function(e){ console.error('Error borrando mensaje puntual', key, e); });
+      }
     });
   };
 
@@ -14148,9 +14183,6 @@ function guardarProdModal() {
   if(idx>=0&&PRODUCTS[idx]){
     var antes = Object.assign({}, PRODUCTS[idx]);
     PRODUCTS[idx]=Object.assign(PRODUCTS[idx],prod);
-    if(true){
-      alert('DIAGNÓSTICO:\n\nÍndice usado: '+idx+'\nNombre en esa posición: '+PRODUCTS[idx].name+'\n\nCategoría ANTES: '+antes.cat+'\nCategoría DESPUÉS (en memoria): '+PRODUCTS[idx].cat+'\n\n¿Coincide el nombre con el producto que edité? Si NO coincide, ahí está el problema.');
-    }
     var cambios=[];
     if(antes.costo!==prod.costo) cambios.push({campo:'Costo',antes:antes.costo||0,despues:prod.costo||0});
     if(antes.margin!==prod.margin) cambios.push({campo:'Margen',antes:(antes.margin||0)+'%',despues:prod.margin+'%'});
