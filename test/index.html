@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test de conexión</title>
+<style>
+  body{background:#0a0a0a;color:#eee;font-family:Arial,sans-serif;padding:20px;text-align:center}
+  button{background:#D2201F;color:#fff;border:none;border-radius:8px;padding:20px 30px;font-size:1.2rem;margin:10px}
+  #resultado{margin-top:30px;font-size:1.3rem;padding:20px;border-radius:8px;min-height:60px}
+  .ok{background:#1a3a1a;color:#2ecc71}
+  .err{background:#3a1a1a;color:#ff5555}
+  .esperando{background:#222;color:#F4B400}
+</style>
+</head>
+<body>
+<h2>🔌 Test de conexión a la base de datos</h2>
+<p>Tocá el botón. En 3 segundos te va a decir si funcionó o no.</p>
+<button onclick="probar()">🚀 PROBAR AHORA</button>
+<div id="resultado"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
+  authDomain: "limay-rock-852cb.firebaseapp.com",
+  projectId: "limay-rock-852cb",
+  storageBucket: "limay-rock-852cb.firebasestorage.app",
+  messagingSenderId: "391677998496",
+  appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function mostrar(texto, clase){
+  var el = document.getElementById('resultado');
+  el.textContent = texto;
+  el.className = clase;
+}
+
+async function probar(){
+  mostrar('⏳ Probando...', 'esperando');
+  var idPrueba = 'test_' + Date.now();
+  var valorEsperado = Math.floor(Math.random()*100000);
+  try{
+    await db.collection('_test').doc(idPrueba).set({valor: valorEsperado, ts: new Date().toISOString()});
+    await new Promise(r => setTimeout(r, 1500));
+    var snap = await db.collection('_test').doc(idPrueba).get();
+    if(snap.exists && snap.data().valor === valorEsperado){
+      mostrar('✅ FUNCIONA BIEN\nEl dato se guardó y se pudo leer de vuelta.\n\nCódigo: ' + valorEsperado, 'ok');
+    } else {
+      mostrar('⚠️ Se guardó pero no se pudo confirmar la lectura.', 'err');
+    }
+  } catch(err){
+    mostrar('❌ FALLÓ\n\n' + err.code + '\n' + err.message, 'err');
+  }
+}
+</script>
+</body>
+</html>
