@@ -15567,6 +15567,13 @@ function actualizarDeliveryPendBadge() {
   var countEl = document.getElementById('deliveryPendCount');
   if(countEl) countEl.textContent = pendientes.length;
   btn.style.display = pendientes.length>0 ? 'inline-block' : 'none';
+  // Si la ventana de pedidos pendientes ya estaba abierta, refrescar también
+  // su contenido — si no, un pedido resuelto desde otro lado se quedaba
+  // "pegado" en la lista hasta cerrar y volver a abrir la ventana.
+  var modal = document.getElementById('deliveryPendModal');
+  if(modal && modal.classList.contains('open') && typeof abrirDeliveryPendModal==='function'){
+    abrirDeliveryPendModal();
+  }
 }
 
 function abrirDeliveryPendModal() {
