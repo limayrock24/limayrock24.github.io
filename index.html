@@ -118,7 +118,10 @@
     snap.forEach(function(doc){
       var d = doc.data();
       lista.push(d);
-      mapa[d.name] = d;
+      // clon independiente para la comparación — si no, mutar un item de la
+      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
+      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
+      mapa[d.name] = JSON.parse(JSON.stringify(d));
     });
     if(lista.length > 0){
       window.PRODUCTS = lista;
@@ -266,7 +269,10 @@
     snap.forEach(function(doc){
       var d = doc.data();
       lista.push(d);
-      mapa[d.nombre] = d;
+      // clon independiente para la comparación — si no, mutar un item de la
+      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
+      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
+      mapa[d.nombre] = JSON.parse(JSON.stringify(d));
     });
     if(lista.length > 0){
       window.EMPLEADOS = lista;
@@ -318,7 +324,10 @@
     snap.forEach(function(doc){
       var d = doc.data();
       lista.push(d);
-      mapa[String(d.id)] = d;
+      // clon independiente para la comparación — si no, mutar un item de la
+      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
+      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
+      mapa[String(d.id)] = JSON.parse(JSON.stringify(d));
     });
     lista.sort(function(a,b){ return (a.id||0) - (b.id||0); });
     window.VENTAS = lista;
@@ -354,7 +363,10 @@
     snap.forEach(function(doc){
       var d = doc.data();
       lista.push(d);
-      mapa[d.fecha] = d;
+      // clon independiente para la comparación — si no, mutar un item de la
+      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
+      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
+      mapa[d.fecha] = JSON.parse(JSON.stringify(d));
     });
     lista.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
     window.__lrCierresCache = lista;
@@ -393,7 +405,7 @@
   // Consumos
   window.__lrDB.collection(window.__lrCOL.consumos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrConsumosCache = lista;
     window.__lrSync.ultimoConsumosSnapshot = mapa;
@@ -424,7 +436,7 @@
   // Egresos
   window.__lrDB.collection(window.__lrCOL.egresos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
 
     // Avisar de pagos nuevos (después de la carga inicial)
@@ -467,7 +479,7 @@
   // Fiados
   window.__lrDB.collection(window.__lrCOL.fiados).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrFiadosCache = lista;
     window.__lrSync.ultimoFiadosSnapshot = mapa;
@@ -498,7 +510,7 @@
   // Delivery
   window.__lrDB.collection(window.__lrCOL.delivery).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrDeliveryCache = lista;
     window.__lrSync.ultimoDeliverySnapshot = mapa;
@@ -522,7 +534,7 @@
   // Préstamos
   window.__lrDB.collection(window.__lrCOL.prestamos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrPrestamosCache = lista;
     window.__lrSync.ultimoPrestamosSnapshot = mapa;
@@ -546,7 +558,7 @@
   // Transferencias entre cuentas
   window.__lrDB.collection(window.__lrCOL.transferCuentas).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrTransferCuentasCache = lista;
     window.__lrSync.ultimoTransferCuentasSnapshot = mapa;
@@ -570,7 +582,7 @@
   // Cargas virtuales
   window.__lrDB.collection(window.__lrCOL.cargasVirtuales).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrCargasVirtualesCache = lista;
     window.__lrSync.ultimoCargasVirtualesSnapshot = mapa;
@@ -594,7 +606,7 @@
   // Mensajes programados
   window.__lrDB.collection(window.__lrCOL.mensajesProg).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrMensajesProgCache = lista;
     window.__lrSync.ultimoMensajesProgSnapshot = mapa;
@@ -625,7 +637,7 @@
   // Mensajes puntuales
   window.__lrDB.collection(window.__lrCOL.mensajesPunt).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
 
     // Detectar mensajes nuevos (agregados después de la carga inicial) para
@@ -674,7 +686,7 @@
   // préstamos, etc. Usado sobre todo para Rentabilidad).
   window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
@@ -749,7 +761,7 @@
   // propia colección — no se mezclan con nada que dependa de un empleado)
   window.__lrDB.collection('pedidosWeb').onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
     window.__lrPedidosWebCache = lista;
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
@@ -779,7 +791,7 @@
   // Promociones del catálogo público
   window.__lrDB.collection('promos').onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
     window.__lrPromosCache = lista;
     window.__lrSync.ultimoPromosSnapshot = mapa;
@@ -814,7 +826,7 @@
   // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
   window.__lrDB.collection('stockMovsHistorial').onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrStockMovsCache = lista;
     window.__lrSync.ultimoStockMovsSnapshot = mapa;
@@ -869,7 +881,7 @@
   // mano, en vez de sumarse solos al total.
   window.__lrDB.collection('itemsManualesCatalogo').onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
     window.__lrItemsManualesCache = lista;
     window.__lrSync.ultimoItemsManualesSnapshot = mapa;
@@ -953,7 +965,7 @@
   // Retiros de caja
   window.__lrDB.collection(window.__lrCOL.retirosCaja).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrRetirosCajaCache = lista;
     window.__lrSync.ultimoRetirosCajaSnapshot = mapa;
@@ -977,7 +989,7 @@
   // Clientes (club de fidelidad / puntos) — se identifican por DNI, no por id
   window.__lrDB.collection(window.__lrCOL.clientes).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.dni]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.dni]=JSON.parse(JSON.stringify(d)); });
     window.__lrClientesCache = lista;
     window.__lrSync.ultimoClientesSnapshot = mapa;
     window.__lrSync.clientesListos = true;
@@ -1006,7 +1018,7 @@
   // Sorteos
   window.__lrDB.collection(window.__lrCOL.sorteos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrSorteosCache = lista;
     window.__lrSync.ultimoSorteosSnapshot = mapa;
@@ -1030,7 +1042,7 @@
   // Proveedores (lista curada, con borrado si se elimina uno)
   window.__lrDB.collection(window.__lrCOL.proveedores).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=JSON.parse(JSON.stringify(d)); });
     window.__lrProveedoresCache = lista;
     window.__lrSync.ultimoProveedoresSnapshot = mapa;
     window.__lrSync.proveedoresListos = true;
@@ -1059,7 +1071,7 @@
   // Combos (lista curada, con borrado si se elimina uno)
   window.__lrDB.collection(window.__lrCOL.combos).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=JSON.parse(JSON.stringify(d)); });
     window.__lrCombosCache = lista;
     window.__lrSync.ultimoCombosSnapshot = mapa;
     window.__lrSync.combosListos = true;
@@ -1089,7 +1101,7 @@
   // Cierres mensuales (resumen de Liquidez por período)
   window.__lrDB.collection(window.__lrCOL.cierresMes).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrCierresMesCache = lista;
     window.__lrSync.ultimoCierresMesSnapshot = mapa;
@@ -1113,7 +1125,7 @@
   // Log de cambios de catálogo (historial de precios/costos, solo se agrega)
   window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
     window.__lrLogCatalogoCache = lista;
     window.__lrSync.ultimoLogCatalogoSnapshot = mapa;
@@ -1138,7 +1150,7 @@
   function claveStockAlert(a){ return (a.nombre||'')+'__'+(a.fecha||''); }
   window.__lrDB.collection(window.__lrCOL.stockAlerts).onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[claveStockAlert(d)]=d; });
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[claveStockAlert(d)]=JSON.parse(JSON.stringify(d)); });
     window.__lrStockAlertsCache = lista;
     window.__lrSync.ultimoStockAlertsSnapshot = mapa;
     window.__lrSync.stockAlertsListos = true;
