@@ -243,6 +243,21 @@
     return Promise.all(promesas);
   };
 
+  // Camino rápido para guardar UN producto puntual (lo que pasa 95% de las
+  // veces: cambiar un precio, una categoría) sin tener que recorrer y
+  // comparar los 1000+ productos completos como hace __lrSaveProductos.
+  // Se usa desde la edición individual; el guardado masivo (aumento de
+  // precios, etc.) sigue usando el camino completo de arriba.
+  window.__lrSaveUnProducto = function(producto){
+    if(!producto || !producto.name) return Promise.resolve();
+    window.__lrSync.ultimoProductosSnapshot = window.__lrSync.ultimoProductosSnapshot || {};
+    window.__lrSync.ultimoProductosSnapshot[producto.name] = JSON.parse(JSON.stringify(producto));
+    return window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(producto.name)).set(limpiarUndefined(producto)).catch(function(e){
+      console.error('Error guardando producto', producto.name, e);
+      throw e;
+    });
+  };
+
   // Guarda solo el stock que cambió — clave para que una venta no reescriba
   // el inventario completo cada vez.
   window.__lrSaveStockInv = function(inv){
@@ -6440,20 +6455,31 @@ function buildEditList() {
   });
 }
 
-function guardarLocalDebounced() {
+var _productosTocadosDebounce = {};
+function guardarLocalDebounced(nombreProducto) {
+  if(nombreProducto) _productosTocadosDebounce[nombreProducto] = true;
   clearTimeout(window._saveLocalDebounceTimer);
-  window._saveLocalDebounceTimer = setTimeout(function(){ saveLocal(); }, 700);
+  window._saveLocalDebounceTimer = setTimeout(function(){
+    var tocados = Object.keys(_productosTocadosDebounce);
+    _productosTocadosDebounce = {};
+    if(tocados.length === 1){
+      var prod = PRODUCTS.find(function(p){ return p.name===tocados[0]; });
+      saveLocal(prod);
+    } else {
+      saveLocal();
+    }
+  }, 700);
 }
 
 function updProd(inp) {
   var idx=parseInt(inp.dataset.idx); var field=inp.dataset.field;
-  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(); return; }
-  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(); return; }
+  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(PRODUCTS[idx].name); return; }
+  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(PRODUCTS[idx].name); return; }
   var val=inp.value?parseFloat(inp.value):null;
   if(field==='pventa') PRODUCTS[idx].pventa=val?Math.round(val):0;
   else if(field==='pnoc') PRODUCTS[idx].pnoc=val?Math.round(val):null;
   else if(field==='costo') PRODUCTS[idx].costo=val||null;
-  guardarLocalDebounced();
+  guardarLocalDebounced(PRODUCTS[idx].name);
 }
 function updMargen(inp) {
   var idx=parseInt(inp.dataset.idx); var margen=parseFloat(inp.value)||0;
@@ -6465,7 +6491,7 @@ function updMargen(inp) {
     var el=document.getElementById('pv_'+idx);
     if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
   }
-  guardarLocalDebounced();
+  guardarLocalDebounced(PRODUCTS[idx].name);
 }
 function autoRecalc(idx,inp) {
   var costo=parseFloat(inp.value)||0; if(costo<=0) return;
@@ -6473,7 +6499,7 @@ function autoRecalc(idx,inp) {
   var nuevo=calcPrice(costo,margen); PRODUCTS[idx].pventa=nuevo; PRODUCTS[idx].costo=costo;
   var el=document.getElementById('pv_'+idx);
   if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
-  guardarLocalDebounced();
+  guardarLocalDebounced(PRODUCTS[idx].name);
 }
 
 // Al borrar un producto del catálogo, lo saca también de Stock y de cualquier proveedor que lo tuviera
@@ -6501,12 +6527,20 @@ function delProd(idx) {
     buildEditList(); filterAll(); showToast('PRODUCTO ELIMINADO');
   });
 }
-function saveLocal() {
+function saveLocal(productoUnico) {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
-  if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return; }
+  var promesa;
+  if(productoUnico && window.__lrSaveUnProducto){
+    promesa = window.__lrSaveUnProducto(productoUnico);
+  } else if(window.__lrSaveProductos){
+    promesa = window.__lrSaveProductos(PRODUCTS);
+  } else {
+    showToast('✅ CAMBIOS GUARDADOS (local)');
+    return;
+  }
   showToast('⏳ Guardando en la nube...');
-  window.__lrSaveProductos(PRODUCTS).then(function(){
+  promesa.then(function(){
     showToast('✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
   }).catch(function(e){
     showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
@@ -14295,7 +14329,7 @@ function guardarProdModal() {
   });
   if(provsCambiaron) saveProveedores(proveedores);
 
-  saveLocal(); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+  saveLocal(PRODUCTS[idx]); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
 }
 
 
@@ -15166,7 +15200,7 @@ function guardarRecepEdicion(idx) {
     registrarCambioCatalogo('edicion', p.name, cambios, _recepEmp?_recepEmp.nombre:'Admin');
   }
 
-  saveLocal();
+  saveLocal(p);
   filterAll();
   renderRecepCatalogo();
   showToast('✅ '+p.name+' actualizado');
