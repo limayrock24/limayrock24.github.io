@@ -917,22 +917,35 @@
   // Antes solo vivía en localStorage de la netbook, para poder recuperar un
   // turno interrumpido. Esto lo espeja a Firebase para poder verlo desde el
   // panel admin en otro dispositivo, sin tocar la lógica de recuperación local.
-  window.__lrDB.collection(window.__lrCOL.config).doc('sesionActiva').onSnapshot(function(doc){
-    window.__lrSesionActivaCache = doc.exists ? doc.data() : null;
+  // IMPORTANTE: es una COLECCIÓN (un documento por empleado), no uno solo —
+  // así, si hay más de un turno abierto al mismo tiempo (vos y un empleado,
+  // o dos empleados), no se pisan los datos entre ellos.
+  window.__lrDB.collection('sesionesActivas').onSnapshot(function(snap){
+    var mapa = {};
+    snap.forEach(function(doc){ mapa[doc.id] = doc.data(); });
+    window.__lrSesionesActivasCache = mapa;
+    // Compatibilidad: si hay exactamente una sesión abierta, la dejamos
+    // también en la variable vieja (la usan un par de funciones que
+    // todavía esperan una sola).
+    var claves = Object.keys(mapa);
+    window.__lrSesionActivaCache = claves.length===1 ? mapa[claves[0]] : null;
     window.__lrSync.sesionActivaListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
     }
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando sesión activa:', err); window.__lrSync.sesionActivaListos = true; ocultarCargaSiListo(); });
+  }, function(err){ console.error('Error sincronizando sesiones activas:', err); window.__lrSync.sesionActivaListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveSesionActiva = function(datos){
-    window.__lrDB.collection(window.__lrCOL.config).doc('sesionActiva').set(limpiarUndefined(datos)).catch(function(e){
+    if(!datos || !datos.nombre) return;
+    window.__lrDB.collection('sesionesActivas').doc(idSeguro(datos.nombre)).set(limpiarUndefined(datos)).catch(function(e){
       console.error('Error guardando sesión activa', e);
     });
   };
-  window.__lrBorrarSesionActiva = function(){
-    window.__lrDB.collection(window.__lrCOL.config).doc('sesionActiva').delete().catch(function(e){
+  window.__lrBorrarSesionActiva = function(nombre){
+    var quien = nombre || (typeof currentEmp!=='undefined' && currentEmp ? currentEmp.nombre : null);
+    if(!quien) return;
+    window.__lrDB.collection('sesionesActivas').doc(idSeguro(quien)).delete().catch(function(e){
       console.error('Error borrando sesión activa', e);
     });
   };
@@ -4886,23 +4899,29 @@ function guardarSesionActiva() {
     });
   }
 }
-function limpiarSesionActiva() {
-  localStorage.removeItem(SK_SESION_ACTIVA);
-  if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva();
+function limpiarSesionActiva(nombre) {
+  // Solo borramos el localStorage local si es la sesión propia de este
+  // dispositivo (no cuando se está cerrando la sesión de otra persona
+  // detectada como interrumpida).
+  if(!nombre || (currentEmp && currentEmp.nombre === nombre)) {
+    localStorage.removeItem(SK_SESION_ACTIVA);
+  }
+  if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva(nombre);
 }
 // Reloj en vivo del turno abierto, visible en el panel admin (local o
 // remoto). Corre siempre en segundo plano; no hace nada si el panel admin
 // no está abierto (el elemento no existe en el DOM).
 setInterval(function(){
-  var clockEl = document.getElementById('turnoVivoClock');
-  if(!clockEl) return;
-  var inicio = parseInt(clockEl.getAttribute('data-inicio'), 10);
-  if(!inicio) return;
-  var elapsed = Math.floor((Date.now() - inicio) / 1000);
-  var h = Math.floor(elapsed / 3600);
-  var m = Math.floor((elapsed % 3600) / 60);
-  var s = elapsed % 60;
-  clockEl.textContent = (h > 0 ? h + 'h ' : '') + pad2(m) + ':' + pad2(s);
+  var clocks = document.querySelectorAll('.turnoVivoClock');
+  clocks.forEach(function(clockEl){
+    var inicio = parseInt(clockEl.getAttribute('data-inicio'), 10);
+    if(!inicio) return;
+    var elapsed = Math.floor((Date.now() - inicio) / 1000);
+    var h = Math.floor(elapsed / 3600);
+    var m = Math.floor((elapsed % 3600) / 60);
+    var s = elapsed % 60;
+    clockEl.textContent = (h > 0 ? h + 'h ' : '') + pad2(m) + ':' + pad2(s);
+  });
 }, 1000);
 function getSesionActivaGuardada() {
   try {
@@ -5017,7 +5036,7 @@ function chequearSesionInterrumpida() {
     // Quedó de un día anterior: se cierra solo, sin bloquear el uso de hoy
     var ok = cerrarTurnoInterrumpido(sesion, 'Turno de un día anterior, cerrado automáticamente al reabrir el sistema');
     if(ok){
-      limpiarSesionActiva();
+      limpiarSesionActiva(sesion.nombre);
     } else {
       // No se pudo guardar (posible falta de espacio) — no borramos la sesión guardada,
       // así no se pierde el rastro del turno. Se reintentará la próxima vez que se abra el sistema.
@@ -5055,7 +5074,7 @@ function cerrarSesionInterrumpidaAhora() {
     document.getElementById('sesionRecOverlay').classList.add('open');
     return;
   }
-  limpiarSesionActiva();
+  limpiarSesionActiva(sesion.nombre);
   showToast('✓ Turno de '+sesion.nombre+' cerrado');
   initLogin();
 }
@@ -13455,49 +13474,17 @@ function renderDashboard() {
   // en vivo en cada cuenta — sin que el empleado tenga que cargar nada de
   // Lemon/Mercado Pago (esas cuentas no se "abren" por turno, se calculan
   // solas con la misma lógica que ya usa la pantalla de Liquidez).
-  var sesionViva = window.__lrSesionActivaCache;
+  var sesionesVivas = window.__lrSesionesActivasCache || {};
+  var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){ return sesionesVivas[n] && sesionesVivas[n].turnoInicio; });
   var turnoVivoHtml;
-  if(sesionViva && sesionViva.turnoInicio) {
-    var inicioTs = new Date(sesionViva.turnoInicio).getTime();
+
+  if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-
-    var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha).getTime() >= inicioTs; });
-    var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s+v.total; },0);
-
-    // Movimientos del turno. Los egresos (pagos a proveedores) ahora también
-    // quedan registrados acá siempre, sin importar desde qué pantalla se
-    // cargaron, así que no hace falta combinar con Egresos por separado.
-    var detalleTurno = getMovimientos().filter(function(m){ return new Date(m.fecha).getTime() >= inicioTs; })
-      .map(function(m){ return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0}; })
-      .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
-
     var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁'};
-    var detalleHtml = detalleTurno.length
-      ? detalleTurno.map(function(m){
-          var hora = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-          var icono = iconosTipo[m.tipo] || '•';
-          var montoNeto = (m.tipo==='venta') ? (m.total - m.recargo) : m.total;
-          var recargoTxt = (m.tipo==='venta' && m.recargo>0) ? ' <span style="color:var(--gray)">(+'+fmt(m.recargo)+' recargo)</span>' : '';
-          var medioTxt = m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>'+recargoTxt : recargoTxt;
-          return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
-            '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+'</span>'+
-            '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>'+
-          '</div>';
-        }).join('')
-      : '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">Todavía no hubo movimientos en este turno</div>';
 
-    var expandido = !!window.__lrTurnoVivoExpandido;
-
-    turnoVivoHtml = '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 16px;margin-bottom:10px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+
-        '<div><span style="color:var(--green);font-weight:700">🟢 Turno abierto</span> — '+
-        '<b style="color:var(--white)">'+sesionViva.nombre+'</b> · '+(sesionViva.turno||'')+
-        ' · desde las '+new Date(sesionViva.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
-        ' · abrió caja con '+fmt(sesionViva.efectivoInicial||0)+
-        '</div>'+
-        '<div id="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:8px">'+
+    // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
+    // compartidas, así que se muestra una sola vez arriba de todo.
+    var resumenGlobalHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(liqVivo.efectivoCaja)+'</div>'+
@@ -13510,19 +13497,59 @@ function renderDashboard() {
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Merc. Pago</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(liqVivo.mercadoPago)+'</div>'+
         '</div>'+
-        '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
-          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas turno</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+'</div>'+
-          '<div style="font-size:.62rem;color:var(--gray)">'+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</div>'+
+      '</div>';
+
+    var tarjetasTurnos = nombresConTurno.map(function(nombreEmp){
+      var sesionViva = sesionesVivas[nombreEmp];
+      var inicioTs = new Date(sesionViva.turnoInicio).getTime();
+      var claveExpandido = 'exp_'+nombreEmp;
+
+      var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha).getTime() >= inicioTs; });
+      var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s+v.total; },0);
+
+      var detalleTurno = getMovimientos().filter(function(m){ return new Date(m.fecha).getTime() >= inicioTs; })
+        .map(function(m){ return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0}; })
+        .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
+
+      var detalleHtml = detalleTurno.length
+        ? detalleTurno.map(function(m){
+            var hora = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+            var icono = iconosTipo[m.tipo] || '•';
+            var montoNeto = (m.tipo==='venta') ? (m.total - m.recargo) : m.total;
+            var recargoTxt = (m.tipo==='venta' && m.recargo>0) ? ' <span style="color:var(--gray)">(+'+fmt(m.recargo)+' recargo)</span>' : '';
+            var medioTxt = m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>'+recargoTxt : recargoTxt;
+            return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
+              '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+'</span>'+
+              '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>'+
+            '</div>';
+          }).join('')
+        : '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">Todavía no hubo movimientos en este turno</div>';
+
+      var expandido = !!(window.__lrTurnoVivoExpandido && window.__lrTurnoVivoExpandido[claveExpandido]);
+
+      return '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 16px;margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+
+          '<div><span style="color:var(--green);font-weight:700">🟢 Turno abierto</span> — '+
+          '<b style="color:var(--white)">'+sesionViva.nombre+'</b> · '+(sesionViva.turno||'')+
+          ' · desde las '+new Date(sesionViva.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
+          ' · abrió caja con '+fmt(sesionViva.efectivoInicial||0)+
+          '</div>'+
+          '<div class="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
         '</div>'+
-      '</div>'+
-      '<div style="text-align:center">'+
-        '<button onclick="window.__lrTurnoVivoExpandido=!window.__lrTurnoVivoExpandido;renderDashboard();" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
-          (expandido ? '▲ Ocultar movimientos' : '▼ Ver movimientos del turno')+
-        '</button>'+
-      '</div>'+
-      (expandido ? '<div style="max-height:260px;overflow-y:auto;margin-top:10px">'+detalleHtml+'</div>' : '')+
-    '</div>';
+        '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
+          '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
+        '</div>'+
+        '<div style="text-align:center">'+
+          '<button onclick="window.__lrTurnoVivoExpandido=window.__lrTurnoVivoExpandido||{};window.__lrTurnoVivoExpandido[\''+claveExpandido+'\']=!window.__lrTurnoVivoExpandido[\''+claveExpandido+'\'];renderDashboard();" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
+            (expandido ? '▲ Ocultar movimientos' : '▼ Ver movimientos del turno')+
+          '</button>'+
+        '</div>'+
+        (expandido ? '<div style="max-height:260px;overflow-y:auto;margin-top:10px">'+detalleHtml+'</div>' : '')+
+      '</div>';
+    }).join('');
+
+    turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos;
   } else {
     turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>';
   }
