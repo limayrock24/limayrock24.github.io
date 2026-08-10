@@ -14329,7 +14329,8 @@ function guardarProdModal() {
   });
   if(provsCambiaron) saveProveedores(proveedores);
 
-  saveLocal(PRODUCTS[idx]); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+  var huboRenombre = nombreOriginal && nombreOriginal !== nombre;
+  saveLocal(huboRenombre ? null : PRODUCTS[idx]); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
 }
 
 
