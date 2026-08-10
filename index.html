@@ -6517,8 +6517,15 @@ function delProd(idx) {
     if(idxReal===-1){ showToast('Ese producto ya no está en la lista', true); buildEditList(); filterAll(); return; }
     PRODUCTS.splice(idxReal,1);
     limpiarReferenciasProducto(nombre);
-    if(window.__lrSaveProductos) window.__lrSaveProductos(PRODUCTS);
-    buildEditList(); filterAll(); showToast('PRODUCTO ELIMINADO');
+    buildEditList(); filterAll();
+    if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
+    showToast('⏳ Borrando en la nube...');
+    window.__lrSaveProductos(PRODUCTS).then(function(){
+      showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO');
+    }).catch(function(e){
+      showToast('❌ NO SE PUDO BORRAR: '+(e && e.message ? e.message : 'error de conexión'), true);
+      alert('⚠️ El producto NO se borró de la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo.');
+    });
   });
 }
 function saveLocal() {
