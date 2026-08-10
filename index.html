@@ -6455,31 +6455,20 @@ function buildEditList() {
   });
 }
 
-var _productosTocadosDebounce = {};
-function guardarLocalDebounced(nombreProducto) {
-  if(nombreProducto) _productosTocadosDebounce[nombreProducto] = true;
+function guardarLocalDebounced() {
   clearTimeout(window._saveLocalDebounceTimer);
-  window._saveLocalDebounceTimer = setTimeout(function(){
-    var tocados = Object.keys(_productosTocadosDebounce);
-    _productosTocadosDebounce = {};
-    if(tocados.length === 1){
-      var prod = PRODUCTS.find(function(p){ return p.name===tocados[0]; });
-      saveLocal(prod);
-    } else {
-      saveLocal();
-    }
-  }, 700);
+  window._saveLocalDebounceTimer = setTimeout(function(){ saveLocal(); }, 700);
 }
 
 function updProd(inp) {
   var idx=parseInt(inp.dataset.idx); var field=inp.dataset.field;
-  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(PRODUCTS[idx].name); return; }
-  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(PRODUCTS[idx].name); return; }
+  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(); return; }
+  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(); return; }
   var val=inp.value?parseFloat(inp.value):null;
   if(field==='pventa') PRODUCTS[idx].pventa=val?Math.round(val):0;
   else if(field==='pnoc') PRODUCTS[idx].pnoc=val?Math.round(val):null;
   else if(field==='costo') PRODUCTS[idx].costo=val||null;
-  guardarLocalDebounced(PRODUCTS[idx].name);
+  guardarLocalDebounced();
 }
 function updMargen(inp) {
   var idx=parseInt(inp.dataset.idx); var margen=parseFloat(inp.value)||0;
@@ -6491,7 +6480,7 @@ function updMargen(inp) {
     var el=document.getElementById('pv_'+idx);
     if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
   }
-  guardarLocalDebounced(PRODUCTS[idx].name);
+  guardarLocalDebounced();
 }
 function autoRecalc(idx,inp) {
   var costo=parseFloat(inp.value)||0; if(costo<=0) return;
@@ -6499,7 +6488,7 @@ function autoRecalc(idx,inp) {
   var nuevo=calcPrice(costo,margen); PRODUCTS[idx].pventa=nuevo; PRODUCTS[idx].costo=costo;
   var el=document.getElementById('pv_'+idx);
   if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
-  guardarLocalDebounced(PRODUCTS[idx].name);
+  guardarLocalDebounced();
 }
 
 // Al borrar un producto del catálogo, lo saca también de Stock y de cualquier proveedor que lo tuviera
@@ -6518,29 +6507,26 @@ function limpiarReferenciasProducto(nombre) {
 }
 
 function delProd(idx) {
-  askConfirm('¿Eliminás "'+PRODUCTS[idx].name+'"?').then(function(ok){
+  var nombre = PRODUCTS[idx].name; // capturado ANTES de esperar la confirmación
+  askConfirm('¿Eliminás "'+nombre+'"?').then(function(ok){
     if(!ok) return;
-    var nombre = PRODUCTS[idx].name;
-    PRODUCTS.splice(idx,1);
+    // El catálogo pudo haberse actualizado mientras esperábamos que
+    // confirmaras — se busca la posición real por nombre, no el índice
+    // viejo que se capturó al mostrar el botón.
+    var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombre; });
+    if(idxReal===-1){ showToast('Ese producto ya no está en la lista', true); buildEditList(); filterAll(); return; }
+    PRODUCTS.splice(idxReal,1);
     limpiarReferenciasProducto(nombre);
     if(window.__lrSaveProductos) window.__lrSaveProductos(PRODUCTS);
     buildEditList(); filterAll(); showToast('PRODUCTO ELIMINADO');
   });
 }
-function saveLocal(productoUnico) {
+function saveLocal() {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
-  var promesa;
-  if(productoUnico && window.__lrSaveUnProducto){
-    promesa = window.__lrSaveUnProducto(productoUnico);
-  } else if(window.__lrSaveProductos){
-    promesa = window.__lrSaveProductos(PRODUCTS);
-  } else {
-    showToast('✅ CAMBIOS GUARDADOS (local)');
-    return;
-  }
+  if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return; }
   showToast('⏳ Guardando en la nube...');
-  promesa.then(function(){
+  window.__lrSaveProductos(PRODUCTS).then(function(){
     showToast('✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
   }).catch(function(e){
     showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
@@ -14329,8 +14315,7 @@ function guardarProdModal() {
   });
   if(provsCambiaron) saveProveedores(proveedores);
 
-  var huboRenombre = nombreOriginal && nombreOriginal !== nombre;
-  saveLocal(huboRenombre ? null : PRODUCTS[idx]); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+  saveLocal(); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
 }
 
 
@@ -14354,11 +14339,11 @@ function eliminarProdModal() {
     if(idxReal!==-1) idx = idxReal;
   }
   if(!PRODUCTS[idx]){ showToast('No se encontró el producto, cerrá y volvé a intentar', true); return; }
-  askConfirm('¿Eliminás "'+PRODUCTS[idx].name+'" del catálogo?').then(function(ok){
+  var nombre = PRODUCTS[idx].name; // capturado ANTES de esperar la confirmación
+  askConfirm('¿Eliminás "'+nombre+'" del catálogo?').then(function(ok){
     if(!ok) return;
-    var nombre = PRODUCTS[idx].name;
     var idxFinal = PRODUCTS.findIndex(function(p){ return p.name===nombre; });
-    if(idxFinal===-1) return;
+    if(idxFinal===-1){ showToast('Ese producto ya no está en la lista', true); closeProdModal(); filterAll(); return; }
     PRODUCTS.splice(idxFinal,1);
     limpiarReferenciasProducto(nombre);
     saveLocal(); closeProdModal(); renderCatalogo(); filterAll();
@@ -15210,7 +15195,7 @@ function guardarRecepEdicion(idx) {
     registrarCambioCatalogo('edicion', p.name, cambios, _recepEmp?_recepEmp.nombre:'Admin');
   }
 
-  saveLocal(p);
+  saveLocal();
   filterAll();
   renderRecepCatalogo();
   showToast('✅ '+p.name+' actualizado');
