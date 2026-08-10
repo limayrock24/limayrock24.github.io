@@ -14345,11 +14345,20 @@ function guardarProdModal() {
 
 
 function eliminarProdModal() {
-  var idx=parseInt(document.getElementById('prodModalIdx').value); if(idx<0) return;
+  var idxAbierto=parseInt(document.getElementById('prodModalIdx').value); if(idxAbierto<0) return;
+  var nombreOriginal=document.getElementById('prodModalNombreOriginal').value;
+  var idx = idxAbierto;
+  if(nombreOriginal){
+    var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombreOriginal; });
+    if(idxReal!==-1) idx = idxReal;
+  }
+  if(!PRODUCTS[idx]){ showToast('No se encontró el producto, cerrá y volvé a intentar', true); return; }
   askConfirm('¿Eliminás "'+PRODUCTS[idx].name+'" del catálogo?').then(function(ok){
     if(!ok) return;
     var nombre = PRODUCTS[idx].name;
-    PRODUCTS.splice(idx,1);
+    var idxFinal = PRODUCTS.findIndex(function(p){ return p.name===nombre; });
+    if(idxFinal===-1) return;
+    PRODUCTS.splice(idxFinal,1);
     limpiarReferenciasProducto(nombre);
     saveLocal(); closeProdModal(); renderCatalogo(); filterAll();
     showToast('Producto eliminado');
