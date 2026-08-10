@@ -1,6 +1,6 @@
 {
-  "name": "Limay Rock Admin",
-  "short_name": "LR Admin",
+  "name": "Limay Rock - Admin",
+  "short_name": "Limay Rock - Admin",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
