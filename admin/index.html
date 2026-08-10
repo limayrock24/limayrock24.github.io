@@ -211,6 +211,40 @@
     return '{' + claves.map(function(k){ return JSON.stringify(k)+':'+stringifyOrdenado(obj[k]); }).join(',') + '}';
   }
 
+  // Red de seguridad para guardados: si la promesa de escritura a Firestore
+  // no responde NI con éxito NI con error (ej. wifi con señal pero sin salida
+  // real a internet), antes el usuario se quedaba mirando "Guardando en la
+  // nube..." para siempre, sin ningún aviso de que algo estaba mal — pasó
+  // exactamente eso el 10/8 en la red del local. Esto fuerza una respuesta
+  // visible en un tiempo razonable. Si la escritura real termina llegando
+  // después (tarde, en segundo plano), no pasa nada malo: la promesa ya
+  // resuelta no se puede volver a resolver, así que el aviso de "no se pudo
+  // confirmar" queda como estuvo, que es lo seguro — mejor un falso "no se
+  // guardó" que hay que reintentar, que un silencio que parece éxito.
+  window.__lrConTimeoutAviso = function(promesa, msTimeout){
+    return new Promise(function(resolve, reject){
+      var yaResolvio = false;
+      var timeoutId = setTimeout(function(){
+        if(yaResolvio) return;
+        yaResolvio = true;
+        var err = new Error('No hubo respuesta de la nube en '+(msTimeout/1000)+' segundos. El cambio puede llegar a completarse solo, más tarde, pero por ahora no hay confirmación. Revisá tu conexión y probá de nuevo — si el problema persiste, verificá directo en Firestore Console antes de asumir que se perdió.');
+        err.esTimeout = true;
+        reject(err);
+      }, msTimeout);
+      promesa.then(function(res){
+        if(yaResolvio) return;
+        yaResolvio = true;
+        clearTimeout(timeoutId);
+        resolve(res);
+      }).catch(function(e){
+        if(yaResolvio) return;
+        yaResolvio = true;
+        clearTimeout(timeoutId);
+        reject(e);
+      });
+    });
+  };
+
   // Refresca en vivo lo que ve el empleado en la pantalla de venta (catálogo,
   // categorías, combos) cuando algo cambia desde OTRO dispositivo — por
   // ejemplo, vos cargando un producto o creando un combo desde el celu con
@@ -257,20 +291,12 @@
     return Promise.all(promesas);
   };
 
-  // Camino rápido para guardar UN producto puntual (lo que pasa 95% de las
-  // veces: cambiar un precio, una categoría) sin tener que recorrer y
-  // comparar los 1000+ productos completos como hace __lrSaveProductos.
-  // Se usa desde la edición individual; el guardado masivo (aumento de
-  // precios, etc.) sigue usando el camino completo de arriba.
-  window.__lrSaveUnProducto = function(producto){
-    if(!producto || !producto.name) return Promise.resolve();
-    window.__lrSync.ultimoProductosSnapshot = window.__lrSync.ultimoProductosSnapshot || {};
-    window.__lrSync.ultimoProductosSnapshot[producto.name] = JSON.parse(JSON.stringify(producto));
-    return window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(producto.name)).set(limpiarUndefined(producto)).catch(function(e){
-      console.error('Error guardando producto', producto.name, e);
-      throw e;
-    });
-  };
+  // NOTA: existió acá un "camino rápido" (__lrSaveUnProducto) para guardar
+  // un solo producto sin recorrer los 1000+ completos. Se revirtió por
+  // seguridad (causaba duplicados al renombrar, fallas en crear/borrar) y
+  // se eliminó del todo el 10/8 al limpiar código muerto. Si se retoma la
+  // optimización de velocidad, hacerlo con cuidado y sin apuro — ver
+  // pendientes.
 
   // Guarda solo el stock que cambió — clave para que una venta no reescriba
   // el inventario completo cada vez.
@@ -6537,11 +6563,13 @@ function delProd(idx) {
     buildEditList(); filterAll();
     if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
     showToast('⏳ Borrando en la nube...');
-    window.__lrSaveProductos(PRODUCTS).then(function(){
+    var promesaBorrado = window.__lrSaveProductos(PRODUCTS);
+    if(window.__lrConTimeoutAviso) promesaBorrado = window.__lrConTimeoutAviso(promesaBorrado, 15000);
+    promesaBorrado.then(function(){
       showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO');
     }).catch(function(e){
       showToast('❌ NO SE PUDO BORRAR: '+(e && e.message ? e.message : 'error de conexión'), true);
-      alert('⚠️ El producto NO se borró de la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo.');
+      alert('⚠️ El producto NO se pudo confirmar borrado en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando revisá directo en Firestore Console.');
     });
   });
 }
@@ -6550,11 +6578,13 @@ function saveLocal() {
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return; }
   showToast('⏳ Guardando en la nube...');
-  window.__lrSaveProductos(PRODUCTS).then(function(){
+  var promesaGuardado = window.__lrSaveProductos(PRODUCTS);
+  if(window.__lrConTimeoutAviso) promesaGuardado = window.__lrConTimeoutAviso(promesaGuardado, 15000);
+  promesaGuardado.then(function(){
     showToast('✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
   }).catch(function(e){
     showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
-    alert('⚠️ El cambio NO se guardó en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando, avisale a Claude con este mensaje exacto.');
+    alert('⚠️ El cambio NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando, avisale a Claude con este mensaje exacto.');
   });
 }
 
