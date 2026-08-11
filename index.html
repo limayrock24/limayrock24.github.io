@@ -6573,16 +6573,21 @@ function delProd(idx) {
     PRODUCTS.splice(idxReal,1);
     limpiarReferenciasProducto(nombre);
     buildEditList(); filterAll();
-    if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
-    showToast('⏳ Borrando en la nube...');
-    var promesaBorrado = window.__lrSaveProductos(PRODUCTS);
-    if(window.__lrConTimeoutAviso) promesaBorrado = window.__lrConTimeoutAviso(promesaBorrado, 15000);
-    promesaBorrado.then(function(){
-      showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO');
-    }).catch(function(e){
-      showToast('❌ NO SE PUDO BORRAR: '+(e && e.message ? e.message : 'error de conexión'), true);
-      alert('⚠️ El producto NO se pudo confirmar borrado en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando revisá directo en Firestore Console.');
-    });
+    function intentarBorrado(){
+      if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
+      showToast('⏳ Borrando en la nube...');
+      var promesaBorrado = window.__lrSaveProductos(PRODUCTS);
+      if(window.__lrConTimeoutAviso) promesaBorrado = window.__lrConTimeoutAviso(promesaBorrado, 15000);
+      promesaBorrado.then(function(){
+        if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
+        showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO');
+      }).catch(function(e){
+        showToast('❌ NO SE PUDO BORRAR: '+(e && e.message ? e.message : 'error de conexión'), true);
+        if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(intentarBorrado);
+        alert('⚠️ El producto NO se pudo confirmar borrado en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nTocá "🔄 Reintentar guardado" cuando tengas señal.');
+      });
+    }
+    intentarBorrado();
   });
 }
 function saveLocal(mensajeExito) {
@@ -6593,10 +6598,12 @@ function saveLocal(mensajeExito) {
   var promesaGuardado = window.__lrSaveProductos(PRODUCTS);
   if(window.__lrConTimeoutAviso) promesaGuardado = window.__lrConTimeoutAviso(promesaGuardado, 15000);
   return promesaGuardado.then(function(){
+    if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
     showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
   }).catch(function(e){
     showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
-    alert('⚠️ El cambio NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando, avisale a Claude con este mensaje exacto.');
+    if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(function(){ saveLocal(mensajeExito); });
+    alert('⚠️ El cambio NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nTocá el botón rojo "🔄 Reintentar guardado" abajo a la derecha cuando tengas señal, no hace falta volver a escribir nada.');
     throw e;
   });
 }
@@ -14789,15 +14796,20 @@ function guardarEmpModal() {
   // realmente llegara a la nube. Ahora se espera confirmación real, con un
   // límite de 15s para no dejar el cartel de "guardando" colgado para
   // siempre si la conexión falla.
-  showToast('⏳ Guardando en la nube...');
-  var promesaEmp = saveEmpleados(EMPLEADOS);
-  if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
-  promesaEmp.then(function(){
-    showToast('✅ '+nombre+' guardado y confirmado');
-  }).catch(function(e){
-    showToast('❌ NO SE GUARDÓ '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
-    alert('⚠️ El cambio en "'+nombre+'" (incluido el acceso a Recepción si lo tocaste) NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá guardar de nuevo. Si sigue fallando, verificá directo en Firestore Console antes de asumir que quedó aplicado.');
-  });
+  function intentarGuardarEmp(){
+    showToast('⏳ Guardando en la nube...');
+    var promesaEmp = saveEmpleados(EMPLEADOS);
+    if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
+    promesaEmp.then(function(){
+      if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
+      showToast('✅ '+nombre+' guardado y confirmado');
+    }).catch(function(e){
+      showToast('❌ NO SE GUARDÓ '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
+      if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(intentarGuardarEmp);
+      alert('⚠️ El cambio en "'+nombre+'" (incluido el acceso a Recepción si lo tocaste) NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nTocá "🔄 Reintentar guardado" cuando tengas señal. Mientras tanto, no asumas que quedó aplicado.');
+    });
+  }
+  intentarGuardarEmp();
   closeEmpModal();
   renderEmpAdmin();
 }
@@ -14815,15 +14827,20 @@ function eliminarEmpModal() {
   askConfirm('¿Eliminás a '+nombre+' del equipo?').then(function(ok){
     if(!ok) return;
     EMPLEADOS.splice(idx,1);
-    showToast('⏳ Borrando en la nube...');
-    var promesaEmp = saveEmpleados(EMPLEADOS);
-    if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
-    promesaEmp.then(function(){
-      showToast('✅ '+nombre+' eliminado y confirmado');
-    }).catch(function(e){
-      showToast('❌ NO SE PUDO ELIMINAR '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
-      alert('⚠️ La eliminación de "'+nombre+'" NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo. Si sigue fallando, verificá directo en Firestore Console.');
-    });
+    function intentarBorrarEmp(){
+      showToast('⏳ Borrando en la nube...');
+      var promesaEmp = saveEmpleados(EMPLEADOS);
+      if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
+      promesaEmp.then(function(){
+        if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
+        showToast('✅ '+nombre+' eliminado y confirmado');
+      }).catch(function(e){
+        showToast('❌ NO SE PUDO ELIMINAR '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
+        if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(intentarBorrarEmp);
+        alert('⚠️ La eliminación de "'+nombre+'" NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nTocá "🔄 Reintentar guardado" cuando tengas señal.');
+      });
+    }
+    intentarBorrarEmp();
     closeEmpModal();
     renderEmpAdmin();
   });
@@ -18398,6 +18415,27 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js?v=2').catch(function(e){ console.error('Error registrando service worker:', e); });
 }
 
+</script>
+
+<!-- Botón flotante de reintento: aparece solo si un guardado falló, para no
+     tener que volver a tipear nada — un toque reintenta exactamente el
+     mismo guardado que falló. Se oculta solo al confirmar éxito. -->
+<button id="lrBtnReintentar" onclick="window.__lrReintentarGuardado && window.__lrReintentarGuardado()"
+  style="display:none;position:fixed;right:16px;bottom:16px;z-index:99999;background:var(--red);color:#fff;border:none;border-radius:30px;padding:14px 20px;font-family:'Oswald',sans-serif;font-size:.85rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer">
+  🔄 Reintentar guardado
+</button>
+<script>
+  // fn: la función a re-ejecutar si el usuario toca "Reintentar".
+  window.__lrMostrarReintentar = function(fn){
+    window.__lrReintentarGuardado = fn;
+    var btn = document.getElementById('lrBtnReintentar');
+    if(btn) btn.style.display = 'block';
+  };
+  window.__lrOcultarReintentar = function(){
+    window.__lrReintentarGuardado = null;
+    var btn = document.getElementById('lrBtnReintentar');
+    if(btn) btn.style.display = 'none';
+  };
 </script>
 
 </body></html>
