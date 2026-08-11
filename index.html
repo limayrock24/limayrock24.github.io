@@ -1699,11 +1699,11 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cartelito-card{border:1.5px dashed #999;border-radius:4px;padding:10px 8px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;page-break-inside:avoid;background:white;min-height:90px}
 .cart-grid.tam-mediano .cartelito-card{min-height:150px;padding:16px 12px}
 .cartelito-nombre{font-family:Arial,sans-serif;font-weight:bold;color:#111;text-transform:uppercase;line-height:1.2;margin-bottom:6px;word-break:break-word}
-.cart-grid.tam-chico .cartelito-nombre{font-size:11px}
-.cart-grid.tam-mediano .cartelito-nombre{font-size:15px}
+.cart-grid.tam-chico .cartelito-nombre{font-size:15px}
+.cart-grid.tam-mediano .cartelito-nombre{font-size:20px}
 .cartelito-precio{font-family:Arial,sans-serif;font-weight:900;color:#CC0000}
-.cart-grid.tam-chico .cartelito-precio{font-size:20px}
-.cart-grid.tam-mediano .cartelito-precio{font-size:32px}
+.cart-grid.tam-chico .cartelito-precio{font-size:22px}
+.cart-grid.tam-mediano .cartelito-precio{font-size:34px}
 .cartelito-precio-noc{font-family:Arial,sans-serif;font-weight:700;color:#333;margin-top:2px}
 .cart-grid.tam-chico .cartelito-precio-noc{font-size:10px}
 .cart-grid.tam-mediano .cartelito-precio-noc{font-size:13px}
@@ -4394,6 +4394,7 @@ body.night-on{background:#080005}
       <option value="chico">Chico — muchos por hoja</option>
       <option value="mediano">Mediano — tamaño tarjeta</option>
     </select>
+    <button class="print-btn" id="descargarCartelitosPdfBtn" onclick="descargarCartelitosPDF()" style="background:var(--green);color:var(--black)">⬇ Descargar PDF</button>
     <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
     <button class="print-close" onclick="closeCartelitosOverlay()">✕ Cerrar</button>
   </div>
@@ -15221,6 +15222,78 @@ function cambiarTamCartelito(tam) {
 
 function closeCartelitosOverlay() {
   document.getElementById('cartelitosOverlay').classList.remove('open');
+}
+
+// Dibuja cada cartelito como texto real (no una foto de la pantalla), en una
+// grilla que respeta el tamaño elegido (chico/mediano) — mismo criterio que
+// ya usa descargarPDFReal() para el resto de los PDF del sistema.
+function descargarCartelitosPDF() {
+  var btn = document.getElementById('descargarCartelitosPdfBtn');
+  var textoOriginal = btn.textContent;
+  btn.textContent = '⏳ Generando...';
+  btn.disabled = true;
+
+  cargarJsPDF().then(function(){
+    var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
+    var tam = (document.getElementById('cartTamSel')||{value:'chico'}).value;
+    var cols = tam==='mediano' ? 2 : 4;
+    var rowH = tam==='mediano' ? 55 : 35;
+    var fsNombre = tam==='mediano' ? 13 : 10;
+    var fsPrecio = tam==='mediano' ? 22 : 15;
+    var fsNoc = tam==='mediano' ? 9 : 7;
+
+    var jsPDFClass = window.jspdf.jsPDF;
+    var doc = new jsPDFClass({ unit:'mm', format:'a4' });
+    var margin = 10;
+    var gap = 4;
+    var pageWidth  = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+    var colW = (pageWidth - 2*margin - (cols-1)*gap) / cols;
+    var x = margin, y = margin, col = 0;
+
+    seleccionados.forEach(function(p, i){
+      if(y + rowH > pageHeight - margin){
+        doc.addPage(); x = margin; y = margin; col = 0;
+      }
+      // Recuadro punteado, igual estética que la vista previa en pantalla
+      doc.setDrawColor(150,150,150);
+      doc.setLineDashPattern([1,1], 0);
+      doc.rect(x, y, colW, rowH);
+      doc.setLineDashPattern([], 0);
+
+      var cx = x + colW/2;
+      var cy = y + rowH*0.38;
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(fsNombre); doc.setTextColor(20,20,20);
+      var lineasNombre = doc.splitTextToSize(p.name.toUpperCase(), colW-6);
+      lineasNombre = lineasNombre.slice(0,3); // máximo 3 líneas para no desbordar el cartelito
+      lineasNombre.forEach(function(linea, li){
+        doc.text(linea, cx, cy + li*(fsNombre*0.42), {align:'center'});
+      });
+      var yPrecio = cy + lineasNombre.length*(fsNombre*0.42) + 4;
+
+      doc.setFont('helvetica','bold'); doc.setFontSize(fsPrecio); doc.setTextColor(204,0,0);
+      doc.text(fmt(p.pventa||0), cx, yPrecio, {align:'center'});
+
+      var mostrarNoc = p.pnoc && p.pnoc>0 && p.pnoc!==p.pventa;
+      if(mostrarNoc){
+        doc.setFont('helvetica','normal'); doc.setFontSize(fsNoc); doc.setTextColor(60,60,60);
+        doc.text('Nocturno: '+fmt(p.pnoc), cx, yPrecio+5, {align:'center'});
+      }
+
+      col++;
+      if(col>=cols){ col=0; x=margin; y+=rowH+gap; }
+      else { x += colW+gap; }
+    });
+
+    doc.save('Cartelitos_Gondola_LimayRock.pdf');
+    btn.textContent = textoOriginal;
+    btn.disabled = false;
+  }).catch(function(e){
+    btn.textContent = textoOriginal;
+    btn.disabled = false;
+    alert('⚠️ No se pudo generar el PDF: '+(e && e.message==='sin-internet' ? 'necesita conexión a internet para cargar el generador la primera vez.' : (e && e.message ? e.message : 'error desconocido')));
+  });
 }
 
 // ── CATÁLOGO/STOCK EN RECEPCIÓN (reusa funciones del admin) ─────────────────
