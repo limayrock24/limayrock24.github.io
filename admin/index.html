@@ -6585,18 +6585,19 @@ function delProd(idx) {
     });
   });
 }
-function saveLocal() {
+function saveLocal(mensajeExito) {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
-  if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return; }
+  if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   showToast('⏳ Guardando en la nube...');
   var promesaGuardado = window.__lrSaveProductos(PRODUCTS);
   if(window.__lrConTimeoutAviso) promesaGuardado = window.__lrConTimeoutAviso(promesaGuardado, 15000);
-  promesaGuardado.then(function(){
-    showToast('✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
+  return promesaGuardado.then(function(){
+    showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
   }).catch(function(e){
     showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
     alert('⚠️ El cambio NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo, y si sigue fallando, avisale a Claude con este mensaje exacto.');
+    throw e;
   });
 }
 
@@ -15280,10 +15281,9 @@ function guardarRecepEdicion(idx) {
     registrarCambioCatalogo('edicion', p.name, cambios, _recepEmp?_recepEmp.nombre:'Admin');
   }
 
-  saveLocal();
+  saveLocal('✅ '+p.name+' actualizado y confirmado');
   filterAll();
   renderRecepCatalogo();
-  showToast('✅ '+p.name+' actualizado');
 }
 
 // ── Agregar producto nuevo ─────────────────────────────────────────────────
@@ -15313,11 +15313,10 @@ function guardarRecepNuevo() {
     {campo:'Costo',antes:'—',despues:costo||0},
     {campo:'Precio venta',antes:'—',despues:pventa||0}
   ], _recepEmp?_recepEmp.nombre:'Admin');
-  saveLocal();
+  saveLocal('✅ '+nombre+' agregado y confirmado en la nube');
   filterAll();
   closeRecepProdModal();
   renderRecepCatalogo();
-  showToast('✅ '+nombre+' agregado al catálogo');
 }
 
 // ── Registrar ingreso de mercadería ────────────────────────────────────────
