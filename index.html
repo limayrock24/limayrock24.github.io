@@ -1684,7 +1684,32 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .print-close{background:#eee;color:#333;border:none;padding:9px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
 @media print{
   #printOverlay .print-bar{display:none}
-  body > *:not(#printOverlay){display:none}
+  body > *:not(#printOverlay):not(#cartelitosOverlay){display:none}
+  #cartelitosOverlay .cart-bar{display:none}
+}
+
+/* ── CARTELITOS DE GÓNDOLA ── */
+#cartelitosOverlay{position:fixed;inset:0;background:white;z-index:9999;display:none;overflow-y:auto;padding:20px}
+#cartelitosOverlay.open{display:block}
+.cart-bar{display:flex;gap:8px;align-items:center;margin-bottom:16px;position:sticky;top:0;background:white;padding:8px 0;border-bottom:1px solid #eee;z-index:10;flex-wrap:wrap}
+.cart-bar select{padding:8px 10px;border-radius:4px;border:1px solid #ccc;font-family:Arial,sans-serif;font-size:13px}
+.cart-grid{display:grid;gap:8px}
+.cart-grid.tam-chico{grid-template-columns:repeat(4,1fr)}
+.cart-grid.tam-mediano{grid-template-columns:repeat(2,1fr)}
+.cartelito-card{border:1.5px dashed #999;border-radius:4px;padding:10px 8px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;page-break-inside:avoid;background:white;min-height:90px}
+.cart-grid.tam-mediano .cartelito-card{min-height:150px;padding:16px 12px}
+.cartelito-nombre{font-family:Arial,sans-serif;font-weight:bold;color:#111;text-transform:uppercase;line-height:1.2;margin-bottom:6px;word-break:break-word}
+.cart-grid.tam-chico .cartelito-nombre{font-size:11px}
+.cart-grid.tam-mediano .cartelito-nombre{font-size:15px}
+.cartelito-precio{font-family:Arial,sans-serif;font-weight:900;color:#CC0000}
+.cart-grid.tam-chico .cartelito-precio{font-size:20px}
+.cart-grid.tam-mediano .cartelito-precio{font-size:32px}
+.cartelito-precio-noc{font-family:Arial,sans-serif;font-weight:700;color:#333;margin-top:2px}
+.cart-grid.tam-chico .cartelito-precio-noc{font-size:10px}
+.cart-grid.tam-mediano .cartelito-precio-noc{font-size:13px}
+@media print{
+  .cart-grid{gap:4mm}
+  .cartelito-card{border-style:dashed}
 }
 
 
@@ -2081,6 +2106,11 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cat-table thead th:nth-child(2){width:14%}
 .cat-table thead th:nth-child(3){width:18%}
 .cat-table thead th:nth-child(4){width:18%}
+.cat-table-admin thead th:first-child{width:32px}
+.cat-table-admin thead th:nth-child(2){width:44%}
+.cat-table-admin thead th:nth-child(3){width:14%}
+.cat-table-admin thead th:nth-child(4){width:18%}
+.cat-table-admin thead th:nth-child(5){width:18%}
 .cat-table tbody tr{border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s}
 .cat-table tbody tr:hover{background:rgba(255,255,255,.04)}
 .cat-table td{padding:7px 8px;color:var(--light);overflow:hidden}
@@ -3831,11 +3861,13 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirAumentoMasivoModal()">📈 Aumento masivo</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
+        <button class="btn-save" id="btnCartelitos" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
       </div>
       <div class="cat-stats" id="catStats"></div>
       <div class="cat-table-wrap">
-        <table class="cat-table">
+        <table class="cat-table cat-table-admin">
           <thead><tr>
+            <th style="width:28px"><input type="checkbox" id="catSelAllChk" onchange="toggleCartelitoSelAll(this.checked)" title="Seleccionar todos los visibles" style="width:16px;height:16px"></th>
             <th>Producto</th><th style="text-align:center">Mrg%</th>
             <th>Precio</th><th>Nocturno</th><th></th>
           </tr></thead>
@@ -4353,6 +4385,19 @@ body.night-on{background:#080005}
     <button class="print-close" onclick="closePrintOverlay()">✕ Cerrar</button>
   </div>
   <div id="printContent"></div>
+</div>
+
+<!-- CARTELITOS DE GÓNDOLA -->
+<div id="cartelitosOverlay">
+  <div class="cart-bar">
+    <select id="cartTamSel" onchange="cambiarTamCartelito(this.value)">
+      <option value="chico">Chico — muchos por hoja</option>
+      <option value="mediano">Mediano — tamaño tarjeta</option>
+    </select>
+    <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
+    <button class="print-close" onclick="closeCartelitosOverlay()">✕ Cerrar</button>
+  </div>
+  <div id="cartelitosContent"></div>
 </div>
 
 <!-- SELECCIONAR ADMIN PARA CONSUMO -->
@@ -13799,21 +13844,25 @@ function renderCatalogo() {
       '<div class="cat-stat">Mostrando: <span>'+filtered.length+'</span></div>'+
       (sp>0?'<div class="cat-stat" style="border-color:rgba(204,0,0,.3)">Sin precio: <span style="color:var(--red)">'+sp+'</span></div>':'');
   }
-  if(!filtered.length){ body.innerHTML='<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--gray)">Sin resultados</td></tr>'; return; }
+  if(!filtered.length){ body.innerHTML='<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--gray)">Sin resultados</td></tr>'; return; }
   body.innerHTML='';
   filtered.forEach(function(p){
     var idx=p._idx; var mrg=p.margin||MARGINS[p.cat]||50;
     var ss=inv[p.name]&&inv[p.name].stock===0;
     var tr=document.createElement('tr');
-    tr.onclick=function(){ abrirProdModal(idx); };
+    var nombreEsc = p.name.replace(/'/g,"\\'");
     tr.innerHTML=
+      '<td onclick="event.stopPropagation()"><input type="checkbox" class="cart-sel-chk" '+(window._cartelitosSel[p.name]?'checked':'')+' onchange="toggleCartelitoSel(\''+nombreEsc+'\',this.checked)" style="width:16px;height:16px"></td>'+
       '<td class="td-nombre">'+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
       '<td style="color:var(--gray);font-size:.74rem;text-align:center">'+mrg+'%</td>'+
       '<td class="td-precio">'+(p.pventa?fmt(p.pventa):'<span style="color:var(--red);font-size:.7rem">—</span>')+'</td>'+
       '<td class="td-noc">'+(p.pnoc?fmt(p.pnoc):'—')+'</td>'+
       '<td style="text-align:right;color:var(--gold)">›</td>';
+    tr.querySelector('.td-nombre').onclick=function(){ abrirProdModal(idx); };
+    tr.querySelectorAll('td:not(:first-child)').forEach(function(td){ td.onclick=function(){ abrirProdModal(idx); }; });
     body.appendChild(tr);
   });
+  actualizarBotonCartelitos();
 }
 
 function abrirProdModal(idx) {
@@ -15112,6 +15161,66 @@ function confirmarRecepcionMerc(provIdx) {
 
   showToast('✅ Recepción de '+prov.nombre+' registrada — '+movItems.length+' producto'+(movItems.length>1?'s':''));
   initRecepMerc();
+}
+
+// ── CARTELITOS DE GÓNDOLA ──────────────────────────────────────────────────
+window._cartelitosSel = window._cartelitosSel || {}; // { nombreProducto: true }
+
+function actualizarBotonCartelitos() {
+  var n = Object.keys(window._cartelitosSel).length;
+  var btn = document.getElementById('btnCartelitos');
+  if(!btn) return;
+  btn.textContent = '🏷️ Cartelitos ('+n+')';
+  btn.disabled = n===0;
+}
+
+function toggleCartelitoSel(nombre, checked) {
+  if(checked) window._cartelitosSel[nombre] = true;
+  else delete window._cartelitosSel[nombre];
+  actualizarBotonCartelitos();
+}
+
+function toggleCartelitoSelAll(checked) {
+  var term  = (document.getElementById('catSearch')||{value:''}).value.toLowerCase().trim();
+  var catFil= (document.getElementById('catFiltCat')||{value:''}).value;
+  PRODUCTS.forEach(function(p){
+    if((!term||p.name.toLowerCase().includes(term)||(p.codigo&&p.codigo.toLowerCase().includes(term)))&&(!catFil||p.cat===catFil)){
+      if(checked) window._cartelitosSel[p.name] = true;
+      else delete window._cartelitosSel[p.name];
+    }
+  });
+  renderCatalogo();
+  actualizarBotonCartelitos();
+}
+
+function abrirCartelitosPreview() {
+  var nombres = Object.keys(window._cartelitosSel);
+  if(!nombres.length) return;
+  var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
+  var content = document.getElementById('cartelitosContent');
+  content.innerHTML = '<div class="cart-grid tam-chico" id="cartGrid">' + seleccionados.map(function(p){
+    // Precio nocturno solo se muestra si el producto tiene uno cargado y
+    // distinto del normal — así "depende del producto", como pediste.
+    var mostrarNoc = p.pnoc && p.pnoc>0 && p.pnoc!==p.pventa;
+    return '<div class="cartelito-card">'+
+      '<div class="cartelito-nombre">'+p.name+'</div>'+
+      '<div class="cartelito-precio">'+(p.pventa?fmt(p.pventa):'—')+'</div>'+
+      (mostrarNoc ? '<div class="cartelito-precio-noc">🌙 Nocturno: '+fmt(p.pnoc)+'</div>' : '')+
+      '</div>';
+  }).join('') + '</div>';
+  document.getElementById('cartTamSel').value = 'chico';
+  document.getElementById('cartelitosOverlay').classList.add('open');
+}
+
+function cambiarTamCartelito(tam) {
+  var grid = document.getElementById('cartGrid');
+  if(!grid) return;
+  grid.classList.remove('tam-chico','tam-mediano');
+  grid.classList.add('tam-'+tam);
+}
+
+function closeCartelitosOverlay() {
+  document.getElementById('cartelitosOverlay').classList.remove('open');
 }
 
 // ── CATÁLOGO/STOCK EN RECEPCIÓN (reusa funciones del admin) ─────────────────
