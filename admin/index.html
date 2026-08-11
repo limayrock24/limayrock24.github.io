@@ -14,6 +14,13 @@
   };
   firebase.initializeApp(firebaseConfig);
   window.__lrDB = firebase.firestore();
+  // En redes de datos móviles (4G) con proxy/NAT de operador, el transporte
+  // por defecto (tipo WebSocket) a veces traba el handshake inicial y deja
+  // escrituras colgadas sin responder — esto fuerza a detectar y usar
+  // automáticamente "long polling" cuando haga falta, mucho más tolerante
+  // a este tipo de redes inestables. Agregado el 11/8 tras varios cuelgues
+  // de guardado reportados en 4G.
+  window.__lrDB.settings({ experimentalAutoDetectLongPolling: true });
   // Persistencia offline: si se corta el wifi un rato, el sistema sigue andando
   // con lo último sincronizado y se pone al día solo cuando vuelve la conexión.
   window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
