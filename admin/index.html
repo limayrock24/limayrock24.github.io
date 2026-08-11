@@ -7011,9 +7011,16 @@ function pad2(n) { return n<10?'0'+n:''+n; }
 var _empPendiente = null;
 
 // ── TOPE DE CONSUMO POR EMPLEADO ─────────────────────────────────────────
+// El tope es MENSUAL: cuenta solo lo consumido desde el 1° del mes en curso
+// (mismo criterio que usa marcarConsumosSaldados en la liquidación), y solo
+// lo que sigue sin saldar. Antes sumaba TODO lo no saldado sin importar el
+// mes, así que un consumo que quedara sin marcar como saldado en algún mes
+// se arrastraba para siempre e inflaba el tope de los meses siguientes.
 function getConsumoPendienteEmpleado(nombre) {
+  var ahora = new Date();
+  var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
   return getConsumos().filter(function(c){
-    return c.tipo==='empleado' && c.empleado===nombre && !c.saldado;
+    return c.tipo==='empleado' && c.empleado===nombre && !c.saldado && new Date(c.fecha) >= inicioMes;
   }).reduce(function(s,c){ return s+c.total; },0);
 }
 function chequearTopeConsumo() {
