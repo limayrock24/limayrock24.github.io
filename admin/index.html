@@ -1696,19 +1696,29 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cart-grid{display:grid;gap:8px}
 .cart-grid.tam-chico{grid-template-columns:repeat(4,1fr)}
 .cart-grid.tam-mediano{grid-template-columns:repeat(2,1fr)}
+.cart-grid.tam-exacto{grid-template-columns:repeat(auto-fill,70mm);grid-auto-rows:65mm;gap:3mm;justify-content:start}
 .cartelito-card{border:1.5px dashed #999;border-radius:4px;padding:10px 8px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;page-break-inside:avoid;background:white;min-height:90px}
 .cart-grid.tam-mediano .cartelito-card{min-height:150px;padding:16px 12px}
+.cart-grid.tam-exacto .cartelito-card{width:70mm;height:65mm;padding:0;justify-content:flex-start}
+.cartelito-contenido{display:flex;flex-direction:column;justify-content:center;align-items:center;width:100%}
+.cart-grid.tam-exacto .cartelito-contenido{height:45mm;padding:4mm 3mm;box-sizing:border-box}
+.cartelito-margen-inf{display:none}
+.cart-grid.tam-exacto .cartelito-margen-inf{display:flex;align-items:flex-start;justify-content:center;width:100%;height:20mm;border-top:1px dashed #ccc;box-sizing:border-box;color:#bbb;font-family:Arial,sans-serif;font-size:7px;padding-top:2mm}
 .cartelito-nombre{font-family:Arial,sans-serif;font-weight:bold;color:#111;text-transform:uppercase;line-height:1.2;margin-bottom:6px;word-break:break-word}
 .cart-grid.tam-chico .cartelito-nombre{font-size:15px}
 .cart-grid.tam-mediano .cartelito-nombre{font-size:20px}
+.cart-grid.tam-exacto .cartelito-nombre{font-size:18px}
 .cartelito-precio{font-family:Arial,sans-serif;font-weight:900;color:#CC0000}
 .cart-grid.tam-chico .cartelito-precio{font-size:22px}
 .cart-grid.tam-mediano .cartelito-precio{font-size:34px}
+.cart-grid.tam-exacto .cartelito-precio{font-size:30px}
 .cartelito-precio-noc{font-family:Arial,sans-serif;font-weight:700;color:#333;margin-top:2px}
 .cart-grid.tam-chico .cartelito-precio-noc{font-size:10px}
 .cart-grid.tam-mediano .cartelito-precio-noc{font-size:13px}
+.cart-grid.tam-exacto .cartelito-precio-noc{font-size:11px}
 @media print{
   .cart-grid{gap:4mm}
+  .cart-grid.tam-exacto{gap:3mm}
   .cartelito-card{border-style:dashed}
 }
 
@@ -4393,6 +4403,7 @@ body.night-on{background:#080005}
     <select id="cartTamSel" onchange="cambiarTamCartelito(this.value)">
       <option value="chico">Chico — muchos por hoja</option>
       <option value="mediano">Mediano — tamaño tarjeta</option>
+      <option value="exacto">Exacto 7 x 6,5cm (con margen para el soporte)</option>
     </select>
     <button class="print-btn" id="descargarCartelitosPdfBtn" onclick="descargarCartelitosPDF()" style="background:var(--green);color:var(--black)">⬇ Descargar PDF</button>
     <button class="print-btn" onclick="window.print()">🖨 Imprimir</button>
@@ -15204,9 +15215,12 @@ function abrirCartelitosPreview() {
     // distinto del normal — así "depende del producto", como pediste.
     var mostrarNoc = p.pnoc && p.pnoc>0 && p.pnoc!==p.pventa;
     return '<div class="cartelito-card">'+
-      '<div class="cartelito-nombre">'+p.name+'</div>'+
-      '<div class="cartelito-precio">'+(p.pventa?fmt(p.pventa):'—')+'</div>'+
-      (mostrarNoc ? '<div class="cartelito-precio-noc">🌙 Nocturno: '+fmt(p.pnoc)+'</div>' : '')+
+      '<div class="cartelito-contenido">'+
+        '<div class="cartelito-nombre">'+p.name+'</div>'+
+        '<div class="cartelito-precio">'+(p.pventa?fmt(p.pventa):'—')+'</div>'+
+        (mostrarNoc ? '<div class="cartelito-precio-noc">🌙 Nocturno: '+fmt(p.pnoc)+'</div>' : '')+
+      '</div>'+
+      '<div class="cartelito-margen-inf"></div>'+ // últimos 2cm en blanco: acá encastra el soporte
       '</div>';
   }).join('') + '</div>';
   document.getElementById('cartTamSel').value = 'chico';
@@ -15216,7 +15230,7 @@ function abrirCartelitosPreview() {
 function cambiarTamCartelito(tam) {
   var grid = document.getElementById('cartGrid');
   if(!grid) return;
-  grid.classList.remove('tam-chico','tam-mediano');
+  grid.classList.remove('tam-chico','tam-mediano','tam-exacto');
   grid.classList.add('tam-'+tam);
 }
 
@@ -15236,19 +15250,33 @@ function descargarCartelitosPDF() {
   cargarJsPDF().then(function(){
     var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
     var tam = (document.getElementById('cartTamSel')||{value:'chico'}).value;
-    var cols = tam==='mediano' ? 2 : 4;
-    var rowH = tam==='mediano' ? 55 : 35;
-    var fsNombre = tam==='mediano' ? 13 : 10;
-    var fsPrecio = tam==='mediano' ? 22 : 15;
-    var fsNoc = tam==='mediano' ? 9 : 7;
 
     var jsPDFClass = window.jspdf.jsPDF;
     var doc = new jsPDFClass({ unit:'mm', format:'a4' });
     var margin = 10;
-    var gap = 4;
     var pageWidth  = doc.internal.pageSize.getWidth();
     var pageHeight = doc.internal.pageSize.getHeight();
-    var colW = (pageWidth - 2*margin - (cols-1)*gap) / cols;
+
+    var cols, colW, rowH, gap, fsNombre, fsPrecio, fsNoc, altoTexto;
+    if(tam==='exacto'){
+      // Medida exacta pedida: 7cm x 6,5cm por cartelito, con los últimos 2cm
+      // de abajo en blanco (ahí encastra el soporte de góndola) — el texto
+      // solo ocupa los primeros 4,5cm de arriba.
+      gap = 3;
+      colW = 70; rowH = 65; altoTexto = 45;
+      cols = Math.max(1, Math.floor((pageWidth - 2*margin + gap) / (colW + gap)));
+      fsNombre = 15; fsPrecio = 24; fsNoc = 9;
+    } else {
+      cols = tam==='mediano' ? 2 : 4;
+      gap = 4;
+      rowH = tam==='mediano' ? 55 : 35;
+      altoTexto = rowH;
+      colW = (pageWidth - 2*margin - (cols-1)*gap) / cols;
+      fsNombre = tam==='mediano' ? 13 : 10;
+      fsPrecio = tam==='mediano' ? 22 : 15;
+      fsNoc = tam==='mediano' ? 9 : 7;
+    }
+
     var x = margin, y = margin, col = 0;
 
     seleccionados.forEach(function(p, i){
@@ -15259,10 +15287,16 @@ function descargarCartelitosPDF() {
       doc.setDrawColor(150,150,150);
       doc.setLineDashPattern([1,1], 0);
       doc.rect(x, y, colW, rowH);
+      if(tam==='exacto'){
+        // Línea de referencia marcando dónde termina el texto y empieza la
+        // zona que tapa el soporte (2cm en blanco abajo)
+        doc.setDrawColor(210,210,210);
+        doc.line(x, y+altoTexto, x+colW, y+altoTexto);
+      }
       doc.setLineDashPattern([], 0);
 
       var cx = x + colW/2;
-      var cy = y + rowH*0.38;
+      var cy = y + altoTexto*0.4;
 
       doc.setFont('helvetica','bold'); doc.setFontSize(fsNombre); doc.setTextColor(20,20,20);
       var lineasNombre = doc.splitTextToSize(p.name.toUpperCase(), colW-6);
