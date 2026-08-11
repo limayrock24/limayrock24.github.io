@@ -353,24 +353,36 @@
   window.__lrSaveEmpleados = function(lista){
     var prev = window.__lrSync.ultimoEmpleadosSnapshot || {};
     var vistos = {};
+    var promesas = [];
     lista.forEach(function(e){
       try{
         vistos[e.nombre] = true;
         var antes = prev[e.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
-          window.__lrDB.collection(window.__lrCOL.empleados).doc(e.nombre).set(limpiarUndefined(e)).catch(function(err){
-            console.error('Error guardando empleado', e.nombre, err);
-          });
+          promesas.push(
+            window.__lrDB.collection(window.__lrCOL.empleados).doc(e.nombre).set(limpiarUndefined(e)).catch(function(err){
+              console.error('Error guardando empleado', e.nombre, err);
+              throw err;
+            })
+          );
         }
-      }catch(err){ console.error('Error preparando empleado', e && e.nombre, err); }
+      }catch(err){ console.error('Error preparando empleado', e && e.nombre, err); promesas.push(Promise.reject(err)); }
     });
     Object.keys(prev).forEach(function(nombre){
       if(!vistos[nombre]){
-        window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).delete().catch(function(err){
-          console.error('Error borrando empleado', nombre, err);
-        });
+        promesas.push(
+          window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).delete().catch(function(err){
+            console.error('Error borrando empleado', nombre, err);
+            throw err;
+          })
+        );
       }
     });
+    // Antes esta función no devolvía nada: quien la llamaba no tenía forma
+    // de saber si el guardado realmente llegó a la nube o no, y por eso
+    // podía avisar "actualizado" aunque el cambio (ej. sacarle el acceso a
+    // Recepción a un empleado) nunca se hubiera guardado de verdad.
+    return Promise.all(promesas);
   };
   // Escucha en vivo de ventas.
   window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot(function(snap){
@@ -4795,10 +4807,10 @@ function getEmpleados() {
   }
   return JSON.parse(JSON.stringify(EMPLEADOS_DEFAULT));
 }
-function saveEmpleados(e) {
-  window.EMPLEADOS = e;
-  if(window.__lrSaveEmpleados) window.__lrSaveEmpleados(e);
-}
+// NOTA: saveEmpleados() vive más abajo (cerca de guardarEmpModal), es la
+// única definición — había una duplicada acá que quedó eliminada el 10/8
+// para evitar confusión (JS usa la última declaración de todas formas, pero
+// tener dos con el mismo nombre invita a editar la que no corre).
 function getVentas() {
   return (window.__lrSync && window.__lrSync.ventasListos && Array.isArray(window.VENTAS)) ? window.VENTAS : [];
 }
@@ -14768,19 +14780,31 @@ function guardarEmpModal() {
     topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
     EMPLEADOS[idx] = empData;
-    showToast('✅ '+nombre+' actualizado');
   } else {
     EMPLEADOS.push(empData);
-    showToast('✅ '+nombre+' agregado al equipo');
   }
-  saveEmpleados(EMPLEADOS);
+  // No avisamos "actualizado" todavía — antes esto mostraba éxito de
+  // inmediato sin esperar que el cambio (ej. sacar el acceso a Recepción)
+  // realmente llegara a la nube. Ahora se espera confirmación real, con un
+  // límite de 15s para no dejar el cartel de "guardando" colgado para
+  // siempre si la conexión falla.
+  showToast('⏳ Guardando en la nube...');
+  var promesaEmp = saveEmpleados(EMPLEADOS);
+  if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
+  promesaEmp.then(function(){
+    showToast('✅ '+nombre+' guardado y confirmado');
+  }).catch(function(e){
+    showToast('❌ NO SE GUARDÓ '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
+    alert('⚠️ El cambio en "'+nombre+'" (incluido el acceso a Recepción si lo tocaste) NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá guardar de nuevo. Si sigue fallando, verificá directo en Firestore Console antes de asumir que quedó aplicado.');
+  });
   closeEmpModal();
   renderEmpAdmin();
 }
 
 function saveEmpleados(emps) {
   window.EMPLEADOS = emps;
-  if(window.__lrSaveEmpleados) window.__lrSaveEmpleados(emps);
+  if(window.__lrSaveEmpleados) return window.__lrSaveEmpleados(emps);
+  return Promise.resolve();
 }
 
 function eliminarEmpModal() {
@@ -14790,10 +14814,17 @@ function eliminarEmpModal() {
   askConfirm('¿Eliminás a '+nombre+' del equipo?').then(function(ok){
     if(!ok) return;
     EMPLEADOS.splice(idx,1);
-    saveEmpleados(EMPLEADOS);
+    showToast('⏳ Borrando en la nube...');
+    var promesaEmp = saveEmpleados(EMPLEADOS);
+    if(window.__lrConTimeoutAviso) promesaEmp = window.__lrConTimeoutAviso(promesaEmp, 15000);
+    promesaEmp.then(function(){
+      showToast('✅ '+nombre+' eliminado y confirmado');
+    }).catch(function(e){
+      showToast('❌ NO SE PUDO ELIMINAR '+nombre+': '+(e && e.message ? e.message : 'error de conexión'), true);
+      alert('⚠️ La eliminación de "'+nombre+'" NO se pudo confirmar en la nube.\n\nMotivo: '+(e && e.message ? e.message : 'sin conexión')+'\n\nProbá de nuevo. Si sigue fallando, verificá directo en Firestore Console.');
+    });
     closeEmpModal();
     renderEmpAdmin();
-    showToast(nombre+' eliminado del equipo');
   });
 }
 
