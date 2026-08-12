@@ -13718,7 +13718,12 @@ function renderDashboard() {
       var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs; });
       var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s+v.total; },0);
 
-      var detalleTurno = getMovimientos().filter(function(m){ return new Date(m.fecha).getTime() >= inicioTs; })
+      var detalleTurno = getMovimientos().filter(function(m){
+        // Excluir los movimientos internos de descuento de stock por ingrediente
+        // de combo — no son ventas en sí, la venta real ya aparece como una sola
+        // línea con el total. Mostrarlos acá era ruido (aparecían en $0, repetidos).
+        return new Date(m.fecha).getTime() >= inicioTs && m.tipo !== 'Venta (Combo)';
+      })
         .map(function(m){ return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0}; })
         .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
 
