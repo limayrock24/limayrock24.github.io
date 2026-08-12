@@ -364,7 +364,18 @@
     // lado mientras ya tenía la sesión abierta — sin esto, ese cambio recién
     // se vería la próxima vez que cierre sesión y vuelva a entrar.
     if(typeof currentEmp !== 'undefined' && currentEmp && mapa[currentEmp.nombre]){
+      // Al refrescar los datos del empleado logueado (PIN, rol, permisos) desde la
+      // nube, NO hay que perder los datos propios de la sesión que tiene abierta
+      // ahora mismo (hora en que arrancó el turno, efectivo con el que abrió caja) —
+      // esos no viven en el documento de "empleados", son de esta sesión en curso.
+      // Si se pisaban, al cerrar el turno el sistema "olvidaba" la hora real de
+      // inicio y calculaba el cierre sobre una ventana de minutos en vez de todo
+      // el turno, mostrando diferencias de caja falsas.
+      var _turnoInicioSesion    = currentEmp.turnoInicio;
+      var _efectivoInicialSesion = currentEmp.efectivoInicial;
       currentEmp = mapa[currentEmp.nombre];
+      if(_turnoInicioSesion !== undefined) currentEmp.turnoInicio = _turnoInicioSesion;
+      if(_efectivoInicialSesion !== undefined) currentEmp.efectivoInicial = _efectivoInicialSesion;
       if(typeof updateRecepBtn==='function') updateRecepBtn();
     if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
     }
