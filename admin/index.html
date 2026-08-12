@@ -812,6 +812,14 @@
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
     }
+    // Si la pestaña de Movimientos está abierta justo en este momento, refrescarla
+    // también en vivo — antes solo se actualizaba el Dashboard, y si alguien tenía
+    // Movimientos abierto, un cambio nuevo (ej. una corrección de stock) no aparecía
+    // hasta salir y volver a entrar a esa pestaña.
+    var paneMovs = document.getElementById('pane-movimientos');
+    if(typeof renderMovimientos==='function' && paneMovs && paneMovs.classList.contains('active')){
+      renderMovimientos();
+    }
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; ocultarCargaSiListo(); });
 
