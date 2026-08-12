@@ -11954,6 +11954,8 @@ function renderArmarPedidoLista(term) {
   if(!_armarPedidoProv) return;
 
   var inv = getStockInv();
+  var ventas4sem = getVentas4Semanas();
+  var semanasColchon = getSemanasColchonPedido();
   var productos = (_armarPedidoProv.productos||[]).filter(function(pn){ return existeEnCatalogo(pn); });
   if(term){
     productos = productos.filter(function(pn){
@@ -11972,15 +11974,27 @@ function renderArmarPedidoLista(term) {
     var stock = inv[pn] ? inv[pn].stock : 0;
     var cant = _armarPedidoCantidades[pn] || '';
     var pnEsc = pn.replace(/'/g,"\\'");
+    var datos = calcularDatosPedido(pn, inv, ventas4sem, _armarPedidoProv.diaPedido, _armarPedidoProv.diaEntrega, semanasColchon);
+    var sugHtml = datos.sugerido>0
+      ? '<div onclick="usarSugeridoPedido(\''+pnEsc+'\','+datos.sugerido+')" title="Tocá para usar esta cantidad" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.72rem;color:var(--green);white-space:nowrap;text-align:center;min-width:56px">📦 '+datos.sugerido+'<div style="font-size:.58rem;color:var(--gray);font-family:Barlow,sans-serif">sugerido</div></div>'
+      : '<div style="font-size:.68rem;color:var(--gray);min-width:56px;text-align:center">✓ OK</div>';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06);gap:10px">'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:.82rem;color:var(--white)">'+pn+'</div>'+
         '<div style="font-size:.64rem;color:var(--gray)">Tenés: '+stock+'</div>'+
       '</div>'+
-      '<input type="number" min="0" placeholder="0" value="'+cant+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',this.value)" '+
+      sugHtml+
+      '<input type="number" min="0" placeholder="0" value="'+cant+'" id="armPedInput_'+pnEsc.replace(/[^a-zA-Z0-9]/g,'_')+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',this.value)" '+
         'style="width:64px;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:7px;color:var(--white);font-family:Oswald,sans-serif;font-size:.9rem;text-align:center;outline:none">'+
     '</div>';
   }).join('');
+}
+
+function usarSugeridoPedido(nombre, sugerido) {
+  _armarPedidoCantidades[nombre] = String(sugerido);
+  var inputId = 'armPedInput_'+nombre.replace(/'/g,"\\'").replace(/[^a-zA-Z0-9]/g,'_');
+  var input = document.getElementById(inputId);
+  if(input) input.value = sugerido;
 }
 
 function actualizarCantidadPedido(nombre, val) {
