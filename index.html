@@ -3593,6 +3593,8 @@ body.night-on{background:#080005}
           <option value="ingreso-caja">Ingreso de caja</option>
           <option value="carga-virtual">Carga virtual</option>
           <option value="egreso">Egreso</option>
+          <option value="ajuste-stock">Corrección de stock</option>
+          <option value="baja-stock">Baja de stock</option>
         </select>
         <input type="date" id="movFechaDesde" onchange="renderMovimientos()" title="Desde">
         <input type="date" id="movFechaHasta" onchange="renderMovimientos()" title="Hasta">
@@ -11845,15 +11847,15 @@ function toggleMovDet(id) {
 }
 
 var MOV_ICONOS = {
-  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄'
+  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️'
 };
 var MOV_COLORES = {
   ingreso: 'var(--green)', venta: 'var(--green)', consumo: 'var(--red)',
-  fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6'
+  fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6', 'ajuste-stock': 'var(--gold)', 'baja-stock': 'var(--red)'
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
-  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas'
+  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)'
 };
 
 function renderMovimientos() {
@@ -11883,7 +11885,7 @@ function renderMovimientos() {
     var d     = new Date(m.fecha);
     var fecha = d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) + ' · ' +
                 d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    var esIngresoMercaderia = (m.tipo==='ingreso');
+    var esIngresoMercaderia = (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock');
     // Nota: "venta" es entrada de dinero aunque esté en la lista de movimientos de salida de stock — color correcto:
     var esIngresoDinero = (m.tipo==='venta' || m.tipo==='ingreso-caja');
     var esFiadoMov = (m.tipo==='fiado');
@@ -11918,10 +11920,10 @@ function renderMovimientos() {
             '<span style="font-family:Oswald,sans-serif;font-size:.78rem;color:var(--white);letter-spacing:.3px">'+label+'</span>'+
             (detHtml?'<span class="drop-arrow" style="margin-left:2px">▾</span>':'')+
           '</div>'+
-          '<div style="font-size:.76rem;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(m.resumen||m.producto||'—').slice(0,60)+'</div>'+
+          '<div style="font-size:.76rem;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(m.resumen||m.producto||'—').slice(0,60)+(esIngresoMercaderia && m.stockAntes!=null && m.stockDespues!=null ? ' <span style="color:var(--gold)">('+m.stockAntes+' → '+m.stockDespues+')</span>' : '')+'</div>'+
           '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+fecha+' · '+(m.responsable||'—')+(m.extra?' · '+extraConRecargo:'')+'</div>'+
         '</div>'+
-        (esIngresoMercaderia ? '' : '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+totalColor+';white-space:nowrap;font-weight:600">'+signo+'$'+Math.abs(Number(montoNeto||0)).toLocaleString('es-AR')+'</div>')+
+        (esIngresoMercaderia ? (m.cantidad!=null ? '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+(Number(m.cantidad)>=0?'var(--green)':'var(--red)')+';white-space:nowrap;font-weight:600">'+(Number(m.cantidad)>0?'+':'')+m.cantidad+' u.</div>' : '') : '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+totalColor+';white-space:nowrap;font-weight:600">'+signo+'$'+Math.abs(Number(montoNeto||0)).toLocaleString('es-AR')+'</div>')+
       '</div>'+
       (detHtml ? '<div class="consumo-dropdown" id="'+detId+'" style="margin-top:8px">'+detHtml+'</div>' : '');
 
@@ -16195,6 +16197,10 @@ function guardarCargaStock() {
   if(movs.length > 500) movs = movs.slice(-500);
   saveStockMovs(movs);
 
+  // También queda visible en Movimientos (Admin), para que se pueda auditar
+  // desde la misma pantalla que el resto de los movimientos del negocio.
+  registrarMovimiento('ajuste-stock', _cargaStockProdSel, stockDespues - stockAntes, stockAntes, stockDespues, currentEmp ? currentEmp.nombre : 'Empleado');
+
   showToast('✓ '+_cargaStockProdSel+': '+stockAntes+' → '+stockDespues);
   autoSaveNow();
 
@@ -18759,6 +18765,9 @@ function confirmarAjusteStock() {
   if(movs.length>500) movs=movs.slice(-500);
   saveStockMovs(movs);
 
+  // También visible en Movimientos (Admin)
+  registrarMovimiento('ingreso', _ajusteStockProd, cant, stockAntes, stockDespues, currentEmp?currentEmp.nombre:'Admin');
+
   document.getElementById('ajusteStockModal').classList.remove('open');
   renderInventario();
   showToast('✓ '+_ajusteStockProd+': '+stockAntes+' → '+stockDespues+' (+'+cant+')');
@@ -18811,6 +18820,9 @@ function confirmarRetiroVencido() {
   });
   if(movs.length>500) movs = movs.slice(-500);
   saveStockMovs(movs);
+
+  // También visible en Movimientos (Admin)
+  registrarMovimiento('baja-stock', _retiroVencidoProd, -(stockAntes-stockDespues), stockAntes, stockDespues, (typeof _recepEmp!=='undefined' && _recepEmp) ? _recepEmp.nombre : (currentEmp?currentEmp.nombre:'Admin'));
 
   cerrarRetiroVencido();
   if(typeof renderInventario==='function') renderInventario();
