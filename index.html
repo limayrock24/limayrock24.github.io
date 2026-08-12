@@ -7457,6 +7457,12 @@ function renderCierres() {
     return;
   }
 
+  // Ventas.filter() de la ficha completa se guarda solo con medio+total (compactado),
+  // así que para reconstruir el detalle uno-por-uno usamos la lista global de Ventas,
+  // filtrada por el mismo rango horario exacto que se usó al cerrar — así el total
+  // itemizado siempre coincide con el total del cierre, sin duplicar datos guardados.
+  window.__lrCierresRenderCache = cierres;
+
   html += cierres.map(function(c, idx){
     var fecha = new Date(c.fecha);
     var fechaStr = fecha.toLocaleDateString('es-AR', {weekday:'short', day:'numeric', month:'short'});
@@ -7521,6 +7527,12 @@ function renderCierres() {
       '<div class="cierre-detail" id="cierreDetail'+idx+'">'+
         (mediosHtml ? '<div style="font-size:.65rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:Oswald,sans-serif">Ventas por medio</div>'+mediosHtml : '')+
         detalleArqueo+
+        '<div style="text-align:center;margin-top:10px">'+
+          '<button onclick="event.stopPropagation();toggleVentasDetalleCierre('+idx+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
+            '<span id="cierreVentasBtnTxt'+idx+'">▼ Ver ventas de este cierre</span>'+
+          '</button>'+
+        '</div>'+
+        '<div id="cierreVentasDetalle'+idx+'" style="display:none;max-height:280px;overflow-y:auto;margin-top:8px"></div>'+
       '</div>'+
     '</div>';
   }).join('');
@@ -7531,6 +7543,59 @@ function renderCierres() {
 function toggleCierreDetail(idx) {
   var el = document.getElementById('cierreDetail'+idx);
   if(el) el.classList.toggle('open');
+}
+
+function toggleVentasDetalleCierre(idx) {
+  var div = document.getElementById('cierreVentasDetalle'+idx);
+  var btnTxt = document.getElementById('cierreVentasBtnTxt'+idx);
+  if(!div) return;
+  var abierto = div.style.display !== 'none';
+  if(abierto){
+    div.style.display = 'none';
+    if(btnTxt) btnTxt.textContent = '▼ Ver ventas de este cierre';
+    return;
+  }
+  // El contenido se arma recién la primera vez que se abre (no antes) para no
+  // recorrer todo Ventas por cada cierre listado en pantalla, solo cuando hace falta.
+  if(!div.dataset.lleno){
+    var cierresCache = window.__lrCierresRenderCache || [];
+    var c = cierresCache[idx];
+    div.innerHTML = c ? construirVentasDetalleCierreHtml(c) : '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">No se pudo cargar el detalle de este cierre.</div>';
+    div.dataset.lleno = '1';
+  }
+  div.style.display = 'block';
+  if(btnTxt) btnTxt.textContent = '▲ Ocultar ventas';
+}
+
+// Reconstruye la lista de ventas individuales de un cierre a partir de Ventas (fuente
+// completa), usando el mismo rango horario y el mismo filtro (sin anuladas, sin fiados)
+// que se usó al calcular el total de ese cierre — así nunca queda desalineado.
+function construirVentasDetalleCierreHtml(c) {
+  if(!c.horaInicio || !c.horaFin){
+    return '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">Este cierre es muy viejo y no tiene guardado el horario exacto para reconstruir el detalle.</div>';
+  }
+  var ini = new Date(c.horaInicio).getTime();
+  var fin = new Date(c.horaFin).getTime();
+  var ventasDelCierre = VENTAS.filter(function(v){
+    if(v.anulada) return false;
+    if(v.fiadoCarga) return false;
+    var fv = new Date(v.fecha).getTime();
+    return fv >= ini && fv <= fin;
+  }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+
+  if(!ventasDelCierre.length){
+    return '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">No hay ventas registradas en este rango horario.</div>';
+  }
+
+  return ventasDelCierre.map(function(v){
+    var hora = new Date(v.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    var resumen = (v.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ') || '—';
+    var medioTxt = v.medio || '';
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.76rem">'+
+      '<span style="color:var(--light)">'+hora+' · '+resumen+' <span style="color:var(--gray)">· '+medioTxt+'</span></span>'+
+      '<span style="color:var(--white);white-space:nowrap">'+fmt(v.total)+'</span>'+
+    '</div>';
+  }).join('');
 }
 
 function toggleCierre(ci) {
