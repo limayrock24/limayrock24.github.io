@@ -2562,6 +2562,7 @@ body.night-on{background:#080005}
       <span class="turno-badge">👤 <span id="empActual">Martin · Nocturno</span></span>
       <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
       <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
+      <button id="btnGoCargaStock" onclick="abrirCargaStock()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📋 Cargar Stock</button>
       <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
     </div>
   </div>
@@ -3081,6 +3082,15 @@ body.night-on{background:#080005}
             <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Usa el mismo PIN de login para entrar al panel de Recepción</div>
           </div>
           <div class="recep-toggle-switch" id="emRecepToggle" onclick="toggleRecepAcceso()"></div>
+        </div>
+
+        <!-- Acceso a Cargar Stock -->
+        <div class="recep-toggle">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--white)">📋 Acceso a Cargar Stock</div>
+            <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Puede corregir cantidades de stock (buscando o escaneando), sin ver ventas, cierres ni rentabilidad</div>
+          </div>
+          <div class="recep-toggle-switch" id="emStockToggle" onclick="toggleStockAcceso()"></div>
         </div>
         <div class="emp-modal-footer">
           <button class="btn-del" id="empModalDel" onclick="eliminarEmpModal()" style="background:transparent;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">🗑 Eliminar</button>
@@ -4318,6 +4328,35 @@ body.night-on{background:#080005}
       <button class="pin-btn" onclick="recepPinPress('C')" style="font-size:.62rem;color:var(--red)">⌫</button>
     </div>
     <div class="recep-pin-error" id="recepPinError">PIN INCORRECTO</div>
+  </div>
+</div>
+
+<!-- CARGAR STOCK — pantalla acotada para empleados con permiso, sin acceso al resto de Admin -->
+<div class="prod-modal-overlay" id="cargaStockOverlay" style="z-index:2100">
+  <div class="prod-modal-box" style="max-width:480px;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <div style="padding:16px 16px 10px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:var(--green);font-weight:700;letter-spacing:1px">📋 CARGAR STOCK</div>
+        <button onclick="cerrarCargaStock()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:4px 10px;font-size:.7rem;cursor:pointer">✕ Cerrar</button>
+      </div>
+      <input type="text" id="cargaStockBuscar" placeholder="🔍 Buscá por nombre o escaneá el código de barras..."
+        oninput="filtrarCargaStock(this.value)" onkeydown="if(event.key==='Enter') cargaStockEnter(this.value)"
+        style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:11px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none"
+        autocomplete="off">
+      <div style="font-size:.65rem;color:var(--gray);margin-top:6px">Tocá un producto para corregir la cantidad real. Si escaneás un código y hay un solo resultado, se abre directo.</div>
+    </div>
+    <div id="cargaStockLista" style="flex:1;overflow-y:auto;padding:6px 10px"></div>
+
+    <!-- Editor inline de un producto seleccionado -->
+    <div id="cargaStockEditor" style="display:none;border-top:2px solid var(--green);padding:14px 16px;background:var(--card)">
+      <div id="cargaStockEditorNombre" style="font-family:Oswald,sans-serif;font-size:.9rem;color:var(--white);margin-bottom:2px"></div>
+      <div style="font-size:.68rem;color:var(--gray);margin-bottom:10px">Tenías cargado: <span id="cargaStockEditorAntes" style="color:var(--gold)"></span> unidades</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="cargaStockEditorInput" min="0" style="flex:1;background:var(--dark);border:2px solid var(--green);border-radius:6px;padding:10px;color:var(--white);font-family:Oswald,sans-serif;font-size:1.3rem;text-align:center;outline:none">
+        <button onclick="guardarCargaStock()" style="background:var(--green);color:var(--black);border:none;border-radius:6px;padding:10px 18px;font-family:Oswald,sans-serif;font-weight:700;font-size:.8rem;letter-spacing:1px;cursor:pointer">✓ GUARDAR</button>
+      </div>
+      <div style="font-size:.66rem;color:var(--gray);margin-top:8px;text-align:center">Ingresá la cantidad real que contaste — no se suma, reemplaza el número anterior.</div>
+    </div>
   </div>
 </div>
 
@@ -14893,6 +14932,11 @@ function toggleRecepAcceso() {
   sw.classList.toggle('on');
 }
 
+function toggleStockAcceso() {
+  var sw = document.getElementById('emStockToggle');
+  sw.classList.toggle('on');
+}
+
 function abrirEmpModal(idx) {
   _emPinBuf = '';
   _emRol    = 'empleado';
@@ -14901,6 +14945,7 @@ function abrirEmpModal(idx) {
   var tit = document.getElementById('empModalTitulo');
 
   var recepSw = document.getElementById('emRecepToggle');
+  var stockSw = document.getElementById('emStockToggle');
   var funcionSel = document.getElementById('emFuncion');
   var topeInp = document.getElementById('emTopeConsumo');
   var margenInp = document.getElementById('emMargenAviso');
@@ -14915,6 +14960,7 @@ function abrirEmpModal(idx) {
     if(tit) tit.textContent = 'Editar — '+emp.nombre;
     if(del) del.style.display='block';
     if(recepSw) recepSw.classList.toggle('on', !!emp.accesoRecepcion);
+    if(stockSw) stockSw.classList.toggle('on', !!emp.accesoStock);
   } else {
     document.getElementById('emNombre').value = '';
     _emPinBuf = '';
@@ -14925,6 +14971,7 @@ function abrirEmpModal(idx) {
     if(tit) tit.textContent = '+ Nuevo empleado';
     if(del) del.style.display='none';
     if(recepSw) recepSw.classList.remove('on');
+    if(stockSw) stockSw.classList.remove('on');
   }
 
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
@@ -14976,10 +15023,11 @@ function guardarEmpModal() {
   if(pinDup>-1){ showToast('Ese PIN ya lo usa '+emps[pinDup].nombre,true); return; }
 
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
+  var stockOn = document.getElementById('emStockToggle').classList.contains('on');
   var funcion = document.getElementById('emFuncion') ? document.getElementById('emFuncion').value : '';
   var topeConsumo = getMontoInputValue('emTopeConsumo');
   var margenAviso = getMontoInputValue('emMargenAviso');
-  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn,
+  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn,
     topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
     EMPLEADOS[idx] = empData;
@@ -16045,10 +16093,124 @@ function renderRecepEgresosHist() {
 
 
 // ── BOTÓN RECEPCIÓN EN PANEL EMPLEADO ──────────────────────────────────────
+// ── CARGAR STOCK (pantalla acotada para empleados con permiso especial) ─────
+// Muestra SOLO nombre + stock, nada de ventas/costos/rentabilidad. Permite
+// corregir la cantidad real (reemplaza el número, no suma) y queda todo
+// registrado con quién y cuándo, igual que el resto de los movimientos.
+var _cargaStockProdSel = null;
+
+function abrirCargaStock() {
+  if(!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin')) return;
+  document.getElementById('cargaStockOverlay').classList.add('open');
+  document.getElementById('cargaStockBuscar').value = '';
+  document.getElementById('cargaStockEditor').style.display = 'none';
+  _cargaStockProdSel = null;
+  filtrarCargaStock('');
+  setTimeout(function(){ document.getElementById('cargaStockBuscar').focus(); }, 150);
+}
+
+function cerrarCargaStock() {
+  document.getElementById('cargaStockOverlay').classList.remove('open');
+}
+
+function filtrarCargaStock(term) {
+  term = (term||'').toLowerCase().trim();
+  var inv = getStockInv();
+  var lista = document.getElementById('cargaStockLista');
+  var productos = PRODUCTS.filter(function(p){
+    if(!term) return true;
+    return p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term));
+  }).sort(function(a,b){ return a.name.localeCompare(b.name,'es'); });
+
+  if(!term){
+    lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">Empezá a escribir o escaneá un código para buscar un producto</div>';
+    return;
+  }
+  productos = productos.slice(0, 60); // no listar de más mientras se escribe
+
+  if(!productos.length){
+    lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">Sin resultados para "'+term+'"</div>';
+    return;
+  }
+
+  lista.innerHTML = productos.map(function(p){
+    var stock = inv[p.name] ? (inv[p.name].stock||0) : 0;
+    var pEsc = p.name.replace(/'/g,"\\'");
+    return '<div onclick="seleccionarCargaStock(\''+pEsc+'\')" style="display:flex;justify-content:space-between;align-items:center;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer">'+
+      '<div>'+
+        '<div style="font-size:.85rem;color:var(--white)">'+p.name+'</div>'+
+        (p.codigo ? '<div style="font-size:.62rem;color:var(--gray)">'+p.codigo+'</div>' : '')+
+      '</div>'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+stock+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+// Si escanean un código de barras y hay un solo match exacto, abrir directo
+// (comodidad para el flujo de "escanear y cargar" sin tener que tocar la lista)
+function cargaStockEnter(term) {
+  term = (term||'').trim();
+  if(!term) return;
+  var exactos = PRODUCTS.filter(function(p){ return p.codigo && p.codigo === term; });
+  if(exactos.length === 1){
+    seleccionarCargaStock(exactos[0].name);
+  }
+}
+
+function seleccionarCargaStock(nombre) {
+  var p = PRODUCTS.find(function(pr){ return pr.name === nombre; });
+  if(!p) return;
+  var inv = getStockInv();
+  var stockActual = inv[nombre] ? (inv[nombre].stock||0) : 0;
+  _cargaStockProdSel = nombre;
+  document.getElementById('cargaStockEditorNombre').textContent = nombre;
+  document.getElementById('cargaStockEditorAntes').textContent = stockActual;
+  var inp = document.getElementById('cargaStockEditorInput');
+  inp.value = stockActual;
+  document.getElementById('cargaStockEditor').style.display = 'block';
+  setTimeout(function(){ inp.focus(); inp.select(); }, 100);
+}
+
+function guardarCargaStock() {
+  if(!_cargaStockProdSel) return;
+  var inp = document.getElementById('cargaStockEditorInput');
+  var nuevo = parseInt(inp.value);
+  if(isNaN(nuevo) || nuevo < 0){ showToast('Ingresá una cantidad válida', true); return; }
+
+  var inv = getStockInv();
+  if(!inv[_cargaStockProdSel]) inv[_cargaStockProdSel] = {stock:0, minimo:0};
+  var stockAntes = inv[_cargaStockProdSel].stock || 0;
+  var stockDespues = nuevo;
+  inv[_cargaStockProdSel].stock = stockDespues;
+  saveStockInv(inv);
+
+  var movs = getStockMovs();
+  movs.push({
+    id: Date.now(), ts: new Date().toISOString(), producto: _cargaStockProdSel,
+    tipo: 'correccion', stockAntes: stockAntes, stockDespues: stockDespues,
+    diferencia: stockDespues - stockAntes,
+    nota: 'Corrección de conteo físico (Cargar Stock)',
+    responsable: currentEmp ? currentEmp.nombre : 'Empleado'
+  });
+  if(movs.length > 500) movs = movs.slice(-500);
+  saveStockMovs(movs);
+
+  showToast('✓ '+_cargaStockProdSel+': '+stockAntes+' → '+stockDespues);
+  autoSaveNow();
+
+  document.getElementById('cargaStockEditor').style.display = 'none';
+  _cargaStockProdSel = null;
+  var buscar = document.getElementById('cargaStockBuscar');
+  buscar.value = '';
+  buscar.focus();
+  filtrarCargaStock('');
+}
+
 function updateRecepBtn() {
   var btn = document.getElementById('btnGoRecepcion');
-  if(!btn) return;
-  btn.style.display = (currentEmp && currentEmp.accesoRecepcion) ? 'inline-block' : 'none';
+  if(btn) btn.style.display = (currentEmp && currentEmp.accesoRecepcion) ? 'inline-block' : 'none';
+  var btnStock = document.getElementById('btnGoCargaStock');
+  if(btnStock) btnStock.style.display = (currentEmp && currentEmp.accesoStock) ? 'inline-block' : 'none';
 }
 
 function actualizarDeliveryPendBadge() {
