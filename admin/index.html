@@ -4,6 +4,23 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 (function(){
+  // Indicador chico de estado de conexión en vivo (bola verde/roja + texto),
+  // visible en venta, admin y recepción por igual porque es global.
+  window.__lrSetEstadoConexion = function(ok){
+    var dot = document.getElementById('lrEstadoConexionDot');
+    var txt = document.getElementById('lrEstadoConexionTxt');
+    if(!dot || !txt) return;
+    if(ok){
+      dot.style.background = '#2ecc71';
+      txt.textContent = 'En vivo';
+    } else {
+      dot.style.background = '#e74c3c';
+      txt.textContent = 'Sin conexión';
+    }
+  };
+  // Si el navegador mismo detecta que se cortó internet, avisar al toque
+  // sin esperar a que Firestore tarde en darse cuenta.
+  window.addEventListener('offline', function(){ window.__lrSetEstadoConexion(false); });
   var firebaseConfig = {
     apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
     authDomain: "limay-rock-852cb.firebaseapp.com",
@@ -152,6 +169,7 @@
     window.__lrSync.conexionRealOk = true;
     var banner = document.getElementById('lrSinConexionBanner');
     if(banner) banner.style.display = 'none';
+    window.__lrSetEstadoConexion(true);
     refrescarPantallaVentaSiExiste();
     ocultarCargaSiListo();
   }, function(err){
@@ -159,6 +177,7 @@
     window.__lrSync.productosListos = true; // no bloquear el sistema por un error de red
     var banner = document.getElementById('lrSinConexionBanner');
     if(banner) banner.style.display = 'block';
+    window.__lrSetEstadoConexion(false);
     ocultarCargaSiListo();
   });
 
@@ -168,6 +187,7 @@
     if(!window.__lrSync.conexionRealOk){
       var banner = document.getElementById('lrSinConexionBanner');
       if(banner) banner.style.display = 'block';
+      window.__lrSetEstadoConexion(false);
     }
   }, 10000);
 
@@ -2467,6 +2487,10 @@ body.night-on{background:#080005}
 <body class="night-on">
 <div id="lrSinConexionBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999999;background:#c0392b;color:#fff;text-align:center;padding:10px 14px;font-family:system-ui,sans-serif;font-weight:700;font-size:.85rem;box-shadow:0 2px 10px rgba(0,0,0,.5)">
   ⚠️ SIN CONEXIÓN A LA NUBE — los cambios que hagas ahora NO se van a guardar. Revisá tu internet y recargá la página.
+</div>
+<div id="lrEstadoConexion" style="position:fixed;bottom:10px;left:10px;z-index:99997;background:rgba(20,20,20,.82);color:#fff;font-family:system-ui,sans-serif;font-size:.68rem;font-weight:600;padding:5px 11px;border-radius:20px;display:flex;align-items:center;gap:6px;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.3)">
+  <span id="lrEstadoConexionDot" style="width:8px;height:8px;border-radius:50%;background:#F4B400;display:inline-block;flex-shrink:0"></span>
+  <span id="lrEstadoConexionTxt">Conectando…</span>
 </div>
 <div id="adminNotifStack" style="position:fixed;top:12px;left:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center"></div>
 <div id="lrLoadingOverlay" style="position:fixed;inset:0;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#F4B400;font-family:system-ui,sans-serif;">
