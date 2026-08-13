@@ -404,20 +404,20 @@
   // Guarda solo el stock que cambió — clave para que una venta no reescriba
   // el inventario completo cada vez.
   window.__lrSaveStockInv = function(inv){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoInventarioSnapshot || {};
     Object.keys(inv).forEach(function(nombre){
       try{
         var antes = prev[nombre];
         var ahora = inv[nombre];
         if(!antes || antes.stock !== ahora.stock || antes.minimo !== ahora.minimo){
-          window.__lrDB.collection(window.__lrCOL.inventario).doc(idSeguro(nombre)).set(limpiarUndefined({
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.inventario).doc(idSeguro(nombre)).set(limpiarUndefined({
             nombre: nombre, stock: ahora.stock, minimo: ahora.minimo
-          })).catch(function(e){
-            console.error('Error guardando stock', nombre, e);
-          });
+          })));
         }
       }catch(e){ console.error('Error preparando stock', nombre, e); }
     });
+      return Promise.all(__promesas);
   };
   // Escucha en vivo de empleados (PINes, roles) — si agregás/sacás uno desde
   // el panel admin remoto, la netbook del local lo ve al instante.
@@ -524,18 +524,18 @@
   // Guarda solo las ventas nuevas o modificadas (ej. una anulación) —
   // nunca reescribe el historial completo.
   window.__lrSaveVentas = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoVentasSnapshot || {};
     lista.forEach(function(v){
       try{
         var key = String(v.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(v)){
-          window.__lrDB.collection(window.__lrCOL.ventas).doc(key).set(limpiarUndefined(v)).catch(function(e){
-            console.error('Error guardando venta', key, e);
-          });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.ventas).doc(key).set(limpiarUndefined(v)));
         }
       }catch(e){ console.error('Error preparando venta', v && v.id, e); }
     });
+      return Promise.all(__promesas);
   };
   // Escucha en vivo de cierres de turno.
   window.__lrDB.collection(window.__lrCOL.cierres).onSnapshot(function(snap){
@@ -561,6 +561,7 @@
   });
 
   window.__lrSaveCierres = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoCierresSnapshot || {};
     var vistos = {};
     lista.forEach(function(c){
@@ -568,19 +569,16 @@
         vistos[c.fecha] = true;
         var antes = prev[c.fecha];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.cierres).doc(String(c.fecha)).set(limpiarUndefined(c)).catch(function(e){
-            console.error('Error guardando cierre', c.fecha, e);
-          });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.cierres).doc(String(c.fecha)).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando cierre', c && c.fecha, e); }
     });
     Object.keys(prev).forEach(function(fecha){
       if(!vistos[fecha]){
-        window.__lrDB.collection(window.__lrCOL.cierres).doc(fecha).delete().catch(function(e){
-          console.error('Error borrando cierre', fecha, e);
-        });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.cierres).doc(fecha).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Consumos
@@ -595,6 +593,7 @@
   }, function(err){ console.error('Error sincronizando consumos:', err); window.__lrSync.consumosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveConsumos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoConsumosSnapshot || {};
     var vistos = {};
     lista.forEach(function(c){
@@ -603,15 +602,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.consumos).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando consumo', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.consumos).doc(key).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando consumo', c && c.id, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.consumos).doc(key).delete().catch(function(e){ console.error('Error borrando consumo', key, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.consumos).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Egresos
@@ -638,6 +638,7 @@
   }, function(err){ console.error('Error sincronizando egresos:', err); window.__lrSync.egresosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveEgresos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoEgresosSnapshot || {};
     var vistos = {};
     lista.forEach(function(e){
@@ -646,15 +647,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
-          window.__lrDB.collection(window.__lrCOL.egresos).doc(key).set(limpiarUndefined(e)).catch(function(err){ console.error('Error guardando egreso', key, err); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.egresos).doc(key).set(limpiarUndefined(e)));
         }
       }catch(err){ console.error('Error preparando egreso', e && e.id, err); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.egresos).doc(key).delete().catch(function(err){ console.error('Error borrando egreso', key, err); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.egresos).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Fiados
@@ -669,6 +671,7 @@
   }, function(err){ console.error('Error sincronizando fiados:', err); window.__lrSync.fiadosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveFiados = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoFiadosSnapshot || {};
     var vistos = {};
     lista.forEach(function(f){
@@ -677,15 +680,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(f)){
-          window.__lrDB.collection(window.__lrCOL.fiados).doc(key).set(limpiarUndefined(f)).catch(function(err){ console.error('Error guardando fiado', key, err); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.fiados).doc(key).set(limpiarUndefined(f)));
         }
       }catch(err){ console.error('Error preparando fiado', f && f.id, err); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.fiados).doc(key).delete().catch(function(err){ console.error('Error borrando fiado', key, err); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.fiados).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Delivery
@@ -700,16 +704,18 @@
   }, function(err){ console.error('Error sincronizando delivery:', err); window.__lrSync.deliveryListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveDelivery = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoDeliverySnapshot || {};
     lista.forEach(function(d){
       try{
         var key = String(d.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(d)){
-          window.__lrDB.collection(window.__lrCOL.delivery).doc(key).set(limpiarUndefined(d)).catch(function(e){ console.error('Error guardando delivery', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.delivery).doc(key).set(limpiarUndefined(d)));
         }
       }catch(e){ console.error('Error preparando delivery', d && d.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Préstamos
@@ -724,16 +730,18 @@
   }, function(err){ console.error('Error sincronizando préstamos:', err); window.__lrSync.prestamosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSavePrestamos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoPrestamosSnapshot || {};
     lista.forEach(function(p){
       try{
         var key = String(p.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
-          window.__lrDB.collection(window.__lrCOL.prestamos).doc(key).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando préstamo', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.prestamos).doc(key).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando préstamo', p && p.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Transferencias entre cuentas
@@ -748,16 +756,18 @@
   }, function(err){ console.error('Error sincronizando transferencias:', err); window.__lrSync.transferCuentasListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveTransferCuentas = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoTransferCuentasSnapshot || {};
     lista.forEach(function(t){
       try{
         var key = String(t.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(t)){
-          window.__lrDB.collection(window.__lrCOL.transferCuentas).doc(key).set(limpiarUndefined(t)).catch(function(e){ console.error('Error guardando transferencia', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.transferCuentas).doc(key).set(limpiarUndefined(t)));
         }
       }catch(e){ console.error('Error preparando transferencia', t && t.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Cargas virtuales
@@ -772,16 +782,18 @@
   }, function(err){ console.error('Error sincronizando cargas virtuales:', err); window.__lrSync.cargasVirtualesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCargasVirtuales = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoCargasVirtualesSnapshot || {};
     lista.forEach(function(c){
       try{
         var key = String(c.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.cargasVirtuales).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando carga virtual', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.cargasVirtuales).doc(key).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando carga virtual', c && c.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Mensajes programados
@@ -796,6 +808,7 @@
   }, function(err){ console.error('Error sincronizando mensajes programados:', err); window.__lrSync.mensajesProgListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMensajesProg = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoMensajesProgSnapshot || {};
     var vistos = {};
     lista.forEach(function(m){
@@ -804,15 +817,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
-          window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje programado', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).set(limpiarUndefined(m)));
         }
       }catch(e){ console.error('Error preparando mensaje programado', m && m.id, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).delete().catch(function(e){ console.error('Error borrando mensaje programado', key, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.mensajesProg).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Mensajes puntuales
@@ -844,6 +858,7 @@
   }, function(err){ console.error('Error sincronizando mensajes puntuales:', err); window.__lrSync.mensajesPuntListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMensajesPunt = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoMensajesPuntSnapshot || {};
     var vistos = {};
     lista.forEach(function(m){
@@ -852,15 +867,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
-          window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando mensaje puntual', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).set(limpiarUndefined(m)));
         }
       }catch(e){ console.error('Error preparando mensaje puntual', m && m.id, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).delete().catch(function(e){ console.error('Error borrando mensaje puntual', key, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.mensajesPunt).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
@@ -900,16 +916,18 @@
   }, function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMovimientos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoMovimientosSnapshot || {};
     lista.forEach(function(m){
       try{
         var key = String(m.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
-          window.__lrDB.collection(window.__lrCOL.movimientos).doc(key).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando movimiento', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.movimientos).doc(key).set(limpiarUndefined(m)));
         }
       }catch(e){ console.error('Error preparando movimiento', m && m.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Categorías personalizadas (documento único, no una lista de registros)
@@ -965,16 +983,18 @@
   }, function(err){ console.error('Error sincronizando pedidos web:', err); window.__lrSync.pedidosWebListos = true; ocultarCargaSiListo(); });
 
   window.__lrSavePedidosWeb = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoPedidosWebSnapshot || {};
     lista.forEach(function(p){
       try{
         var key = String(p.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
-          window.__lrDB.collection('pedidosWeb').doc(idSeguro(key)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando pedido web', key, e); });
+          __promesas.push(window.__lrDB.collection('pedidosWeb').doc(idSeguro(key)).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando pedido web', p && p.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Promociones del catálogo público
@@ -993,6 +1013,7 @@
   }, function(err){ console.error('Error sincronizando promos:', err); window.__lrSync.promosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSavePromos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoPromosSnapshot || {};
     var vistos = {};
     lista.forEach(function(p){
@@ -1001,15 +1022,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
-          window.__lrDB.collection('promos').doc(idSeguro(key)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando promo', key, e); });
+          __promesas.push(window.__lrDB.collection('promos').doc(idSeguro(key)).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando promo', p && p.id, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection('promos').doc(idSeguro(key)).delete().catch(function(e){ console.error('Error borrando promo', key, e); });
+        __promesas.push(window.__lrDB.collection('promos').doc(idSeguro(key)).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
@@ -1024,6 +1046,7 @@
   }, function(err){ console.error('Error sincronizando historial de stock:', err); window.__lrSync.stockMovsListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveStockMovs = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoStockMovsSnapshot || {};
     if(lista.length>2000) lista = lista.slice(-2000);
     lista.forEach(function(m){
@@ -1031,10 +1054,11 @@
         var key = String(m.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(m)){
-          window.__lrDB.collection('stockMovsHistorial').doc(idSeguro(key)).set(limpiarUndefined(m)).catch(function(e){ console.error('Error guardando movimiento de stock', key, e); });
+          __promesas.push(window.__lrDB.collection('stockMovsHistorial').doc(idSeguro(key)).set(limpiarUndefined(m)));
         }
       }catch(e){ console.error('Error preparando movimiento de stock', m && m.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Semanas de colchón para el cálculo de pedidos sugeridos
@@ -1082,6 +1106,7 @@
   }, function(err){ console.error('Error sincronizando items manuales:', err); window.__lrSync.itemsManualesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveItemsManuales = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoItemsManualesSnapshot || {};
     var vistos = {};
     lista.forEach(function(it){
@@ -1090,15 +1115,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(it)){
-          window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).set(limpiarUndefined(it)).catch(function(e){ console.error('Error guardando item manual', key, e); });
+          __promesas.push(window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).set(limpiarUndefined(it)));
         }
       }catch(e){ console.error('Error preparando item manual', it && it.id, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).delete().catch(function(e){ console.error('Error borrando item manual', key, e); });
+        __promesas.push(window.__lrDB.collection('itemsManualesCatalogo').doc(idSeguro(key)).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Configuración de liquidez (documento único)
@@ -1163,16 +1189,18 @@
   }, function(err){ console.error('Error sincronizando retiros de caja:', err); window.__lrSync.retirosCajaListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveRetirosCaja = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoRetirosCajaSnapshot || {};
     lista.forEach(function(r){
       try{
         var key = String(r.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(r)){
-          window.__lrDB.collection(window.__lrCOL.retirosCaja).doc(key).set(limpiarUndefined(r)).catch(function(e){ console.error('Error guardando retiro de caja', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.retirosCaja).doc(key).set(limpiarUndefined(r)));
         }
       }catch(e){ console.error('Error preparando retiro de caja', r && r.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Clientes (club de fidelidad / puntos) — se identifican por DNI, no por id
@@ -1186,6 +1214,7 @@
   }, function(err){ console.error('Error sincronizando clientes:', err); window.__lrSync.clientesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveClientes = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoClientesSnapshot || {};
     var vistos = {};
     lista.forEach(function(c){
@@ -1193,15 +1222,16 @@
         vistos[c.dni] = true;
         var antes = prev[c.dni];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.clientes).doc(c.dni).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando cliente', c.dni, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.clientes).doc(c.dni).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando cliente', c && c.dni, e); }
     });
     Object.keys(prev).forEach(function(dni){
       if(!vistos[dni]){
-        window.__lrDB.collection(window.__lrCOL.clientes).doc(dni).delete().catch(function(e){ console.error('Error borrando cliente', dni, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.clientes).doc(dni).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Sorteos
@@ -1216,16 +1246,18 @@
   }, function(err){ console.error('Error sincronizando sorteos:', err); window.__lrSync.sorteosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveSorteos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoSorteosSnapshot || {};
     lista.forEach(function(s){
       try{
         var key = String(s.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(s)){
-          window.__lrDB.collection(window.__lrCOL.sorteos).doc(key).set(limpiarUndefined(s)).catch(function(e){ console.error('Error guardando sorteo', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.sorteos).doc(key).set(limpiarUndefined(s)));
         }
       }catch(e){ console.error('Error preparando sorteo', s && s.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Proveedores (lista curada, con borrado si se elimina uno)
@@ -1239,6 +1271,7 @@
   }, function(err){ console.error('Error sincronizando proveedores:', err); window.__lrSync.proveedoresListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveProveedores = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoProveedoresSnapshot || {};
     var vistos = {};
     lista.forEach(function(p){
@@ -1246,15 +1279,16 @@
         vistos[p.nombre] = true;
         var antes = prev[p.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
-          window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(p.nombre)).set(limpiarUndefined(p)).catch(function(e){ console.error('Error guardando proveedor', p.nombre, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(p.nombre)).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando proveedor', p && p.nombre, e); }
     });
     Object.keys(prev).forEach(function(nombre){
       if(!vistos[nombre]){
-        window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(nombre)).delete().catch(function(e){ console.error('Error borrando proveedor', nombre, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(nombre)).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Combos (lista curada, con borrado si se elimina uno)
@@ -1269,6 +1303,7 @@
   }, function(err){ console.error('Error sincronizando combos:', err); window.__lrSync.combosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCombos = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoCombosSnapshot || {};
     var vistos = {};
     lista.forEach(function(c){
@@ -1276,15 +1311,16 @@
         vistos[c.nombre] = true;
         var antes = prev[c.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(c.nombre)).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando combo', c.nombre, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(c.nombre)).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando combo', c && c.nombre, e); }
     });
     Object.keys(prev).forEach(function(nombre){
       if(!vistos[nombre]){
-        window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(nombre)).delete().catch(function(e){ console.error('Error borrando combo', nombre, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(nombre)).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Cierres mensuales (resumen de Liquidez por período)
@@ -1299,16 +1335,18 @@
   }, function(err){ console.error('Error sincronizando cierres mensuales:', err); window.__lrSync.cierresMesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCierresMes = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoCierresMesSnapshot || {};
     lista.forEach(function(c){
       try{
         var key = String(c.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
-          window.__lrDB.collection(window.__lrCOL.cierresMes).doc(key).set(limpiarUndefined(c)).catch(function(e){ console.error('Error guardando cierre mensual', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.cierresMes).doc(key).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando cierre mensual', c && c.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Log de cambios de catálogo (historial de precios/costos, solo se agrega)
@@ -1323,16 +1361,18 @@
   }, function(err){ console.error('Error sincronizando log de catálogo:', err); window.__lrSync.logCatalogoListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveLogCatalogo = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoLogCatalogoSnapshot || {};
     lista.forEach(function(l){
       try{
         var key = String(l.id);
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(l)){
-          window.__lrDB.collection(window.__lrCOL.logCatalogo).doc(key).set(limpiarUndefined(l)).catch(function(e){ console.error('Error guardando log de catálogo', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.logCatalogo).doc(key).set(limpiarUndefined(l)));
         }
       }catch(e){ console.error('Error preparando log de catálogo', l && l.id, e); }
     });
+      return Promise.all(__promesas);
   };
 
   // Alertas de stock (no tienen id propio — se identifican por nombre+fecha)
@@ -1347,6 +1387,7 @@
   }, function(err){ console.error('Error sincronizando alertas de stock:', err); window.__lrSync.stockAlertsListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveStockAlerts = function(lista){
+    var __promesas = [];
     var prev = window.__lrSync.ultimoStockAlertsSnapshot || {};
     var vistos = {};
     lista.forEach(function(a){
@@ -1355,15 +1396,16 @@
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(a)){
-          window.__lrDB.collection(window.__lrCOL.stockAlerts).doc(key).set(limpiarUndefined(a)).catch(function(e){ console.error('Error guardando alerta de stock', key, e); });
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.stockAlerts).doc(key).set(limpiarUndefined(a)));
         }
       }catch(e){ console.error('Error preparando alerta de stock', a, e); }
     });
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
-        window.__lrDB.collection(window.__lrCOL.stockAlerts).doc(key).delete().catch(function(e){ console.error('Error borrando alerta de stock', key, e); });
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.stockAlerts).doc(key).delete());
       }
     });
+      return Promise.all(__promesas);
   };
 
   // Contador de ventas por producto (hoy desactivado en la UI, pero se conserva)
@@ -8470,7 +8512,7 @@ function registrarRetiroCaja() {
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
-  saveRetirosCaja(retiros);
+  window.__lrRetirosCajaCache = retiros;
   // Registrar en historial de movimientos
   var notaTxt = nota ? nota : 'Retiro de caja';
   registrarOperacion('retiro', [{name: notaTxt, qty:1, precio:monto, subtotal:monto}], monto,
@@ -8478,7 +8520,8 @@ function registrarRetiroCaja() {
   montoEl.value='';
   if(notaEl) notaEl.value='';
   document.getElementById('retiroModal').classList.remove('open');
-  showToast('💵 Retiro registrado: $'+Number(monto).toLocaleString('es-AR'));
+  guardarOperacionProtegida('RetirosCaja', getRetirosCaja, 'Retiro de $'+Number(monto).toLocaleString('es-AR'));
+  if(typeof renderLiquidez==='function') renderLiquidez();
   // recalcular arqueo si está abierto
 }
 
@@ -8503,14 +8546,15 @@ function registrarIngresoCaja() {
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
-  saveRetirosCaja(retiros);
+  window.__lrRetirosCajaCache = retiros;
   var notaTxt = nota ? nota : 'Ingreso de efectivo a caja';
   registrarOperacion('ingreso-caja', [{name: notaTxt, qty:1, precio:monto, subtotal:monto}], monto,
     currentEmp ? currentEmp.nombre : 'Admin', 'Ingreso de efectivo');
   montoEl.value='';
   if(notaEl) notaEl.value='';
   document.getElementById('ingresoModal').classList.remove('open');
-  showToast('💵 Ingreso registrado: $'+Number(monto).toLocaleString('es-AR'));
+  guardarOperacionProtegida('RetirosCaja', getRetirosCaja, 'Ingreso de $'+Number(monto).toLocaleString('es-AR'));
+  if(typeof renderLiquidez==='function') renderLiquidez();
 }
 
 // ── CARGA VIRTUAL (recarga de celular / DirecTV con Posnet de Mercado Pago) ──
@@ -8588,7 +8632,7 @@ function registrarCargaVirtual() {
     empleado: currentEmp ? currentEmp.nombre : '—',
     turno: turnoActual()
   });
-  saveCargasVirtuales(cargas);
+  window.__lrCargasVirtualesCache = cargas;
 
   registrarOperacion('carga-virtual',
     [{name: 'Carga '+_cvTipo+' ('+_cvMedio+')', qty:1, precio:montoCobrado, subtotal:montoCobrado}],
@@ -8596,7 +8640,7 @@ function registrarCargaVirtual() {
     'Carga virtual · MP -'+fmt(montoMP)+' · Ganancia '+fmt(ganancia));
 
   cerrarCargaVirtualModal();
-  showToast('📱 Carga registrada — ganancia '+fmt(ganancia));
+  guardarOperacionProtegida('CargasVirtuales', getCargasVirtuales, 'Carga virtual (ganancia '+fmt(ganancia)+')');
   autoSaveNow();
 }
 
@@ -8657,14 +8701,14 @@ function registrarPrestamo() {
     quien: quien, monto: monto, medio: _prMedio, nota: nota,
     empleado: currentEmp?currentEmp.nombre:'—'
   });
-  savePrestamos(prestamos);
+  window.__lrPrestamosCache = prestamos;
 
   registrarOperacion('prestamo',
     [{name: 'Préstamo de '+quien+(nota?' — '+nota:''), qty:1, precio:monto, subtotal:monto}],
     monto, currentEmp?currentEmp.nombre:'Admin', 'Préstamo recibido ('+_prMedio+')');
 
   cerrarPrestamoModal();
-  showToast('💰 Préstamo de '+quien+' registrado: '+fmt(monto));
+  guardarOperacionProtegida('Prestamos', getPrestamos, 'Préstamo de '+quien+' ('+fmt(monto)+')');
   autoSaveNow();
   if(typeof renderLiquidez==='function') renderLiquidez();
 }
@@ -8754,14 +8798,14 @@ function registrarPrestamoDado() {
     quien: quien, monto: monto, medio: _pdMedio, nota: nota,
     empleado: currentEmp?currentEmp.nombre:'—'
   });
-  savePrestamos(prestamos);
+  window.__lrPrestamosCache = prestamos;
 
   registrarOperacion('prestamo',
     [{name: 'Préstamo a '+quien+(nota?' — '+nota:''), qty:1, precio:monto, subtotal:monto}],
     monto, currentEmp?currentEmp.nombre:'Admin', 'Préstamo dado ('+_pdMedio+')');
 
   cerrarPrestamoDadoModal();
-  showToast('📤 Préstamo a '+quien+' registrado: '+fmt(monto));
+  guardarOperacionProtegida('Prestamos', getPrestamos, 'Préstamo a '+quien+' ('+fmt(monto)+')');
   autoSaveNow();
   if(typeof renderLiquidez==='function') renderLiquidez();
 }
@@ -8829,7 +8873,7 @@ function registrarDevolucionRecibida() {
     quien: _drQuienSeleccionado, monto: monto, medio: _drMedio, nota: nota,
     empleado: currentEmp?currentEmp.nombre:'—'
   });
-  savePrestamos(prestamos);
+  window.__lrPrestamosCache = prestamos;
 
   registrarOperacion('prestamo',
     [{name: 'Devolución de '+_drQuienSeleccionado+(nota?' — '+nota:''), qty:1, precio:monto, subtotal:monto}],
@@ -8837,7 +8881,7 @@ function registrarDevolucionRecibida() {
 
   var quienMostrado = _drQuienSeleccionado;
   cerrarDevolucionRecibidaModal();
-  showToast('📥 Devolución de '+quienMostrado+' registrada: '+fmt(monto));
+  guardarOperacionProtegida('Prestamos', getPrestamos, 'Devolución de '+quienMostrado+' ('+fmt(monto)+')');
   autoSaveNow();
   if(typeof renderLiquidez==='function') renderLiquidez();
 }
@@ -8898,14 +8942,15 @@ function registrarTransferCuentas() {
     desde: _tcDesde, hacia: _tcHacia, monto: monto, nota: nota,
     empleado: currentEmp?currentEmp.nombre:'—'
   });
-  saveTransferCuentas(transfers);
+  window.__lrTransferCuentasCache = transfers;
 
   registrarOperacion('transfer-cuentas',
     [{name: NOMBRES_CUENTA_TC[_tcDesde]+' → '+NOMBRES_CUENTA_TC[_tcHacia]+(nota?' — '+nota:''), qty:1, precio:monto, subtotal:monto}],
     monto, currentEmp?currentEmp.nombre:'Admin', 'Transferencia interna');
 
+  var _tcDesc = fmt(monto)+' de '+NOMBRES_CUENTA_TC[_tcDesde]+' a '+NOMBRES_CUENTA_TC[_tcHacia];
   cerrarTransferCuentasModal();
-  showToast('🔄 '+fmt(monto)+' movido de '+NOMBRES_CUENTA_TC[_tcDesde]+' a '+NOMBRES_CUENTA_TC[_tcHacia]);
+  guardarOperacionProtegida('TransferCuentas', getTransferCuentas, 'Traspaso de '+_tcDesc);
   autoSaveNow();
   if(typeof renderLiquidez==='function') renderLiquidez();
 }
@@ -8979,7 +9024,7 @@ function registrarDevolucionPrestamo() {
     quien: _dpQuienSeleccionado, monto: monto, medio: _dpMedio, nota: nota,
     empleado: currentEmp?currentEmp.nombre:'—'
   });
-  savePrestamos(prestamos);
+  window.__lrPrestamosCache = prestamos;
 
   registrarOperacion('prestamo',
     [{name: 'Devolución a '+_dpQuienSeleccionado+(nota?' — '+nota:''), qty:1, precio:monto, subtotal:monto}],
@@ -8987,7 +9032,7 @@ function registrarDevolucionPrestamo() {
 
   var quienMostrado = _dpQuienSeleccionado;
   cerrarDevolucionPrestamoModal();
-  showToast('↩️ Devolución a '+quienMostrado+' registrada: '+fmt(monto));
+  guardarOperacionProtegida('Prestamos', getPrestamos, 'Devolución a '+quienMostrado+' ('+fmt(monto)+')');
   autoSaveNow();
   if(typeof renderLiquidez==='function') renderLiquidez();
 }
@@ -13372,6 +13417,102 @@ function iniciarAutoguardado() {
 function autoSaveNow() {
   if(_fileHandle) writeToFile();
 }
+
+// ── GUARDADO PROTEGIDO PARA OPERACIONES DE DINERO ──────────────────────────
+// Ingresos/retiros de caja, préstamos, transferencias entre cuentas, egresos,
+// fiados, consumos, cargas virtuales, sorteos. Antes, todas estas pantallas
+// mostraban "✅ registrado" al instante, sin esperar ninguna confirmación real
+// de la nube — si en ese momento fallaba la subida (señal cortada un segundo,
+// cambio de wifi a datos, etc.), la operación quedaba solo en ese dispositivo
+// y se perdía en silencio, sin que nadie se enterara hasta days después al
+// notar que la caja no cerraba.
+//
+// Este helper le aplica a cualquiera de esas operaciones la misma protección
+// que ya usa el catálogo: respaldo local inmediato en el dispositivo, reintento
+// automático hasta confirmar, y aviso honesto de en qué estado está realmente
+// (confirmado en la nube vs. guardado acá esperando señal). Nunca se pierde.
+var SK_PENDING_OPS = 'lr_pending_operaciones';
+
+function _lrLeerPendientesOps() {
+  try { return JSON.parse(localStorage.getItem(SK_PENDING_OPS) || '[]'); } catch(e){ return []; }
+}
+function _lrEscribirPendientesOps(arr) {
+  try { localStorage.setItem(SK_PENDING_OPS, JSON.stringify(arr)); } catch(e){}
+}
+
+var _lrReintentoOpsId = null;
+function _lrIniciarReintentoOps() {
+  if(_lrReintentoOpsId) return;
+  _lrReintentoOpsId = setInterval(function(){
+    var pend = _lrLeerPendientesOps();
+    if(!pend.length){ clearInterval(_lrReintentoOpsId); _lrReintentoOpsId = null; return; }
+    pend.forEach(function(op){
+      var fn = window['__lrSave'+op.coleccion];
+      var getter = window['__lrGetter_'+op.coleccion];
+      if(!fn || !getter) return;
+      fn(getter()).then(function(){
+        var restantes = _lrLeerPendientesOps().filter(function(o){ return o.id !== op.id; });
+        _lrEscribirPendientesOps(restantes);
+        if(typeof showToast==='function') showToast('✅ '+op.etiqueta+' confirmado en la nube');
+        if(typeof renderLiquidez==='function') renderLiquidez();
+        if(!restantes.length){ clearInterval(_lrReintentoOpsId); _lrReintentoOpsId = null; }
+      }).catch(function(){ /* sigue pendiente, se reintenta en el próximo ciclo */ });
+    });
+  }, 20000);
+}
+window.addEventListener('online', function(){
+  if(_lrLeerPendientesOps().length) _lrIniciarReintentoOps();
+});
+
+// Uso: guardarOperacionProtegida('Prestamos', getPrestamos, 'Préstamo de Juan')
+function guardarOperacionProtegida(coleccion, getter, etiqueta) {
+  window['__lrGetter_'+coleccion] = getter; // para que el reintento sepa releer el estado actual
+  var saveFn = window['__lrSave'+coleccion];
+  if(!saveFn){ showToast('💾 '+etiqueta+' guardado (local)'); return Promise.resolve(); }
+
+  var opId = 'op_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  var pend = _lrLeerPendientesOps();
+  pend.push({id:opId, coleccion:coleccion, etiqueta:etiqueta, ts:Date.now()});
+  _lrEscribirPendientesOps(pend);
+
+  var promesa = saveFn(getter());
+  if(!window.__lrConTimeoutAviso){
+    return promesa.then(function(){
+      _lrEscribirPendientesOps(_lrLeerPendientesOps().filter(function(o){ return o.id !== opId; }));
+      showToast('✅ '+etiqueta+' confirmado');
+    });
+  }
+  return window.__lrConTimeoutAviso(promesa, 15000, function(){ guardarOperacionProtegida(coleccion, getter, etiqueta); })
+    .then(function(r){
+      if(r.pendiente){
+        showToast('💾 '+etiqueta+' guardado — se subirá solo cuando haya señal');
+        _lrIniciarReintentoOps();
+      } else {
+        _lrEscribirPendientesOps(_lrLeerPendientesOps().filter(function(o){ return o.id !== opId; }));
+        showToast('✅ '+etiqueta+' confirmado en la nube');
+      }
+    })
+    .catch(function(){
+      showToast('💾 '+etiqueta+' guardado acá — reintentando subir solo', true);
+      _lrIniciarReintentoOps();
+    });
+}
+
+// Al abrir la página: si quedaron operaciones sin confirmar de una sesión
+// anterior (se cerró la pestaña, se cortó la luz), avisar y reintentar solas.
+(function recuperarOperacionesPendientes(){
+  var intentos = 0;
+  var esperar = setInterval(function(){
+    intentos++;
+    var pend = _lrLeerPendientesOps();
+    if(!pend.length){ clearInterval(esperar); return; }
+    if(window.__lrSync && window.__lrSync.prestamosListos){
+      clearInterval(esperar);
+      if(typeof showToast==='function') showToast('⚠️ Hay '+pend.length+' operación(es) sin confirmar de antes — reintentando ahora...');
+      _lrIniciarReintentoOps();
+    } else if(intentos > 90){ clearInterval(esperar); }
+  }, 500);
+})();
 
 // Actualizar indicador en el admin
 function actualizarStorageStatus() {
