@@ -3535,7 +3535,7 @@ body.night-on{background:#080005}
     <div id="cierreMesResumen"></div>
     <div style="margin-top:14px;font-family:Oswald,sans-serif;font-size:.68rem;color:var(--gray);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Saldos reales al cierre (opcional)</div>
     <div class="field"><label>Efectivo real contado ($)</label><input type="text" inputmode="numeric" id="cierreMesEfec" placeholder="0" oninput="formatMontoInput(this)"></div>
-    <div class="field"><label>Saldo real Lemon Cash ($)</label><input type="text" inputmode="numeric" id="cierreMesLC" placeholder="0" oninput="formatMontoInput(this)"></div>
+    <input type="hidden" id="cierreMesLC" value="0">
     <div class="field"><label>Saldo real Mercado Pago ($)</label><input type="text" inputmode="numeric" id="cierreMesMP" placeholder="0" oninput="formatMontoInput(this)"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button onclick="descargarResumenMes()" style="flex:1;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">📄 Descargar</button>
@@ -14111,10 +14111,6 @@ function renderDashboard() {
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(liqVivo.efectivoCaja)+'</div>'+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
-          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🍋 Lemon</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold);font-weight:700">'+fmt(liqVivo.lemonCash)+'</div>'+
-        '</div>'+
-        '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Merc. Pago</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(liqVivo.mercadoPago)+'</div>'+
         '</div>'+
@@ -14189,7 +14185,7 @@ function renderDashboard() {
           ' · 🌙 '+fmt(nocturnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))))+
       dc('','ventas', dv('💵 Efectivo', fmt(medios.Efectivo), 'green', ''))+
       dc('','ventas', dv('📲 Transferencia', fmt(medios.Transferencia), 'blue', ''))+
-      dc('','ventas', dv('💳 Débito neto', fmt(debitoNeto), 'gold', 'posnet: '+fmt(Math.round(costoPostnet))))+
+      dc('','ventas', dv('💳 Posnet neto', fmt(debitoNeto), 'gold', 'comisión: '+fmt(Math.round(costoPostnet))))+
       dc(totalEgr>0?'red':'','egresos', dv('💸 Egresos hoy', fmt(totalEgr), totalEgr>0?'red':'', egresosHoy.length+' pagos'))+
       dc('full '+(netoHoy>=0?'green':'red'),'rentabilidad',
         dv((netoHoy>=0?'✅':'🔴')+' Resultado del día',
@@ -18869,7 +18865,6 @@ function calcularYMostrarCierre(desde, hasta) {
     '<hr style="border-color:var(--border);margin:8px 0">'+
     resumenRow('💵 Efectivo en caja', fmt(liq.efectivoCaja), 'var(--white)')+
     resumenRow('💰 Efectivo fuera', fmt(liq.efectivoFuera), 'var(--white)')+
-    resumenRow('📲 Lemon Cash', fmt(liq.lemonCash), 'var(--gold)')+
     resumenRow('💳 Mercado Pago', fmt(liq.mercadoPago), '#1e90ff')+
     '</div>';
 
@@ -18949,7 +18944,6 @@ function descargarResumenMes() {
     '</table><h2>💰 Saldos calculados vs reales</h2><table>'+
     '<tr><td></td><td style="text-align:right;color:#888;font-size:.85rem">Sistema</td><td style="text-align:right;color:#888;font-size:.85rem">Real</td></tr>'+
     '<tr><td>💵 Efectivo (caja + fuera)</td><td>'+fmt(d.liq.efectivoCaja+d.liq.efectivoFuera)+'</td><td>'+(efecReal>0?fmt(efecReal):'—')+'</td></tr>'+
-    '<tr><td>📲 Lemon Cash</td><td>'+fmt(d.liq.lemonCash)+'</td><td>'+(lcReal>0?fmt(lcReal):'—')+'</td></tr>'+
     '<tr><td>💳 Mercado Pago</td><td>'+fmt(d.liq.mercadoPago)+'</td><td>'+(mpReal>0?fmt(mpReal):'—')+'</td></tr>'+
     '</table>'+
     '<p style="color:#888;font-size:.75rem;margin-top:30px">Generado por Limay Rock POS — '+new Date().toLocaleString('es-AR')+'</p>'+
