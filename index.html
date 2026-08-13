@@ -2790,7 +2790,7 @@ body.night-on{background:#080005}
       <div class="pago-btns">
         <button class="pago-btn" onclick="selPago('Efectivo')" id="pago-Efectivo">💵 Efectivo</button>
         <button class="pago-btn" onclick="selPago('Transferencia')" id="pago-Transferencia">📲 Transfer.</button>
-        <button class="pago-btn" onclick="selPago('Débito')" id="pago-Débito">💳 Débito</button>
+        <button class="pago-btn" onclick="selPago('Débito')" id="pago-Débito">💳 Posnet</button>
       </div>
       <!-- CALCULADORA DE VUELTO -->
       <div class="vuelto-box" id="vueltoBox">
@@ -2823,7 +2823,7 @@ body.night-on{background:#080005}
           <input type="number" class="mixto-input" id="mixtoTransferencia" placeholder="$ 0" min="0" oninput="calcMixto()">
         </div>
         <div class="mixto-row">
-          <span class="mixto-medio">💳 Débito</span>
+          <span class="mixto-medio">💳 Posnet</span>
           <span class="mixto-resto" id="restoDebito">—</span>
           <input type="number" class="mixto-input" id="mixtoDebito" placeholder="$ 0" min="0" oninput="calcMixto()">
         </div>
@@ -2891,7 +2891,7 @@ body.night-on{background:#080005}
     <div class="pago-btns">
       <button class="pago-btn" onclick="selPago2('Efectivo')" id="pago2-Efectivo">💵 Efectivo</button>
       <button class="pago-btn" onclick="selPago2('Transferencia')" id="pago2-Transferencia">📲 Transfer.</button>
-      <button class="pago-btn" onclick="selPago2('Débito')" id="pago2-Débito">💳 Débito</button>
+      <button class="pago-btn" onclick="selPago2('Débito')" id="pago2-Débito">💳 Posnet</button>
     </div>
     <!-- CALCULADORA DE VUELTO -->
     <div class="vuelto-box" id="vueltoBox2">
@@ -2922,7 +2922,7 @@ body.night-on{background:#080005}
         <input type="number" class="mixto-input" id="mixtoTransferencia2" placeholder="$ 0" min="0" oninput="calcMixto2()">
       </div>
       <div class="mixto-row">
-        <span class="mixto-medio">💳 Débito</span>
+        <span class="mixto-medio">💳 Posnet</span>
         <span class="mixto-resto" id="restoDebito2">—</span>
         <input type="number" class="mixto-input" id="mixtoDebito2" placeholder="$ 0" min="0" oninput="calcMixto2()">
       </div>
@@ -3063,7 +3063,7 @@ body.night-on{background:#080005}
       </div>
 
       <!-- KPIs DEL DÍA -->
-      <div class="reporte-header" id="statGrid"><div class="reporte-box green"><div class="rlbl">Ventas del día</div><div class="rval">60</div></div><div class="reporte-box"><div class="rlbl">Total del día</div><div class="rval">$ 762.100</div></div><div class="reporte-box"><div class="rlbl">☀️ Diurnas</div><div class="rval" style="color:var(--gold)">0 · $ 0</div></div><div class="reporte-box red"><div class="rlbl">🌙 Nocturnas</div><div class="rval">60 · $ 762.100</div></div><div class="reporte-box"><div class="rlbl">💵 Efectivo</div><div class="rval" style="font-size:1rem">$ 196.900</div></div><div class="reporte-box"><div class="rlbl">📲 Transfer.</div><div class="rval" style="font-size:1rem">$ 483.250</div></div><div class="reporte-box blue"><div class="rlbl">💳 Débito</div><div class="rval" style="font-size:1rem">$ 81.950</div></div><div class="reporte-box"><div class="rlbl">Total ventas</div><div class="rval" style="font-size:.9rem">115 total</div></div></div>
+      <div class="reporte-header" id="statGrid"><div class="reporte-box green"><div class="rlbl">Ventas del día</div><div class="rval">60</div></div><div class="reporte-box"><div class="rlbl">Total del día</div><div class="rval">$ 762.100</div></div><div class="reporte-box"><div class="rlbl">☀️ Diurnas</div><div class="rval" style="color:var(--gold)">0 · $ 0</div></div><div class="reporte-box red"><div class="rlbl">🌙 Nocturnas</div><div class="rval">60 · $ 762.100</div></div><div class="reporte-box"><div class="rlbl">💵 Efectivo</div><div class="rval" style="font-size:1rem">$ 196.900</div></div><div class="reporte-box"><div class="rlbl">📲 Transfer.</div><div class="rval" style="font-size:1rem">$ 483.250</div></div><div class="reporte-box blue"><div class="rlbl">💳 Posnet</div><div class="rval" style="font-size:1rem">$ 81.950</div></div><div class="reporte-box"><div class="rlbl">Total ventas</div><div class="rval" style="font-size:.9rem">115 total</div></div></div>
 
       <!-- LISTA DE VENTAS -->
       <div id="manualPresetsReport" style="margin-bottom:10px"></div>
@@ -3508,19 +3508,12 @@ body.night-on{background:#080005}
     <div style="font-family:'Oswald',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:14px">⚙ Saldos del período</div>
     <div class="field"><label>Efectivo inicial en caja ($)</label><input type="text" inputmode="numeric" id="efecSaldoIni" placeholder="0" oninput="formatMontoInput(this)"></div>
     <div class="field"><label>Efectivo fuera de caja ($)</label><input type="text" inputmode="numeric" id="efecFueraSaldoIni" placeholder="0" oninput="formatMontoInput(this)"></div>
-    <div class="field"><label>Saldo inicial Lemon Cash ($)</label><input type="text" inputmode="numeric" id="lcSaldoIni" placeholder="0" oninput="formatMontoInput(this)"></div>
+    <input type="hidden" id="lcSaldoIni" value="0">
     <div class="field"><label>Saldo inicial Mercado Pago ($)</label><input type="text" inputmode="numeric" id="mpSaldoIni" placeholder="0" oninput="formatMontoInput(this)"></div>
-    <div class="field"><label>% Recargo por débito / Comisión MP</label><input type="number" id="mpComision" value="10" min="0" max="30" step="0.1" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;width:100%;font-family:Barlow,sans-serif;font-size:.85rem">
-      <div style="font-size:.66rem;color:var(--gray);margin-top:4px">Este único número se usa en todo el sistema: el recargo que se cobra al vender con débito, y el cálculo de Mercado Pago en Liquidez.</div>
+    <div class="field"><label>% Recargo Posnet / Comisión MP</label><input type="number" id="mpComision" value="10" min="0" max="30" step="0.1" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;width:100%;font-family:Barlow,sans-serif;font-size:.85rem">
+      <div style="font-size:.66rem;color:var(--gray);margin-top:4px">Este único número se usa en todo el sistema: el recargo que se cobra al vender con Posnet, y el cálculo de Mercado Pago en Liquidez.</div>
     </div>
-    <div class="field">
-      <label>Las ventas por Transferencia se suman a</label>
-      <select id="destinoTransferSel" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;width:100%;font-family:Barlow,sans-serif;font-size:.85rem">
-        <option value="LemonCash">📲 Lemon Cash</option>
-        <option value="MercadoPago">📲 Mercado Pago</option>
-      </select>
-      <div style="font-size:.66rem;color:var(--gray);margin-top:4px">Cambialo el día que dejes de usar Lemon Cash — desde ese momento, cada venta por transferencia nueva se va a sumar a Mercado Pago en vez de Lemon Cash.</div>
-    </div>
+    <input type="hidden" id="destinoTransferSel" value="MercadoPago">
     <div id="liquidezConfigFecha" style="font-size:.68rem;color:var(--gold);margin-top:4px;text-align:center"></div>
     <div style="font-size:.65rem;color:var(--gray);margin-top:4px;text-align:center">Las ventas y egresos registrados DESPUÉS de guardar se suman a estos saldos.</div>
     <button onclick="guardarLiquidezConfig()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700;margin-top:6px">✓ Guardar</button>
@@ -4427,7 +4420,7 @@ body.night-on{background:#080005}
     <div class="cobro-medio-btns">
       <div class="cobro-medio-btn" id="cobrom-Efectivo" onclick="selCobroMedio('Efectivo')">💵 Efectivo</div>
       <div class="cobro-medio-btn" id="cobrom-Transferencia" onclick="selCobroMedio('Transferencia')">📲 Transfer.</div>
-      <div class="cobro-medio-btn" id="cobrom-Débito" onclick="selCobroMedio('Débito')">💳 Débito</div>
+      <div class="cobro-medio-btn" id="cobrom-Débito" onclick="selCobroMedio('Débito')">💳 Posnet</div>
     </div>
 
     <!-- Resumen -->
@@ -4989,12 +4982,11 @@ body.night-on{background:#080005}
 <div class="arqueo-modal" id="transferCuentasModal" style="z-index:710">
   <div class="arqueo-box">
     <h3>🔄 Transferir entre cuentas</h3>
-    <div class="sub">Mover la misma plata de un lugar a otro (ej: de Mercado Pago a Lemon para pagarle a un proveedor). No es ingreso ni egreso — no afecta Ingresos ni Resultado neto.</div>
+    <div class="sub">Mover la misma plata de un lugar a otro (ej: sacar plata de Mercado Pago y ponerla en la caja). No es ingreso ni egreso — no afecta Ingresos ni Resultado neto.</div>
     <div class="arqueo-field">
       <label>Desde</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
         <button type="button" class="pago-btn" id="tcDesdeEfectivo" onclick="selTransferCuenta('desde','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
-        <button type="button" class="pago-btn" id="tcDesdeLemonCash" onclick="selTransferCuenta('desde','LemonCash')" style="flex:1;min-width:90px">📲 Lemon Cash</button>
         <button type="button" class="pago-btn" id="tcDesdeMercadoPago" onclick="selTransferCuenta('desde','MercadoPago')" style="flex:1;min-width:90px">💳 Mercado Pago</button>
       </div>
     </div>
@@ -5003,7 +4995,6 @@ body.night-on{background:#080005}
       <label>Hacia</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
         <button type="button" class="pago-btn" id="tcHaciaEfectivo" onclick="selTransferCuenta('hacia','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
-        <button type="button" class="pago-btn" id="tcHaciaLemonCash" onclick="selTransferCuenta('hacia','LemonCash')" style="flex:1;min-width:90px">📲 Lemon Cash</button>
         <button type="button" class="pago-btn" id="tcHaciaMercadoPago" onclick="selTransferCuenta('hacia','MercadoPago')" style="flex:1;min-width:90px">💳 Mercado Pago</button>
       </div>
     </div>
@@ -6416,7 +6407,7 @@ function renderVentas() {
     '<div class="reporte-box" style="grid-column:span 2;cursor:pointer;'+(_filtroMedioVenta===null?'border-color:var(--green);background:rgba(0,204,68,.1)':'border-color:rgba(0,204,68,.3);background:rgba(0,204,68,.05)')+'" onclick="selFiltroMedioVenta(null)">'+
       '<div class="rlbl">💰 Total neto cobrado del día</div>'+
       '<div class="rval" style="font-size:1.8rem;color:var(--green)">'+fmt(netoTotal)+'</div>'+
-      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Débito neto · '+ventasReales.length+' ventas · tocá para ver todo</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas · tocá para ver todo</div>'+
     '</div>'+
     // Diurnas / Nocturnas
     '<div class="reporte-box">'+
@@ -6439,7 +6430,7 @@ function renderVentas() {
       '<div class="rval" style="font-size:1.1rem;color:#3498DB">'+fmt(medios.Transferencia)+'</div>'+
     '</div>'+
     '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Débito'?'border-color:var(--gold);background:rgba(245,194,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Débito\')">'+
-      '<div class="rlbl">💳 Débito neto'+(_filtroMedioVenta==='Débito'?' ▲':'')+'</div>'+
+      '<div class="rlbl">💳 Posnet neto'+(_filtroMedioVenta==='Débito'?' ▲':'')+'</div>'+
       '<div class="rval" style="font-size:1.1rem;color:var(--gold)">'+fmt(debitoNeto)+'</div>'+
       '<div style="font-size:.65rem;color:var(--gray);margin-top:2px">bruto '+fmt(medios["Débito"])+' − posnet '+fmt(Math.round(costoPostnet))+'</div>'+
     '</div>'+
@@ -6545,7 +6536,7 @@ function renderVentas() {
         detHtml += '<div style="margin-top:6px;padding:5px 0;border-top:1px solid rgba(255,255,255,.08);font-size:.72rem;color:var(--gray)">'+
           (v.mixto.efectivo?'💵 Efectivo: '+fmt(v.mixto.efectivo)+'  ':'')+
           (v.mixto.transferencia?'📲 Transfer.: '+fmt(v.mixto.transferencia)+'  ':'')+
-          (v.mixto.debito?'💳 Débito: '+fmt(v.mixto.debito):'')+'</div>';
+          (v.mixto.debito?'💳 Posnet: '+fmt(v.mixto.debito):'')+'</div>';
       }
       detHtml += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid rgba(255,255,255,.1);margin-top:4px">'+
         '<span style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;color:var(--gray)">TOTAL</span>'+
@@ -8893,7 +8884,7 @@ function saveTransferCuentas(t) { window.__lrTransferCuentasCache = t; if(window
 
 var _tcDesde = null;
 var _tcHacia = null;
-var CUENTAS_TC = ['Efectivo','LemonCash','MercadoPago'];
+var CUENTAS_TC = ['Efectivo','MercadoPago'];
 
 function abrirTransferCuentasModal() {
   _tcDesde = null; _tcHacia = null;
@@ -9666,7 +9657,7 @@ function renderRentDetalle() {
         detHtml += '<div style="margin-top:5px;padding:4px 0;border-top:1px solid rgba(255,255,255,.08);font-size:.7rem;color:var(--gray)">'+
           (v.mixto.efectivo?'💵 Efectivo: '+fmt(v.mixto.efectivo)+'  ':'')+
           (v.mixto.transferencia?'📲 Transfer.: '+fmt(v.mixto.transferencia)+'  ':'')+
-          (v.mixto.debito?'💳 Débito: '+fmt(v.mixto.debito)+(v.recargo>0?' (+'+fmt(v.recargo)+')':''):'')+'</div>';
+          (v.mixto.debito?'💳 Posnet: '+fmt(v.mixto.debito)+(v.recargo>0?' (+'+fmt(v.recargo)+')':''):'')+'</div>';
       }
     }
 
@@ -9846,7 +9837,7 @@ function renderRentabilidad() {
         '<div class="cn">En cuenta bancaria</div>'+
       '</div>'+
       '<div class="cobro-box db">'+
-        '<div class="cl">💳 Débito</div>'+
+        '<div class="cl">💳 Posnet</div>'+
         '<div class="cv">'+fmt(Math.round(netoDebito))+'</div>'+
         '<div class="cn">Neto después del posnet</div>'+
       '</div>';
@@ -12690,9 +12681,10 @@ function renderRepMedios(vA, vB, labelA, labelB) {
     var pct = Math.round(vA_/max*100);
     var diff= vB_>0?Math.round((vA_-vB_)/vB_*100):0;
     var icons = {Efectivo:'💵',Transferencia:'📲',Débito:'💳'};
+  var etiquetaMedio = {Efectivo:'Efectivo',Transferencia:'Transferencia',Débito:'Posnet'};
     var colors= {Efectivo:'var(--green)',Transferencia:'#3498DB',Débito:'var(--gold)'};
     return '<div class="rep-comp-row">'+
-      '<span class="rep-comp-label">'+icons[med]+' '+med+'</span>'+
+      '<span class="rep-comp-label">'+icons[med]+' '+(etiquetaMedio[med]||med)+'</span>'+
       '<div class="rep-comp-bar-wrap"><div class="rep-comp-bar" style="width:'+pct+'%;background:'+colors[med]+'"></div></div>'+
       '<span class="rep-comp-val">'+fmt(vA_)+'</span>'+
       '<span class="rep-comp-diff '+(diff>0?'pos':diff<0?'neg':'neu')+'">'+(diff!==0?(diff>0?'▲':'▼')+Math.abs(diff)+'%':'—')+'</span>'+
@@ -12782,7 +12774,7 @@ function exportarReportePDF() {
       '<div class="kpi"><div class="l">vs '+labelB+'</div><div class="v" style="color:'+(diff>=0?'#27ae60':'#CC0000')+'">'+(diff>=0?'▲':'▼')+Math.abs(diff)+'%</div></div>'+
       '<div class="kpi"><div class="l">💵 Efectivo</div><div class="v">$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">📲 Transfer.</div><div class="v">$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">💳 Débito</div><div class="v">$'+Number(medios['Débito']).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">💳 Posnet</div><div class="v">$'+Number(medios['Débito']).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Top 10 Productos</h3>'+
     '<table><thead><tr><th>#</th><th>Producto</th><th>Unidades</th><th>Revenue</th></tr></thead><tbody>'+
@@ -18048,7 +18040,7 @@ function exportarReporteGeneral() {
       '<div class="kpi"><div class="l">Facturación total</div><div class="v">$'+Number(totalVentas).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">💵 Efectivo</div><div class="v" style="color:#27ae60">$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">📲 Transfer.</div><div class="v" style="color:#3498db">$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">💳 Débito</div><div class="v" style="color:#e67e22">$'+Number(medios['Débito']).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">💳 Posnet</div><div class="v" style="color:#e67e22">$'+Number(medios['Débito']).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#8e44ad">$'+Number(totalConsumos).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Cierres</div><div class="v">'+cierres.length+'</div></div>'+
       '<div class="kpi"><div class="l">⚠ Alertas stock</div><div class="v" style="color:'+( alertasPend.length>0?'#e74c3c':'#27ae60')+'">'+alertasPend.length+'</div></div>'+
@@ -18528,7 +18520,7 @@ function autoDetectTurno() {
 // ── LIQUIDEZ DEL LOCAL ──────────────────────────────────────────────────────
 
 function getLiquidezCfg() {
-  var def = {saldoLC:0, saldoMP:0, comisionMP:10, destinoTransfer:'LemonCash', periodoDesde: fechaLocalStr()};
+  var def = {saldoLC:0, saldoMP:0, comisionMP:10, destinoTransfer:'MercadoPago', periodoDesde: fechaLocalStr()};
   if(window.__lrSync && window.__lrSync.liquidezListos && window.__lrLiquidezCfgCache) {
     return Object.assign({}, def, window.__lrLiquidezCfgCache);
   }
@@ -18695,17 +18687,19 @@ function renderLiquidez() {
   var liq = calcularLiquidez();
   var fmt = function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
 
-  var total = liq.efectivoCaja + liq.efectivoFuera + liq.lemonCash + liq.mercadoPago;
+  // Solo dos cuentas activas: Efectivo y Mercado Pago. Lemon Cash quedó fuera
+  // de uso (cuenta dada de baja), así que ya no se muestra como tarjeta. El
+  // saldo viejo se sigue calculando internamente por si hiciera falta, pero
+  // no se suma al total del local para no inflar la cifra con plata que no está.
+  var total = liq.efectivoCaja + liq.efectivoFuera + liq.mercadoPago;
 
   el.innerHTML =
     liquidezCard('💵','Efectivo en caja', fmt(liq.efectivoCaja),
       'Fuera del local: '+fmt(liq.efectivoFuera), liq.efectivoCaja>=0?'var(--green)':'var(--red)') +
-    liquidezCard('📲','Lemon Cash', fmt(liq.lemonCash),
-      'Transferencias del período', 'var(--gold)') +
     liquidezCard('💳','Mercado Pago', fmt(liq.mercadoPago),
-      'Neto s/comisión '+(liq.comisionMP)+'%', '#1e90ff') +
+      'Transferencias + Posnet neto s/comisión '+(liq.comisionMP)+'%', '#1e90ff') +
     liquidezCard('🏦','Total del local', fmt(total),
-      'Ef.+Fuera+Lemon+MP', 'var(--white)');
+      'Efectivo + Fuera + Mercado Pago', 'var(--white)');
 
   var prBox = document.getElementById('prestamosPendientesBox');
   if(prBox){
@@ -18765,13 +18759,22 @@ function abrirLiquidezConfig() {
   var mpc = document.getElementById('mpComision');
   var efi = document.getElementById('efecSaldoIni');
   var eff = document.getElementById('efecFueraSaldoIni');
-  if(efi) efi.value = cfg.saldoEfec ? Number(cfg.saldoEfec).toLocaleString('es-AR') : '';
-  if(eff) eff.value = cfg.saldoEfecFuera ? Number(cfg.saldoEfecFuera).toLocaleString('es-AR') : '';
+  // Autocompletar con el saldo REAL de ahora mismo, no con el último valor
+  // escrito a mano. Antes se cargaban los números viejos de la última
+  // configuración, y al guardar (aunque fuera solo para tocar otra cosa) se
+  // pisaba el saldo actual con esos valores desactualizados, borrando de la
+  // vista plata que sí estaba. Así, guardar sin tocar nada no cambia nada.
+  var actual = (typeof calcularLiquidez==='function') ? calcularLiquidez() : null;
+  var vEfec  = actual ? Math.round(actual.efectivoCaja)  : (cfg.saldoEfec||0);
+  var vFuera = actual ? Math.round(actual.efectivoFuera) : (cfg.saldoEfecFuera||0);
+  var vMP    = actual ? Math.round(actual.mercadoPago)   : (cfg.saldoMP||0);
+  if(efi) efi.value = vEfec  ? Number(vEfec).toLocaleString('es-AR')  : '';
+  if(eff) eff.value = vFuera ? Number(vFuera).toLocaleString('es-AR') : '';
   if(lci) lci.value = cfg.saldoLC ? Number(cfg.saldoLC).toLocaleString('es-AR') : '';
-  if(mpi) mpi.value = cfg.saldoMP ? Number(cfg.saldoMP).toLocaleString('es-AR') : '';
+  if(mpi) mpi.value = vMP    ? Number(vMP).toLocaleString('es-AR')    : '';
   if(mpc) mpc.value = cfg.comisionMP || 10;
   var dts = document.getElementById('destinoTransferSel');
-  if(dts) dts.value = cfg.destinoTransfer || 'LemonCash';
+  if(dts) dts.value = 'MercadoPago';
   // Mostrar fecha de última configuración
   var fechaEl = document.getElementById('liquidezConfigFecha');
   if(fechaEl) {
@@ -18793,7 +18796,7 @@ function guardarLiquidezConfig() {
   cfg.saldoMP    = getMontoInputValue('mpSaldoIni');
   cfg.comisionMP = parseFloat(document.getElementById('mpComision').value)||10;
   var dtsSel = document.getElementById('destinoTransferSel');
-  cfg.destinoTransfer = dtsSel ? dtsSel.value : 'LemonCash';
+  cfg.destinoTransfer = dtsSel ? dtsSel.value : 'MercadoPago';
   // Guardar timestamp exacto — solo ventas/egresos DESPUÉS de este momento afectan el saldo
   cfg.configTs   = new Date().toISOString();
   saveLiquidezCfg(cfg);
