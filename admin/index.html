@@ -44,6 +44,39 @@
     console.warn('Persistencia offline no disponible:', e.code);
   });
 
+  // Recuperación de un cambio de catálogo que quedó sin confirmar de una
+  // sesión anterior (ej: se cerró la pestaña, se cortó la luz, o el
+  // guardado falló y nadie llegó a reintentarlo). Ese respaldo vive en este
+  // mismo dispositivo, aparte del guardado offline propio de Firestore, así
+  // que aunque ese hubiera fallado, esto lo recupera igual apenas la página
+  // vuelve a abrirse y hay conexión.
+  (function recuperarPendienteProductos(){
+    var raw; try { raw = localStorage.getItem('lr_pending_productos_save'); } catch(e){ return; }
+    if(!raw) return;
+    var pendiente; try { pendiente = JSON.parse(raw); } catch(e){ return; }
+    if(!pendiente || !pendiente.datos || !pendiente.datos.length) return;
+    var edadHoras = (Date.now() - (pendiente.ts||0)) / 3600000;
+    if(edadHoras > 48) return; // muy viejo — mejor no arriesgar un pisado extraño, se descarta solo
+    var intentos = 0;
+    var esperar = setInterval(function(){
+      intentos++;
+      if(window.__lrSaveProductos && window.__lrSync && window.__lrSync.productosListos){
+        clearInterval(esperar);
+        window.PRODUCTS = pendiente.datos; // el cambio sin confirmar tiene prioridad sobre lo que haya en la nube
+        if(typeof showToast==='function') showToast('⚠️ Recuperando un cambio de catálogo que había quedado sin confirmar — subiéndolo ahora...');
+        window.__lrSaveProductos(PRODUCTS).then(function(){
+          try{ localStorage.removeItem('lr_pending_productos_save'); }catch(e){}
+          if(typeof showToast==='function') showToast('✅ Cambio recuperado y confirmado en la nube');
+          if(typeof buildPills==='function') buildPills();
+          if(typeof filterAll==='function') filterAll();
+          if(typeof renderCatalogo==='function') renderCatalogo();
+        }).catch(function(){ /* se reintentará solo más adelante, vía el reintento automático */ });
+      } else if(intentos > 90){ // ~45s de espera máxima a que Firebase arranque
+        clearInterval(esperar);
+      }
+    }, 500);
+  })();
+
   // ── PREFIJO DE COLECCIONES ──────────────────────────────────────────────
   // Colecciones reales (datos definitivos de Limay Rock).
   window.__lrCOL = {
@@ -6770,30 +6803,67 @@ function delProd(idx) {
     intentarBorrado();
   });
 }
+// ── RESPALDO LOCAL DE PRODUCTOS (independiente de Firestore) ────────────────
+// Por qué existe: Firestore tiene su propio guardado offline (enablePersistence),
+// pero puede fallar en silencio en algunos dispositivos/navegadores. Esta es
+// una segunda red de seguridad, propia del sistema: antes de intentar subir un
+// cambio de catálogo, se guarda una copia en este mismo dispositivo. Si la
+// subida falla o tarda, esa copia queda ahí y se reintenta sola — incluso si
+// se cierra la pestaña o se corta la luz a mitad de camino — hasta confirmar.
+var SK_PENDING_PRODUCTOS = 'lr_pending_productos_save';
+
+function guardarPendienteLocalProductos(datos) {
+  try { localStorage.setItem(SK_PENDING_PRODUCTOS, JSON.stringify({ts:Date.now(), datos:datos})); } catch(e){ /* localStorage lleno/no disponible: seguimos igual, solo no hay respaldo extra */ }
+}
+function limpiarPendienteLocalProductos() {
+  try { localStorage.removeItem(SK_PENDING_PRODUCTOS); } catch(e){}
+}
+
+var _lrReintentoProductosId = null;
+function iniciarReintentoAutomaticoProductos() {
+  if(_lrReintentoProductosId) return; // ya está corriendo, no duplicar
+  _lrReintentoProductosId = setInterval(function(){
+    var raw; try { raw = localStorage.getItem(SK_PENDING_PRODUCTOS); } catch(e){ raw=null; }
+    if(!raw || !window.__lrSaveProductos){ clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null; return; }
+    window.__lrSaveProductos(PRODUCTS).then(function(){
+      limpiarPendienteLocalProductos();
+      if(typeof showToast==='function') showToast('✅ Cambio pendiente confirmado en la nube');
+      if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
+      clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null;
+    }).catch(function(){ /* seguimos reintentando en el próximo intervalo, sin molestar */ });
+  }, 20000);
+}
+window.addEventListener('online', function(){
+  var raw; try { raw = localStorage.getItem(SK_PENDING_PRODUCTOS); } catch(e){ raw=null; }
+  if(raw) iniciarReintentoAutomaticoProductos();
+});
+
 function saveLocal(mensajeExito) {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
+  guardarPendienteLocalProductos(PRODUCTS); // respaldo propio, antes de intentar la nube
   showToast('⏳ Guardando en la nube...');
   var promesaGuardado = window.__lrSaveProductos(PRODUCTS);
   var retry = function(){ saveLocal(mensajeExito); };
-  if(!window.__lrConTimeoutAviso) return promesaGuardado.then(function(){ showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS'); });
+  if(!window.__lrConTimeoutAviso) return promesaGuardado.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS'); });
   return window.__lrConTimeoutAviso(promesaGuardado, 15000, retry).then(function(r){
     if(r.pendiente){
-      // No es un error: el cambio queda guardado y se sube solo apenas
-      // haya señal (Firestore ya lo encola offline). Aviso tranquilo,
-      // sin alarma ni obligar a reintentar a mano.
+      // No es un error: queda el respaldo local guardado (además de lo que
+      // Firestore encole por su cuenta) y se reintenta solo hasta confirmar.
       showToast('💾 Guardado localmente — se subirá solo cuando haya señal');
+      iniciarReintentoAutomaticoProductos();
     } else {
+      limpiarPendienteLocalProductos();
       if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
       showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
     }
   }).catch(function(e){
-    // Esto ahora solo pasa ante un error REAL e inmediato, no una simple demora.
-    showToast('❌ NO SE GUARDÓ: '+(e && e.message ? e.message : 'error de conexión'), true);
+    // Error real e inmediato — igual queda el respaldo local guardado y
+    // reintentando solo, así que no se pierde nada aunque avisemos del error.
+    showToast('❌ Falló el intento, pero quedó guardado en este dispositivo — reintentando solo', true);
+    iniciarReintentoAutomaticoProductos();
     if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(retry);
-    alert('⚠️ El cambio NO se pudo guardar.\n\nMotivo: '+(e && e.message ? e.message : 'error')+'\n\nTocá el botón rojo "🔄 Reintentar guardado" abajo a la derecha cuando quieras reintentar.');
-    throw e;
   });
 }
 
