@@ -21,6 +21,29 @@
   // Si el navegador mismo detecta que se cortó internet, avisar al toque
   // sin esperar a que Firestore tarde en darse cuenta.
   window.addEventListener('offline', function(){ window.__lrSetEstadoConexion(false); });
+
+  // ── AVISO DE ACTUALIZACIÓN DISPONIBLE ──────────────────────────────────
+  // Como es una app de una sola página, una pestaña ya abierta se queda
+  // corriendo el código viejo aunque yo publique un cambio nuevo — la única
+  // forma de que se entere es recargando. Esto chequea cada 5 minutos si
+  // hay una versión más nueva publicada, y si la hay, avisa con un
+  // cartelito discreto (no recarga solo, para no cortar una venta a mitad
+  // de camino — el empleado elige el momento de tocar y recargar).
+  var _lrMiVersion = null;
+  function _lrChequearVersionNueva(){
+    fetch('../version.json?_='+Date.now(), {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if(!data || !data.v) return;
+        if(!_lrMiVersion){ _lrMiVersion = data.v; return; }
+        if(data.v !== _lrMiVersion){
+          var banner = document.getElementById('lrActualizacionBanner');
+          if(banner) banner.style.display = 'flex';
+        }
+      }).catch(function(){ /* sin conexión ahora — se reintenta solo en el próximo chequeo */ });
+  }
+  _lrChequearVersionNueva();
+  setInterval(_lrChequearVersionNueva, 5*60*1000);
   var firebaseConfig = {
     apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
     authDomain: "limay-rock-852cb.firebaseapp.com",
@@ -2563,6 +2586,10 @@ body.night-on{background:#080005}
   <span id="lrEstadoConexionDot" style="width:8px;height:8px;border-radius:50%;background:#F4B400;display:inline-block;flex-shrink:0"></span>
   <span id="lrEstadoConexionTxt">Conectando…</span>
 </div>
+<div id="lrActualizacionBanner" onclick="location.reload()" style="display:none;position:fixed;bottom:10px;right:10px;z-index:99997;background:#1e90ff;color:#fff;font-family:system-ui,sans-serif;font-size:.72rem;font-weight:700;padding:8px 14px;border-radius:20px;align-items:center;gap:7px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);animation:lrPulsoActualizacion 2s infinite">
+  🔄 Hay una actualización — tocá para recargar
+</div>
+<style>@keyframes lrPulsoActualizacion{0%,100%{opacity:1}50%{opacity:.75}}</style>
 <div id="adminNotifStack" style="position:fixed;top:12px;left:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center"></div>
 <div id="lrLoadingOverlay" style="position:fixed;inset:0;background:#0a0a0a;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#F4B400;font-family:system-ui,sans-serif;">
   <div style="font-size:40px;margin-bottom:16px;">⚡</div>
