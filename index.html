@@ -3391,6 +3391,14 @@ body.night-on{background:#080005}
     <div class="field"><label>% Recargo por débito / Comisión MP</label><input type="number" id="mpComision" value="10" min="0" max="30" step="0.1" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;width:100%;font-family:Barlow,sans-serif;font-size:.85rem">
       <div style="font-size:.66rem;color:var(--gray);margin-top:4px">Este único número se usa en todo el sistema: el recargo que se cobra al vender con débito, y el cálculo de Mercado Pago en Liquidez.</div>
     </div>
+    <div class="field">
+      <label>Las ventas por Transferencia se suman a</label>
+      <select id="destinoTransferSel" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;width:100%;font-family:Barlow,sans-serif;font-size:.85rem">
+        <option value="LemonCash">📲 Lemon Cash</option>
+        <option value="MercadoPago">📲 Mercado Pago</option>
+      </select>
+      <div style="font-size:.66rem;color:var(--gray);margin-top:4px">Cambialo el día que dejes de usar Lemon Cash — desde ese momento, cada venta por transferencia nueva se va a sumar a Mercado Pago en vez de Lemon Cash.</div>
+    </div>
     <div id="liquidezConfigFecha" style="font-size:.68rem;color:var(--gold);margin-top:4px;text-align:center"></div>
     <div style="font-size:.65rem;color:var(--gray);margin-top:4px;text-align:center">Las ventas y egresos registrados DESPUÉS de guardar se suman a estos saldos.</div>
     <button onclick="guardarLiquidezConfig()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700;margin-top:6px">✓ Guardar</button>
@@ -18229,7 +18237,7 @@ function autoDetectTurno() {
 // ── LIQUIDEZ DEL LOCAL ──────────────────────────────────────────────────────
 
 function getLiquidezCfg() {
-  var def = {saldoLC:0, saldoMP:0, comisionMP:10, periodoDesde: fechaLocalStr()};
+  var def = {saldoLC:0, saldoMP:0, comisionMP:10, destinoTransfer:'LemonCash', periodoDesde: fechaLocalStr()};
   if(window.__lrSync && window.__lrSync.liquidezListos && window.__lrLiquidezCfgCache) {
     return Object.assign({}, def, window.__lrLiquidezCfgCache);
   }
@@ -18323,7 +18331,6 @@ function calcularLiquidez() {
     - sumaPrestamos('prestamo-dado','Efectivo',desdeTsEfec) + sumaPrestamos('devolucion-recibida','Efectivo',desdeTsEfec);
   var prestamosTransfNeto   = sumaPrestamos('prestamo','Transferencia',desdeTs) - sumaPrestamos('devolucion','Transferencia',desdeTs)
     - sumaPrestamos('prestamo-dado','Transferencia',desdeTs) + sumaPrestamos('devolucion-recibida','Transferencia',desdeTs);
-
   // Transferencias internas entre cuentas: no son ingreso ni egreso, solo mueven la plata de un lugar a otro.
   var transfersTodas = getTransferCuentas();
   function netoTransferCuenta(cuenta, desde) {
@@ -18342,11 +18349,15 @@ function calcularLiquidez() {
     if(v.medio==='Efectivo') ventasEfec += v.total;
     else if(v.medio==='Mixto' && v.mixto) ventasEfec += (v.mixto.efectivo||0);
   });
-  var ventasLC = 0, ventasMP = 0;
+  var ventasLC = 0, ventasMP = 0, ventasTransferAMP = 0;
+  var extraTransferVaAMP = (cfg.destinoTransfer === 'MercadoPago');
   ventas.forEach(function(v){
-    if(v.medio==='Transferencia') ventasLC += v.total;
+    if(v.medio==='Transferencia'){ if(extraTransferVaAMP) ventasTransferAMP += v.total; else ventasLC += v.total; }
     else if(v.medio==='Débito') ventasMP += v.total;
-    else if(v.medio==='Mixto' && v.mixto){ ventasLC += (v.mixto.transferencia||0); }
+    else if(v.medio==='Mixto' && v.mixto){
+      if(extraTransferVaAMP) ventasTransferAMP += (v.mixto.transferencia||0);
+      else ventasLC += (v.mixto.transferencia||0);
+    }
   });
 
   var egresosEfec = 0;
@@ -18356,15 +18367,15 @@ function calcularLiquidez() {
   });
   var egresosLC = 0, egresosMP = 0;
   egresos.forEach(function(e){
-    if(e.medio==='Transferencia') egresosLC += e.monto;
+    if(e.medio==='Transferencia'){ if(extraTransferVaAMP) egresosMP += e.monto; else egresosLC += e.monto; }
     else if(e.medio==='MercadoPago') egresosMP += e.monto;
-    else if(e.medio==='Mixto' && e.mixto){ egresosLC += (e.mixto.transferencia||0); }
+    else if(e.medio==='Mixto' && e.mixto){ if(extraTransferVaAMP) egresosMP += (e.mixto.transferencia||0); else egresosLC += (e.mixto.transferencia||0); }
   });
 
   ventasEfec += cargasEfectivo;
-  ventasLC   += cargasTransferencia;
+  if(extraTransferVaAMP) ventasTransferAMP += cargasTransferencia; else ventasLC += cargasTransferencia;
   ventasEfec += prestamosEfectivoNeto;
-  ventasLC   += prestamosTransfNeto;
+  if(extraTransferVaAMP) ventasTransferAMP += prestamosTransfNeto; else ventasLC += prestamosTransfNeto;
   ventasEfec += transferEfectivoNeto;
   ventasLC   += transferLemonNeto;
 
@@ -18379,7 +18390,7 @@ function calcularLiquidez() {
     efectivoCaja:  efectivoBase + ventasEfec - egresosEfec - totalRetiros,
     efectivoFuera: (cfg.saldoEfecFuera||0) + totalRetirosFuera,
     lemonCash:     (cfg.saldoLC||0) + ventasLC - egresosLC,
-    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP - cargasMontoMP + transferMPNeto,
+    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP - cargasMontoMP + transferMPNeto + ventasTransferAMP,
     prestamosPendiente: getPrestamosPendiente(),
     prestamosPorCobrar: getPrestamosPorCobrar(),
     periodoDesde:  desdeTs.toISOString(),
@@ -18468,6 +18479,8 @@ function abrirLiquidezConfig() {
   if(lci) lci.value = cfg.saldoLC ? Number(cfg.saldoLC).toLocaleString('es-AR') : '';
   if(mpi) mpi.value = cfg.saldoMP ? Number(cfg.saldoMP).toLocaleString('es-AR') : '';
   if(mpc) mpc.value = cfg.comisionMP || 10;
+  var dts = document.getElementById('destinoTransferSel');
+  if(dts) dts.value = cfg.destinoTransfer || 'LemonCash';
   // Mostrar fecha de última configuración
   var fechaEl = document.getElementById('liquidezConfigFecha');
   if(fechaEl) {
@@ -18488,6 +18501,8 @@ function guardarLiquidezConfig() {
   cfg.saldoLC    = getMontoInputValue('lcSaldoIni');
   cfg.saldoMP    = getMontoInputValue('mpSaldoIni');
   cfg.comisionMP = parseFloat(document.getElementById('mpComision').value)||10;
+  var dtsSel = document.getElementById('destinoTransferSel');
+  cfg.destinoTransfer = dtsSel ? dtsSel.value : 'LemonCash';
   // Guardar timestamp exacto — solo ventas/egresos DESPUÉS de este momento afectan el saldo
   cfg.configTs   = new Date().toISOString();
   saveLiquidezCfg(cfg);
@@ -18579,12 +18594,17 @@ function calcularLiquidezPeriodo(desde, hasta) {
     return fechaLocalStr(new Date(r.fecha))>=desde && fechaLocalStr(new Date(r.fecha))<=hasta;
   });
 
-  var ventasEfec=0, ventasLC=0, ventasMP=0;
+  var ventasEfec=0, ventasLC=0, ventasMP=0, ventasTransferAMP=0;
+  var extraTransferVaAMPPeriodo = (cfg.destinoTransfer === 'MercadoPago');
   ventas.forEach(function(v){
     if(v.medio==='Efectivo') ventasEfec+=v.total;
-    else if(v.medio==='Transferencia') ventasLC+=v.total;
+    else if(v.medio==='Transferencia'){ if(extraTransferVaAMPPeriodo) ventasTransferAMP+=v.total; else ventasLC+=v.total; }
     else if(v.medio==='Débito') ventasMP+=v.total;
-    else if(v.medio==='Mixto'&&v.mixto){ ventasEfec+=(v.mixto.efectivo||0); ventasLC+=(v.mixto.transferencia||0); }
+    else if(v.medio==='Mixto'&&v.mixto){
+      ventasEfec+=(v.mixto.efectivo||0);
+      if(extraTransferVaAMPPeriodo) ventasTransferAMP+=(v.mixto.transferencia||0);
+      else ventasLC+=(v.mixto.transferencia||0);
+    }
   });
   var egresosEfec=0, egresosLC=0, egresosMP=0;
   egresos.forEach(function(e){
@@ -18600,7 +18620,7 @@ function calcularLiquidezPeriodo(desde, hasta) {
     efectivoCaja:  (cfg.saldoEfec||0) + ventasEfec - egresosEfec - totalRetiros,
     efectivoFuera: (cfg.saldoEfecFuera||0) + totalRetiros,
     lemonCash:     (cfg.saldoLC||0) + ventasLC - egresosLC,
-    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP,
+    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP + ventasTransferAMP,
     comisionMP:    parseFloat(cfg.comisionMP)||10
   };
 }
