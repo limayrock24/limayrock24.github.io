@@ -14593,6 +14593,7 @@ function guardarProdModal() {
   }
   var codigo = (document.getElementById('pmCodigo').value||'').trim();
   var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null};
+  var esNuevo = !(idx>=0 && PRODUCTS[idx]);
   if(idx>=0&&PRODUCTS[idx]){
     var antes = Object.assign({}, PRODUCTS[idx]);
     PRODUCTS[idx]=Object.assign(PRODUCTS[idx],prod);
@@ -14602,12 +14603,10 @@ function guardarProdModal() {
     if(antes.pventa!==prod.pventa) cambios.push({campo:'Precio venta',antes:antes.pventa||0,despues:prod.pventa||0});
     if(antes.pnoc!==prod.pnoc) cambios.push({campo:'Precio nocturno',antes:antes.pnoc||0,despues:prod.pnoc||0});
     if(cambios.length) registrarCambioCatalogo('edicion', nombre, cambios, currentEmp?currentEmp.nombre:'Admin');
-    showToast('✅ Producto actualizado');
   }
   else {
     PRODUCTS.push(prod);
     registrarCambioCatalogo('nuevo', nombre, [{campo:'Categoría',antes:'—',despues:cat},{campo:'Precio venta',antes:'—',despues:pventa||0}], currentEmp?currentEmp.nombre:'Admin');
-    showToast('✅ Producto agregado');
   }
   // Guardar stock ajustado desde el modal
   var nuevoStock = parseInt(document.getElementById('pmStock').value)||0;
@@ -14641,7 +14640,20 @@ function guardarProdModal() {
   });
   if(provsCambiaron) saveProveedores(proveedores);
 
-  saveLocal(); closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+  saveLocal(esNuevo ? '✅ Producto agregado y confirmado en la nube' : '✅ Producto actualizado y confirmado en la nube')
+    .then(function(){
+      // Solo cerramos el modal y refrescamos las listas DESPUÉS de que la nube
+      // confirmó el guardado — antes se cerraba al toque, y si fallaba la subida
+      // (wifi cortado, etc.) el producto quedaba "editado" en pantalla pero
+      // nunca llegaba a la nube, sin que quedara aviso claro de eso.
+      closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+    })
+    .catch(function(){
+      // saveLocal ya mostró el error y el botón de "Reintentar guardado".
+      // Dejamos el modal ABIERTO con los datos tal cual los escribiste, para
+      // que no se pierda nada y puedas reintentar sin volver a tipear todo.
+      renderCatalogo(); buildPills(); filterAll();
+    });
 }
 
 
