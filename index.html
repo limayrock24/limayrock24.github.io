@@ -990,6 +990,11 @@
     if(document.getElementById('searchInput') && typeof actualizarDeliveryPendBadge==='function'){
       actualizarDeliveryPendBadge();
     }
+    // Panel del repartidor: que un pedido nuevo (o uno que otro repartidor
+    // acaba de tomar) se refleje al instante, sin recargar nada.
+    if(typeof actualizarContadorRepartidor==='function'){
+      actualizarContadorRepartidor();
+    }
     if(typeof renderDeliveryPanel==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDeliveryPanel();
     }
@@ -2710,6 +2715,7 @@ body.night-on{background:#080005}
       <span class="turno-badge">👤 <span id="empActual">Martin · Nocturno</span></span>
       <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
       <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
+      <button id="btnGoDelivery" onclick="abrirPanelRepartidor()" style="display:none;background:transparent;border:1px solid #1e90ff;color:#1e90ff;border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="btnGoDeliveryCount"></span></button>
       <button id="btnGoCargaStock" onclick="abrirCargaStock()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📋 Cargar Stock</button>
       <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
     </div>
@@ -3230,6 +3236,15 @@ body.night-on{background:#080005}
             <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Usa el mismo PIN de login para entrar al panel de Recepción</div>
           </div>
           <div class="recep-toggle-switch" id="emRecepToggle" onclick="toggleRecepAcceso()"></div>
+        </div>
+
+        <!-- Acceso a Delivery (repartidor) -->
+        <div class="recep-toggle">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--white)">🛵 Acceso a Delivery</div>
+            <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Repartidor: ve los pedidos, los acepta y marca entregados. No ve ventas, caja ni catálogo.</div>
+          </div>
+          <div class="recep-toggle-switch" id="emDeliveryToggle" onclick="toggleDeliveryAcceso()"></div>
         </div>
 
         <!-- Acceso a Cargar Stock -->
@@ -4511,6 +4526,24 @@ body.night-on{background:#080005}
       <button class="pin-btn" onclick="recepPinPress('C')" style="font-size:.62rem;color:var(--red)">⌫</button>
     </div>
     <div class="recep-pin-error" id="recepPinError">PIN INCORRECTO</div>
+  </div>
+</div>
+
+<!-- PANEL DE REPARTIDOR — pantalla acotada: solo pedidos de delivery -->
+<div class="prod-modal-overlay" id="repartidorOverlay" style="align-items:stretch;justify-content:stretch;z-index:2150">
+  <div style="background:var(--dark);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:#1e90ff;font-weight:700;letter-spacing:1px">🛵 PEDIDOS DE DELIVERY</div>
+        <div style="font-size:.68rem;color:var(--gray);margin-top:2px" id="repartidorSaludo"></div>
+      </div>
+      <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
+      <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
+      <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
+    </div>
+    <div id="repartidorLista" style="flex:1;overflow-y:auto;padding:12px 16px"></div>
   </div>
 </div>
 
@@ -15370,6 +15403,11 @@ function toggleRecepAcceso() {
   sw.classList.toggle('on');
 }
 
+function toggleDeliveryAcceso() {
+  var sw = document.getElementById('emDeliveryToggle');
+  if(sw) sw.classList.toggle('on');
+}
+
 function toggleStockAcceso() {
   var sw = document.getElementById('emStockToggle');
   sw.classList.toggle('on');
@@ -15384,6 +15422,7 @@ function abrirEmpModal(idx) {
 
   var recepSw = document.getElementById('emRecepToggle');
   var stockSw = document.getElementById('emStockToggle');
+  var delivSw = document.getElementById('emDeliveryToggle');
   var funcionSel = document.getElementById('emFuncion');
   var topeInp = document.getElementById('emTopeConsumo');
   var margenInp = document.getElementById('emMargenAviso');
@@ -15399,6 +15438,7 @@ function abrirEmpModal(idx) {
     if(del) del.style.display='block';
     if(recepSw) recepSw.classList.toggle('on', !!emp.accesoRecepcion);
     if(stockSw) stockSw.classList.toggle('on', !!emp.accesoStock);
+    if(delivSw) delivSw.classList.toggle('on', !!emp.accesoDelivery);
   } else {
     document.getElementById('emNombre').value = '';
     _emPinBuf = '';
@@ -15410,6 +15450,7 @@ function abrirEmpModal(idx) {
     if(del) del.style.display='none';
     if(recepSw) recepSw.classList.remove('on');
     if(stockSw) stockSw.classList.remove('on');
+    if(delivSw) delivSw.classList.remove('on');
   }
 
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
@@ -15462,10 +15503,11 @@ function guardarEmpModal() {
 
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
   var stockOn = document.getElementById('emStockToggle').classList.contains('on');
+  var deliveryOn = document.getElementById('emDeliveryToggle').classList.contains('on');
   var funcion = document.getElementById('emFuncion') ? document.getElementById('emFuncion').value : '';
   var topeConsumo = getMontoInputValue('emTopeConsumo');
   var margenAviso = getMontoInputValue('emMargenAviso');
-  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn,
+  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
     topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
     EMPLEADOS[idx] = empData;
@@ -16545,6 +16587,134 @@ function renderRecepEgresosHist() {
 // registrado con quién y cuándo, igual que el resto de los movimientos.
 var _cargaStockProdSel = null;
 
+// ── PANEL DE REPARTIDOR ─────────────────────────────────────────────────────
+// Pantalla acotada para quien reparte: ve los pedidos de delivery, los toma,
+// y los marca entregados. No accede a ventas, caja, catálogo ni nada más.
+var _repFiltro = 'libres';
+
+function abrirPanelRepartidor() {
+  if(!currentEmp || (!currentEmp.accesoDelivery && currentEmp.rol!=='admin')) return;
+  var saludo = document.getElementById('repartidorSaludo');
+  if(saludo) saludo.textContent = currentEmp.nombre;
+  _repFiltro = 'libres';
+  setFiltroRepartidor('libres');
+  document.getElementById('repartidorOverlay').classList.add('open');
+}
+
+function cerrarPanelRepartidor() {
+  document.getElementById('repartidorOverlay').classList.remove('open');
+}
+
+function setFiltroRepartidor(f) {
+  _repFiltro = f;
+  var bl = document.getElementById('repFiltroLibres');
+  var bm = document.getElementById('repFiltroMios');
+  if(bl && bm){
+    var act = 'background:#1e90ff;color:#fff;border:none';
+    var ina = 'background:transparent;color:var(--gray);border:1px solid var(--border)';
+    bl.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='libres'?act:ina);
+    bm.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='mios'?act:ina);
+  }
+  renderPanelRepartidor();
+}
+
+function renderPanelRepartidor() {
+  var cont = document.getElementById('repartidorLista');
+  if(!cont || !currentEmp) return;
+  var yo = currentEmp.nombre;
+  var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+
+  var lista = (_repFiltro === 'libres')
+    ? todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; })
+    : todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; });
+
+  if(!lista.length){
+    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 20px;font-size:.85rem">'+
+      (_repFiltro==='libres' ? 'No hay pedidos disponibles ahora mismo' : 'No tenés pedidos tomados')+'</div>';
+    return;
+  }
+
+  lista.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+
+  cont.innerHTML = lista.map(function(p){
+    var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+    var mio = p.repartidor === yo;
+    var dir = p.direccion || p.domicilio || '';
+    var telLimpio = (p.telefono||'').replace(/\D/g,'');
+    if(telLimpio.length<=10) telLimpio = '549'+telLimpio;
+    return '<div style="background:var(--card);border:1.5px solid '+(mio?'#1e90ff':'var(--border)')+';border-radius:8px;padding:14px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+        '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
+      '</div>'+
+      (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '')+
+      '<div style="font-size:.76rem;color:var(--gray);margin-top:3px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
+      (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
+      (p.envio>0 ? '<div style="font-size:.74rem;color:#1e90ff;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
+      '<div style="display:flex;gap:8px;margin-top:11px">'+
+        (mio
+          ? '<a href="https://wa.me/'+telLimpio+'" target="_blank" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 WhatsApp</a>'+
+            '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'+
+            '<button onclick="soltarPedido('+p.id+')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Soltar</button>'
+          : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function tomarPedido(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p) return;
+  if(p.repartidor){ showToast('Ese pedido ya lo tomó '+p.repartidor, true); renderPanelRepartidor(); return; }
+  p.repartidor = currentEmp.nombre;
+  p.estadoDelivery = 'aceptado';
+  p.tomadoEn = new Date().toISOString();
+  savePedidosWeb(pedidos);
+  showToast('🛵 Tomaste el pedido de '+p.nombre);
+  setFiltroRepartidor('mios');
+}
+
+function soltarPedido(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p) return;
+  askConfirm('¿Soltás el pedido de '+p.nombre+'? Va a quedar disponible para otro repartidor.').then(function(ok){
+    if(!ok) return;
+    delete p.repartidor;
+    p.estadoDelivery = 'libre';
+    savePedidosWeb(pedidos);
+    showToast('Pedido liberado');
+    renderPanelRepartidor();
+  });
+}
+
+function marcarEntregado(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p) return;
+  askConfirm('¿Confirmás que entregaste el pedido de '+p.nombre+'?').then(function(ok){
+    if(!ok) return;
+    p.estadoDelivery = 'entregado';
+    p.entregadoEn = new Date().toISOString();
+    savePedidosWeb(pedidos);
+    showToast('✅ Pedido entregado');
+    renderPanelRepartidor();
+  });
+}
+
+function actualizarContadorRepartidor() {
+  var el = document.getElementById('btnGoDeliveryCount');
+  if(!el || !currentEmp) return;
+  var libres = getPedidosWeb().filter(function(p){
+    return p.estado !== 'resuelto' && !p.repartidor && p.estadoDelivery !== 'entregado';
+  }).length;
+  el.textContent = libres > 0 ? '('+libres+')' : '';
+  var ov = document.getElementById('repartidorOverlay');
+  if(ov && ov.classList.contains('open')) renderPanelRepartidor();
+}
+
 function abrirCargaStock() {
   if(!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin')) return;
   document.getElementById('cargaStockOverlay').classList.add('open');
@@ -16661,6 +16831,9 @@ function updateRecepBtn() {
   if(btn) btn.style.display = (currentEmp && currentEmp.accesoRecepcion) ? 'inline-block' : 'none';
   var btnStock = document.getElementById('btnGoCargaStock');
   if(btnStock) btnStock.style.display = (currentEmp && currentEmp.accesoStock) ? 'inline-block' : 'none';
+  var btnDeliv = document.getElementById('btnGoDelivery');
+  if(btnDeliv) btnDeliv.style.display = (currentEmp && currentEmp.accesoDelivery) ? 'inline-block' : 'none';
+  actualizarContadorRepartidor();
 }
 
 function actualizarDeliveryPendBadge() {
