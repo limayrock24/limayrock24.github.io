@@ -14776,11 +14776,21 @@ function guardarEditCat() {
   if(catNueva !== catVieja && ALL_CATS.includes(catNueva)){ showToast('Ya existe esa categoría',true); return; }
 
   // Productos seleccionados en el modal
+  //
+  // OJO: la lista puede estar FILTRADA por el buscador, así que las casillas
+  // visibles no son todo el universo. Antes se asumía que sí, y cualquier
+  // producto de la categoría que estuviera oculto por el filtro se
+  // interpretaba como "destildado" y se mandaba a "Sin categoría" — por eso,
+  // al buscar un producto para sumarlo, los que ya estaban en la categoría
+  // desaparecían de ella. Ahora solo se consideran los productos que están
+  // efectivamente en pantalla; los que no se ven, no se tocan.
   var checkboxes = document.querySelectorAll('#editCatProdList input[type=checkbox]');
   var seleccionados = [];
-  var cambiosDeCat = []; // productos que cambian desde otra categoría
+  var visibles = [];      // solo lo que el usuario tiene realmente a la vista
+  var cambiosDeCat = [];  // productos que cambian desde otra categoría
 
   checkboxes.forEach(function(cb){
+    visibles.push(cb.value);
     if(cb.checked) {
       seleccionados.push(cb.value);
       var origen = cb.dataset.catOrigen || '';
@@ -14792,9 +14802,16 @@ function guardarEditCat() {
 
   function aplicarGuardado() {
     PRODUCTS.forEach(function(p){
-      if(p.cat === catVieja && seleccionados.indexOf(p.name) === -1) {
+      if(seleccionados.indexOf(p.name) !== -1) {
+        p.cat = catNueva;
+      } else if(p.cat === catVieja && visibles.indexOf(p.name) !== -1) {
+        // Solo se saca de la categoría si el usuario lo tenía a la vista y
+        // lo destildó a propósito. Si estaba oculto por el buscador, se deja
+        // como está.
         p.cat = 'Sin categoría';
-      } else if(seleccionados.indexOf(p.name) !== -1) {
+      } else if(p.cat === catVieja) {
+        // Estaba en la categoría pero oculto por el filtro: sigue en ella
+        // (y si la categoría se renombró, se lo lleva al nombre nuevo).
         p.cat = catNueva;
       }
     });
