@@ -4328,6 +4328,13 @@ body.night-on{background:#080005}
         <textarea id="campMensaje" rows="4" placeholder="Ej: ¡Hola {nombre}! Te contamos que esta semana tenemos 2x1 en..." style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none;box-sizing:border-box;resize:vertical"></textarea>
       </div>
       <div class="field">
+        <label>Filtrar por lo que más compra</label>
+        <select id="campFiltroCat" onchange="renderCampClientList()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none">
+          <option value="">Todos los clientes</option>
+        </select>
+        <div style="font-size:.64rem;color:var(--gray);margin-top:4px">Ej: elegí "Bebidas" y la promo le llega solo a los que más compran bebidas, no a todos.</div>
+      </div>
+      <div class="field">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <label style="margin:0">Destinatarios (<span id="campSeleccionCount">0</span> seleccionados)</label>
           <button onclick="campToggleTodos()" id="campToggleTodosBtn" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Marcar todos</button>
@@ -6071,7 +6078,7 @@ function doConfirmarVenta2() {
       apellido: ((document.getElementById('cpbApellido2')||{}).value||'').trim(),
       telefono: ((document.getElementById('cpbTelefono2')||{}).value||'').trim()
     };
-    puntosResult = acreditarPuntos(cpbDniVal, totalVenta, datosNuevo);
+    puntosResult = acreditarPuntos(cpbDniVal, totalVenta, datosNuevo, cart2);
   }
 
   var venta = {
@@ -7213,7 +7220,7 @@ function doConfirmarVenta() {
       apellido: ((document.getElementById('cpbApellido')||{}).value||'').trim(),
       telefono: ((document.getElementById('cpbTelefono')||{}).value||'').trim()
     };
-    puntosResult = acreditarPuntos(cpbDniVal, totalVenta, datosNuevo);
+    puntosResult = acreditarPuntos(cpbDniVal, totalVenta, datosNuevo, cart);
   }
 
   var venta = {
@@ -10995,18 +11002,54 @@ function buscarClientePorDni(dni) {
 
 // Suma puntos a un cliente existente o lo crea si no existe (requiere nombre para crear).
 // Devuelve {puntos, cliente} — puntos ganados en ESTA operación (0 si no se pudo aplicar).
-function acreditarPuntos(dni, montoVenta, datosNuevo) {
+// Devuelve un resumen {categoria: montoGastado} a partir de los items de una
+// venta — sirve para saber, con el tiempo, qué tipo de productos compra cada
+// cliente y poder mandarle promos que le interesen de verdad.
+function resumirCategoriasVenta(items) {
+  var res = {};
+  (items||[]).forEach(function(it){
+    var prod = PRODUCTS.find(function(p){ return p.name === it.name; });
+    var cat = (prod && prod.cat) ? prod.cat : 'Sin categoría';
+    var monto = (it.subtotal != null) ? it.subtotal : ((it.precio||0) * (it.qty||1));
+    res[cat] = (res[cat]||0) + monto;
+  });
+  return res;
+}
+
+// Recalcula la categoría que más compra un cliente, mirando todo su historial.
+// Se guarda ya calculada para poder filtrar rápido al armar una promo.
+function recalcularCategoriaPreferida(cliente) {
+  var acum = {};
+  (cliente.historial||[]).forEach(function(h){
+    if(!h.cats) return;
+    Object.keys(h.cats).forEach(function(cat){
+      acum[cat] = (acum[cat]||0) + h.cats[cat];
+    });
+  });
+  var mejor = null, mejorMonto = 0;
+  Object.keys(acum).forEach(function(cat){
+    if(cat === 'Sin categoría') return; // no sirve para segmentar
+    if(acum[cat] > mejorMonto){ mejor = cat; mejorMonto = acum[cat]; }
+  });
+  cliente.catsAcum = acum;
+  cliente.catPreferida = mejor;
+  return cliente;
+}
+
+function acreditarPuntos(dni, montoVenta, datosNuevo, itemsVenta) {
   if(!dni || dni.length<6 || montoVenta<=0) return {puntos:0, cliente:null};
   CLIENTES = getClientes();
   var idx = CLIENTES.findIndex(function(c){ return c.dni===dni; });
   var ganados = Math.floor(montoVenta / PUNTOS_POR_PESO);
   var fechaISO = new Date().toISOString();
+  var cats = resumirCategoriasVenta(itemsVenta);
   if(idx>=0) {
     CLIENTES[idx].puntos = (CLIENTES[idx].puntos||0) + ganados;
     CLIENTES[idx].totalGastado = (CLIENTES[idx].totalGastado||0) + montoVenta;
     CLIENTES[idx].historial = CLIENTES[idx].historial || [];
-    CLIENTES[idx].historial.unshift({fecha:fechaISO, monto:montoVenta, puntos:ganados});
+    CLIENTES[idx].historial.unshift({fecha:fechaISO, monto:montoVenta, puntos:ganados, cats:cats});
     if(CLIENTES[idx].historial.length>200) CLIENTES[idx].historial = CLIENTES[idx].historial.slice(0,200);
+    recalcularCategoriaPreferida(CLIENTES[idx]);
     saveClientes(CLIENTES);
     return {puntos:ganados, cliente:CLIENTES[idx]};
   }
@@ -11019,8 +11062,9 @@ function acreditarPuntos(dni, montoVenta, datosNuevo) {
     puntos: ganados,
     totalGastado: montoVenta,
     fechaAlta: fechaISO,
-    historial: [{fecha:fechaISO, monto:montoVenta, puntos:ganados}]
+    historial: [{fecha:fechaISO, monto:montoVenta, puntos:ganados, cats:cats}]
   };
+  recalcularCategoriaPreferida(nuevo);
   CLIENTES.push(nuevo);
   saveClientes(CLIENTES);
   return {puntos:ganados, cliente:nuevo};
@@ -11074,7 +11118,7 @@ function renderPuntos() {
     card.onclick=function(){ abrirClienteModal(c.dni); };
     card.innerHTML =
       '<div class="pn">👤 '+c.nombre+' '+(c.apellido||'')+' <span style="color:var(--gray);font-size:.68rem;font-weight:400">— DNI '+c.dni+'</span></div>'+
-      '<div class="pc">🏆 '+(c.puntos||0)+' pts · '+fmt(c.totalGastado||0)+' gastados'+(c.telefono?' · 📱 '+c.telefono:'')+'</div>';
+      '<div class="pc">🏆 '+(c.puntos||0)+' pts · '+fmt(c.totalGastado||0)+' gastados'+(c.telefono?' · 📱 '+c.telefono:'')+(c.catPreferida?' · 🛒 '+c.catPreferida:'')+'</div>';
     el.appendChild(card);
   });
 }
@@ -11090,7 +11134,8 @@ function abrirClienteModal(dni) {
   document.getElementById('cmDniCli').value = c.dni;
   document.getElementById('cmTelefonoCli').value = c.telefono||'';
   document.getElementById('clienteModalGastado').textContent =
-    'Cliente desde '+new Date(c.fechaAlta).toLocaleDateString('es-AR')+' · '+fmt(c.totalGastado||0)+' gastados en total';
+    'Cliente desde '+new Date(c.fechaAlta).toLocaleDateString('es-AR')+' · '+fmt(c.totalGastado||0)+' gastados en total'+
+    (c.catPreferida ? ' · Compra sobre todo: '+c.catPreferida : '');
 
   var hist = document.getElementById('clienteModalHistorial');
   var movs = c.historial||[];
@@ -11176,6 +11221,7 @@ function abrirCampanaModal() {
   document.getElementById('campSearch').value = '';
   document.getElementById('campPaso1').style.display = 'block';
   document.getElementById('campPaso2').style.display = 'none';
+  llenarFiltroCategoriasCampana();
   renderCampClientList();
   document.getElementById('campanaModalOverlay').classList.add('open');
 }
@@ -11191,7 +11237,10 @@ function clientesConTelefono() {
 
 function renderCampClientList() {
   var term = (document.getElementById('campSearch').value||'').toLowerCase().trim();
+  var catFiltro = ((document.getElementById('campFiltroCat')||{}).value)||'';
   var lista = clientesConTelefono().filter(function(c){
+    // Filtro por la categoría que más compra ese cliente
+    if(catFiltro && c.catPreferida !== catFiltro) return false;
     if(!term) return true;
     return c.dni.indexOf(term)!==-1 || (c.nombre||'').toLowerCase().indexOf(term)!==-1 || (c.apellido||'').toLowerCase().indexOf(term)!==-1;
   });
@@ -11200,7 +11249,8 @@ function renderCampClientList() {
   var el = document.getElementById('campClientList');
   el.innerHTML = '';
   if(!lista.length){
-    el.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.76rem">Sin clientes con teléfono cargado</div>';
+    el.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.76rem">'+
+      (catFiltro ? 'Ningún cliente con teléfono compra principalmente "'+catFiltro+'" todavía' : 'Sin clientes con teléfono cargado')+'</div>';
     actualizarCampSeleccionCount();
     return;
   }
@@ -11219,13 +11269,30 @@ function renderCampClientList() {
     info.style.cssText = 'flex:1;min-width:0';
     info.innerHTML =
       '<div style="font-size:.8rem;color:var(--light)">'+c.nombre+' '+(c.apellido||'')+'</div>'+
-      '<div style="font-size:.65rem;color:var(--gray)">DNI '+c.dni+' · 🏆 '+(c.puntos||0)+' pts · 📱 '+c.telefono+'</div>';
+      '<div style="font-size:.65rem;color:var(--gray)">DNI '+c.dni+' · 🏆 '+(c.puntos||0)+' pts · 📱 '+c.telefono+
+        (c.catPreferida ? ' · 🛒 '+c.catPreferida : '')+'</div>';
 
     row.appendChild(cb);
     row.appendChild(info);
     el.appendChild(row);
   });
   actualizarCampSeleccionCount();
+}
+
+// Llena el desplegable con las categorías que realmente compran los clientes
+// (no todas las del catálogo — solo las que sirven para segmentar de verdad).
+function llenarFiltroCategoriasCampana() {
+  var sel = document.getElementById('campFiltroCat');
+  if(!sel) return;
+  var conteo = {};
+  clientesConTelefono().forEach(function(c){
+    if(c.catPreferida) conteo[c.catPreferida] = (conteo[c.catPreferida]||0) + 1;
+  });
+  var cats = Object.keys(conteo).sort(function(a,b){ return conteo[b]-conteo[a]; });
+  sel.innerHTML = '<option value="">Todos los clientes</option>' +
+    cats.map(function(cat){
+      return '<option value="'+cat+'">'+cat+' ('+conteo[cat]+')</option>';
+    }).join('');
 }
 
 function campToggleCliente(dni, checked) {
