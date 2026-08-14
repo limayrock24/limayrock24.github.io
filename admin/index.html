@@ -4149,28 +4149,53 @@ body.night-on{background:#080005}
       </div>
     </div>
 
-    <!-- MODAL EDITAR CATEGORÍA -->
-    <div class="prod-modal-overlay" id="editCatOverlay" onclick="if(event.target===this)cerrarEditCat()">
-      <div class="prod-modal-box" style="max-width:500px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">✏ Editar categoría</span>
-          <button onclick="cerrarEditCat()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+    <!-- MODAL EDITAR CATEGORÍA — pantalla completa, tipo Catálogo -->
+    <div class="prod-modal-overlay" id="editCatOverlay" style="align-items:stretch;justify-content:stretch">
+      <div style="background:var(--card);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+
+        <!-- Encabezado -->
+        <div style="padding:14px 18px 10px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">✏ Editar categoría</span>
+            <button onclick="cerrarEditCat()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:5px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Cerrar</button>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="flex:2;min-width:180px;margin:0">
+              <label>Nombre</label>
+              <input type="text" id="editCatNombre" placeholder="Nombre de la categoría">
+            </div>
+            <div class="field" style="flex:1;min-width:110px;margin:0">
+              <label>Margen (%)</label>
+              <input type="number" id="editCatMargen" placeholder="50" min="0" max="300" step="1">
+            </div>
+          </div>
         </div>
-        <div class="field">
-          <label>Nombre</label>
-          <input type="text" id="editCatNombre" placeholder="Nombre de la categoría">
+
+        <!-- Barra de filtros -->
+        <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex-shrink:0">
+          <input type="text" id="editCatSearch" placeholder="🔍 Buscar producto o código..." oninput="filtrarEditCatProds()" autocomplete="off"
+            style="flex:2;min-width:180px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 11px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none">
+          <select id="editCatFiltroOrigen" onchange="filtrarEditCatProds()"
+            style="flex:1;min-width:170px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 11px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none">
+            <option value="">Todas las categorías</option>
+          </select>
+          <button onclick="editCatMarcarVisibles(true)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">✓ Marcar visibles</button>
+          <button onclick="editCatMarcarVisibles(false)" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">Desmarcar visibles</button>
         </div>
-        <div class="field">
-          <label>Margen por defecto (%)</label>
-          <input type="number" id="editCatMargen" placeholder="50" min="0" max="300" step="1">
+
+        <!-- Tabla de productos -->
+        <div style="flex:1;overflow-y:auto;padding:0 18px" id="editCatProdList"></div>
+
+        <!-- Pie con acciones -->
+        <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;background:var(--dark)">
+          <div style="flex:1;font-size:.78rem;color:var(--gray)">
+            <span id="editCatContador" style="color:var(--gold);font-family:Oswald,sans-serif;font-weight:700">0</span> productos en esta categoría
+            <span id="editCatMostrando" style="margin-left:10px;font-size:.7rem"></span>
+          </div>
+          <button onclick="cerrarEditCat()" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 18px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer">Cancelar</button>
+          <button onclick="guardarEditCat()" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px 26px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700">✓ Guardar</button>
         </div>
-        <div style="margin:10px 0 6px;font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">Productos de esta categoría</div>
-        <input type="text" id="editCatSearch" placeholder="Buscar producto..." oninput="filtrarEditCatProds()" style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:8px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none;margin-bottom:8px">
-        <div id="editCatProdList" style="max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:5px;margin-bottom:12px"></div>
-        <div style="display:flex;gap:8px">
-          <button onclick="guardarEditCat()" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700">✓ Guardar</button>
-          <button onclick="cerrarEditCat()" style="flex:1;background:none;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer">Cancelar</button>
-        </div>
+
       </div>
     </div>
 
@@ -14686,6 +14711,12 @@ function agregarCategoria() {
 }
 
 var _editCatIdx = -1;
+// Selección en MEMORIA (no se lee de las casillas en pantalla). Esto es
+// importante: la lista puede estar filtrada por buscador o por categoría de
+// origen, así que leer el DOM daba una foto incompleta y hacía que productos
+// ocultos se interpretaran como "destildados". Con la selección en memoria,
+// filtrar nunca puede afectar lo que queda guardado.
+var _editCatSel = {};
 
 function editarCategoria(i) {
   _editCatIdx = i;
@@ -14696,73 +14727,100 @@ function editarCategoria(i) {
   document.getElementById('editCatMargen').value = margenActual;
   document.getElementById('editCatSearch').value = '';
 
-  renderEditCatProds(cat, '');
+  // Arranca con los que ya están en la categoría
+  _editCatSel = {};
+  PRODUCTS.forEach(function(p){ if(p.cat === cat) _editCatSel[p.name] = true; });
+
+  // Llenar el filtro por categoría de origen con lo que realmente existe
+  var sel = document.getElementById('editCatFiltroOrigen');
+  if(sel){
+    var cats = {};
+    PRODUCTS.forEach(function(p){ cats[p.cat || 'Sin categoría'] = (cats[p.cat || 'Sin categoría']||0) + 1; });
+    var nombres = Object.keys(cats).sort(function(a,b){ return a.localeCompare(b,'es'); });
+    sel.innerHTML = '<option value="">Todas las categorías</option>' +
+      '<option value="__ESTA__">Solo los de "' + cat + '"</option>' +
+      nombres.map(function(n){ return '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+' ('+cats[n]+')</option>'; }).join('');
+    sel.value = '';
+  }
+
+  renderEditCatProds();
   document.getElementById('editCatOverlay').classList.add('open');
 }
 
 function cerrarEditCat() {
   document.getElementById('editCatOverlay').classList.remove('open');
   _editCatIdx = -1;
+  _editCatSel = {};
 }
 
-function renderEditCatProds(cat, termino) {
+function filtrarEditCatProds() { renderEditCatProds(); }
+
+// Devuelve los productos que pasan los filtros actuales (buscador + origen)
+function editCatProductosVisibles() {
+  var cat = ALL_CATS[_editCatIdx] || '';
+  var term = ((document.getElementById('editCatSearch')||{}).value||'').toLowerCase().trim();
+  var origen = ((document.getElementById('editCatFiltroOrigen')||{}).value)||'';
+  return PRODUCTS.filter(function(p){
+    if(origen === '__ESTA__'){ if(!_editCatSel[p.name]) return false; }
+    else if(origen){ if((p.cat || 'Sin categoría') !== origen) return false; }
+    if(!term) return true;
+    return p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term));
+  }).sort(function(a,b){ return a.name.localeCompare(b.name,'es'); });
+}
+
+function renderEditCatProds() {
   var list = document.getElementById('editCatProdList');
   if(!list) return;
-  var term = (termino||'').toLowerCase();
-  var prods = PRODUCTS.slice().sort(function(a,b){ return a.name.localeCompare(b.name,'es'); });
-  if(term) prods = prods.filter(function(p){ return p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term)); });
+  var cat = ALL_CATS[_editCatIdx] || '';
+  var prods = editCatProductosVisibles();
 
-  list.innerHTML = '';
-  prods.forEach(function(p){
-    var enEstaCat   = p.cat === cat;
-    var otraCat     = !enEstaCat && p.cat && p.cat !== 'Sin categoría';
-    var row = document.createElement('label');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer'
-      + (enEstaCat ? ';background:rgba(245,194,0,.06)' : '');
+  var cont = document.getElementById('editCatContador');
+  if(cont) cont.textContent = Object.keys(_editCatSel).length;
+  var most = document.getElementById('editCatMostrando');
+  if(most) most.textContent = '· mostrando ' + prods.length + ' de ' + PRODUCTS.length;
 
-    var cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = enEstaCat;
-    cb.value = p.name;
-    cb.dataset.catOrigen = p.cat || 'Sin categoría';
-    cb.style.cssText = 'width:15px;height:15px;accent-color:var(--gold);flex-shrink:0;cursor:pointer';
+  if(!prods.length){
+    list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--gray);font-size:.85rem">Sin productos que coincidan con el filtro</div>';
+    return;
+  }
 
-    var info = document.createElement('div');
-    info.style.cssText = 'flex:1;min-width:0';
+  var filas = prods.map(function(p){
+    var marcado = !!_editCatSel[p.name];
+    var catActual = p.cat || 'Sin categoría';
+    var esOtra = marcado && catActual !== cat && catActual !== 'Sin categoría';
+    var nEsc = p.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return '<tr onclick="editCatToggle(\''+nEsc+'\')" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05)'+(marcado?';background:rgba(245,194,0,.07)':'')+'">'+
+      '<td style="padding:9px 8px;width:34px"><input type="checkbox" '+(marcado?'checked':'')+' onclick="event.stopPropagation();editCatToggle(\''+nEsc+'\')" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer"></td>'+
+      '<td style="padding:9px 8px;font-size:.84rem;color:'+(marcado?'var(--gold)':'var(--white)')+'">'+p.name+
+        (p.codigo?'<div style="font-size:.62rem;color:var(--gray)">'+p.codigo+'</div>':'')+'</td>'+
+      '<td style="padding:9px 8px;font-size:.74rem;color:'+(esOtra?'var(--red)':(catActual===cat?'var(--gold)':'var(--gray)'))+'">'+
+        (esOtra ? '⚠ viene de ' + catActual : catActual)+'</td>'+
+      '<td style="padding:9px 8px;font-size:.82rem;color:var(--green);text-align:right;font-family:Oswald,sans-serif;white-space:nowrap">'+(p.pventa?fmt(p.pventa):'—')+'</td>'+
+    '</tr>';
+  }).join('');
 
-    var nombre = document.createElement('div');
-    nombre.textContent = p.name;
-    nombre.style.cssText = 'font-size:.82rem;color:' + (enEstaCat ? 'var(--gold)' : 'var(--light)');
-
-    var catBadge = document.createElement('div');
-    catBadge.style.cssText = 'font-size:.65rem;margin-top:1px;color:' + (enEstaCat ? 'var(--gold)' : otraCat ? '#E67E22' : 'var(--gray)');
-    catBadge.textContent = enEstaCat ? '✓ en esta categoría' : (otraCat ? '↪ '+p.cat : 'Sin categoría');
-
-    info.appendChild(nombre);
-    info.appendChild(catBadge);
-
-    cb.onchange = function(){
-      nombre.style.color = cb.checked ? 'var(--gold)' : 'var(--light)';
-      row.style.background = cb.checked ? 'rgba(245,194,0,.06)' : '';
-      if(cb.checked && otraCat) {
-        catBadge.style.color = 'var(--red)';
-        catBadge.textContent = '⚠ cambia de '+p.cat;
-      } else {
-        catBadge.style.color = enEstaCat ? 'var(--gold)' : otraCat ? '#E67E22' : 'var(--gray)';
-        catBadge.textContent = enEstaCat ? '✓ en esta categoría' : (otraCat ? '↪ '+p.cat : 'Sin categoría');
-      }
-    };
-
-    row.appendChild(cb);
-    row.appendChild(info);
-    list.appendChild(row);
-  });
+  list.innerHTML = '<table style="width:100%;border-collapse:collapse">'+
+    '<thead><tr style="position:sticky;top:0;background:var(--card);z-index:2">'+
+      '<th style="padding:10px 8px"></th>'+
+      '<th style="padding:10px 8px;text-align:left;font-size:.66rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">Producto</th>'+
+      '<th style="padding:10px 8px;text-align:left;font-size:.66rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">Categoría actual</th>'+
+      '<th style="padding:10px 8px;text-align:right;font-size:.66rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">Precio</th>'+
+    '</tr></thead><tbody>'+filas+'</tbody></table>';
 }
 
-function filtrarEditCatProds() {
-  var cat = ALL_CATS[_editCatIdx] || '';
-  var term = document.getElementById('editCatSearch').value;
-  renderEditCatProds(cat, term);
+function editCatToggle(nombre) {
+  if(_editCatSel[nombre]) delete _editCatSel[nombre];
+  else _editCatSel[nombre] = true;
+  renderEditCatProds();
+}
+
+// Marca o desmarca de una todos los que estén pasando el filtro actual
+function editCatMarcarVisibles(marcar) {
+  editCatProductosVisibles().forEach(function(p){
+    if(marcar) _editCatSel[p.name] = true;
+    else delete _editCatSel[p.name];
+  });
+  renderEditCatProds();
 }
 
 function guardarEditCat() {
@@ -14774,45 +14832,19 @@ function guardarEditCat() {
   if(!catNueva){ showToast('Ingresá un nombre',true); return; }
   if(catNueva !== catVieja && ALL_CATS.includes(catNueva)){ showToast('Ya existe esa categoría',true); return; }
 
-  // Productos seleccionados en el modal
-  //
-  // OJO: la lista puede estar FILTRADA por el buscador, así que las casillas
-  // visibles no son todo el universo. Antes se asumía que sí, y cualquier
-  // producto de la categoría que estuviera oculto por el filtro se
-  // interpretaba como "destildado" y se mandaba a "Sin categoría" — por eso,
-  // al buscar un producto para sumarlo, los que ya estaban en la categoría
-  // desaparecían de ella. Ahora solo se consideran los productos que están
-  // efectivamente en pantalla; los que no se ven, no se tocan.
-  var checkboxes = document.querySelectorAll('#editCatProdList input[type=checkbox]');
-  var seleccionados = [];
-  var visibles = [];      // solo lo que el usuario tiene realmente a la vista
-  var cambiosDeCat = [];  // productos que cambian desde otra categoría
-
-  checkboxes.forEach(function(cb){
-    visibles.push(cb.value);
-    if(cb.checked) {
-      seleccionados.push(cb.value);
-      var origen = cb.dataset.catOrigen || '';
-      if(origen && origen !== catVieja && origen !== 'Sin categoría') {
-        cambiosDeCat.push({ nombre: cb.value, de: origen, a: catNueva });
-      }
+  // La selección sale de memoria, no de la pantalla — así el filtro no influye.
+  var seleccionados = Object.keys(_editCatSel);
+  var cambiosDeCat = [];
+  PRODUCTS.forEach(function(p){
+    if(_editCatSel[p.name] && p.cat && p.cat !== catVieja && p.cat !== 'Sin categoría'){
+      cambiosDeCat.push({ nombre: p.name, de: p.cat, a: catNueva });
     }
   });
 
   function aplicarGuardado() {
     PRODUCTS.forEach(function(p){
-      if(seleccionados.indexOf(p.name) !== -1) {
-        p.cat = catNueva;
-      } else if(p.cat === catVieja && visibles.indexOf(p.name) !== -1) {
-        // Solo se saca de la categoría si el usuario lo tenía a la vista y
-        // lo destildó a propósito. Si estaba oculto por el buscador, se deja
-        // como está.
-        p.cat = 'Sin categoría';
-      } else if(p.cat === catVieja) {
-        // Estaba en la categoría pero oculto por el filtro: sigue en ella
-        // (y si la categoría se renombró, se lo lleva al nombre nuevo).
-        p.cat = catNueva;
-      }
+      if(_editCatSel[p.name]) p.cat = catNueva;
+      else if(p.cat === catVieja) p.cat = 'Sin categoría';
     });
     if(window.MARGINS) MARGINS[catNueva] = margen;
     ALL_CATS[_editCatIdx] = catNueva;
@@ -14822,14 +14854,14 @@ function guardarEditCat() {
     renderCatModalList();
     renderCatalogo();
     cerrarEditCat();
-    showToast('Categoría "'+catNueva+'" actualizada');
+    showToast('Categoría "'+catNueva+'" actualizada — '+seleccionados.length+' productos');
   }
 
-  // Si hay cambios de categoría externa, pedir confirmación
   if(cambiosDeCat.length) {
-    var lista = cambiosDeCat.map(function(c){
+    var lista = cambiosDeCat.slice(0,15).map(function(c){
       return '• '+c.nombre+' ('+c.de+' → '+c.a+')';
     }).join('\n');
+    if(cambiosDeCat.length > 15) lista += '\n...y ' + (cambiosDeCat.length-15) + ' más';
     var msg = 'Estos productos van a cambiar de categoría:\n\n'+lista+'\n\n¿Confirmás el cambio?';
     askConfirm(msg).then(function(ok){ if(ok) aplicarGuardado(); });
   } else {
