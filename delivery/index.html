@@ -16790,6 +16790,8 @@ function renderPanelRepartidor() {
         '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>'+
+      '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--green)':'var(--gold)')+'">'+
+        (p.estado==='cargado' ? '✅ El local ya lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>'+
       (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '')+
       '<div style="font-size:.76rem;color:var(--gray);margin-top:3px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
@@ -16815,6 +16817,7 @@ function tomarPedido(id) {
   p.tomadoEn = new Date().toISOString();
   savePedidosWeb(pedidos);
   showToast('🛵 Tomaste el pedido de '+p.nombre);
+  if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
   setFiltroRepartidor('mios');
 }
 
@@ -16840,6 +16843,9 @@ function marcarEntregado(id) {
     if(!ok) return;
     p.estadoDelivery = 'entregado';
     p.entregadoEn = new Date().toISOString();
+    // Cerrar el circuito: entregado por el repartidor = pedido terminado,
+    // así deja de figurar como pendiente también del lado del local.
+    p.estado = 'resuelto';
     savePedidosWeb(pedidos);
     showToast('✅ Pedido entregado');
     renderPanelRepartidor();
@@ -17011,8 +17017,12 @@ function abrirDeliveryPendModal() {
             p.notasManuales.map(function(n){ return '<div style="color:var(--light)">• '+n.nombre+': <b>'+n.texto+'</b></div>'; }).join('')+
           '</div>'
         : '';
-      return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">'+
+      var repHtml = p.repartidor
+        ? '<div style="font-size:.74rem;color:#1e90ff;margin-top:4px">🛵 Lo lleva <b>'+p.repartidor+'</b>'+(p.estadoDelivery==='entregado'?' · ✅ ya entregado':'')+'</div>'
+        : '<div style="font-size:.74rem;color:var(--gray);margin-top:4px">🛵 Sin repartidor asignado todavía</div>';
+      return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
+        repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         notasHtml+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
