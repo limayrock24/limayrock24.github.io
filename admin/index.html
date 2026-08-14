@@ -2340,10 +2340,11 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .emp-modal-box{background:var(--surface);border-radius:12px 12px 0 0;padding:20px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto;animation:up .25s ease}
 .emp-modal-box h3{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
 .pin-display{background:var(--dark);border:2px solid var(--gold);border-radius:6px;padding:12px;text-align:center;font-family:'Oswald',sans-serif;font-size:2rem;letter-spacing:8px;color:var(--gold);margin:8px 0}
-.emp-rol-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.emp-rol-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
 .emp-rol-btn{background:var(--card);border:1.5px solid var(--border);border-radius:4px;padding:10px;font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--gray);cursor:pointer;text-align:center;transition:all .15s}
 .emp-rol-btn.active-emp{border-color:#3498DB;color:#3498DB;background:rgba(52,152,219,.08)}
 .emp-rol-btn.active-adm{border-color:var(--gold);color:var(--gold);background:rgba(245,194,0,.08)}
+.emp-rol-btn.active-rep{border-color:#1e90ff;color:#1e90ff;background:rgba(30,144,255,.10)}
 .emp-modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 
 
@@ -3199,6 +3200,7 @@ body.night-on{background:#080005}
           <div class="emp-rol-btns">
             <div class="emp-rol-btn" id="emRolEmpleado" onclick="selEmpRol('empleado')">👤 Empleado</div>
             <div class="emp-rol-btn" id="emRolAdmin" onclick="selEmpRol('admin')">⭐ Admin</div>
+            <div class="emp-rol-btn" id="emRolRepartidor" onclick="selEmpRol('repartidor')">🛵 Repartidor</div>
           </div>
         </div>
         <div class="field">
@@ -3235,6 +3237,15 @@ body.night-on{background:#080005}
             <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Usa el mismo PIN de login para entrar al panel de Recepción</div>
           </div>
           <div class="recep-toggle-switch" id="emRecepToggle" onclick="toggleRecepAcceso()"></div>
+        </div>
+
+        <div id="emAvisoRepartidor" style="display:none;background:rgba(30,144,255,.08);border:1px solid rgba(30,144,255,.35);border-radius:6px;padding:11px 13px;margin-bottom:12px">
+          <div style="font-family:'Oswald',sans-serif;font-size:.76rem;color:#1e90ff;letter-spacing:1px;margin-bottom:4px">🛵 USUARIO DE DELIVERY</div>
+          <div style="font-size:.7rem;color:var(--gray);line-height:1.5">
+            Entra por <b style="color:var(--light)">/delivery/</b> con su nombre y este PIN.<br>
+            Solo ve los pedidos: puede tomarlos, contactar al cliente y marcarlos entregados.<br>
+            No accede a ventas, caja, catálogo ni al resto del sistema.
+          </div>
         </div>
 
         <!-- Acceso a Delivery (repartidor) -->
@@ -5567,6 +5578,13 @@ function lpp(d) {
       }
       // Buscar el empleado que tenga ese PIN
       var emp = EMPLEADOS.find(function(e){ return e.pin===loginBuf; });
+      if(emp && emp.rol === 'repartidor') {
+        // Los repartidores no atienden el mostrador ni manejan caja: su PIN
+        // sirve solo para el link /delivery/. Si lo usan acá, se les avisa.
+        loginBuf=''; updateLoginDots();
+        alert('🛵 '+emp.nombre+', tu usuario es de delivery.\n\nEntrá desde el link de repartidores:\nlimayrock24.github.io/delivery/');
+        return;
+      }
       if(emp) {
         // Guardar empleado temporalmente y pedir efectivo inicial
         _empPendiente = emp;
@@ -15491,8 +15509,34 @@ function selEmpRol(rol) {
   _emRol = rol;
   var btnEmp = document.getElementById('emRolEmpleado');
   var btnAdm = document.getElementById('emRolAdmin');
+  var btnRep = document.getElementById('emRolRepartidor');
   if(btnEmp) btnEmp.classList.toggle('active-emp', rol==='empleado');
   if(btnAdm) btnAdm.classList.toggle('active-adm', rol==='admin');
+  if(btnRep) btnRep.classList.toggle('active-rep', rol==='repartidor');
+
+  // El rol Repartidor arma los permisos solo: entra únicamente por el link
+  // de delivery, así que no tiene sentido darle Recepción ni Cargar Stock.
+  // Se muestra un aviso y se ocultan los switches que no aplican.
+  var esRep = (rol === 'repartidor');
+  var swRecep = document.getElementById('emRecepToggle');
+  var swStock = document.getElementById('emStockToggle');
+  var swDeliv = document.getElementById('emDeliveryToggle');
+  if(esRep){
+    if(swDeliv) swDeliv.classList.add('on');
+    if(swRecep) swRecep.classList.remove('on');
+    if(swStock) swStock.classList.remove('on');
+  }
+  // Ocultar las filas de permisos que no corresponden a un repartidor
+  [['emRecepToggle', esRep], ['emStockToggle', esRep]].forEach(function(par){
+    var sw = document.getElementById(par[0]);
+    var fila = sw ? sw.closest('.recep-toggle') : null;
+    if(fila) fila.style.display = par[1] ? 'none' : '';
+  });
+  var filaDeliv = swDeliv ? swDeliv.closest('.recep-toggle') : null;
+  if(filaDeliv) filaDeliv.style.display = esRep ? 'none' : '';
+
+  var aviso = document.getElementById('emAvisoRepartidor');
+  if(aviso) aviso.style.display = esRep ? 'block' : 'none';
 }
 
 function emPinPress(d) {
@@ -15530,6 +15574,9 @@ function guardarEmpModal() {
   var funcion = document.getElementById('emFuncion') ? document.getElementById('emFuncion').value : '';
   var topeConsumo = getMontoInputValue('emTopeConsumo');
   var margenAviso = getMontoInputValue('emMargenAviso');
+  // El rol Repartidor define sus permisos solo, sin depender de los switches
+  // (que están ocultos para ese rol).
+  if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; deliveryOn = true; }
   var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
     topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
