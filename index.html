@@ -2,6 +2,7 @@
 <!-- ═══════════════ FIREBASE — Limay Rock ═══════════════ -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <script>
 (function(){
   // Indicador chico de estado de conexión en vivo (bola verde/roja + texto),
@@ -54,6 +55,73 @@
     appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
   };
   firebase.initializeApp(firebaseConfig);
+
+  // ── NOTIFICACIONES PUSH ───────────────────────────────────────────────────
+  // Clave pública de Firebase para notificaciones web. No es un secreto: va en
+  // el código de la página por diseño. Se saca de la consola de Firebase, en
+  // Configuración del proyecto → Cloud Messaging → Web Push certificates.
+  window.__LR_VAPID_KEY = '';  // ← PENDIENTE: pegar acá la clave
+
+  // Deja registrado este dispositivo para recibir avisos. "destino" define qué
+  // tipo de avisos le llegan: 'dueno' (todo el movimiento del local) o
+  // 'repartidor' (solo pedidos de delivery).
+  window.__lrActivarNotificaciones = function(destino, quien){
+    return new Promise(function(resolve, reject){
+      if(!('Notification' in window) || !firebase.messaging){
+        reject(new Error('Este navegador no soporta notificaciones'));
+        return;
+      }
+      if(!window.__LR_VAPID_KEY){
+        reject(new Error('Falta configurar la clave de notificaciones'));
+        return;
+      }
+      Notification.requestPermission().then(function(permiso){
+        if(permiso !== 'granted'){
+          reject(new Error('No diste permiso para recibir notificaciones'));
+          return;
+        }
+        // El service worker vive en la raíz para poder cubrir todas las
+        // secciones del sitio (/, /admin/, /delivery/).
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+          .then(function(reg){
+            var messaging = firebase.messaging();
+            return messaging.getToken({
+              vapidKey: window.__LR_VAPID_KEY,
+              serviceWorkerRegistration: reg
+            });
+          })
+          .then(function(token){
+            if(!token) throw new Error('No se pudo registrar el dispositivo');
+            // Se guarda con el token como id, así un mismo celular no queda
+            // duplicado si se vuelve a activar.
+            return window.__lrDB.collection('fcmTokens').doc(token.slice(-40)).set({
+              token: token,
+              destino: destino,
+              quien: quien || '',
+              dispositivo: navigator.userAgent.slice(0, 120),
+              fecha: new Date().toISOString()
+            }).then(function(){ resolve(token); });
+          })
+          .catch(reject);
+      }).catch(reject);
+    });
+  };
+
+  // Aviso que llega mientras la app está ABIERTA (el service worker solo se
+  // ocupa de cuando está cerrada). Se muestra como un cartelito interno.
+  window.__lrEscucharNotifsEnVivo = function(){
+    try{
+      var messaging = firebase.messaging();
+      messaging.onMessage(function(payload){
+        var d = payload.data || {};
+        if(typeof mostrarNotifAdmin === 'function'){
+          mostrarNotifAdmin('<b>'+(d.titulo||'')+'</b><br>'+(d.cuerpo||'').replace(/\n/g,'<br>'), '🔔');
+        } else if(typeof showToast === 'function'){
+          showToast((d.titulo||'')+' — '+(d.cuerpo||''));
+        }
+      });
+    }catch(e){ console.warn('No se pudo escuchar notificaciones en vivo:', e); }
+  };
   window.__lrDB = firebase.firestore();
   // En redes de datos móviles (4G) con proxy/NAT de operador, el transporte
   // por defecto (tipo WebSocket) a veces traba el handshake inicial y deja
@@ -3032,6 +3100,7 @@ body.night-on{background:#080005}
         <div class="subtitle">Estadísticas · Productos · Empleados</div>
       </div>
       <button onclick="descargarBackup()" id="btnBackup" title="Backup" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">💾</button>
+      <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
       <button class="btn btn-admin" onclick="closeAdmin()" style="padding:6px 11px;font-size:.72rem">✕ Cerrar</button>
     </div>
     <div class="tabs">
@@ -4569,7 +4638,10 @@ body.night-on{background:#080005}
         <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:#1e90ff;font-weight:700;letter-spacing:1px">🛵 PEDIDOS DE DELIVERY</div>
         <div style="font-size:.68rem;color:var(--gray);margin-top:2px" id="repartidorSaludo"></div>
       </div>
-      <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="btnNotifRepartidor" onclick="activarNotifsRepartidor()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔔 Activar avisos</button>
+        <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
+      </div>
     </div>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
       <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
@@ -16663,6 +16735,41 @@ function renderRecepEgresosHist() {
 // corregir la cantidad real (reemplaza el número, no suma) y queda todo
 // registrado con quién y cuándo, igual que el resto de los movimientos.
 var _cargaStockProdSel = null;
+
+// ── ACTIVAR NOTIFICACIONES ──────────────────────────────────────────────────
+function _lrEsIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+function _lrEstaInstalada(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function _lrActivarNotifs(destino, quien, btnId){
+  var btn = document.getElementById(btnId);
+  // En iPhone las notificaciones web solo funcionan si la página está
+  // instalada en la pantalla de inicio. Se avisa antes de que se frustre
+  // dando permisos que igual no van a funcionar.
+  if(_lrEsIOS() && !_lrEstaInstalada()){
+    alert('📱 En iPhone hay que instalar la app primero:\n\n1. Tocá el botón Compartir (el cuadradito con la flecha)\n2. Elegí "Agregar a inicio"\n3. Abrila desde ese ícono\n4. Volvé a tocar "Activar avisos"');
+    return;
+  }
+  if(btn){ btn.textContent = '⏳ Activando...'; btn.disabled = true; }
+  window.__lrActivarNotificaciones(destino, quien).then(function(){
+    if(btn){ btn.textContent = '🔔 Avisos activados'; btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)'; }
+    if(window.__lrEscucharNotifsEnVivo) window.__lrEscucharNotifsEnVivo();
+    showToast('✅ Este dispositivo va a recibir avisos');
+  }).catch(function(e){
+    if(btn){ btn.textContent = '🔔 Activar avisos'; btn.disabled = false; }
+    alert('No se pudieron activar los avisos.\n\nMotivo: '+(e && e.message ? e.message : 'error desconocido'));
+  });
+}
+
+function activarNotifsRepartidor(){
+  _lrActivarNotifs('repartidor', currentEmp ? currentEmp.nombre : '', 'btnNotifRepartidor');
+}
+function activarNotifsDueno(){
+  _lrActivarNotifs('dueno', 'Admin', 'btnNotifDueno');
+}
 
 // ── MODO DELIVERY (link propio /delivery/) ──────────────────────────────────
 // Cuando se entra por /delivery/, la app arranca en un login propio de
