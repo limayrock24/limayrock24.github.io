@@ -476,13 +476,17 @@
     ocultarCargaSiListo();
   });
 
-  window.__lrSaveEmpleados = function(lista){
+    // Guardar NUNCA borra de forma implicita (cambio 14/8). Antes se borraba
+    // cualquier registro que estuviera en el snapshot anterior pero no en la
+    // lista recibida; si esa lista quedaba incompleta (sincronizacion a medio
+    // cargar, pestana vieja, corte de senal), guardar un cambio chico borraba
+    // el resto. El borrado ahora es explicito: se pasan los nombres en el
+    // segundo parametro.
+  window.__lrSaveEmpleados = function(lista, nombresABorrar){
     var prev = window.__lrSync.ultimoEmpleadosSnapshot || {};
-    var vistos = {};
     var promesas = [];
     lista.forEach(function(e){
       try{
-        vistos[e.nombre] = true;
         var antes = prev[e.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
           promesas.push(
@@ -494,15 +498,13 @@
         }
       }catch(err){ console.error('Error preparando empleado', e && e.nombre, err); promesas.push(Promise.reject(err)); }
     });
-    Object.keys(prev).forEach(function(nombre){
-      if(!vistos[nombre]){
-        promesas.push(
-          window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).delete().catch(function(err){
-            console.error('Error borrando empleado', nombre, err);
-            throw err;
-          })
-        );
-      }
+    (nombresABorrar || []).forEach(function(nombre){
+      promesas.push(
+        window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).delete().catch(function(err){
+          console.error('Error borrando empleado', nombre, err);
+          throw err;
+        })
+      );
     });
     // Antes esta función no devolvía nada: quien la llamaba no tenía forma
     // de saber si el guardado realmente llegó a la nube o no, y por eso
@@ -1282,23 +1284,25 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando proveedores:', err); window.__lrSync.proveedoresListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveProveedores = function(lista){
+    // Guardar NUNCA borra de forma implicita (cambio 14/8). Antes se borraba
+    // cualquier registro que estuviera en el snapshot anterior pero no en la
+    // lista recibida; si esa lista quedaba incompleta (sincronizacion a medio
+    // cargar, pestana vieja, corte de senal), guardar un cambio chico borraba
+    // el resto. El borrado ahora es explicito: se pasan los nombres en el
+    // segundo parametro.
+  window.__lrSaveProveedores = function(lista, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoProveedoresSnapshot || {};
-    var vistos = {};
     lista.forEach(function(p){
       try{
-        vistos[p.nombre] = true;
         var antes = prev[p.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(p.nombre)).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando proveedor', p && p.nombre, e); }
     });
-    Object.keys(prev).forEach(function(nombre){
-      if(!vistos[nombre]){
-        __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(nombre)).delete());
-      }
+    (nombresABorrar || []).forEach(function(nombre){
+      __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(nombre)).delete());
     });
       return Promise.all(__promesas);
   };
@@ -1314,23 +1318,25 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando combos:', err); window.__lrSync.combosListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveCombos = function(lista){
+    // Guardar NUNCA borra de forma implicita (cambio 14/8). Antes se borraba
+    // cualquier registro que estuviera en el snapshot anterior pero no en la
+    // lista recibida; si esa lista quedaba incompleta (sincronizacion a medio
+    // cargar, pestana vieja, corte de senal), guardar un cambio chico borraba
+    // el resto. El borrado ahora es explicito: se pasan los nombres en el
+    // segundo parametro.
+  window.__lrSaveCombos = function(lista, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoCombosSnapshot || {};
-    var vistos = {};
     lista.forEach(function(c){
       try{
-        vistos[c.nombre] = true;
         var antes = prev[c.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
           __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(c.nombre)).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando combo', c && c.nombre, e); }
     });
-    Object.keys(prev).forEach(function(nombre){
-      if(!vistos[nombre]){
-        __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(nombre)).delete());
-      }
+    (nombresABorrar || []).forEach(function(nombre){
+      __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(nombre)).delete());
     });
       return Promise.all(__promesas);
   };
@@ -15493,9 +15499,9 @@ function guardarEmpModal() {
   renderEmpAdmin();
 }
 
-function saveEmpleados(emps) {
+function saveEmpleados(emps, nombresABorrar) {
   window.EMPLEADOS = emps;
-  if(window.__lrSaveEmpleados) return window.__lrSaveEmpleados(emps);
+  if(window.__lrSaveEmpleados) return window.__lrSaveEmpleados(emps, nombresABorrar);
   return Promise.resolve();
 }
 
@@ -15508,7 +15514,7 @@ function eliminarEmpModal() {
     EMPLEADOS.splice(idx,1);
     function intentarBorrarEmp(){
       showToast('⏳ Borrando en la nube...');
-      var promesaEmp = saveEmpleados(EMPLEADOS);
+      var promesaEmp = saveEmpleados(EMPLEADOS, [nombre]);
       if(!window.__lrConTimeoutAviso){ promesaEmp.then(function(){ showToast('✅ '+nombre+' eliminado y confirmado'); }); return; }
       window.__lrConTimeoutAviso(promesaEmp, 15000, intentarBorrarEmp).then(function(r){
         if(r.pendiente){
@@ -16837,7 +16843,7 @@ function registrarLogProveedor(nombre, responsable) {
 var SK_PROVEEDORES = 'lr_proveedores';
 
 function getProveedores() { return (window.__lrSync && window.__lrSync.proveedoresListos && Array.isArray(window.__lrProveedoresCache)) ? window.__lrProveedoresCache : []; }
-function saveProveedores(p) { window.__lrProveedoresCache = p; if(window.__lrSaveProveedores) window.__lrSaveProveedores(p); }
+function saveProveedores(p, nombresABorrar) { window.__lrProveedoresCache = p; if(window.__lrSaveProveedores) window.__lrSaveProveedores(p, nombresABorrar); }
 
 var PROVEEDORES = getProveedores();
 
@@ -17118,7 +17124,7 @@ function eliminarProvModal() {
   askConfirm('¿Eliminás al proveedor '+nombre+'?').then(function(ok){
     if(!ok) return;
     PROVEEDORES.splice(idx,1);
-    saveProveedores(PROVEEDORES);
+    saveProveedores(PROVEEDORES, [nombre]);
     closeProvModal();
     renderProveedores();
     showToast(nombre+' eliminado');
@@ -17129,7 +17135,7 @@ function eliminarProvModal() {
 
 var SK_COMBOS = 'lr_combos';
 function getCombos() { return (window.__lrSync && window.__lrSync.combosListos && Array.isArray(window.__lrCombosCache)) ? window.__lrCombosCache : []; }
-function saveCombos(c) { window.__lrCombosCache = c; if(window.__lrSaveCombos) window.__lrSaveCombos(c); }
+function saveCombos(c, nombresABorrar) { window.__lrCombosCache = c; if(window.__lrSaveCombos) window.__lrSaveCombos(c, nombresABorrar); }
 
 var COMBOS = getCombos();
 
@@ -17475,7 +17481,7 @@ function eliminarComboModal() {
   askConfirm('¿Eliminás el combo '+nombre+'?').then(function(ok) {
     if(!ok) return;
     COMBOS.splice(idx, 1);
-    saveCombos(COMBOS);
+    saveCombos(COMBOS, [nombre]);
     closeComboModal();
     renderCombos();
     showToast(nombre+' eliminado');
