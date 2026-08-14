@@ -1450,14 +1450,14 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Limay Rock - Admin</title>
-<link rel="manifest" href="manifest.json">
+<title>Limay Rock — Sistema de Ventas</title>
+<link rel="manifest" href="../manifest.json">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="icon" href="../icon-192.png">
 <link rel="apple-touch-icon" href="../icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Limay Rock - Admin">
+<meta name="apple-mobile-web-app-title" content="Limay Rock">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Barlow:wght@400;500;600;700&display=swap');
 :root{
@@ -19648,19 +19648,19 @@ initCatsFromStorage(); initLogin(); updateStockNotif();
 // Atajo para tu celu: si la dirección tiene ?admin=1, entra directo al
 // panel admin apenas termina de cargar todo, sin mostrar el login ni
 // pedir el 0000. Pensado para un acceso directo separado en tu celu.
-// Esta es la copia dedicada de /admin/ — entra SIEMPRE directo al panel
-// admin, sin importar la URL, sin depender de ningún parámetro.
-(function esperarYAbrirAdmin(intentos){
-  intentos = intentos || 0;
-  var overlay = document.getElementById('lrLoadingOverlay');
-  if(overlay && overlay.style.display === 'none'){
-    try { abrirAdminSinTurno(); } catch(e) { console.error('abrirAdminSinTurno falló:', e); }
-  } else if(intentos < 100){
-    setTimeout(function(){ esperarYAbrirAdmin(intentos+1); }, 300);
-  } else {
-    console.error('El sistema tardó demasiado en cargar, no se pudo abrir el panel admin automáticamente.');
-  }
-})();
+if(new URLSearchParams(window.location.search).get('admin') === '1'){
+  (function esperarYAbrirAdmin(intentos){
+    intentos = intentos || 0;
+    var overlay = document.getElementById('lrLoadingOverlay');
+    if(overlay && overlay.style.display === 'none'){
+      try { abrirAdminSinTurno(); } catch(e) { console.error('abrirAdminSinTurno falló:', e); }
+    } else if(intentos < 100){
+      setTimeout(function(){ esperarYAbrirAdmin(intentos+1); }, 300);
+    } else {
+      console.error('El sistema tardó demasiado en cargar, no se pudo abrir el panel admin automáticamente.');
+    }
+  })();
+}
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('../sw.js?v=2').catch(function(e){ console.error('Error registrando service worker:', e); });

@@ -4529,6 +4529,27 @@ body.night-on{background:#080005}
   </div>
 </div>
 
+<!-- LOGIN DEL MODO DELIVERY (solo aparece en /delivery/) -->
+<div id="deliveryLoginOverlay" style="display:none;position:fixed;inset:0;z-index:2200;background:var(--black);flex-direction:column;align-items:center;justify-content:center;padding:24px">
+  <div style="font-family:Oswald,sans-serif;font-size:1.6rem;color:#1e90ff;font-weight:700;letter-spacing:2px;margin-bottom:4px">🛵 DELIVERY</div>
+  <div style="font-family:Oswald,sans-serif;font-size:.9rem;color:var(--gold);letter-spacing:3px;margin-bottom:26px">LIMAY ROCK</div>
+  <div style="width:100%;max-width:300px">
+    <div class="field" style="margin-bottom:12px">
+      <label>Repartidor</label>
+      <select id="dlEmpSel" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.95rem;outline:none"></select>
+    </div>
+    <div class="field">
+      <label>PIN</label>
+      <input type="password" id="dlPin" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off"
+        onkeydown="if(event.key==='Enter') loginDelivery()"
+        style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:14px;color:var(--white);font-family:Oswald,sans-serif;font-size:1.4rem;text-align:center;letter-spacing:8px;outline:none;box-sizing:border-box">
+    </div>
+    <div id="dlError" style="display:none;color:var(--red);font-size:.78rem;text-align:center;margin-top:10px">PIN incorrecto</div>
+    <button onclick="loginDelivery()" style="width:100%;margin-top:16px;background:#1e90ff;color:#fff;border:none;border-radius:6px;padding:14px;font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:2px;font-weight:700;cursor:pointer">ENTRAR</button>
+  </div>
+  <div id="dlCargando" style="color:var(--gray);font-size:.78rem;margin-top:22px">Conectando…</div>
+</div>
+
 <!-- PANEL DE REPARTIDOR — pantalla acotada: solo pedidos de delivery -->
 <div class="prod-modal-overlay" id="repartidorOverlay" style="align-items:stretch;justify-content:stretch;z-index:2150">
   <div style="background:var(--dark);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
@@ -8762,6 +8783,9 @@ function validarPrestamo() {
   document.getElementById('prConfirmarBtn').disabled = !(quien && _prMedio && monto>0);
 }
 document.addEventListener('DOMContentLoaded', function(){
+  // Si se entró por el link /delivery/, arrancar directo en el login de
+  // repartidor en vez de la pantalla de venta normal.
+  if(typeof arrancarModoDelivery==='function') arrancarModoDelivery();
   var q = document.getElementById('prQuien'); if(q) q.addEventListener('input', validarPrestamo);
   var m = document.getElementById('prMonto'); if(m) m.addEventListener('input', validarPrestamo);
 });
@@ -16587,6 +16611,71 @@ function renderRecepEgresosHist() {
 // registrado con quién y cuándo, igual que el resto de los movimientos.
 var _cargaStockProdSel = null;
 
+// ── MODO DELIVERY (link propio /delivery/) ──────────────────────────────────
+// Cuando se entra por /delivery/, la app arranca en un login propio de
+// repartidor: elige su nombre, pone su PIN, y queda directo en el panel de
+// pedidos. No ve la pantalla de venta ni nada más del sistema.
+function esModoDelivery(){
+  return location.pathname.indexOf('/delivery') !== -1;
+}
+
+function arrancarModoDelivery(){
+  if(!esModoDelivery()) return;
+  var ov = document.getElementById('deliveryLoginOverlay');
+  if(!ov) return;
+  ov.style.display = 'flex';
+
+  var intentos = 0;
+  var esperar = setInterval(function(){
+    intentos++;
+    if(window.__lrSync && window.__lrSync.empleadosListos && Array.isArray(window.EMPLEADOS)){
+      clearInterval(esperar);
+      var sel = document.getElementById('dlEmpSel');
+      var repartidores = EMPLEADOS.filter(function(e){ return e.accesoDelivery; });
+      var carg = document.getElementById('dlCargando');
+      if(!repartidores.length){
+        if(carg) carg.innerHTML = '<span style="color:var(--gold)">Todavía no hay repartidores habilitados.<br>Pedile al administrador que te active el acceso a Delivery.</span>';
+        return;
+      }
+      if(carg) carg.style.display = 'none';
+      sel.innerHTML = repartidores.map(function(e){
+        return '<option value="'+e.nombre.replace(/"/g,'&quot;')+'">'+e.nombre+'</option>';
+      }).join('');
+    } else if(intentos > 120){
+      clearInterval(esperar);
+      var c2 = document.getElementById('dlCargando');
+      if(c2) c2.innerHTML = '<span style="color:var(--red)">No se pudo conectar. Revisá tu internet y recargá.</span>';
+    }
+  }, 500);
+}
+
+function loginDelivery(){
+  var nombre = (document.getElementById('dlEmpSel')||{}).value || '';
+  var pin = ((document.getElementById('dlPin')||{}).value || '').trim();
+  var err = document.getElementById('dlError');
+  var emp = (window.EMPLEADOS||[]).find(function(e){ return e.nombre===nombre && e.accesoDelivery; });
+  if(!emp || String(emp.pin) !== pin){
+    if(err) err.style.display = 'block';
+    var inp = document.getElementById('dlPin');
+    if(inp){ inp.value=''; inp.focus(); }
+    return;
+  }
+  if(err) err.style.display = 'none';
+  currentEmp = emp;
+  document.getElementById('deliveryLoginOverlay').style.display = 'none';
+  abrirPanelRepartidor();
+}
+
+// En modo delivery, "Salir" vuelve al login en vez de cerrar el panel y dejar
+// a la vista la pantalla de venta.
+function salirModoDelivery(){
+  currentEmp = null;
+  var inp = document.getElementById('dlPin');
+  if(inp) inp.value = '';
+  document.getElementById('repartidorOverlay').classList.remove('open');
+  document.getElementById('deliveryLoginOverlay').style.display = 'flex';
+}
+
 // ── PANEL DE REPARTIDOR ─────────────────────────────────────────────────────
 // Pantalla acotada para quien reparte: ve los pedidos de delivery, los toma,
 // y los marca entregados. No accede a ventas, caja, catálogo ni nada más.
@@ -16602,6 +16691,7 @@ function abrirPanelRepartidor() {
 }
 
 function cerrarPanelRepartidor() {
+  if(esModoDelivery()){ salirModoDelivery(); return; }
   document.getElementById('repartidorOverlay').classList.remove('open');
 }
 
