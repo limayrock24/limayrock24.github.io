@@ -74,27 +74,31 @@
   // mismo dispositivo, aparte del guardado offline propio de Firestore, así
   // que aunque ese hubiera fallado, esto lo recupera igual apenas la página
   // vuelve a abrirse y hay conexión.
-  (function recuperarPendienteProductos(){
+  // Reintento de un guardado de catálogo que quedó sin confirmar en una sesión
+  // anterior (se cerró la pestaña, se cortó la luz, falló la subida).
+  //
+  // IMPORTANTE: acá NO se restaura la foto vieja del catálogo. Antes se hacía
+  // (window.PRODUCTS = pendiente.datos) y eso causaba pérdida de datos real:
+  // si después de ese guardado pendiente se cargaban más productos desde otro
+  // dispositivo, al reabrir esta pantalla se subía la foto vieja y se pisaba
+  // todo lo cargado después. Ahora solo se re-dispara el guardado del catálogo
+  // ACTUAL (que ya viene sincronizado desde la nube), que es lo único seguro:
+  // si el cambio pendiente ya había llegado, no pasa nada; y si no llegó,
+  // Firestore lo tiene encolado offline y se sube igual.
+  (function reintentarGuardadoPendienteProductos(){
     var raw; try { raw = localStorage.getItem('lr_pending_productos_save'); } catch(e){ return; }
     if(!raw) return;
-    var pendiente; try { pendiente = JSON.parse(raw); } catch(e){ return; }
-    if(!pendiente || !pendiente.datos || !pendiente.datos.length) return;
-    var edadHoras = (Date.now() - (pendiente.ts||0)) / 3600000;
-    if(edadHoras > 48) return; // muy viejo — mejor no arriesgar un pisado extraño, se descarta solo
+    var pendiente; try { pendiente = JSON.parse(raw); } catch(e){ pendiente = null; }
+    var edadHoras = pendiente ? (Date.now() - (pendiente.ts||0)) / 3600000 : 999;
+    if(edadHoras > 48){ try{ localStorage.removeItem('lr_pending_productos_save'); }catch(e){} return; }
     var intentos = 0;
     var esperar = setInterval(function(){
       intentos++;
       if(window.__lrSaveProductos && window.__lrSync && window.__lrSync.productosListos){
         clearInterval(esperar);
-        window.PRODUCTS = pendiente.datos; // el cambio sin confirmar tiene prioridad sobre lo que haya en la nube
-        if(typeof showToast==='function') showToast('⚠️ Recuperando un cambio de catálogo que había quedado sin confirmar — subiéndolo ahora...');
         window.__lrSaveProductos(PRODUCTS).then(function(){
           try{ localStorage.removeItem('lr_pending_productos_save'); }catch(e){}
-          if(typeof showToast==='function') showToast('✅ Cambio recuperado y confirmado en la nube');
-          if(typeof buildPills==='function') buildPills();
-          if(typeof filterAll==='function') filterAll();
-          if(typeof renderCatalogo==='function') renderCatalogo();
-        }).catch(function(){ /* se reintentará solo más adelante, vía el reintento automático */ });
+        }).catch(function(){ /* se reintentará solo más adelante */ });
       } else if(intentos > 90){ // ~45s de espera máxima a que Firebase arranque
         clearInterval(esperar);
       }
@@ -6881,7 +6885,11 @@ function delProd(idx) {
 var SK_PENDING_PRODUCTOS = 'lr_pending_productos_save';
 
 function guardarPendienteLocalProductos(datos) {
-  try { localStorage.setItem(SK_PENDING_PRODUCTOS, JSON.stringify({ts:Date.now(), datos:datos})); } catch(e){ /* localStorage lleno/no disponible: seguimos igual, solo no hay respaldo extra */ }
+  // Solo se guarda una MARCA de "hay un guardado sin confirmar", no una copia
+  // del catálogo entero. Guardar la copia completa era peligroso: al reabrir,
+  // esa foto vieja pisaba cambios más nuevos hechos desde otro dispositivo.
+  // El respaldo real de los datos lo hace Firestore con su cola offline.
+  try { localStorage.setItem(SK_PENDING_PRODUCTOS, JSON.stringify({ts:Date.now()})); } catch(e){ /* localStorage lleno/no disponible */ }
 }
 function limpiarPendienteLocalProductos() {
   try { localStorage.removeItem(SK_PENDING_PRODUCTOS); } catch(e){}
