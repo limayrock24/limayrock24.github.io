@@ -5555,6 +5555,9 @@ function cerrarSesionInterrumpidaAhora() {
 }
 
 function initLogin() {
+  // En el link de delivery no se muestra el login del local: esa pantalla
+  // tiene su propio acceso de repartidor.
+  if(typeof esModoDelivery==='function' && esModoDelivery()) return;
   loginBuf = '';
   updateLoginDots();
   document.getElementById('loginPinError').classList.remove('show');
@@ -5565,6 +5568,7 @@ function initLogin() {
 }
 
 function lpp(d) {
+  if(typeof esModoDelivery==='function' && esModoDelivery()) return;
   if(loginBuf.length>=4) return;
   loginBuf+=d; updateLoginDots();
   if(loginBuf.length===4) {
@@ -13137,6 +13141,8 @@ function puedeEscanearAhora() {
 }
 
 document.addEventListener('keydown', function(e) {
+  // El escáner de códigos no tiene sentido en el link de delivery
+  if(typeof esModoDelivery==='function' && esModoDelivery()) return;
   // Solo activo si no hay modal/admin/login de por medio y no se está escribiendo en un campo
   if(!puedeEscanearAhora()) { _scanBuffer=''; clearTimeout(_scanTimer); return; }
 
@@ -19609,6 +19615,11 @@ function confirmarRetiroVencido() {
 
 // ── TECLADO FÍSICO ────────────────────────────────────────────────────────
 document.addEventListener('keydown', function(ev) {
+  // En el link de delivery no corre nada del POS: el login de repartidor tiene
+  // su propio campo de PIN. Sin esto, este listener capturaba las teclas
+  // mientras el repartidor escribía y disparaba el login del local por detrás.
+  if(typeof esModoDelivery==='function' && esModoDelivery()) return;
+
   var key = ev.key;
   var isDigit = /^[0-9]$/.test(key);
 
