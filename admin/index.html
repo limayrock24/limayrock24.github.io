@@ -366,13 +366,23 @@
     }
   }
 
-  window.__lrSaveProductos = function(lista){
+  // IMPORTANTE — cambio de diseño (14/8): antes, esta función borraba de la
+  // nube CUALQUIER producto que estuviera en el snapshot anterior pero no en
+  // la lista recibida. La idea era "sincronizar", pero en la práctica era una
+  // trampa: si por cualquier motivo la lista en memoria de un dispositivo
+  // quedaba incompleta (sincronización a medio cargar, pestaña vieja, corte de
+  // señal en el momento justo), el simple hecho de guardar UN producto nuevo
+  // borraba en la nube todos los que faltaban en esa copia. Eso fue lo que
+  // hizo desaparecer productos de una categoría recién creada.
+  //
+  // Ahora: guardar SOLO agrega y actualiza, nunca borra. El borrado es
+  // explícito — hay que pasar los nombres a borrar en el segundo parámetro
+  // (lo hace delProd cuando el usuario confirma que quiere eliminar algo).
+  window.__lrSaveProductos = function(lista, nombresABorrar){
     var prev = window.__lrSync.ultimoProductosSnapshot || {};
-    var vistos = {};
     var promesas = [];
     lista.forEach(function(p){
       try{
-        vistos[p.name] = true;
         var antes = prev[p.name];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
           promesas.push(
@@ -384,15 +394,13 @@
         }
       }catch(e){ console.error('Error preparando producto', p && p.name, e); }
     });
-    Object.keys(prev).forEach(function(nombre){
-      if(!vistos[nombre]){
-        promesas.push(
-          window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(nombre)).delete().catch(function(e){
-            console.error('Error borrando producto', nombre, e);
-            throw e;
-          })
-        );
-      }
+    (nombresABorrar || []).forEach(function(nombre){
+      promesas.push(
+        window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(nombre)).delete().catch(function(e){
+          console.error('Error borrando producto', nombre, e);
+          throw e;
+        })
+      );
     });
     return Promise.all(promesas);
   };
@@ -6856,7 +6864,7 @@ function delProd(idx) {
     function intentarBorrado(){
       if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
       showToast('⏳ Borrando en la nube...');
-      var promesaBorrado = window.__lrSaveProductos(PRODUCTS);
+      var promesaBorrado = window.__lrSaveProductos(PRODUCTS, [nombre]);
       if(!window.__lrConTimeoutAviso){ promesaBorrado.then(function(){ showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO'); }); return; }
       window.__lrConTimeoutAviso(promesaBorrado, 15000, intentarBorrado).then(function(r){
         if(r.pendiente){
@@ -15017,8 +15025,19 @@ function eliminarProdModal() {
     if(idxFinal===-1){ showToast('Ese producto ya no está en la lista', true); closeProdModal(); filterAll(); return; }
     PRODUCTS.splice(idxFinal,1);
     limpiarReferenciasProducto(nombre);
-    saveLocal(); closeProdModal(); renderCatalogo(); filterAll();
-    showToast('Producto eliminado');
+    closeProdModal(); renderCatalogo(); filterAll();
+    // Borrado explícito: saveLocal() ya no borra nada por su cuenta, así que
+    // hay que pedir el borrado de este producto puntual.
+    if(window.__lrSaveProductos){
+      showToast('⏳ Eliminando en la nube...');
+      window.__lrSaveProductos(PRODUCTS, [nombre]).then(function(){
+        showToast('✅ Producto eliminado y confirmado');
+      }).catch(function(){
+        showToast('💾 Eliminación guardada — se confirmará cuando haya señal', true);
+      });
+    } else {
+      showToast('Producto eliminado (local)');
+    }
   });
 }
 
