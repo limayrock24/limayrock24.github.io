@@ -4645,6 +4645,13 @@ body.night-on{background:#080005}
         <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
       </div>
     </div>
+    <div id="repDisponibleBox" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0">
+      <div>
+        <div id="repDisponibleTxt" style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px"></div>
+        <div style="font-size:.66rem;color:var(--gray);margin-top:2px">Cuando no hay ningún repartidor disponible, el catálogo web se cierra solo.</div>
+      </div>
+      <div class="recep-toggle-switch" id="repDisponibleSw" onclick="toggleDisponibleRepartidor()"></div>
+    </div>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
       <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
       <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
@@ -5428,6 +5435,63 @@ function turnoActual() {
   return 'Nocturno';
 }
 function isNocturno() { return nightMode; }
+
+// ── PRECIO NOCTURNO AUTOMÁTICO ──────────────────────────────────────────────
+// De 00:00 a 08:00 rigen los precios nocturnos; de 08:00 a 00:00, los diurnos.
+// El cambio se hace solo, sin que nadie tenga que acordarse de tocar el botón
+// a la medianoche. El botón manual sigue existiendo por si hace falta forzar
+// algo puntual: ese cambio a mano se respeta hasta el próximo cruce de horario
+// (a las 00:00 o a las 08:00), donde el automático vuelve a mandar.
+function nocturnoSegunHora() {
+  var h = new Date().getHours();
+  return (h >= 0 && h < 8);
+}
+
+var _ultimoAutoNocturno = null;
+
+function aplicarNocturnoAutomatico() {
+  var deberia = nocturnoSegunHora();
+  // Solo actúa cuando CRUZA el horario, no a cada rato — así no pisa un
+  // cambio manual hecho a propósito dentro del mismo período.
+  if(_ultimoAutoNocturno === deberia) return;
+  _ultimoAutoNocturno = deberia;
+  if(nightMode === deberia) return;
+
+  nightMode = deberia;
+  var btn = document.getElementById('nightBtn');
+  if(btn){
+    btn.classList.toggle('on', nightMode);
+    btn.innerHTML = nightMode ? '🌙 Nocturno' : '🌙 Diurno';
+  }
+  document.body.classList.toggle('night-on', nightMode);
+  var banner = document.getElementById('nightBanner');
+  if(banner) banner.style.display = nightMode ? 'block' : 'none';
+  if(typeof filterAll === 'function') filterAll();
+  if(typeof showToast === 'function'){
+    showToast(nightMode
+      ? '🌙 Son las 00:00 — precios NOCTURNOS activados automáticamente'
+      : '☀️ Son las 08:00 — precios DIURNOS activados automáticamente');
+  }
+}
+
+// Al abrir la app, dejarla en el modo que corresponde a la hora actual
+document.addEventListener('DOMContentLoaded', function(){
+  _ultimoAutoNocturno = nocturnoSegunHora();
+  nightMode = _ultimoAutoNocturno;
+  var btn = document.getElementById('nightBtn');
+  if(btn){
+    btn.classList.toggle('on', nightMode);
+    btn.innerHTML = nightMode ? '🌙 Nocturno' : '🌙 Diurno';
+  }
+  document.body.classList.toggle('night-on', nightMode);
+  var banner = document.getElementById('nightBanner');
+  if(banner) banner.style.display = nightMode ? 'block' : 'none';
+  if(typeof filterAll === 'function') filterAll();
+});
+
+// Chequeo cada minuto, para agarrar el cruce de horario aunque la pantalla
+// quede abierta toda la noche.
+setInterval(aplicarNocturnoAutomatico, 60000);
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 // ── RECUPERACIÓN DE TURNOS INTERRUMPIDOS ────────────────────────────────
@@ -16873,6 +16937,15 @@ function loginDelivery(){
 // En modo delivery, "Salir" vuelve al login en vez de cerrar el panel y dejar
 // a la vista la pantalla de venta.
 function salirModoDelivery(){
+  // Al salir, queda marcado como no disponible: si cerró sesión es porque
+  // terminó, y así el catálogo no queda abierto sin nadie que reparta.
+  if(currentEmp && currentEmp.disponibleDelivery){
+    currentEmp.disponibleDelivery = false;
+    var emps = getEmpleados();
+    var i = emps.findIndex(function(e){ return e.nombre === currentEmp.nombre; });
+    if(i >= 0){ emps[i].disponibleDelivery = false; saveEmpleados(emps); }
+    sincronizarDeliveryConDisponibles();
+  }
   currentEmp = null;
   var inp = document.getElementById('dlPin');
   if(inp) inp.value = '';
@@ -16890,6 +16963,7 @@ function abrirPanelRepartidor() {
   var saludo = document.getElementById('repartidorSaludo');
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
+  pintarEstadoDisponible();
   setFiltroRepartidor('libres');
   document.getElementById('repartidorOverlay').classList.add('open');
 }
@@ -16964,6 +17038,50 @@ function renderPanelRepartidor() {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// ── DISPONIBILIDAD DEL REPARTIDOR ───────────────────────────────────────────
+// Cada repartidor se marca disponible cuando arranca y no disponible cuando
+// termina. El catálogo web se abre solo si hay AL MENOS UNO disponible, y se
+// cierra solo cuando no queda ninguno — así nadie puede pedir cuando no hay
+// quien reparta, sin que Martín tenga que acordarse de tildar nada.
+function repartidoresDisponibles(){
+  return (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery && e.disponibleDelivery; });
+}
+
+function pintarEstadoDisponible(){
+  var sw  = document.getElementById('repDisponibleSw');
+  var txt = document.getElementById('repDisponibleTxt');
+  if(!sw || !txt || !currentEmp) return;
+  var disp = !!currentEmp.disponibleDelivery;
+  sw.classList.toggle('on', disp);
+  txt.innerHTML = disp
+    ? '<span style="color:var(--green)">🟢 DISPONIBLE</span> — te llegan los pedidos'
+    : '<span style="color:var(--gray)">⚪ NO DISPONIBLE</span> — no te llegan pedidos';
+}
+
+function toggleDisponibleRepartidor(){
+  if(!currentEmp) return;
+  var nuevo = !currentEmp.disponibleDelivery;
+  currentEmp.disponibleDelivery = nuevo;
+
+  var emps = getEmpleados();
+  var idx = emps.findIndex(function(e){ return e.nombre === currentEmp.nombre; });
+  if(idx >= 0) emps[idx].disponibleDelivery = nuevo;
+  pintarEstadoDisponible();
+
+  saveEmpleados(emps);
+  sincronizarDeliveryConDisponibles();
+  showToast(nuevo ? '🟢 Estás disponible — el catálogo está abierto' : '⚪ Ya no estás disponible');
+}
+
+// Abre o cierra el catálogo web según haya o no repartidores disponibles.
+function sincronizarDeliveryConDisponibles(){
+  if(!window.__lrSaveDeliveryActivo) return;
+  var hay = repartidoresDisponibles().length > 0;
+  if(window.__lrDeliveryActivo === hay) return; // ya está como corresponde
+  window.__lrDeliveryActivo = hay;
+  window.__lrSaveDeliveryActivo(hay, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo);
 }
 
 function tomarPedido(id) {
