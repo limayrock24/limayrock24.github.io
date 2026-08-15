@@ -1519,7 +1519,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Limay Rock — Sistema de Ventas</title>
-<link rel="manifest" href="../manifest.json">
+<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="icon" href="../icon-192.png">
 <link rel="apple-touch-icon" href="../icon-192.png">
@@ -3099,6 +3099,7 @@ body.night-on{background:#080005}
         <div class="subtitle">Estadísticas · Productos · Empleados</div>
       </div>
       <button onclick="descargarBackup()" id="btnBackup" title="Backup" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">💾</button>
+      <button class="btn-instalar-app" onclick="instalarApp()" title="Instalar en la pantalla de inicio" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">📲</button>
       <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
       <button class="btn btn-admin" onclick="closeAdmin()" style="padding:6px 11px;font-size:.72rem">✕ Cerrar</button>
     </div>
@@ -4638,6 +4639,7 @@ body.night-on{background:#080005}
         <div style="font-size:.68rem;color:var(--gray);margin-top:2px" id="repartidorSaludo"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-instalar-app" onclick="instalarApp()" style="display:none;background:#1e90ff;border:none;color:#fff;border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📲 Instalar app</button>
         <button id="btnNotifRepartidor" onclick="activarNotifsRepartidor()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔔 Activar avisos</button>
         <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
       </div>
@@ -4645,6 +4647,13 @@ body.night-on{background:#080005}
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
       <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
       <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
+    </div>
+    <div id="repAvisoNotifs" style="display:none;margin:12px 16px 0;background:rgba(245,194,0,.10);border:1px solid rgba(245,194,0,.4);border-radius:8px;padding:12px 14px">
+      <div style="font-family:Oswald,sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;margin-bottom:5px">🔔 ACTIVÁ LOS AVISOS</div>
+      <div style="font-size:.72rem;color:var(--light);line-height:1.5">
+        Sin esto no te vas a enterar de los pedidos nuevos si tenés el celular guardado.<br>
+        Tocá <b>📲 Instalar app</b> y después <b>🔔 Activar avisos</b>, arriba.
+      </div>
     </div>
     <div id="repartidorLista" style="flex:1;overflow-y:auto;padding:12px 16px"></div>
   </div>
@@ -16735,6 +16744,41 @@ function renderRecepEgresosHist() {
 // registrado con quién y cuándo, igual que el resto de los movimientos.
 var _cargaStockProdSel = null;
 
+// ── INSTALAR LA APP EN LA PANTALLA DE INICIO ────────────────────────────────
+// Instalarla no es solo comodidad: cuando está instalada, las notificaciones
+// salen con el logo de Limay Rock en vez del de Chrome, sin el botón de
+// "anular suscripción" que agrega el navegador. Y en iPhone es la ÚNICA forma
+// de que lleguen notificaciones.
+var _lrPromptInstalar = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  _lrPromptInstalar = e;
+  var btns = document.querySelectorAll('.btn-instalar-app');
+  for(var i=0;i<btns.length;i++) btns[i].style.display = 'inline-block';
+});
+window.addEventListener('appinstalled', function(){
+  _lrPromptInstalar = null;
+  var btns = document.querySelectorAll('.btn-instalar-app');
+  for(var i=0;i<btns.length;i++) btns[i].style.display = 'none';
+});
+
+function instalarApp(){
+  if(_lrEstaInstalada()){
+    alert('✅ La app ya está instalada. Abrila desde el ícono de tu pantalla de inicio.');
+    return;
+  }
+  if(_lrEsIOS()){
+    alert('📱 En iPhone se instala así:\n\n1. Tocá el botón Compartir (el cuadradito con la flecha hacia arriba)\n2. Bajá y elegí "Agregar a inicio"\n3. Confirmá\n4. Abrí la app desde ese ícono nuevo\n5. Tocá "Activar avisos"\n\nEn iPhone este paso es obligatorio: sin instalar, las notificaciones no llegan.');
+    return;
+  }
+  if(_lrPromptInstalar){
+    _lrPromptInstalar.prompt();
+    _lrPromptInstalar = null;
+    return;
+  }
+  alert('📱 Para instalarla:\n\n1. Tocá los tres puntitos ⋮ arriba a la derecha\n2. Elegí "Instalar app" o "Agregar a pantalla principal"\n3. Confirmá\n4. Abrila desde el ícono nuevo\n5. Tocá "Activar avisos"');
+}
+
 // ── ACTIVAR NOTIFICACIONES ──────────────────────────────────────────────────
 function _lrEsIOS(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -16870,6 +16914,13 @@ function setFiltroRepartidor(f) {
 function renderPanelRepartidor() {
   var cont = document.getElementById('repartidorLista');
   if(!cont || !currentEmp) return;
+
+  // Recordatorio de activar avisos, mientras no estén concedidos
+  var avisoN = document.getElementById('repAvisoNotifs');
+  if(avisoN){
+    var yaTiene = ('Notification' in window) && Notification.permission === 'granted';
+    avisoN.style.display = yaTiene ? 'none' : 'block';
+  }
   var yo = currentEmp.nombre;
   var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
 
