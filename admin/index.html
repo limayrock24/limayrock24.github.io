@@ -1077,6 +1077,12 @@
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
     window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
     window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
+    // Refrescar el panel de Delivery del admin también cuando cambia esta
+    // configuración (no solo cuando cambian los empleados).
+    if(typeof renderDeliveryControl==='function'){
+      var paneCfg = document.getElementById('pane-delivery');
+      if(paneCfg && paneCfg.classList.contains('active')) renderDeliveryControl();
+    }
     window.__lrSync.deliveryActivoListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -18946,8 +18952,18 @@ function renderDeliveryControl() {
 
   var repartidores = (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery; });
   var disponibles  = repartidores.filter(function(e){ return e.disponibleDelivery; });
-  var abierto = window.__lrDeliveryActivo !== false;
   var modo = (typeof _modoDeliveryActual==='function') ? _modoDeliveryActual() : 'auto';
+
+  // En modo automático el estado se CALCULA acá mismo a partir de los
+  // repartidores disponibles, en vez de leer la bandera guardada.
+  //
+  // Por qué: la bandera y la lista de empleados viajan por caminos distintos y
+  // no llegan al mismo tiempo. Si llegaba una antes que la otra, el panel se
+  // contradecía — mostraba "CATÁLOGO CERRADO" y al lado "1 repartidor
+  // disponible". Calculándolo de una sola fuente eso no puede pasar.
+  var abierto = (modo === 'abierto') ? true
+              : (modo === 'cerrado') ? false
+              : disponibles.length > 0;
   var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
   var sinTomar = pendientes.filter(function(p){ return !p.repartidor; });
 
