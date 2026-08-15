@@ -533,7 +533,16 @@
       // el turno, mostrando diferencias de caja falsas.
       var _turnoInicioSesion    = currentEmp.turnoInicio;
       var _efectivoInicialSesion = currentEmp.efectivoInicial;
-      currentEmp = mapa[currentEmp.nombre];
+      // COPIA INDEPENDIENTE, no el objeto de "mapa".
+      //
+      // "mapa" es lo que después se guarda como ultimoEmpleadosSnapshot, o sea
+      // la foto contra la que se compara para decidir si hay que escribir en la
+      // nube. Si currentEmp apuntaba a ese mismo objeto, al modificarlo (por
+      // ejemplo, al marcarse disponible) se modificaba también la foto: el
+      // sistema comparaba lo nuevo contra la foto ya alterada, concluía que
+      // "no cambió nada" y NO escribía nada. Resultado: el repartidor veía su
+      // interruptor en verde y el local nunca se enteraba.
+      currentEmp = JSON.parse(JSON.stringify(mapa[currentEmp.nombre]));
       if(_turnoInicioSesion !== undefined) currentEmp.turnoInicio = _turnoInicioSesion;
       if(_efectivoInicialSesion !== undefined) currentEmp.efectivoInicial = _efectivoInicialSesion;
       if(typeof updateRecepBtn==='function') updateRecepBtn();
@@ -17400,6 +17409,14 @@ function toggleDisponibleRepartidor(){
   var idx = emps.findIndex(function(e){ return e.nombre === currentEmp.nombre; });
   if(idx >= 0) emps[idx].disponibleDelivery = nuevo;
   pintarEstadoDisponible();
+
+  // Seguro extra: forzar que este cambio SÍ se escriba en la nube, sin depender
+  // de la comparación contra la foto anterior. Este dato es demasiado
+  // importante (define si al repartidor le llegan pedidos o no) como para que
+  // una comparación que falle lo deje sin guardar en silencio.
+  if(window.__lrSync && window.__lrSync.ultimoEmpleadosSnapshot && idx >= 0){
+    delete window.__lrSync.ultimoEmpleadosSnapshot[currentEmp.nombre];
+  }
 
   showToast(nuevo ? '⏳ Marcándote disponible...' : '⏳ Marcándote no disponible...');
 
