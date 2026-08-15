@@ -44,7 +44,16 @@
       }).catch(function(){ /* sin conexión ahora — se reintenta solo en el próximo chequeo */ });
   }
   _lrChequearVersionNueva();
-  setInterval(_lrChequearVersionNueva, 5*60*1000);
+  // Cada minuto (antes eran 5, y si se publicaba un cambio dentro de esa
+  // ventana el aviso tardaba demasiado en aparecer).
+  setInterval(_lrChequearVersionNueva, 60*1000);
+
+  // Además, chequear al volver a la pantalla: si estuviste en otra app o en
+  // otra pestaña y volvés, es el momento natural para enterarte.
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) _lrChequearVersionNueva();
+  });
+  window.addEventListener('focus', _lrChequearVersionNueva);
   var firebaseConfig = {
     apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
     authDomain: "limay-rock-852cb.firebaseapp.com",
@@ -2788,8 +2797,8 @@ body.night-on{background:#080005}
   <span id="lrEstadoConexionDot" style="width:8px;height:8px;border-radius:50%;background:#F4B400;display:inline-block;flex-shrink:0"></span>
   <span id="lrEstadoConexionTxt">Conectando…</span>
 </div>
-<div id="lrActualizacionBanner" onclick="location.reload()" style="display:none;position:fixed;bottom:10px;right:10px;z-index:99997;background:#1e90ff;color:#fff;font-family:system-ui,sans-serif;font-size:.72rem;font-weight:700;padding:8px 14px;border-radius:20px;align-items:center;gap:7px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);animation:lrPulsoActualizacion 2s infinite">
-  🔄 Hay una actualización — tocá para recargar
+<div id="lrActualizacionBanner" onclick="location.reload()" style="display:none;position:fixed;bottom:14px;right:14px;z-index:99997;background:#1e90ff;color:#fff;font-family:system-ui,sans-serif;font-size:.82rem;font-weight:700;padding:13px 20px;border-radius:10px;align-items:center;gap:9px;cursor:pointer;box-shadow:0 4px 18px rgba(30,144,255,.55);animation:lrPulsoActualizacion 1.5s infinite">
+  🔄 Hay una versión nueva — TOCÁ ACÁ PARA ACTUALIZAR
 </div>
 <style>@keyframes lrPulsoActualizacion{0%,100%{opacity:1}50%{opacity:.75}}</style>
 <div id="adminNotifStack" style="position:fixed;top:12px;left:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center"></div>
