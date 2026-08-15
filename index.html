@@ -538,13 +538,6 @@
       if(_efectivoInicialSesion !== undefined) currentEmp.efectivoInicial = _efectivoInicialSesion;
       if(typeof updateRecepBtn==='function') updateRecepBtn();
       if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
-      // Si el panel de Delivery del admin está abierto, refrescar el estado de
-      // los repartidores en vivo: así se ve al instante cuando uno se marca
-      // disponible o deja de estarlo desde su celular.
-      var paneD = document.getElementById('pane-delivery');
-      if(paneD && paneD.classList.contains('active') && typeof renderDeliveryControl==='function'){
-        renderDeliveryControl();
-      }
       // Si la persona está DENTRO de una pantalla a la que le acaban de sacar
       // el permiso, cerrarla en el momento — no alcanza con ocultar el botón,
       // porque ya estaba adentro.
@@ -565,6 +558,29 @@
     }
     window.__lrSync.ultimoEmpleadosSnapshot = mapa;
     window.__lrSync.empleadosListos = true;
+
+    // Refrescar el panel de Delivery del admin SIEMPRE que llegue un cambio de
+    // empleados, haya o no alguien logueado en este dispositivo.
+    //
+    // Antes esto estaba adentro del bloque de arriba, que solo corre si hay un
+    // empleado con sesión abierta. Pero al panel de admin se entra con el PIN
+    // 0000 sin loguear a nadie, así que ahí currentEmp es null y el refresco
+    // nunca se ejecutaba: un repartidor se marcaba disponible desde su celular
+    // y en el admin seguía figurando como no disponible hasta recargar.
+    if(typeof renderDeliveryControl==='function'){
+      var paneDeliv = document.getElementById('pane-delivery');
+      if(paneDeliv && paneDeliv.classList.contains('active')) renderDeliveryControl();
+    }
+    // El estado del catálogo (abierto/cerrado) también depende de cuántos
+    // repartidores hay disponibles, así que se recalcula acá.
+    if(typeof sincronizarDeliveryConDisponibles==='function'){
+      sincronizarDeliveryConDisponibles();
+    }
+    if(typeof renderDashboard==='function'){
+      var ovAdmin = document.getElementById('adminOverlay');
+      if(ovAdmin && ovAdmin.classList.contains('open')) renderDashboard();
+    }
+
     ocultarCargaSiListo();
   }, function(err){
     console.error('Error sincronizando empleados:', err);
@@ -17370,16 +17386,31 @@ function pintarEstadoDisponible(){
 function toggleDisponibleRepartidor(){
   if(!currentEmp) return;
   var nuevo = !currentEmp.disponibleDelivery;
-  currentEmp.disponibleDelivery = nuevo;
+  var sw = document.getElementById('repDisponibleSw');
+  if(sw) sw.style.pointerEvents = 'none'; // evitar dobles toques mientras guarda
 
+  currentEmp.disponibleDelivery = nuevo;
   var emps = getEmpleados();
   var idx = emps.findIndex(function(e){ return e.nombre === currentEmp.nombre; });
   if(idx >= 0) emps[idx].disponibleDelivery = nuevo;
   pintarEstadoDisponible();
 
-  saveEmpleados(emps);
-  sincronizarDeliveryConDisponibles();
-  showToast(nuevo ? '🟢 Estás disponible — el catálogo está abierto' : '⚪ Ya no estás disponible');
+  showToast(nuevo ? '⏳ Marcándote disponible...' : '⏳ Marcándote no disponible...');
+
+  Promise.resolve(saveEmpleados(emps)).then(function(){
+    sincronizarDeliveryConDisponibles();
+    showToast(nuevo ? '🟢 Estás disponible — el catálogo está abierto' : '⚪ Ya no estás disponible');
+  }).catch(function(){
+    // Si falló la subida, volver atrás el interruptor para no mostrarle un
+    // estado que el local no ve: si él se cree disponible y el sistema no lo
+    // registró, no le van a llegar pedidos y no va a entender por qué.
+    currentEmp.disponibleDelivery = !nuevo;
+    if(idx >= 0) emps[idx].disponibleDelivery = !nuevo;
+    pintarEstadoDisponible();
+    showToast('❌ No se pudo actualizar tu estado — revisá la conexión', true);
+  }).then(function(){
+    if(sw) sw.style.pointerEvents = '';
+  });
 }
 
 // Abre o cierra el catálogo web según haya o no repartidores disponibles.
