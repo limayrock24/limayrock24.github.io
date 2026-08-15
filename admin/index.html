@@ -8907,6 +8907,10 @@ function confirmarCobroPedido(id) {
   savePedidosWeb(pedidos);
   showToast('💰 Cobro confirmado — el repartidor ya puede entregar');
   if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+  var modalPend = document.getElementById('deliveryPendModal');
+  if(modalPend && modalPend.classList.contains('open') && typeof abrirDeliveryPendModal==='function'){
+    abrirDeliveryPendModal();
+  }
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
 }
 
@@ -17390,7 +17394,7 @@ function renderPanelRepartidor() {
       (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
-          ? '<a href="https://wa.me/'+telLimpio+'" target="_blank" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 WhatsApp</a>'+
+          ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+
             (p.pagoConfirmado
               ? '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'
               : '<button disabled title="El local todavía no confirmó el cobro" style="flex:1;background:rgba(255,255,255,.06);color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:not-allowed">⏳ Falta cobrar</button>')+
@@ -17564,10 +17568,10 @@ function tomarPedido(id) {
   showToast('🛵 Tomaste el pedido de '+p.nombre);
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
   setFiltroRepartidor('mios');
-  // El repartidor solo avisa que sale en camino. Los datos de cobro (alias,
-  // titular, vuelto) los maneja el LOCAL desde el panel de venta: es el que
-  // cobra y el que tiene que verificar la transferencia, no el que reparte.
-  whatsappCliente(p, mensajeEnCamino(p));
+  // El repartidor NO se comunica con el cliente al tomar el pedido: el único
+  // que habla con el cliente es Limay Rock. El botón de WhatsApp queda
+  // disponible en la tarjeta solo para el caso puntual de estar en la puerta y
+  // necesitar avisar que llegó.
 }
 
 function soltarPedido(id) {
@@ -17855,8 +17859,9 @@ function actualizarDeliveryPendBadge() {
   // detectar cuando uno lo SUELTA. Un pedido soltado no es "nuevo" (su id ya
   // estaba), así que sin esto el panel de venta no se enteraba de que volvió a
   // quedar libre.
+  var vivos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
   var repAhora = {};
-  pendientes.forEach(function(p){ repAhora[String(p.id)] = p.repartidor || ''; });
+  vivos.forEach(function(p){ repAhora[String(p.id)] = p.repartidor || ''; });
 
   if(_idsPedidosVistos === null){
     _idsPedidosVistos = idsAhora; // primera carga: no avisar de los que ya estaban
@@ -17864,15 +17869,20 @@ function actualizarDeliveryPendBadge() {
   } else {
     var nuevos = pendientes.filter(function(p){ return _idsPedidosVistos.indexOf(String(p.id)) === -1; });
     // Pedidos que ANTES tenían repartidor y ahora no: alguien los soltó
-    var soltados = pendientes.filter(function(p){
+    var soltados = vivos.filter(function(p){
       var antesRep = _repartidoresPedidosVistos ? _repartidoresPedidosVistos[String(p.id)] : undefined;
       return antesRep && !p.repartidor;
     });
     _idsPedidosVistos = idsAhora;
     _repartidoresPedidosVistos = repAhora;
 
-    if(document.getElementById('searchInput')){
-      // Solo en la pantalla de venta (no en el panel de admin ni en delivery)
+    // Solo en la pantalla de VENTA. Antes se chequeaba por el buscador, pero
+    // /delivery/ usa el mismo archivo y también lo tiene, así que el cartel se
+    // colaba en la pantalla del repartidor.
+    var esPantallaVenta = document.getElementById('searchInput')
+      && !(typeof esModoDelivery==='function' && esModoDelivery())
+      && !(document.getElementById('repartidorOverlay') && document.getElementById('repartidorOverlay').classList.contains('open'));
+    if(esPantallaVenta){
       if(nuevos.length){
         mostrarAvisoPedidoNuevo(nuevos[nuevos.length-1], pendientes.length);
       } else if(soltados.length){
@@ -17919,9 +17929,15 @@ function abrirDeliveryPendModal() {
         repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         notasHtml+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
-          '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+envioTxt+' · '+hora+'</span>'+
-          '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;margin-top:8px">'+fmt(p.total)+envioTxt+' · '+hora+'</div>'+
+        // El LOCAL es el único que habla con el cliente: le pasa los datos de
+        // pago y confirma el cobro. El repartidor solo lleva el pedido.
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
+          '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
+          (p.pagoConfirmado
+            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
+            : '<button onclick="confirmarCobroPedido('+p.id+')" style="flex:1;min-width:110px;background:transparent;border:1.5px solid var(--green);color:var(--green);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
+          '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
         '</div>'+
       '</div>';
     }).join('');
