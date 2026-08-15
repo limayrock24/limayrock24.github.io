@@ -532,7 +532,24 @@
       if(_turnoInicioSesion !== undefined) currentEmp.turnoInicio = _turnoInicioSesion;
       if(_efectivoInicialSesion !== undefined) currentEmp.efectivoInicial = _efectivoInicialSesion;
       if(typeof updateRecepBtn==='function') updateRecepBtn();
-    if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+      if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+      // Si la persona está DENTRO de una pantalla a la que le acaban de sacar
+      // el permiso, cerrarla en el momento — no alcanza con ocultar el botón,
+      // porque ya estaba adentro.
+      if(!currentEmp.accesoRecepcion){
+        var ovR = document.getElementById('recepScreen');
+        if(ovR && ovR.classList.contains('open')){
+          ovR.classList.remove('open');
+          if(typeof showToast==='function') showToast('El administrador te quitó el acceso a Recepción', true);
+        }
+      }
+      if(!currentEmp.accesoStock){
+        var ovS = document.getElementById('cargaStockOverlay');
+        if(ovS && ovS.classList.contains('open')){
+          if(typeof cerrarCargaStock==='function') cerrarCargaStock();
+          if(typeof showToast==='function') showToast('El administrador te quitó el acceso a Cargar Stock', true);
+        }
+      }
     }
     window.__lrSync.ultimoEmpleadosSnapshot = mapa;
     window.__lrSync.empleadosListos = true;
@@ -5684,11 +5701,35 @@ function chequearSesionInterrumpida() {
   }
 }
 
+// Refresca los permisos del empleado logueado con lo que dice la nube AHORA.
+// La sesión guardada en el dispositivo puede tener permisos viejos: si desde
+// Admin se le sacó el acceso a Recepción o a Cargar Stock, esa sesión seguía
+// mostrándole los botones aunque recargara la página, porque se restauraba tal
+// como había quedado guardada. Los datos del turno en curso (hora de inicio,
+// efectivo inicial) se conservan, porque esos no viven en "empleados".
+function refrescarPermisosCurrentEmp(){
+  if(!currentEmp) return;
+  var lista = (window.__lrSync && window.__lrSync.empleadosListos && Array.isArray(window.EMPLEADOS)) ? window.EMPLEADOS : null;
+  if(!lista) return; // todavía no sincronizó: lo hará el listener al llegar
+  var fresco = lista.find(function(e){ return e.nombre === currentEmp.nombre; });
+  if(!fresco) return;
+  currentEmp.rol             = fresco.rol;
+  currentEmp.pin             = fresco.pin;
+  currentEmp.funcion         = fresco.funcion;
+  currentEmp.accesoRecepcion = !!fresco.accesoRecepcion;
+  currentEmp.accesoStock     = !!fresco.accesoStock;
+  currentEmp.accesoDelivery  = !!fresco.accesoDelivery;
+  currentEmp.topeConsumo     = fresco.topeConsumo;
+  currentEmp.margenAviso     = fresco.margenAviso;
+  if(typeof updateRecepBtn==='function') updateRecepBtn();
+}
+
 function retomarSesionInterrumpida() {
   var sesion = getSesionActivaGuardada();
   if(!sesion) return;
   document.getElementById('sesionRecOverlay').classList.remove('open');
   currentEmp = sesion;
+  refrescarPermisosCurrentEmp();
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('empActual').textContent = currentEmp.nombre+' · '+turnoActual();
   var rBtn=document.getElementById('btnRetiroCaja'); if(rBtn) rBtn.style.display=(currentEmp&&currentEmp.rol==='admin'?'':'none');
@@ -17529,6 +17570,15 @@ function recepPinPress(d) {
   updateRecepPinDots();
   if(_recepPinBuf.length===4){
     setTimeout(function(){
+      // Se revalida el permiso acá también: si se lo sacaron mientras tenía la
+      // pantalla abierta, el PIN correcto no alcanza para entrar.
+      if(!currentEmp.accesoRecepcion && currentEmp.rol !== 'admin'){
+        document.getElementById('recepPinOverlay').classList.remove('open');
+        _recepPinBuf='';
+        if(typeof showToast==='function') showToast('Ya no tenés acceso a Recepción', true);
+        if(typeof updateRecepBtn==='function') updateRecepBtn();
+        return;
+      }
       if(_recepPinBuf === currentEmp.pin){
         document.getElementById('recepPinOverlay').classList.remove('open');
         _recepEmp = currentEmp;
