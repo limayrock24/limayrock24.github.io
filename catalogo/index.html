@@ -145,7 +145,8 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     </div>
     <div class="field">
       <label>Dirección de entrega</label>
-      <input type="text" id="clienteDireccion" placeholder="Calle, número, piso/depto, referencias">
+      <input type="text" id="clienteDireccion" placeholder="Calle y número">
+      <input type="text" id="clienteReferencia" placeholder="Referencia: ej. casa con rejas negras, portón verde..." style="margin-top:6px">
       <button type="button" onclick="usarMiUbicacion()" id="btnUbicacion"
         style="width:100%;margin-top:6px;background:transparent;border:1px solid var(--gray);color:var(--gray);border-radius:6px;padding:9px;font-size:.78rem;cursor:pointer">
         📍 Usar mi ubicación actual
@@ -640,6 +641,7 @@ function confirmarPedido(){
     nombre: nombre,
     telefono: telefono,
     direccion: direccion,
+    referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
     medioPago: MEDIO_PAGO_SEL,
     items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
@@ -682,6 +684,8 @@ function confirmarPedido(){
 
   msg += '\n📍 *ENTREGA*\n';
   msg += direccion + '\n';
+  var refTxt = (document.getElementById('clienteReferencia').value||'').trim();
+  if(refTxt) msg += '_' + refTxt + '_\n';
   if(UBICACION_GPS){
     msg += '🗺️ Ubicación en el mapa:\n';
     msg += 'https://maps.google.com/?q=' + UBICACION_GPS.lat + ',' + UBICACION_GPS.lng + '\n';
