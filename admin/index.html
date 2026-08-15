@@ -4631,6 +4631,23 @@ body.night-on{background:#080005}
   <div id="dlCargando" style="color:var(--gray);font-size:.78rem;margin-top:22px">Conectando…</div>
 </div>
 
+<!-- AVISO GRANDE DE PEDIDO NUEVO (pantalla de venta) -->
+<div id="pedidoNuevoAviso" onclick="cerrarAvisoPedidoNuevo(true)" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99996;padding:14px 16px;background:linear-gradient(135deg,#1e90ff,#0d6efd);color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.55);cursor:pointer;animation:pedidoPulso 1.2s ease-in-out infinite">
+  <div style="display:flex;align-items:center;gap:14px;max-width:900px;margin:0 auto">
+    <div style="font-size:2.2rem;line-height:1;animation:pedidoMoto .9s ease-in-out infinite">🛵</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-family:Oswald,sans-serif;font-size:1.05rem;font-weight:700;letter-spacing:2px">¡PEDIDO NUEVO!</div>
+      <div id="pedidoNuevoDetalle" style="font-size:.86rem;opacity:.95;margin-top:2px"></div>
+      <div style="font-size:.68rem;opacity:.75;margin-top:4px">Tocá acá para ver los pedidos pendientes</div>
+    </div>
+    <div style="font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700" id="pedidoNuevoContador"></div>
+  </div>
+</div>
+<style>
+@keyframes pedidoPulso{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+@keyframes pedidoMoto{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+</style>
+
 <!-- PANEL DE REPARTIDOR — pantalla acotada: solo pedidos de delivery -->
 <div class="prod-modal-overlay" id="repartidorOverlay" style="align-items:stretch;justify-content:stretch;z-index:2150">
   <div style="background:var(--dark);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
@@ -17301,11 +17318,109 @@ function updateRecepBtn() {
   actualizarContadorRepartidor();
 }
 
+// ── AVISO SONORO Y VISUAL DE PEDIDO NUEVO ───────────────────────────────────
+// En la pantalla de venta, de madrugada y con el local movido, un contador
+// chiquito se pasa por alto. Esto avisa con una barra grande arriba y un
+// sonido, hasta que alguien lo mira.
+var _idsPedidosVistos = null;   // null = todavía no se cargó la primera tanda
+var _sonidoPedidoTimer = null;
+
+// Los navegadores no dejan reproducir sonido hasta que la persona interactúa
+// con la página al menos una vez. Como en el local se toca la pantalla todo el
+// tiempo, alcanza con "despertar" el audio en el primer toque del turno.
+var _audioListo = false;
+function _despertarAudio(){
+  if(_audioListo) return;
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    var ctx = new AC();
+    if(ctx.state === 'suspended') ctx.resume();
+    var osc = ctx.createOscillator();
+    var g = ctx.createGain();
+    g.gain.value = 0.0001;           // inaudible: solo sirve para habilitarlo
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.01);
+    setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 200);
+    _audioListo = true;
+  }catch(e){}
+}
+document.addEventListener('click', _despertarAudio, { once: false });
+document.addEventListener('touchstart', _despertarAudio, { once: false });
+
+function sonarAvisoPedido(){
+  // Sonido generado por código (no hace falta ningún archivo externo):
+  // dos tonos cortos, tipo timbre de local.
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    var ctx = new AC();
+    [0, 0.18].forEach(function(offset, i){
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = i === 0 ? 880 : 1170;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + offset + 0.16);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + offset);
+      osc.stop(ctx.currentTime + offset + 0.18);
+    });
+    setTimeout(function(){ try{ ctx.close(); }catch(e){} }, 900);
+  }catch(e){ /* si el navegador bloquea el audio, el aviso visual sigue estando */ }
+}
+
+function mostrarAvisoPedidoNuevo(pedido, cantidadPendiente){
+  var el = document.getElementById('pedidoNuevoAviso');
+  if(!el) return;
+  var det = document.getElementById('pedidoNuevoDetalle');
+  var cont = document.getElementById('pedidoNuevoContador');
+  if(det && pedido){
+    var items = (pedido.items||[]).length;
+    det.textContent = pedido.nombre + ' · ' + fmt(pedido.total) + ' · ' + items + ' producto' + (items===1?'':'s');
+  }
+  if(cont) cont.textContent = cantidadPendiente > 1 ? cantidadPendiente : '';
+  el.style.display = 'block';
+  sonarAvisoPedido();
+
+  // Vuelve a sonar cada 20 segundos mientras nadie lo mire, para que no se
+  // pierda si el empleado estaba de espaldas.
+  clearInterval(_sonidoPedidoTimer);
+  _sonidoPedidoTimer = setInterval(function(){
+    var visible = document.getElementById('pedidoNuevoAviso');
+    if(visible && visible.style.display === 'block') sonarAvisoPedido();
+    else clearInterval(_sonidoPedidoTimer);
+  }, 20000);
+}
+
+function cerrarAvisoPedidoNuevo(abrirLista){
+  var el = document.getElementById('pedidoNuevoAviso');
+  if(el) el.style.display = 'none';
+  clearInterval(_sonidoPedidoTimer);
+  if(abrirLista && typeof abrirDeliveryPendModal==='function') abrirDeliveryPendModal();
+}
+
 function actualizarDeliveryPendBadge() {
   var btn = document.getElementById('btnDeliveryPend');
   if(!btn) return;
   if(!currentEmp){ btn.style.display='none'; return; }
   var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && p.estado !== 'cargado'; });
+
+  // Detectar pedidos que no estaban antes. Se compara por id, no por cantidad,
+  // para no avisar de más cuando se resuelve uno y entra otro al mismo tiempo.
+  var idsAhora = pendientes.map(function(p){ return String(p.id); });
+  if(_idsPedidosVistos === null){
+    _idsPedidosVistos = idsAhora; // primera carga: no avisar de los que ya estaban
+  } else {
+    var nuevos = pendientes.filter(function(p){ return _idsPedidosVistos.indexOf(String(p.id)) === -1; });
+    _idsPedidosVistos = idsAhora;
+    if(nuevos.length && document.getElementById('searchInput')){
+      // Solo en la pantalla de venta (no en el panel de admin ni en delivery)
+      mostrarAvisoPedidoNuevo(nuevos[nuevos.length-1], pendientes.length);
+    }
+  }
+  if(!pendientes.length) cerrarAvisoPedidoNuevo(false);
   var countEl = document.getElementById('deliveryPendCount');
   if(countEl) countEl.textContent = pendientes.length;
   btn.style.display = pendientes.length>0 ? 'inline-block' : 'none';
