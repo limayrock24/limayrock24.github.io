@@ -1844,7 +1844,10 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .confirm-ok:hover{background:#00AA33}
 
 /* CIERRE DE TURNO */
-.confirm-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1100;display:none;align-items:center;justify-content:center;padding:20px}
+/* z-index alto: tiene que quedar por encima de TODOS los overlays (panel de
+   repartidor 2150, cargar stock 2100, etc). Con 1100 quedaba por detrás y los
+   botones de confirmar parecían no funcionar, porque el cartel era invisible. */
+.confirm-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2400;display:none;align-items:center;justify-content:center;padding:20px}
 .confirm-modal.open{display:flex}
 .confirm-modal-box{background:var(--surface);border:2px solid var(--red);border-radius:6px;padding:24px;width:100%;max-width:340px;text-align:center}
 .confirm-modal-box p{font-family:'Barlow',sans-serif;font-size:.95rem;color:var(--light);margin-bottom:18px;line-height:1.5}
@@ -7262,6 +7265,33 @@ window.addEventListener('online', function(){
   if(raw) iniciarReintentoAutomaticoProductos();
 });
 
+// Igual que saveLocal, pero además borra registros viejos (se usa al renombrar
+// un producto, para que no quede duplicado el nombre anterior).
+function saveLocalConBorrado(mensajeExito, nombresABorrar) {
+  buildPills();
+  filterAll();
+  if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
+  guardarPendienteLocalProductos(PRODUCTS);
+  showToast('⏳ Guardando en la nube...');
+  var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar);
+  var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar); };
+  if(!window.__lrConTimeoutAviso) return promesa.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito); });
+  return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
+    if(r.pendiente){
+      showToast('💾 Guardado localmente — se subirá solo cuando haya señal');
+      iniciarReintentoAutomaticoProductos();
+    } else {
+      limpiarPendienteLocalProductos();
+      if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
+      showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
+    }
+  }).catch(function(){
+    showToast('❌ Falló el intento, pero quedó guardado acá — reintentando solo', true);
+    iniciarReintentoAutomaticoProductos();
+    if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(retry);
+  });
+}
+
 function saveLocal(mensajeExito) {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
@@ -8346,37 +8376,71 @@ function elegirFiadoRecep(cliente) {
 
 // ── CONSUMO DE EMPLEADO DESDE CARRITO ──────────────────────────────────────
 function abrirSelectorConsumoEmp() {
-  var empleados = getEmpleados().filter(function(e){ return e.activo !== false; });
   var overlay = document.getElementById('consumoEmpOverlay');
   if(!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'consumoEmpOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1050;display:flex;align-items:center;justify-content:center';
+    // z-index alto para que no quede tapado por otros paneles
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2300;display:flex;align-items:center;justify-content:center;padding:16px';
     overlay.innerHTML =
-      '<div style="background:var(--surface);border-radius:8px;padding:20px;width:320px;max-width:95vw">'+
-        '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase;margin-bottom:12px">👥 Consumo de empleado</div>'+
-        '<div id="consumoEmpLista"></div>'+
-        '<button onclick="var o=document.getElementById(&quot;consumoEmpOverlay&quot;);if(o)o.style.display=&quot;none&quot;" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>'+
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:340px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase;margin-bottom:12px">👥 Consumo de empleado</div>'+
+        '<input type="text" id="consumoEmpBuscar" placeholder="🔍 Escribí el nombre..." autocomplete="off" oninput="filtrarConsumoEmp()" '+
+          'style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:11px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none;margin-bottom:10px">'+
+        // Altura limitada + scroll propio: antes la lista crecía sin límite y
+        // con varios empleados no se podía llegar a los de abajo.
+        '<div id="consumoEmpLista" style="flex:1;overflow-y:auto;min-height:80px"></div>'+
+        '<button onclick="cerrarSelectorConsumoEmp()" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;flex-shrink:0">Cancelar</button>'+
       '</div>';
     document.body.appendChild(overlay);
   }
+  overlay.style.display='flex';
+  var inp = document.getElementById('consumoEmpBuscar');
+  if(inp) inp.value = '';
+  filtrarConsumoEmp();
+  setTimeout(function(){ if(inp) inp.focus(); }, 120);
+}
+
+function cerrarSelectorConsumoEmp(){
+  var o = document.getElementById('consumoEmpOverlay');
+  if(o) o.style.display = 'none';
+}
+
+function filtrarConsumoEmp() {
+  var term = ((document.getElementById('consumoEmpBuscar')||{}).value||'').toLowerCase().trim();
+  var empleados = getEmpleados().filter(function(e){
+    if(e.activo === false) return false;
+    if(e.rol === 'repartidor') return false; // los repartidores no consumen en el local
+    return !term || e.nombre.toLowerCase().indexOf(term) !== -1;
+  }).sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); });
+
   var lista = document.getElementById('consumoEmpLista');
+  if(!lista) return;
+  if(!empleados.length){
+    lista.innerHTML = '<div style="padding:18px;text-align:center;color:var(--gray);font-size:.8rem">Sin empleados que coincidan</div>';
+    return;
+  }
+  // Si queda uno solo al escribir, se puede confirmar con Enter
   lista.innerHTML = '';
   empleados.forEach(function(e){
     var div = document.createElement('div');
-    div.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;margin-bottom:6px;cursor:pointer;transition:.1s';
-    div.innerHTML='<span style="font-size:1.1rem">👤</span><span style="font-size:.88rem">'+e.nombre+'</span>'+(e.rol==='admin'?'<span style="font-size:.65rem;color:var(--gold);margin-left:auto">admin</span>':'');
+    div.style.cssText='display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;cursor:pointer;transition:.1s';
+    div.innerHTML='<span style="font-size:1.05rem">👤</span><span style="font-size:.88rem">'+e.nombre+'</span>'+
+      (e.rol==='admin'?'<span style="font-size:.62rem;color:var(--gold);margin-left:auto">admin</span>':'');
     div.onmouseover=function(){this.style.borderColor='#3498DB';};
     div.onmouseout=function(){this.style.borderColor='var(--border)';};
     div.onclick=(function(nombre){return function(){selConsumoEmp(nombre);};})(e.nombre);
     lista.appendChild(div);
   });
-  overlay.style.display='flex';
+  var inp = document.getElementById('consumoEmpBuscar');
+  if(inp) inp.onkeydown = function(ev){
+    if(ev.key === 'Enter' && empleados.length === 1) selConsumoEmp(empleados[0].nombre);
+    if(ev.key === 'Escape') cerrarSelectorConsumoEmp();
+  };
 }
 
 function selConsumoEmp(nombre) {
-  var ov = document.getElementById('consumoEmpOverlay');
-  if(ov) ov.style.display='none';
+  cerrarSelectorConsumoEmp();
   if(!cart.length){ showToast('Primero agregá productos al carrito', true); return; }
   // Registrar consumo como el del empleado seleccionado
   var subtotal = cart.reduce(function(s,i){ return s+i.subtotal; },0);
@@ -8763,6 +8827,22 @@ function saveDeliveries(d) { window.__lrDeliveryCache = d; if(window.__lrSaveDel
 // Pedidos hechos por clientes desde el catálogo público (sin login)
 function getPedidosWeb() { return (window.__lrSync && window.__lrSync.pedidosWebListos && Array.isArray(window.__lrPedidosWebCache)) ? window.__lrPedidosWebCache : []; }
 function savePedidosWeb(p) { window.__lrPedidosWebCache = p; if(window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(p); }
+// El local confirma que el pedido ya fue cobrado (transferencia recibida o
+// efectivo en mano). Recién ahí el repartidor puede marcarlo como entregado,
+// para que no se cierre un pedido que todavía no se cobró.
+function confirmarCobroPedido(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p) return;
+  p.pagoConfirmado = true;
+  p.cobradoEn = new Date().toISOString();
+  p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
+  savePedidosWeb(pedidos);
+  showToast('💰 Cobro confirmado — el repartidor ya puede entregar');
+  if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+  if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+}
+
 function marcarPedidoWebResuelto(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
@@ -15310,6 +15390,15 @@ function guardarProdModal() {
   var codigo = (document.getElementById('pmCodigo').value||'').trim();
   var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null};
   var esNuevo = !(idx>=0 && PRODUCTS[idx]);
+  // Al RENOMBRAR un producto hay que borrar el registro viejo: en la nube cada
+  // producto se guarda bajo su nombre, así que guardar con el nombre nuevo
+  // creaba un segundo producto y dejaba el original ahí, duplicado.
+  var nombreViejo = (idx>=0 && PRODUCTS[idx]) ? PRODUCTS[idx].name : null;
+  var huboRename = nombreViejo && nombreViejo !== nombre;
+  if(huboRename){
+    var yaExiste = PRODUCTS.some(function(p,i){ return i !== idx && p.name === nombre; });
+    if(yaExiste){ showToast('Ya existe otro producto con ese nombre',true); return; }
+  }
   if(idx>=0&&PRODUCTS[idx]){
     var antes = Object.assign({}, PRODUCTS[idx]);
     PRODUCTS[idx]=Object.assign(PRODUCTS[idx],prod);
@@ -15356,7 +15445,30 @@ function guardarProdModal() {
   });
   if(provsCambiaron) saveProveedores(proveedores);
 
-  saveLocal(esNuevo ? '✅ Producto agregado y confirmado en la nube' : '✅ Producto actualizado y confirmado en la nube')
+  if(huboRename){
+    // Arrastrar el nombre nuevo a stock, proveedores y combos, para que el
+    // producto no quede huérfano en esas listas.
+    var inv = getStockInv();
+    if(inv[nombreViejo]){ inv[nombre] = inv[nombreViejo]; delete inv[nombreViejo]; saveStockInv(inv); }
+    var provs = getProveedores();
+    var tocoProv = false;
+    provs.forEach(function(pr){
+      if(!pr.productos) return;
+      var i2 = pr.productos.indexOf(nombreViejo);
+      if(i2 !== -1){ pr.productos[i2] = nombre; tocoProv = true; }
+    });
+    if(tocoProv) saveProveedores(provs);
+    var cbs = getCombos();
+    var tocoCombo = false;
+    cbs.forEach(function(cb){
+      (cb.items||[]).forEach(function(it){
+        if(it.nombre === nombreViejo){ it.nombre = nombre; tocoCombo = true; }
+      });
+    });
+    if(tocoCombo) saveCombos(cbs);
+  }
+
+  saveLocalConBorrado(esNuevo ? '✅ Producto agregado y confirmado en la nube' : '✅ Producto actualizado y confirmado en la nube', huboRename ? [nombreViejo] : null)
     .then(function(){
       // Solo cerramos el modal y refrescamos las listas DESPUÉS de que la nube
       // confirmó el guardado — antes se cerraba al toque, y si fallaba la subida
@@ -17158,15 +17270,19 @@ function renderPanelRepartidor() {
       '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--green)':'var(--gold)')+'">'+
         (p.estado==='cargado' ? '✅ El local ya lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>'+
       (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '<div style="font-size:.78rem;color:var(--red);margin-top:5px">📍 Sin dirección — preguntale por WhatsApp</div>')+
+      (p.referencia ? '<div style="font-size:.74rem;color:var(--gold);margin-top:2px">🏠 '+p.referencia+'</div>' : '')+
       (p.gps ? '<a href="https://maps.google.com/?q='+p.gps.lat+','+p.gps.lng+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-block;margin-top:5px;font-size:.74rem;color:#1e90ff;text-decoration:none;border:1px solid #1e90ff;border-radius:4px;padding:3px 8px">🗺️ Abrir en el mapa</a>' : '')+
       '<div style="font-size:.76rem;color:var(--gray);margin-top:5px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
-      (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+'</div>' : '')+
+      (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
+        (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
       (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'" target="_blank" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 WhatsApp</a>'+
-            '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'+
+            (p.pagoConfirmado
+              ? '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'
+              : '<button disabled title="El local todavía no confirmó el cobro" style="flex:1;background:rgba(255,255,255,.06);color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:not-allowed">⏳ Falta cobrar</button>')+
             '<button onclick="soltarPedido('+p.id+')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Soltar</button>'
           : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
       '</div>'+
@@ -17253,6 +17369,43 @@ function sincronizarDeliveryConDisponibles(){
   window.__lrSaveDeliveryActivo(hay, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo, 'auto');
 }
 
+// Datos que se le pasan al cliente para que pague por transferencia.
+var ALIAS_MP = 'limay.rock2';
+var TITULAR_MP = 'Martin Ezequiel Monsalve';
+
+// Arma el mensaje que el repartidor le manda al cliente al tomar el pedido.
+// Cambia según cómo eligió pagar: si es transferencia le pasa los datos para
+// que vaya pagando; si es efectivo le pregunta con cuánto abona, para saber
+// si hay que mandarle cambio.
+function mensajeConfirmacionPedido(p){
+  var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
+  msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *Limay Rock* 🛵\n';
+  msg += 'Tu pedido fue confirmado y ya lo estamos preparando.\n\n';
+  msg += '📦 *Tu pedido:* ' + fmt(p.total) + '\n';
+  if(p.direccion) msg += '📍 ' + p.direccion + '\n';
+
+  if(p.medioPago === 'Transferencia'){
+    msg += '\n💳 *Para pagar por transferencia:*\n';
+    msg += 'Alias: *' + ALIAS_MP + '*\n';
+    msg += 'Mercado Pago — ' + TITULAR_MP + '\n';
+    msg += 'Monto: *' + fmt(p.total) + '*\n\n';
+    msg += 'Cuando lo hagas, mandame el comprobante por acá así salgo para tu casa 🙌';
+  } else if(p.medioPago === 'Efectivo'){
+    msg += '\n💵 *Vas a pagar en efectivo: ' + fmt(p.total) + '*\n\n';
+    msg += '¿Abonás con el monto justo o necesitás cambio?\n';
+    msg += 'Avisame con cuánto pagás así te llevo el vuelto preparado 👍';
+  } else {
+    msg += '\n¿Cómo vas a abonar, efectivo o transferencia?';
+  }
+  return msg;
+}
+
+function whatsappCliente(p, texto){
+  var tel = (p.telefono||'').replace(/\D/g,'');
+  if(tel.length <= 10) tel = '549' + tel;
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(texto), '_blank');
+}
+
 function tomarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
@@ -17265,6 +17418,8 @@ function tomarPedido(id) {
   showToast('🛵 Tomaste el pedido de '+p.nombre);
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
   setFiltroRepartidor('mios');
+  // Avisarle al cliente en el acto, con el mensaje ya escrito según cómo paga
+  whatsappCliente(p, mensajeConfirmacionPedido(p));
 }
 
 function soltarPedido(id) {
@@ -17275,9 +17430,11 @@ function soltarPedido(id) {
     if(!ok) return;
     delete p.repartidor;
     p.estadoDelivery = 'libre';
+    p.liberadoEn = new Date().toISOString();
     savePedidosWeb(pedidos);
-    showToast('Pedido liberado');
-    renderPanelRepartidor();
+    showToast('Pedido liberado — vuelve a estar disponible para los demás');
+    if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+    setFiltroRepartidor('libres');
   });
 }
 
@@ -18819,7 +18976,10 @@ function renderDeliveryPanel() {
             '</div>'+
             '<div style="text-align:right">'+
               '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+'</div>'+
-              '<button onclick="marcarPedidoWebResuelto('+p.id+')" style="margin-top:4px;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Resuelto</button>'+
+              (p.pagoConfirmado
+                ? '<div style="margin-top:4px;font-size:.65rem;color:var(--green)">✓ Cobrado</div>'
+                : '<button onclick="confirmarCobroPedido('+p.id+')" style="margin-top:4px;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
+              '<button onclick="marcarPedidoWebResuelto('+p.id+')" style="margin-top:4px;margin-left:4px;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Resuelto</button>'+
             '</div>'+
           '</div>'+
         '</div>';
