@@ -1,11 +1,11 @@
 {
-  "name": "Limay Rock Admin",
-  "short_name": "LR Admin",
+  "name": "Limay Rock Delivery",
+  "short_name": "LR Delivery",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0a0a0a",
-  "theme_color": "#D2201F",
+  "theme_color": "#1e90ff",
   "orientation": "any",
   "icons": [
     { "src": "../icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
