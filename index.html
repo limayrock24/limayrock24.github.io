@@ -14819,11 +14819,28 @@ function renderCatalogo() {
       '<td class="td-precio">'+(p.pventa?fmt(p.pventa):'<span style="color:var(--red);font-size:.7rem">—</span>')+'</td>'+
       '<td class="td-noc">'+(p.pnoc?fmt(p.pnoc):'—')+'</td>'+
       '<td style="text-align:right;color:var(--gold)">›</td>';
-    tr.querySelector('.td-nombre').onclick=function(){ abrirProdModal(idx); };
-    tr.querySelectorAll('td:not(:first-child)').forEach(function(td){ td.onclick=function(){ abrirProdModal(idx); }; });
+    // Se pasa el NOMBRE y no la posición en la lista: la lista se resincroniza
+    // con la nube todo el tiempo y puede reordenarse entre que se dibuja la
+    // fila y que se la toca, con lo cual la posición guardada terminaba
+    // apuntando a otro producto y se abría/editaba el equivocado.
+    var nombreProd = p.name;
+    tr.querySelector('.td-nombre').onclick=function(){ abrirProdModalPorNombre(nombreProd); };
+    tr.querySelectorAll('td:not(:first-child)').forEach(function(td){ td.onclick=function(){ abrirProdModalPorNombre(nombreProd); }; });
     body.appendChild(tr);
   });
   actualizarBotonCartelitos();
+}
+
+// Abre la ficha buscando el producto por nombre EN EL MOMENTO de tocarlo, no
+// con la posición que tenía cuando se dibujó la tabla.
+function abrirProdModalPorNombre(nombre) {
+  var idx = PRODUCTS.findIndex(function(p){ return p.name === nombre; });
+  if(idx === -1){
+    showToast('Ese producto ya no está en el catálogo — actualizá la lista', true);
+    if(typeof renderCatalogo==='function') renderCatalogo();
+    return;
+  }
+  abrirProdModal(idx);
 }
 
 function abrirProdModal(idx) {
@@ -16441,7 +16458,14 @@ function renderRecepCatalogo() {
     var stockActual = inv[p.name] ? inv[p.name].stock : 0;
     var ss = stockActual===0;
     var tr=document.createElement('tr');
-    tr.onclick=function(){ abrirRecepProdModal(idx); };
+    // Igual que en el catálogo de Admin: se usa el nombre y no la posición,
+    // porque la lista se resincroniza con la nube y puede reordenarse.
+    var nombreRecep = p.name;
+    tr.onclick=function(){
+      var i2 = PRODUCTS.findIndex(function(x){ return x.name === nombreRecep; });
+      if(i2 === -1){ showToast('Ese producto ya no está — actualizá la lista', true); return; }
+      abrirRecepProdModal(i2);
+    };
     tr.innerHTML=
       '<td class="td-nombre">'+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
       '<td style="color:var(--gray);font-size:.74rem;text-align:center">'+mrg+'%</td>'+
