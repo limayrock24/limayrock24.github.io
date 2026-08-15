@@ -580,6 +580,7 @@
       var paneDeliv = document.getElementById('pane-delivery');
       if(paneDeliv && paneDeliv.classList.contains('active')) renderDeliveryControl();
     }
+    if(typeof actualizarEstadoRepartidores==='function') actualizarEstadoRepartidores();
     // El estado del catálogo (abierto/cerrado) también depende de cuántos
     // repartidores hay disponibles, así que se recalcula acá.
     if(typeof sincronizarDeliveryConDisponibles==='function'){
@@ -2854,6 +2855,7 @@ body.night-on{background:#080005}
       <button id="btnGoDelivery" onclick="abrirPanelRepartidor()" style="display:none;background:transparent;border:1px solid #1e90ff;color:#1e90ff;border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="btnGoDeliveryCount"></span></button>
       <button id="btnGoCargaStock" onclick="abrirCargaStock()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📋 Cargar Stock</button>
       <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
+      <span id="estadoRepartidores" title="Repartidores conectados" style="display:none;margin-left:6px;font-family:'Oswald',sans-serif;font-size:.63rem;letter-spacing:1px;padding:4px 9px;border-radius:12px;cursor:pointer" onclick="verRepartidoresConectados()"></span>
     </div>
   </div>
   <div class="controls">
@@ -4757,6 +4759,7 @@ body.night-on{background:#080005}
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
       <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
       <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
+      <button onclick="setFiltroRepartidor('historial')" id="repFiltroHist" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Historial</button>
     </div>
     <div id="repAvisoNotifs" style="display:none;margin:12px 16px 0;background:rgba(245,194,0,.10);border:1px solid rgba(245,194,0,.4);border-radius:8px;padding:12px 14px">
       <div style="font-family:Oswald,sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;margin-bottom:5px">🔔 ACTIVÁ LOS AVISOS</div>
@@ -17335,12 +17338,13 @@ function setFiltroRepartidor(f) {
   _repFiltro = f;
   var bl = document.getElementById('repFiltroLibres');
   var bm = document.getElementById('repFiltroMios');
-  if(bl && bm){
-    var act = 'background:#22c55e;color:#052e16;border:none';
-    var ina = 'background:transparent;color:var(--gray);border:1px solid var(--border)';
-    bl.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='libres'?act:ina);
-    bm.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='mios'?act:ina);
-  }
+  var bh = document.getElementById('repFiltroHist');
+  var act = 'background:#22c55e;color:#052e16;border:none';
+  var ina = 'background:transparent;color:var(--gray);border:1px solid var(--border)';
+  var base = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer;font-weight:700;';
+  if(bl) bl.style.cssText = base+(f==='libres'?act:ina);
+  if(bm) bm.style.cssText = base+(f==='mios'?act:ina);
+  if(bh) bh.style.cssText = base+(f==='historial'?act:ina);
   renderPanelRepartidor();
 }
 
@@ -17356,6 +17360,10 @@ function renderPanelRepartidor() {
   }
   var yo = currentEmp.nombre;
   var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+
+  // El historial mira TODOS los pedidos (incluidos los ya cerrados), no solo
+  // los que siguen vivos.
+  if(_repFiltro === 'historial'){ renderHistorialRepartidor(); return; }
 
   var lista = (_repFiltro === 'libres')
     ? todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; })
@@ -17530,7 +17538,7 @@ function mensajeEnCamino(p){
 // Mensaje del LOCAL: los datos para cobrar.
 function mensajeConfirmacionPedido(p){
   var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
-  msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *Limay Rock* 🛵\n';
+  msg += 'Gracias por elegir *Limay Rock* ⚡\n';
   msg += 'Tu pedido fue confirmado y ya lo estamos preparando.\n\n';
   msg += '📦 *Tu pedido:* ' + fmt(p.total) + '\n';
   if(p.direccion) msg += '📍 ' + p.direccion + '\n';
@@ -17540,11 +17548,13 @@ function mensajeConfirmacionPedido(p){
     msg += 'Alias: *' + ALIAS_MP + '*\n';
     msg += 'Mercado Pago — ' + TITULAR_MP + '\n';
     msg += 'Monto: *' + fmt(p.total) + '*\n\n';
-    msg += 'Cuando lo hagas, mandame el comprobante por acá así salgo para tu casa 🙌';
+    msg += 'Mandanos el comprobante por acá y sale tu pedido para tu casa 🛵\n';
+    msg += '¡Gracias por la compra! ⚡';
   } else if(p.medioPago === 'Efectivo'){
     msg += '\n💵 *Vas a pagar en efectivo: ' + fmt(p.total) + '*\n\n';
     msg += '¿Abonás con el monto justo o necesitás cambio?\n';
-    msg += 'Avisame con cuánto pagás así te llevo el vuelto preparado 👍';
+    msg += 'Avisanos con cuánto pagás así te llevamos el vuelto preparado 👍\n\n';
+    msg += '¡Gracias por la compra! ⚡';
   } else {
     msg += '\n¿Cómo vas a abonar, efectivo o transferencia?';
   }
@@ -17555,6 +17565,57 @@ function whatsappCliente(p, texto){
   var tel = (p.telefono||'').replace(/\D/g,'');
   if(tel.length <= 10) tel = '549' + tel;
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(texto), '_blank');
+}
+
+// Historial propio del repartidor: qué entregó y cuánto movió.
+function renderHistorialRepartidor(){
+  var cont = document.getElementById('repartidorLista');
+  if(!cont || !currentEmp) return;
+  var yo = currentEmp.nombre;
+  var mios = getPedidosWeb().filter(function(p){
+    return p.repartidor === yo && p.estadoDelivery === 'entregado';
+  }).sort(function(a,b){ return new Date(b.entregadoEn||b.fecha) - new Date(a.entregadoEn||a.fecha); });
+
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var deHoy = mios.filter(function(p){ return new Date(p.entregadoEn||p.fecha) >= hoy; });
+  var montoHoy = deHoy.reduce(function(s,p){ return s + (p.total||0); }, 0);
+  var envioHoy = deHoy.reduce(function(s,p){ return s + (p.envio||0); }, 0);
+
+  var resumen =
+    '<div style="display:flex;gap:8px;margin-bottom:14px">'+
+      '<div style="flex:1;background:var(--card);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:10px;text-align:center">'+
+        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Hoy</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.4rem;color:#22c55e">'+deHoy.length+'</div>'+
+      '</div>'+
+      '<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Envíos hoy</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold)">'+fmt(envioHoy)+'</div>'+
+      '</div>'+
+      '<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
+        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Total</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.4rem;color:var(--white)">'+mios.length+'</div>'+
+      '</div>'+
+    '</div>';
+
+  if(!mios.length){
+    cont.innerHTML = resumen + '<div style="text-align:center;color:var(--gray);padding:30px 20px;font-size:.85rem">Todavía no entregaste ningún pedido</div>';
+    return;
+  }
+
+  cont.innerHTML = resumen + mios.slice(0,60).map(function(p){
+    var f = new Date(p.entregadoEn||p.fecha);
+    var esDeHoy = f >= hoy;
+    var cuando = esDeHoy
+      ? 'Hoy ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})
+      : f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.05)">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
+        '<div style="font-size:.66rem;color:var(--gray)">'+cuando+(p.envio>0?' · envío '+fmt(p.envio):'')+'</div>'+
+      '</div>'+
+      '<div style="font-family:Oswald,sans-serif;color:#22c55e;white-space:nowrap">'+fmt(p.total)+'</div>'+
+    '</div>';
+  }).join('');
 }
 
 function tomarPedido(id) {
@@ -17584,6 +17645,10 @@ function soltarPedido(id) {
     delete p.repartidor;
     p.estadoDelivery = 'libre';
     p.liberadoEn = new Date().toISOString();
+    // Volver a marcarlo como pendiente para el local: si ya lo habían cargado
+    // al carrito, quedaba fuera de la lista de pendientes y al soltarlo sonaba
+    // el aviso pero el pedido no reaparecía en ningún lado.
+    if(p.estado === 'cargado') p.estado = 'pendiente';
     savePedidosWeb(pedidos);
     showToast('Pedido liberado — vuelve a estar disponible para los demás');
     if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
@@ -17604,6 +17669,7 @@ function marcarEntregado(id) {
     p.estado = 'resuelto';
     savePedidosWeb(pedidos);
     showToast('✅ Pedido entregado');
+    if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
     renderPanelRepartidor();
   });
 }
@@ -17746,6 +17812,7 @@ function updateRecepBtn() {
 // sonido, hasta que alguien lo mira.
 var _idsPedidosVistos = null;   // null = todavía no se cargó la primera tanda
 var _repartidoresPedidosVistos = null;
+var _entregadosVistos = null;
 var _sonidoPedidoTimer = null;
 
 // Los navegadores no dejan reproducir sonido hasta que la persona interactúa
@@ -17847,7 +17914,38 @@ function cerrarAvisoPedidoNuevo(abrirLista){
   if(abrirLista && typeof abrirDeliveryPendModal==='function') abrirDeliveryPendModal();
 }
 
+// Muestra en el panel de venta si hay repartidores conectados y cuántos, para
+// que el empleado sepa si puede prometerle delivery a un cliente que llama.
+function actualizarEstadoRepartidores() {
+  var el = document.getElementById('estadoRepartidores');
+  if(!el) return;
+  if(typeof esModoDelivery==='function' && esModoDelivery()){ el.style.display='none'; return; }
+  var disp = (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery && e.disponibleDelivery; });
+  el.style.display = 'inline-block';
+  if(disp.length){
+    el.style.background = 'rgba(34,197,94,.15)';
+    el.style.color = '#22c55e';
+    el.style.border = '1px solid rgba(34,197,94,.5)';
+    el.textContent = '🟢 ' + disp.length + ' repartidor' + (disp.length>1?'es':'');
+  } else {
+    el.style.background = 'rgba(120,120,120,.12)';
+    el.style.color = 'var(--gray)';
+    el.style.border = '1px solid var(--border)';
+    el.textContent = '⚪ Sin repartidores';
+  }
+}
+
+function verRepartidoresConectados() {
+  var todos = (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery; });
+  if(!todos.length){ showToast('No hay repartidores cargados', true); return; }
+  var txt = todos.map(function(e){
+    return (e.disponibleDelivery ? '🟢 ' : '⚪ ') + e.nombre + (e.disponibleDelivery ? ' — disponible' : ' — no disponible');
+  }).join('\n');
+  alert('🛵 REPARTIDORES\n\n' + txt);
+}
+
 function actualizarDeliveryPendBadge() {
+  actualizarEstadoRepartidores();
   var btn = document.getElementById('btnDeliveryPend');
   if(!btn) return;
   if(!currentEmp){ btn.style.display='none'; return; }
@@ -17863,19 +17961,28 @@ function actualizarDeliveryPendBadge() {
   var vivos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
   var repAhora = {};
   vivos.forEach(function(p){ repAhora[String(p.id)] = p.repartidor || ''; });
+  var entAhora = {};
+  getPedidosWeb().forEach(function(p){ entAhora[String(p.id)] = (p.estadoDelivery === 'entregado'); });
 
   if(_idsPedidosVistos === null){
     _idsPedidosVistos = idsAhora; // primera carga: no avisar de los que ya estaban
     _repartidoresPedidosVistos = repAhora;
+    _entregadosVistos = entAhora;
   } else {
     var nuevos = pendientes.filter(function(p){ return _idsPedidosVistos.indexOf(String(p.id)) === -1; });
     // Pedidos que ANTES tenían repartidor y ahora no: alguien los soltó
+    // Pedidos que acaban de pasar a entregados, para avisarle al local
+    var entregadosAhora = getPedidosWeb().filter(function(p){
+      var antesEnt = _entregadosVistos ? _entregadosVistos[String(p.id)] : undefined;
+      return p.estadoDelivery === 'entregado' && antesEnt === false;
+    });
     var soltados = vivos.filter(function(p){
       var antesRep = _repartidoresPedidosVistos ? _repartidoresPedidosVistos[String(p.id)] : undefined;
       return antesRep && !p.repartidor;
     });
     _idsPedidosVistos = idsAhora;
     _repartidoresPedidosVistos = repAhora;
+    _entregadosVistos = entAhora;
 
     // Solo en la pantalla de VENTA. Antes se chequeaba por el buscador, pero
     // /delivery/ usa el mismo archivo y también lo tiene, así que el cartel se
@@ -17888,6 +17995,9 @@ function actualizarDeliveryPendBadge() {
         mostrarAvisoPedidoNuevo(nuevos[nuevos.length-1], pendientes.length);
       } else if(soltados.length){
         mostrarAvisoPedidoSoltado(soltados[soltados.length-1], pendientes.length);
+      } else if(entregadosAhora.length){
+        var pe = entregadosAhora[entregadosAhora.length-1];
+        showToast('✅ '+pe.repartidor+' entregó el pedido de '+pe.nombre);
       }
     }
   }
@@ -17920,9 +18030,15 @@ function abrirDeliveryPendModal() {
             p.notasManuales.map(function(n){ return '<div style="color:var(--light)">• '+n.nombre+': <b>'+n.texto+'</b></div>'; }).join('')+
           '</div>'
         : '';
-      var repHtml = p.repartidor
-        ? '<div style="font-size:.74rem;color:#1e90ff;margin-top:4px">🛵 Lo lleva <b>'+p.repartidor+'</b>'+(p.estadoDelivery==='entregado'?' · ✅ ya entregado':'')+'</div>'
-        : '<div style="font-size:.74rem;color:var(--gray);margin-top:4px">🛵 Sin repartidor asignado todavía</div>';
+      var repHtml;
+      if(p.estadoDelivery === 'entregado'){
+        var hEnt = p.entregadoEn ? new Date(p.entregadoEn).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+        repHtml = '<div style="font-size:.76rem;color:var(--green);margin-top:4px;font-weight:700">✅ ENTREGADO por '+p.repartidor+(hEnt?' · '+hEnt:'')+'</div>';
+      } else if(p.repartidor){
+        repHtml = '<div style="font-size:.74rem;color:#22c55e;margin-top:4px">🛵 En camino con <b>'+p.repartidor+'</b></div>';
+      } else {
+        repHtml = '<div style="font-size:.74rem;color:var(--gold);margin-top:4px">⏳ Esperando que un repartidor lo tome</div>';
+      }
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
@@ -19096,19 +19212,35 @@ function renderDeliveryControl() {
     }
   });
 
+  // Totales históricos y montos por repartidor, para ver el reparto de trabajo
+  var statsRep = {};
+  getPedidosWeb().forEach(function(p){
+    if(p.estadoDelivery !== 'entregado' || !p.repartidor) return;
+    if(!statsRep[p.repartidor]) statsRep[p.repartidor] = {total:0, monto:0, envios:0, hoyMonto:0};
+    var s = statsRep[p.repartidor];
+    s.total++;
+    s.monto += (p.total||0);
+    s.envios += (p.envio||0);
+    if(p.entregadoEn && new Date(p.entregadoEn) >= hoy) s.hoyMonto += (p.total||0);
+  });
+
   var repHtml = repartidores.length
     ? repartidores.map(function(e){
         var disp = !!e.disponibleDelivery;
         var enCurso = pendientes.filter(function(p){ return p.repartidor === e.nombre && p.estadoDelivery !== 'entregado'; }).length;
-        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
+        var st = statsRep[e.nombre] || {total:0, monto:0, envios:0, hoyMonto:0};
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
           '<span style="width:11px;height:11px;border-radius:50%;background:'+(disp?'#22c55e':'#555')+';box-shadow:'+(disp?'0 0 9px rgba(34,197,94,.8)':'none')+';flex-shrink:0"></span>'+
           '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:.84rem;color:'+(disp?'var(--white)':'var(--gray)')+'">'+e.nombre+'</div>'+
-            '<div style="font-size:.66rem;color:var(--gray)">'+
-              (disp ? 'Disponible' : 'No disponible')+
-              (enCurso ? ' · <span style="color:#22c55e">'+enCurso+' en curso</span>' : '')+
-              ' · '+(entregadosHoy[e.nombre]||0)+' entregados hoy'+
+            '<div style="font-size:.86rem;color:'+(disp?'var(--white)':'var(--gray)')+'">'+e.nombre+
+              (enCurso ? ' <span style="color:#22c55e;font-size:.7rem">· '+enCurso+' en curso</span>' : '')+'</div>'+
+            '<div style="font-size:.66rem;color:var(--gray);margin-top:2px">'+
+              (disp ? '🟢 Disponible' : '⚪ No disponible')+
+              ' · <b style="color:var(--light)">'+(entregadosHoy[e.nombre]||0)+'</b> hoy'+
+              (st.hoyMonto ? ' ('+fmt(st.hoyMonto)+')' : '')+
+              ' · <b style="color:var(--light)">'+st.total+'</b> en total'+
             '</div>'+
+            (st.envios ? '<div style="font-size:.64rem;color:var(--gold);margin-top:2px">Envíos cobrados: '+fmt(st.envios)+'</div>' : '')+
           '</div>'+
         '</div>';
       }).join('')
