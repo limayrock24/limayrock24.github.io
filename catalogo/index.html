@@ -143,6 +143,27 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       <label>Tu teléfono</label>
       <input type="tel" id="clienteTelefono" placeholder="Ej. 2995551234">
     </div>
+    <div class="field">
+      <label>Dirección de entrega</label>
+      <input type="text" id="clienteDireccion" placeholder="Calle, número, piso/depto, referencias">
+      <button type="button" onclick="usarMiUbicacion()" id="btnUbicacion"
+        style="width:100%;margin-top:6px;background:transparent;border:1px solid var(--gray);color:var(--gray);border-radius:6px;padding:9px;font-size:.78rem;cursor:pointer">
+        📍 Usar mi ubicación actual
+      </button>
+      <div id="ubicacionEstado" style="font-size:.7rem;margin-top:5px;display:none"></div>
+    </div>
+    <div class="field">
+      <label>¿Cómo vas a pagar?</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="mpEfectivo" onclick="elegirMedioPago('Efectivo')"
+          style="flex:1;background:transparent;border:1.5px solid var(--gray);color:var(--gray);border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer">💵 Efectivo</button>
+        <button type="button" id="mpTransferencia" onclick="elegirMedioPago('Transferencia')"
+          style="flex:1;background:transparent;border:1.5px solid var(--gray);color:var(--gray);border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer">📲 Transferencia</button>
+      </div>
+      <div id="avisoEfectivo" style="display:none;font-size:.72rem;color:var(--gray);margin-top:6px">
+        💡 Si podés, avisanos con cuánto vas a pagar así llevamos el vuelto.
+      </div>
+    </div>
     <div class="error-msg" id="checkoutError"></div>
 
     <button class="btn-primary" onclick="irAConfirmar()">Realizar pedido</button>
@@ -509,13 +530,78 @@ function cerrarCarrito(){
   document.getElementById('cartOverlay').classList.remove('show');
 }
 
+// ── UBICACIÓN Y MEDIO DE PAGO ───────────────────────────────────────────────
+var MEDIO_PAGO_SEL = '';
+var UBICACION_GPS = null;
+
+function elegirMedioPago(medio){
+  MEDIO_PAGO_SEL = medio;
+  var ef = document.getElementById('mpEfectivo');
+  var tr = document.getElementById('mpTransferencia');
+  var activo = 'flex:1;border:1.5px solid #F4B400;background:rgba(244,180,0,.12);color:#F4B400;border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer;font-weight:600';
+  var inact  = 'flex:1;background:transparent;border:1.5px solid var(--gray);color:var(--gray);border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer';
+  if(ef) ef.style.cssText = (medio==='Efectivo') ? activo : inact;
+  if(tr) tr.style.cssText = (medio==='Transferencia') ? activo : inact;
+  var aviso = document.getElementById('avisoEfectivo');
+  if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
+}
+
+// Toma las coordenadas del GPS del celular y arma un link de Google Maps que
+// el repartidor puede abrir para que lo guíe. No reemplaza la dirección
+// escrita: se guardan las dos, porque el GPS puede fallar en interiores y la
+// dirección escrita sirve para tocar el timbre correcto.
+function usarMiUbicacion(){
+  var btn = document.getElementById('btnUbicacion');
+  var est = document.getElementById('ubicacionEstado');
+  if(!navigator.geolocation){
+    if(est){ est.style.display='block'; est.style.color='#e74c3c'; est.textContent = 'Tu teléfono no permite compartir ubicación. Escribí la dirección a mano.'; }
+    return;
+  }
+  if(btn){ btn.textContent = '📍 Buscando tu ubicación...'; btn.disabled = true; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    UBICACION_GPS = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      precision: Math.round(pos.coords.accuracy)
+    };
+    if(btn){ btn.textContent = '📍 Ubicación tomada ✓'; btn.style.borderColor = '#2ecc71'; btn.style.color = '#2ecc71'; btn.disabled = false; }
+    if(est){
+      est.style.display = 'block';
+      est.style.color = '#2ecc71';
+      est.innerHTML = 'Ubicación guardada (precisión ~' + UBICACION_GPS.precision + ' m).<br>' +
+        '<span style="color:var(--gray)">Igual escribí la dirección, así sabemos a qué timbre tocar.</span>';
+    }
+  }, function(err){
+    if(btn){ btn.textContent = '📍 Usar mi ubicación actual'; btn.disabled = false; }
+    if(est){
+      est.style.display = 'block';
+      est.style.color = '#e74c3c';
+      est.textContent = (err.code === 1)
+        ? 'No nos diste permiso para ver tu ubicación. Escribí la dirección a mano.'
+        : 'No pudimos tomar tu ubicación. Escribí la dirección a mano.';
+    }
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+}
+
 function irAConfirmar(){
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
   var errEl = document.getElementById('checkoutError');
 
+  var direccion = document.getElementById('clienteDireccion').value.trim();
+
   if(!nombre || !telefono){
     errEl.textContent = 'Completá tu nombre y teléfono para poder confirmarte el pedido.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(!direccion){
+    errEl.textContent = 'Escribí la dirección de entrega así sabemos a dónde llevarlo.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(!MEDIO_PAGO_SEL){
+    errEl.textContent = 'Elegí cómo vas a pagar: efectivo o transferencia.';
     errEl.style.display = 'block';
     return;
   }
@@ -539,6 +625,7 @@ function confirmarPedido(){
   if(sesionVencida) return;
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
+  var direccion = document.getElementById('clienteDireccion').value.trim();
 
   var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
   var notasManuales = Object.keys(CARRITO_MANUAL).map(function(k){ return CARRITO_MANUAL[k]; });
@@ -552,6 +639,9 @@ function confirmarPedido(){
     fecha: new Date().toISOString(),
     nombre: nombre,
     telefono: telefono,
+    direccion: direccion,
+    gps: UBICACION_GPS,
+    medioPago: MEDIO_PAGO_SEL,
     items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
     notasManuales: notasManuales,
     subtotal: subtotal,
@@ -564,21 +654,45 @@ function confirmarPedido(){
     console.error('Error guardando pedido web', e);
   });
 
-  var msg = '¡Hola Limay Rock! 👋 Quiero hacer este pedido:\n\n';
+  // Mensaje pensado para que el local pueda leerlo de un vistazo a las 3 de la
+  // mañana: primero QUÉ pidió, después A DÓNDE va y CÓMO paga, que es lo que
+  // define si sale el pedido o no.
+  var msg = '🛵 *NUEVO PEDIDO — LIMAY ROCK*\n';
+  msg += '━━━━━━━━━━━━━━━━\n\n';
+
+  msg += '🛒 *PEDIDO*\n';
   items.forEach(function(it){
     msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
   });
   if(notasManuales.length){
-    msg += '\n📝 Pedido especial (a confirmar):\n';
+    msg += '\n📝 *A confirmar disponibilidad:*\n';
     notasManuales.forEach(function(it){
       msg += '• '+it.nombre+': '+it.texto+'\n';
     });
   }
-  msg += '\nSubtotal: '+fmt(subtotal)+'\n';
+
+  msg += '\n💰 *TOTAL*\n';
+  msg += 'Subtotal: '+fmt(subtotal)+'\n';
   if(envio>0) msg += 'Envío: '+fmt(envio)+'\n';
-  msg += '*Total (sin contar lo especial): '+fmt(total)+'*\n\n';
-  msg += 'Nombre: '+nombre+'\n';
-  msg += 'Teléfono: '+telefono;
+  msg += '*Total: '+fmt(total)+'*';
+  if(notasManuales.length) msg += ' _(sin lo que falta confirmar)_';
+  msg += '\n';
+
+  msg += '\n💳 *PAGO:* ' + (MEDIO_PAGO_SEL || 'A confirmar') + '\n';
+
+  msg += '\n📍 *ENTREGA*\n';
+  msg += direccion + '\n';
+  if(UBICACION_GPS){
+    msg += '🗺️ Ubicación en el mapa:\n';
+    msg += 'https://maps.google.com/?q=' + UBICACION_GPS.lat + ',' + UBICACION_GPS.lng + '\n';
+  }
+
+  msg += '\n👤 *CLIENTE*\n';
+  msg += nombre + '\n';
+  msg += '📞 ' + telefono + '\n';
+
+  msg += '\n━━━━━━━━━━━━━━━━\n';
+  msg += '_Pedido enviado desde el catálogo web_';
 
   var url = 'https://wa.me/'+NUMERO_WHATSAPP+'?text='+encodeURIComponent(msg);
   window.open(url, '_blank');

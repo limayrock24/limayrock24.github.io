@@ -17088,8 +17088,10 @@ function renderPanelRepartidor() {
       '</div>'+
       '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--green)':'var(--gold)')+'">'+
         (p.estado==='cargado' ? '✅ El local ya lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>'+
-      (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '')+
-      '<div style="font-size:.76rem;color:var(--gray);margin-top:3px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
+      (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '<div style="font-size:.78rem;color:var(--red);margin-top:5px">📍 Sin dirección — preguntale por WhatsApp</div>')+
+      (p.gps ? '<a href="https://maps.google.com/?q='+p.gps.lat+','+p.gps.lng+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-block;margin-top:5px;font-size:.74rem;color:#1e90ff;text-decoration:none;border:1px solid #1e90ff;border-radius:4px;padding:3px 8px">🗺️ Abrir en el mapa</a>' : '')+
+      '<div style="font-size:.76rem;color:var(--gray);margin-top:5px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
+      (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
       (p.envio>0 ? '<div style="font-size:.74rem;color:#1e90ff;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
@@ -17495,6 +17497,8 @@ function abrirDeliveryPendModal() {
         : '<div style="font-size:.74rem;color:var(--gray);margin-top:4px">🛵 Sin repartidor asignado todavía</div>';
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
+        (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
+        (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
         repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         notasHtml+
