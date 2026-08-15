@@ -4629,25 +4629,39 @@ body.night-on{background:#080005}
 </div>
 
 <!-- LOGIN DEL MODO DELIVERY (solo aparece en /delivery/) -->
-<div id="deliveryLoginOverlay" style="display:none;position:fixed;inset:0;z-index:2200;background:var(--black);flex-direction:column;align-items:center;justify-content:center;padding:24px">
-  <div style="font-family:Oswald,sans-serif;font-size:1.6rem;color:#1e90ff;font-weight:700;letter-spacing:2px;margin-bottom:4px">🛵 DELIVERY</div>
-  <div style="font-family:Oswald,sans-serif;font-size:.9rem;color:var(--gold);letter-spacing:3px;margin-bottom:26px">LIMAY ROCK</div>
-  <div style="width:100%;max-width:300px">
-    <div class="field" style="margin-bottom:12px">
-      <label>Repartidor</label>
-      <select id="dlEmpSel" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.95rem;outline:none"></select>
-    </div>
-    <div class="field">
-      <label>PIN</label>
-      <input type="password" id="dlPin" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off"
-        onkeydown="if(event.key==='Enter') loginDelivery()"
-        style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:6px;padding:14px;color:var(--white);font-family:Oswald,sans-serif;font-size:1.4rem;text-align:center;letter-spacing:8px;outline:none;box-sizing:border-box">
-    </div>
-    <div id="dlError" style="display:none;color:var(--red);font-size:.78rem;text-align:center;margin-top:10px">PIN incorrecto</div>
-    <button onclick="loginDelivery()" style="width:100%;margin-top:16px;background:#1e90ff;color:#fff;border:none;border-radius:6px;padding:14px;font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:2px;font-weight:700;cursor:pointer">ENTRAR</button>
+<div id="deliveryLoginOverlay" style="display:none;position:fixed;inset:0;z-index:2200;background:#000;flex-direction:column;align-items:center;justify-content:center;padding:20px">
+  <img src="icon-192.png" alt="Limay Rock Delivery" style="width:130px;height:130px;border-radius:24px;margin-bottom:22px" onerror="this.style.display='none'">
+  <div style="font-family:Oswald,sans-serif;font-size:.82rem;color:#22c55e;letter-spacing:4px;margin-bottom:20px">INGRESÁ TU PIN</div>
+
+  <div style="display:flex;gap:14px;margin-bottom:6px" id="dlDots">
+    <span class="dl-dot"></span><span class="dl-dot"></span><span class="dl-dot"></span><span class="dl-dot"></span>
   </div>
-  <div id="dlCargando" style="color:var(--gray);font-size:.78rem;margin-top:22px">Conectando…</div>
+  <div id="dlError" style="height:20px;color:#ef4444;font-size:.78rem;text-align:center;margin-bottom:8px"></div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:100%;max-width:280px">
+    <button class="dl-key" onclick="dlPinPress('1')">1</button>
+    <button class="dl-key" onclick="dlPinPress('2')">2</button>
+    <button class="dl-key" onclick="dlPinPress('3')">3</button>
+    <button class="dl-key" onclick="dlPinPress('4')">4</button>
+    <button class="dl-key" onclick="dlPinPress('5')">5</button>
+    <button class="dl-key" onclick="dlPinPress('6')">6</button>
+    <button class="dl-key" onclick="dlPinPress('7')">7</button>
+    <button class="dl-key" onclick="dlPinPress('8')">8</button>
+    <button class="dl-key" onclick="dlPinPress('9')">9</button>
+    <span></span>
+    <button class="dl-key" onclick="dlPinPress('0')">0</button>
+    <button class="dl-key dl-key-borrar" onclick="dlPinPress('C')">⌫</button>
+  </div>
+
+  <div id="dlCargando" style="color:#666;font-size:.76rem;margin-top:24px">Conectando…</div>
 </div>
+<style>
+.dl-dot{width:15px;height:15px;border-radius:50%;border:2px solid #22c55e;background:transparent;transition:all .15s}
+.dl-dot.filled{background:#22c55e;box-shadow:0 0 12px rgba(34,197,94,.7)}
+.dl-key{background:rgba(34,197,94,.07);border:1.5px solid rgba(34,197,94,.35);color:#fff;border-radius:14px;padding:20px 0;font-family:Oswald,sans-serif;font-size:1.5rem;font-weight:600;cursor:pointer;transition:all .1s;-webkit-tap-highlight-color:transparent}
+.dl-key:active{background:rgba(34,197,94,.28);transform:scale(.94)}
+.dl-key-borrar{font-size:1.2rem;color:#22c55e}
+</style>
 
 <!-- AVISO GRANDE DE PEDIDO NUEVO (pantalla de venta) -->
 <div id="pedidoNuevoAviso" onclick="cerrarAvisoPedidoNuevo(true)" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99996;padding:14px 16px;background:linear-gradient(135deg,#1e90ff,#0d6efd);color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.55);cursor:pointer;animation:pedidoPulso 1.2s ease-in-out infinite">
@@ -4671,11 +4685,11 @@ body.night-on{background:#080005}
   <div style="background:var(--dark);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
       <div>
-        <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:#1e90ff;font-weight:700;letter-spacing:1px">🛵 PEDIDOS DE DELIVERY</div>
+        <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:#22c55e;font-weight:700;letter-spacing:1px">🛵 PEDIDOS DE DELIVERY</div>
         <div style="font-size:.68rem;color:var(--gray);margin-top:2px" id="repartidorSaludo"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn-instalar-app" onclick="instalarApp()" style="display:none;background:#1e90ff;border:none;color:#fff;border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📲 Instalar app</button>
+        <button class="btn-instalar-app" onclick="instalarApp()" style="display:none;background:#22c55e;border:none;color:#052e16;font-weight:700;border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📲 Instalar app</button>
         <button id="btnNotifRepartidor" onclick="activarNotifsRepartidor()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔔 Activar avisos</button>
         <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
       </div>
@@ -4688,7 +4702,7 @@ body.night-on{background:#080005}
       <div class="recep-toggle-switch" id="repDisponibleSw" onclick="toggleDisponibleRepartidor()"></div>
     </div>
     <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
-      <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
+      <button onclick="setFiltroRepartidor('libres')" id="repFiltroLibres" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">Disponibles</button>
       <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
     </div>
     <div id="repAvisoNotifs" style="display:none;margin:12px 16px 0;background:rgba(245,194,0,.10);border:1px solid rgba(245,194,0,.4);border-radius:8px;padding:12px 14px">
@@ -16962,41 +16976,80 @@ function arrancarModoDelivery(){
     intentos++;
     if(window.__lrSync && window.__lrSync.empleadosListos && Array.isArray(window.EMPLEADOS)){
       clearInterval(esperar);
-      var sel = document.getElementById('dlEmpSel');
       var repartidores = EMPLEADOS.filter(function(e){ return e.accesoDelivery; });
       var carg = document.getElementById('dlCargando');
       if(!repartidores.length){
-        if(carg) carg.innerHTML = '<span style="color:var(--gold)">Todavía no hay repartidores habilitados.<br>Pedile al administrador que te active el acceso a Delivery.</span>';
+        if(carg) carg.innerHTML = '<span style="color:#F4B400">Todavía no hay repartidores habilitados.<br>Pedile al administrador que te active el acceso.</span>';
+        return;
+      }
+      // Con login solo por PIN, dos repartidores con el mismo PIN serían
+      // indistinguibles y los pedidos se le asignarían al equivocado.
+      var pins = {}, duplicados = [];
+      repartidores.forEach(function(e){
+        if(pins[e.pin]) duplicados.push(e.nombre + ' y ' + pins[e.pin]);
+        pins[e.pin] = e.nombre;
+      });
+      if(duplicados.length){
+        if(carg) carg.innerHTML = '<span style="color:#ef4444">⚠ Hay repartidores con el mismo PIN (' + duplicados[0] + ').<br>Avisale al administrador que les asigne PINs distintos.</span>';
         return;
       }
       if(carg) carg.style.display = 'none';
-      sel.innerHTML = repartidores.map(function(e){
-        return '<option value="'+e.nombre.replace(/"/g,'&quot;')+'">'+e.nombre+'</option>';
-      }).join('');
     } else if(intentos > 120){
       clearInterval(esperar);
       var c2 = document.getElementById('dlCargando');
-      if(c2) c2.innerHTML = '<span style="color:var(--red)">No se pudo conectar. Revisá tu internet y recargá.</span>';
+      if(c2) c2.innerHTML = '<span style="color:#ef4444">No se pudo conectar. Revisá tu internet y recargá.</span>';
     }
   }, 500);
 }
 
-function loginDelivery(){
-  var nombre = (document.getElementById('dlEmpSel')||{}).value || '';
-  var pin = ((document.getElementById('dlPin')||{}).value || '').trim();
+// ── TECLADO DEL PIN ─────────────────────────────────────────────────────────
+var _dlPinBuf = '';
+
+function dlPinPress(d){
   var err = document.getElementById('dlError');
-  var emp = (window.EMPLEADOS||[]).find(function(e){ return e.nombre===nombre && e.accesoDelivery; });
-  if(!emp || String(emp.pin) !== pin){
-    if(err) err.style.display = 'block';
-    var inp = document.getElementById('dlPin');
-    if(inp){ inp.value=''; inp.focus(); }
+  if(err) err.textContent = '';
+  if(d === 'C'){ _dlPinBuf = _dlPinBuf.slice(0, -1); pintarDlDots(); return; }
+  if(_dlPinBuf.length >= 4) return;
+  _dlPinBuf += d;
+  pintarDlDots();
+  if(_dlPinBuf.length === 4) setTimeout(loginDelivery, 150);
+}
+
+function pintarDlDots(){
+  var dots = document.querySelectorAll('#dlDots .dl-dot');
+  for(var i = 0; i < dots.length; i++){
+    dots[i].classList.toggle('filled', i < _dlPinBuf.length);
+  }
+}
+
+function loginDelivery(){
+  var err = document.getElementById('dlError');
+  var emp = (window.EMPLEADOS||[]).find(function(e){
+    return e.accesoDelivery && String(e.pin) === _dlPinBuf;
+  });
+  if(!emp){
+    if(err) err.textContent = 'PIN incorrecto';
+    _dlPinBuf = '';
+    pintarDlDots();
+    if(navigator.vibrate) navigator.vibrate([60, 50, 60]);
     return;
   }
-  if(err) err.style.display = 'none';
+  if(err) err.textContent = '';
+  _dlPinBuf = '';
+  pintarDlDots();
   currentEmp = emp;
   document.getElementById('deliveryLoginOverlay').style.display = 'none';
   abrirPanelRepartidor();
 }
+
+// Permite escribir el PIN con teclado físico además de tocar los botones
+document.addEventListener('keydown', function(e){
+  if(!esModoDelivery()) return;
+  var ov = document.getElementById('deliveryLoginOverlay');
+  if(!ov || ov.style.display !== 'flex') return;
+  if(/^[0-9]$/.test(e.key)) dlPinPress(e.key);
+  else if(e.key === 'Backspace') dlPinPress('C');
+});
 
 // En modo delivery, "Salir" vuelve al login en vez de cerrar el panel y dejar
 // a la vista la pantalla de venta.
@@ -17011,8 +17064,8 @@ function salirModoDelivery(){
     sincronizarDeliveryConDisponibles();
   }
   currentEmp = null;
-  var inp = document.getElementById('dlPin');
-  if(inp) inp.value = '';
+  _dlPinBuf = '';
+  pintarDlDots();
   document.getElementById('repartidorOverlay').classList.remove('open');
   document.getElementById('deliveryLoginOverlay').style.display = 'flex';
 }
@@ -17042,7 +17095,7 @@ function setFiltroRepartidor(f) {
   var bl = document.getElementById('repFiltroLibres');
   var bm = document.getElementById('repFiltroMios');
   if(bl && bm){
-    var act = 'background:#1e90ff;color:#fff;border:none';
+    var act = 'background:#22c55e;color:#052e16;border:none';
     var ina = 'background:transparent;color:var(--gray);border:1px solid var(--border)';
     bl.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='libres'?act:ina);
     bm.style.cssText = 'flex:1;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700;'+(f==='mios'?act:ina);
@@ -17082,7 +17135,7 @@ function renderPanelRepartidor() {
     var dir = p.direccion || p.domicilio || '';
     var telLimpio = (p.telefono||'').replace(/\D/g,'');
     if(telLimpio.length<=10) telLimpio = '549'+telLimpio;
-    return '<div style="background:var(--card);border:1.5px solid '+(mio?'#1e90ff':'var(--border)')+';border-radius:8px;padding:14px;margin-bottom:12px">'+
+    return '<div style="background:var(--card);border:1.5px solid '+(mio?'#22c55e':'var(--border)')+';border-radius:8px;padding:14px;margin-bottom:12px">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
         '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
@@ -17094,13 +17147,13 @@ function renderPanelRepartidor() {
       '<div style="font-size:.76rem;color:var(--gray);margin-top:5px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
-      (p.envio>0 ? '<div style="font-size:.74rem;color:#1e90ff;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
+      (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'" target="_blank" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 WhatsApp</a>'+
             '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'+
             '<button onclick="soltarPedido('+p.id+')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Soltar</button>'
-          : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#1e90ff;color:#fff;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
+          : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
       '</div>'+
     '</div>';
   }).join('');
