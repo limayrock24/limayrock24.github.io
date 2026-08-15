@@ -106,6 +106,8 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <a href="https://maps.google.com/?q=Av.+Pascual+Puente+774,+Q8320+Senillosa,+Neuqu%C3%A9n" target="_blank" rel="noopener"
      style="display:inline-block;margin-top:16px;background:#D2201F;color:#fff;text-decoration:none;border-radius:8px;padding:12px 22px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px">📍 Cómo llegar</a>
   <p style="margin-top:18px;font-size:.85rem;opacity:.75">Volvé a entrar en un rato: apenas se conecte un repartidor, el delivery se reactiva solo.</p>
+  <a href="https://www.instagram.com/limay.rock/" target="_blank" rel="noopener"
+     style="display:inline-block;margin-top:14px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;text-decoration:none;border-radius:8px;padding:11px 22px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px">📷 Seguinos en Instagram</a>
 </div>
 
 <div id="thanksScreen" class="status-screen">
@@ -152,14 +154,15 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       <input type="tel" id="clienteTelefono" placeholder="Ej. 2995551234">
     </div>
     <div class="field">
-      <label>Dirección de entrega</label>
-      <input type="text" id="clienteDireccion" placeholder="Calle y número">
-      <input type="text" id="clienteReferencia" placeholder="Referencia: ej. casa con rejas negras, portón verde..." style="margin-top:6px">
+      <label>¿Dónde te lo llevamos?</label>
       <button type="button" onclick="usarMiUbicacion()" id="btnUbicacion"
-        style="width:100%;margin-top:6px;background:transparent;border:1px solid var(--gray);color:var(--gray);border-radius:6px;padding:9px;font-size:.78rem;cursor:pointer">
-        📍 Usar mi ubicación actual
+        style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:6px;padding:13px;font-size:.85rem;font-weight:600;cursor:pointer">
+        📍 Compartir mi ubicación
       </button>
-      <div id="ubicacionEstado" style="font-size:.7rem;margin-top:5px;display:none"></div>
+      <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
+      <div style="font-size:.68rem;color:var(--gray);margin-top:6px">Necesitamos tu ubicación para poder llegar. Los datos de abajo son opcionales pero nos ayudan.</div>
+      <input type="text" id="clienteDireccion" placeholder="Calle y número (opcional)" style="margin-top:8px">
+      <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
     </div>
     <div class="field">
       <label>¿Cómo vas a pagar?</label>
@@ -573,21 +576,21 @@ function usarMiUbicacion(){
       lng: pos.coords.longitude,
       precision: Math.round(pos.coords.accuracy)
     };
-    if(btn){ btn.textContent = '📍 Ubicación tomada ✓'; btn.style.borderColor = '#2ecc71'; btn.style.color = '#2ecc71'; btn.disabled = false; }
+    if(btn){ btn.textContent = '✓ Ubicación compartida'; btn.style.background = '#2ecc71'; btn.style.color = '#052e16'; btn.disabled = false; }
     if(est){
       est.style.display = 'block';
       est.style.color = '#2ecc71';
-      est.innerHTML = 'Ubicación guardada (precisión ~' + UBICACION_GPS.precision + ' m).<br>' +
-        '<span style="color:var(--gray)">Igual escribí la dirección, así sabemos a qué timbre tocar.</span>';
+      est.innerHTML = '✓ Listo (precisión ~' + UBICACION_GPS.precision + ' m).<br>' +
+        '<span style="color:var(--gray)">Si podés, agregá la calle y una referencia — nos ayuda a llegar más rápido.</span>';
     }
   }, function(err){
-    if(btn){ btn.textContent = '📍 Usar mi ubicación actual'; btn.disabled = false; }
+    if(btn){ btn.textContent = '📍 Compartir mi ubicación'; btn.disabled = false; }
     if(est){
       est.style.display = 'block';
       est.style.color = '#e74c3c';
       est.textContent = (err.code === 1)
-        ? 'No nos diste permiso para ver tu ubicación. Escribí la dirección a mano.'
-        : 'No pudimos tomar tu ubicación. Escribí la dirección a mano.';
+        ? 'Necesitamos el permiso de ubicación para poder llevarte el pedido. Activalo y probá de nuevo.'
+        : 'No pudimos tomar tu ubicación. Probá de nuevo o escribinos por WhatsApp.';
     }
   }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
 }
@@ -604,8 +607,8 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  if(!direccion){
-    errEl.textContent = 'Escribí la dirección de entrega así sabemos a dónde llevarlo.';
+  if(!UBICACION_GPS){
+    errEl.textContent = 'Tocá "Compartir mi ubicación" así el repartidor puede llegar a tu casa.';
     errEl.style.display = 'block';
     return;
   }

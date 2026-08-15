@@ -7315,6 +7315,15 @@ window.addEventListener('online', function(){
 // Igual que saveLocal, pero además borra registros viejos (se usa al renombrar
 // un producto, para que no quede duplicado el nombre anterior).
 function saveLocalConBorrado(mensajeExito, nombresABorrar) {
+  // Red de seguridad: si quedaron dos productos con el mismo nombre, dejar uno
+  // solo. En la nube cada producto se guarda bajo su nombre, así que dos con el
+  // mismo nombre son en realidad el mismo registro pisándose entre sí.
+  var vistosNombre = {};
+  for(var _d = PRODUCTS.length - 1; _d >= 0; _d--){
+    var _n = PRODUCTS[_d].name;
+    if(vistosNombre[_n]){ PRODUCTS.splice(_d, 1); }
+    else vistosNombre[_n] = true;
+  }
   buildPills();
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
@@ -8877,6 +8886,17 @@ function savePedidosWeb(p) { window.__lrPedidosWebCache = p; if(window.__lrSaveP
 // El local confirma que el pedido ya fue cobrado (transferencia recibida o
 // efectivo en mano). Recién ahí el repartidor puede marcarlo como entregado,
 // para que no se cierre un pedido que todavía no se cobró.
+// El LOCAL le pasa al cliente los datos para pagar: si es transferencia, el
+// alias y el titular; si es efectivo, la pregunta de con cuánto abona para
+// preparar el vuelto. Lo hace el local porque es quien cobra y verifica.
+function enviarDatosCobro(id) {
+  var p = getPedidosWeb().find(function(x){ return x.id===id; });
+  if(!p) return;
+  var tel = (p.telefono||'').replace(/\D/g,'');
+  if(tel.length <= 10) tel = '549' + tel;
+  window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(mensajeConfirmacionPedido(p)), '_blank');
+}
+
 function confirmarCobroPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
@@ -15521,6 +15541,13 @@ function guardarProdModal() {
   if(provsCambiaron) saveProveedores(proveedores);
 
   if(huboRename){
+    // BLINDAJE: sacar de la lista cualquier producto que todavía tenga el
+    // nombre viejo. Si por cualquier motivo la edición terminó creando uno
+    // nuevo en vez de renombrar el existente, acá se elimina el original y
+    // no queda duplicado.
+    for(var _i = PRODUCTS.length - 1; _i >= 0; _i--){
+      if(PRODUCTS[_i].name === nombreViejo){ PRODUCTS.splice(_i, 1); }
+    }
     // Arrastrar el nombre nuevo a stock, proveedores y combos, para que el
     // producto no quede huérfano en esas listas.
     var inv = getStockInv();
@@ -17351,9 +17378,11 @@ function renderPanelRepartidor() {
       '</div>'+
       '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--green)':'var(--gold)')+'">'+
         (p.estado==='cargado' ? '✅ El local ya lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>'+
-      (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '<div style="font-size:.78rem;color:var(--red);margin-top:5px">📍 Sin dirección — preguntale por WhatsApp</div>')+
+      (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '')+
       (p.referencia ? '<div style="font-size:.74rem;color:var(--gold);margin-top:2px">🏠 '+p.referencia+'</div>' : '')+
-      (p.gps ? '<a href="https://maps.google.com/?q='+p.gps.lat+','+p.gps.lng+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-block;margin-top:5px;font-size:.74rem;color:#1e90ff;text-decoration:none;border:1px solid #1e90ff;border-radius:4px;padding:3px 8px">🗺️ Abrir en el mapa</a>' : '')+
+      (p.gps
+        ? '<a href="https://maps.google.com/?q='+p.gps.lat+','+p.gps.lng+'" target="_blank" onclick="event.stopPropagation()" style="display:block;margin-top:7px;font-size:.8rem;color:#052e16;background:#22c55e;text-decoration:none;border-radius:5px;padding:9px;text-align:center;font-weight:700">🗺️ IR CON EL MAPA</a>'
+        : '<div style="font-size:.76rem;color:var(--red);margin-top:5px">⚠ Sin ubicación — coordiná por WhatsApp</div>')+
       '<div style="font-size:.76rem;color:var(--gray);margin-top:5px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
@@ -17482,6 +17511,18 @@ var TITULAR_MP = 'Martin Ezequiel Monsalve';
 // Cambia según cómo eligió pagar: si es transferencia le pasa los datos para
 // que vaya pagando; si es efectivo le pregunta con cuánto abona, para saber
 // si hay que mandarle cambio.
+// Mensaje del REPARTIDOR: solo avisa que va en camino.
+function mensajeEnCamino(p){
+  var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
+  msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *Limay Rock* 🛵\n';
+  msg += 'Tomé tu pedido y salgo para tu casa.\n\n';
+  if(p.direccion) msg += '📍 ' + p.direccion + '\n';
+  msg += '📦 Total: *' + fmt(p.total) + '*\n\n';
+  msg += 'Cualquier cosa escribime por acá 🙌';
+  return msg;
+}
+
+// Mensaje del LOCAL: los datos para cobrar.
 function mensajeConfirmacionPedido(p){
   var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
   msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *Limay Rock* 🛵\n';
@@ -17523,8 +17564,10 @@ function tomarPedido(id) {
   showToast('🛵 Tomaste el pedido de '+p.nombre);
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
   setFiltroRepartidor('mios');
-  // Avisarle al cliente en el acto, con el mensaje ya escrito según cómo paga
-  whatsappCliente(p, mensajeConfirmacionPedido(p));
+  // El repartidor solo avisa que sale en camino. Los datos de cobro (alias,
+  // titular, vuelto) los maneja el LOCAL desde el panel de venta: es el que
+  // cobra y el que tiene que verificar la transferencia, no el que reparte.
+  whatsappCliente(p, mensajeEnCamino(p));
 }
 
 function soltarPedido(id) {
@@ -17697,6 +17740,7 @@ function updateRecepBtn() {
 // chiquito se pasa por alto. Esto avisa con una barra grande arriba y un
 // sonido, hasta que alguien lo mira.
 var _idsPedidosVistos = null;   // null = todavía no se cargó la primera tanda
+var _repartidoresPedidosVistos = null;
 var _sonidoPedidoTimer = null;
 
 // Los navegadores no dejan reproducir sonido hasta que la persona interactúa
@@ -17750,6 +17794,11 @@ function mostrarAvisoPedidoNuevo(pedido, cantidadPendiente){
   if(!el) return;
   var det = document.getElementById('pedidoNuevoDetalle');
   var cont = document.getElementById('pedidoNuevoContador');
+  // Restaurar el estilo azul, por si venía del aviso amarillo de "liberado"
+  el.style.background = 'linear-gradient(135deg,#1e90ff,#0d6efd)';
+  el.style.color = '#fff';
+  var tit = el.querySelector('div > div > div');
+  if(tit) tit.textContent = '¡PEDIDO NUEVO!';
   if(det && pedido){
     var items = (pedido.items||[]).length;
     det.textContent = pedido.nombre + ' · ' + fmt(pedido.total) + ' · ' + items + ' producto' + (items===1?'':'s');
@@ -17768,6 +17817,24 @@ function mostrarAvisoPedidoNuevo(pedido, cantidadPendiente){
   }, 20000);
 }
 
+// Aviso cuando un repartidor SUELTA un pedido: el local tiene que saber que
+// ese pedido volvió a quedar sin nadie que lo lleve.
+function mostrarAvisoPedidoSoltado(pedido, cantidadPendiente){
+  var el = document.getElementById('pedidoNuevoAviso');
+  if(!el) return;
+  var det = document.getElementById('pedidoNuevoDetalle');
+  var cont = document.getElementById('pedidoNuevoContador');
+  var titulo = el.querySelector('div > div > div');
+  el.style.background = 'linear-gradient(135deg,#F4B400,#c9950a)';
+  el.style.color = '#1a1a1a';
+  if(titulo) titulo.textContent = '⚠️ PEDIDO LIBERADO';
+  if(det) det.textContent = pedido.nombre + ' · ' + fmt(pedido.total) + ' — el repartidor lo soltó, quedó sin asignar';
+  if(cont) cont.textContent = cantidadPendiente > 1 ? cantidadPendiente : '';
+  el.style.display = 'block';
+  sonarAvisoPedido();
+  clearInterval(_sonidoPedidoTimer);
+}
+
 function cerrarAvisoPedidoNuevo(abrirLista){
   var el = document.getElementById('pedidoNuevoAviso');
   if(el) el.style.display = 'none';
@@ -17784,14 +17851,33 @@ function actualizarDeliveryPendBadge() {
   // Detectar pedidos que no estaban antes. Se compara por id, no por cantidad,
   // para no avisar de más cuando se resuelve uno y entra otro al mismo tiempo.
   var idsAhora = pendientes.map(function(p){ return String(p.id); });
+  // Además de los ids, se recuerda qué repartidor tenía cada pedido, para poder
+  // detectar cuando uno lo SUELTA. Un pedido soltado no es "nuevo" (su id ya
+  // estaba), así que sin esto el panel de venta no se enteraba de que volvió a
+  // quedar libre.
+  var repAhora = {};
+  pendientes.forEach(function(p){ repAhora[String(p.id)] = p.repartidor || ''; });
+
   if(_idsPedidosVistos === null){
     _idsPedidosVistos = idsAhora; // primera carga: no avisar de los que ya estaban
+    _repartidoresPedidosVistos = repAhora;
   } else {
     var nuevos = pendientes.filter(function(p){ return _idsPedidosVistos.indexOf(String(p.id)) === -1; });
+    // Pedidos que ANTES tenían repartidor y ahora no: alguien los soltó
+    var soltados = pendientes.filter(function(p){
+      var antesRep = _repartidoresPedidosVistos ? _repartidoresPedidosVistos[String(p.id)] : undefined;
+      return antesRep && !p.repartidor;
+    });
     _idsPedidosVistos = idsAhora;
-    if(nuevos.length && document.getElementById('searchInput')){
+    _repartidoresPedidosVistos = repAhora;
+
+    if(document.getElementById('searchInput')){
       // Solo en la pantalla de venta (no en el panel de admin ni en delivery)
-      mostrarAvisoPedidoNuevo(nuevos[nuevos.length-1], pendientes.length);
+      if(nuevos.length){
+        mostrarAvisoPedidoNuevo(nuevos[nuevos.length-1], pendientes.length);
+      } else if(soltados.length){
+        mostrarAvisoPedidoSoltado(soltados[soltados.length-1], pendientes.length);
+      }
     }
   }
   if(!pendientes.length) cerrarAvisoPedidoNuevo(false);
@@ -19093,7 +19179,8 @@ function renderDeliveryPanel() {
               '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+'</div>'+
               (p.pagoConfirmado
                 ? '<div style="margin-top:4px;font-size:.65rem;color:var(--green)">✓ Cobrado</div>'
-                : '<button onclick="confirmarCobroPedido('+p.id+')" style="margin-top:4px;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
+                : '<button onclick="enviarDatosCobro('+p.id+')" style="margin-top:4px;background:#25D366;color:#052e16;border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
+                  '<button onclick="confirmarCobroPedido('+p.id+')" style="margin-top:4px;margin-left:4px;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
               '<button onclick="marcarPedidoWebResuelto('+p.id+')" style="margin-top:4px;margin-left:4px;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Resuelto</button>'+
             '</div>'+
           '</div>'+
