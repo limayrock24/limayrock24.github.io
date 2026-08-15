@@ -1033,6 +1033,7 @@
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
     window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
+    window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
     window.__lrSync.deliveryActivoListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -1040,8 +1041,8 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno){
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno}).catch(function(e){
+  window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno, modo){
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno, modo: modo || window.__lrModoDelivery || 'auto'}).catch(function(e){
       console.error('Error guardando delivery activo', e);
     });
   };
@@ -8736,12 +8737,9 @@ function eliminarItemManual(id) {
 }
 
 // Prender/apagar el delivery del catálogo público, desde el dashboard admin
-function cambiarDeliveryActivo(activo) {
-  window.__lrDeliveryActivo = activo;
-  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(activo, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo);
-  showToast(activo ? '🛵 Delivery activado' : '🛵 Delivery pausado');
-  if(typeof renderDashboard==='function') renderDashboard();
-}
+// (cambiarDeliveryActivo fue reemplazada por cambiarModoDelivery, que maneja
+// los tres modos: automático según repartidores, forzado abierto, forzado
+// cerrado. Se eliminó para no dejar dos caminos que hagan lo mismo distinto.)
 function cambiarCostoEnvio(valor) {
   var num = parseFloat(valor) || 0;
   window.__lrCostoEnvio = num;
@@ -14412,8 +14410,16 @@ function renderDashboard() {
   var retiroBtn = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
     '<label style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer">'+
-      '<input type="checkbox" id="deliveryActivoChk" '+(window.__lrDeliveryActivo!==false?'checked':'')+' onchange="cambiarDeliveryActivo(this.checked)" style="accent-color:var(--green);width:16px;height:16px">'+
-      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🛵 Delivery '+(window.__lrDeliveryActivo!==false?'activo':'pausado')+' (catálogo web)</span>'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🛵 Delivery</span>'+
+      '<select id="modoDeliverySel" onchange="cambiarModoDelivery(this.value)" style="background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:5px 8px;font-family:Barlow,sans-serif;font-size:.76rem;outline:none">'+
+        '<option value="auto"'+(_modoDeliveryActual()==='auto'?' selected':'')+'>Automático (según repartidores)</option>'+
+        '<option value="abierto"'+(_modoDeliveryActual()==='abierto'?' selected':'')+'>Forzar ABIERTO</option>'+
+        '<option value="cerrado"'+(_modoDeliveryActual()==='cerrado'?' selected':'')+'>Forzar CERRADO</option>'+
+      '</select>'+
+      '<span style="font-size:.7rem;color:'+(window.__lrDeliveryActivo!==false?'var(--green)':'var(--red)')+'">'+
+        (window.__lrDeliveryActivo!==false?'● Abierto':'● Cerrado')+
+        (_modoDeliveryActual()==='auto' ? ' · '+repartidoresDisponibles().length+' repartidor(es)' : ' · forzado a mano')+
+      '</span>'+
     '</label>'+
     '<div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px">'+
       '<span style="font-family:Oswald,sans-serif;font-size:.72rem;color:var(--gray)">Costo envío</span>'+
@@ -17055,9 +17061,14 @@ function pintarEstadoDisponible(){
   if(!sw || !txt || !currentEmp) return;
   var disp = !!currentEmp.disponibleDelivery;
   sw.classList.toggle('on', disp);
-  txt.innerHTML = disp
+  var modo = (typeof _modoDeliveryActual==='function') ? _modoDeliveryActual() : 'auto';
+  var nota = '';
+  if(modo === 'abierto') nota = '<div style="font-size:.66rem;color:var(--gold);margin-top:3px">⚠ El local dejó el catálogo abierto a mano</div>';
+  else if(modo === 'cerrado') nota = '<div style="font-size:.66rem;color:var(--red);margin-top:3px">⚠ El local cerró el catálogo a mano — no van a entrar pedidos</div>';
+
+  txt.innerHTML = (disp
     ? '<span style="color:var(--green)">🟢 DISPONIBLE</span> — te llegan los pedidos'
-    : '<span style="color:var(--gray)">⚪ NO DISPONIBLE</span> — no te llegan pedidos';
+    : '<span style="color:var(--gray)">⚪ NO DISPONIBLE</span> — no te llegan pedidos') + nota;
 }
 
 function toggleDisponibleRepartidor(){
@@ -17076,12 +17087,42 @@ function toggleDisponibleRepartidor(){
 }
 
 // Abre o cierra el catálogo web según haya o no repartidores disponibles.
+// Modo de apertura del catálogo:
+//   'auto'    → abre/cierra solo según haya repartidores disponibles
+//   'abierto' → forzado abierto por el admin, sin importar los repartidores
+//   'cerrado' → forzado cerrado por el admin
+// El manual siempre gana: sirve para cubrir situaciones que el automático no
+// puede prever (un repartidor que se olvidó de marcarse, una promoción
+// puntual, o cerrar de urgencia por falta de stock).
+function _modoDeliveryActual(){
+  return window.__lrModoDelivery || 'auto';
+}
+
+function cambiarModoDelivery(modo){
+  window.__lrModoDelivery = modo;
+  var activo;
+  if(modo === 'abierto')      activo = true;
+  else if(modo === 'cerrado') activo = false;
+  else                        activo = repartidoresDisponibles().length > 0;
+
+  window.__lrDeliveryActivo = activo;
+  if(window.__lrSaveDeliveryActivo){
+    window.__lrSaveDeliveryActivo(activo, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo, modo);
+  }
+  if(typeof renderDashboard==='function') renderDashboard();
+  showToast(modo==='auto'
+    ? (activo ? '🛵 Automático — abierto ('+repartidoresDisponibles().length+' repartidor/es)' : '🛵 Automático — cerrado, no hay repartidores')
+    : (activo ? '🛵 Forzado ABIERTO — no depende de los repartidores' : '🛵 Forzado CERRADO'));
+}
+
 function sincronizarDeliveryConDisponibles(){
   if(!window.__lrSaveDeliveryActivo) return;
+  // Si el admin lo forzó a mano, el automático no lo toca.
+  if(_modoDeliveryActual() !== 'auto') return;
   var hay = repartidoresDisponibles().length > 0;
   if(window.__lrDeliveryActivo === hay) return; // ya está como corresponde
   window.__lrDeliveryActivo = hay;
-  window.__lrSaveDeliveryActivo(hay, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo);
+  window.__lrSaveDeliveryActivo(hay, window.__lrCostoEnvio||0, window.__lrPrecioNocturnoCatalogo, 'auto');
 }
 
 function tomarPedido(id) {
