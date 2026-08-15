@@ -533,6 +533,13 @@
       if(_efectivoInicialSesion !== undefined) currentEmp.efectivoInicial = _efectivoInicialSesion;
       if(typeof updateRecepBtn==='function') updateRecepBtn();
       if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+      // Si el panel de Delivery del admin está abierto, refrescar el estado de
+      // los repartidores en vivo: así se ve al instante cuando uno se marca
+      // disponible o deja de estarlo desde su celular.
+      var paneD = document.getElementById('pane-delivery');
+      if(paneD && paneD.classList.contains('active') && typeof renderDeliveryControl==='function'){
+        renderDeliveryControl();
+      }
       // Si la persona está DENTRO de una pantalla a la que le acaban de sacar
       // el permiso, cerrarla en el momento — no alcanza con ocultar el botón,
       // porque ya estaba adentro.
@@ -1079,6 +1086,10 @@
     // acaba de tomar) se refleje al instante, sin recargar nada.
     if(typeof actualizarContadorRepartidor==='function'){
       actualizarContadorRepartidor();
+    }
+    var paneDel = document.getElementById('pane-delivery');
+    if(paneDel && paneDel.classList.contains('active') && typeof renderDeliveryControl==='function'){
+      renderDeliveryControl();
     }
     if(typeof renderDeliveryPanel==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDeliveryPanel();
@@ -3960,6 +3971,10 @@ body.night-on{background:#080005}
 
     <!-- DELIVERY -->
     <div class="tab-pane" id="pane-delivery">
+      <!-- Centro de control del delivery: todo lo operativo junto, en vez de
+           repartido entre Inicio y el historial -->
+      <div id="deliveryControl" style="margin-bottom:16px"></div>
+
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#E74C3C;text-transform:uppercase">🛵 Historial de deliveries</div>
       </div>
@@ -18682,7 +18697,86 @@ function getRangoDelivery() {
   return getFechasRango(_periodoDelivery);
 }
 
+// Panel de control del delivery: estado del catálogo, repartidores conectados
+// y ajustes, todo en un lugar. Antes había que ir a Inicio para el estado y
+// los precios, y no había forma de saber quién estaba disponible.
+function renderDeliveryControl() {
+  var el = document.getElementById('deliveryControl');
+  if(!el) return;
+
+  var repartidores = (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery; });
+  var disponibles  = repartidores.filter(function(e){ return e.disponibleDelivery; });
+  var abierto = window.__lrDeliveryActivo !== false;
+  var modo = (typeof _modoDeliveryActual==='function') ? _modoDeliveryActual() : 'auto';
+  var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+  var sinTomar = pendientes.filter(function(p){ return !p.repartidor; });
+
+  // Cuánto lleva cada uno hoy, para ver el reparto de trabajo
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var entregadosHoy = {};
+  getPedidosWeb().forEach(function(p){
+    if(p.estadoDelivery === 'entregado' && p.repartidor && p.entregadoEn && new Date(p.entregadoEn) >= hoy){
+      entregadosHoy[p.repartidor] = (entregadosHoy[p.repartidor]||0) + 1;
+    }
+  });
+
+  var repHtml = repartidores.length
+    ? repartidores.map(function(e){
+        var disp = !!e.disponibleDelivery;
+        var enCurso = pendientes.filter(function(p){ return p.repartidor === e.nombre && p.estadoDelivery !== 'entregado'; }).length;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
+          '<span style="width:11px;height:11px;border-radius:50%;background:'+(disp?'#22c55e':'#555')+';box-shadow:'+(disp?'0 0 9px rgba(34,197,94,.8)':'none')+';flex-shrink:0"></span>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:.84rem;color:'+(disp?'var(--white)':'var(--gray)')+'">'+e.nombre+'</div>'+
+            '<div style="font-size:.66rem;color:var(--gray)">'+
+              (disp ? 'Disponible' : 'No disponible')+
+              (enCurso ? ' · <span style="color:#22c55e">'+enCurso+' en curso</span>' : '')+
+              ' · '+(entregadosHoy[e.nombre]||0)+' entregados hoy'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')
+    : '<div style="padding:12px 0;color:var(--gray);font-size:.78rem">Todavía no hay repartidores cargados. Creá uno en Empleados con el rol 🛵 Repartidor.</div>';
+
+  el.innerHTML =
+    '<div style="background:var(--card);border:1.5px solid '+(abierto?'rgba(34,197,94,.45)':'rgba(231,76,60,.45)')+';border-radius:10px;padding:14px 16px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
+        '<div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;color:'+(abierto?'#22c55e':'var(--red)')+';font-weight:700">'+
+            (abierto ? '● CATÁLOGO ABIERTO' : '● CATÁLOGO CERRADO')+'</div>'+
+          '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+
+            (modo==='auto' ? 'Automático · '+disponibles.length+' repartidor(es) disponible(s)' : 'Forzado a mano por el administrador')+
+          '</div>'+
+        '</div>'+
+        '<select onchange="cambiarModoDelivery(this.value)" style="background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-family:Barlow,sans-serif;font-size:.78rem;outline:none">'+
+          '<option value="auto"'+(modo==='auto'?' selected':'')+'>Automático</option>'+
+          '<option value="abierto"'+(modo==='abierto'?' selected':'')+'>Forzar abierto</option>'+
+          '<option value="cerrado"'+(modo==='cerrado'?' selected':'')+'>Forzar cerrado</option>'+
+        '</select>'+
+      '</div>'+
+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+
+        '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Sin tomar</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1.3rem;color:'+(sinTomar.length?'var(--gold)':'var(--white)')+'">'+sinTomar.length+'</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">En curso</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1.3rem;color:var(--white)">'+(pendientes.length - sinTomar.length)+'</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Costo de envío</div>'+
+          '<input type="number" value="'+(window.__lrCostoEnvio||0)+'" min="0" onchange="cambiarCostoEnvio(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--gold);font-family:Oswald,sans-serif;font-size:1.1rem;outline:none;padding:2px 0">'+
+        '</div>'+
+      '</div>'+
+
+      '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Repartidores</div>'+
+      repHtml+
+    '</div>';
+}
+
 function renderDeliveryPanel() {
+  renderDeliveryControl();
   var deliveriesTodas = getDeliveries();
   var rango = getRangoDelivery();
   var deliveries = deliveriesTodas.filter(function(d){
