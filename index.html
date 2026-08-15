@@ -7262,25 +7262,44 @@ function delProd(idx) {
     // viejo que se capturó al mostrar el botón.
     var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombre; });
     if(idxReal===-1){ showToast('Ese producto ya no está en la lista', true); buildEditList(); filterAll(); return; }
+    var prodBorrado = PRODUCTS[idxReal];
     PRODUCTS.splice(idxReal,1);
     limpiarReferenciasProducto(nombre);
+
+    // Marcarlo como "borrado pendiente": mientras la baja no se confirme, la
+    // sincronizacion no lo va a volver a mostrar.
+    if(!window.__lrBorradosPendientes) window.__lrBorradosPendientes = {};
+    window.__lrBorradosPendientes[nombre] = Date.now();
+
+    // Queda registrado en el Log de catalogo, igual que las ediciones y altas.
+    registrarCambioCatalogo('eliminado', nombre, [
+      {campo:'Categoria', antes: (prodBorrado && prodBorrado.cat) || '-', despues:'(eliminado)'},
+      {campo:'Precio venta', antes: (prodBorrado && prodBorrado.pventa) || 0, despues:'-'}
+    ], currentEmp ? currentEmp.nombre : 'Admin');
+
     buildEditList(); filterAll();
     function intentarBorrado(){
       if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
-      showToast('⏳ Borrando en la nube...');
+      showToast('Borrando "'+nombre+'"...');
       var promesaBorrado = window.__lrSaveProductos(PRODUCTS, [nombre]);
-      if(!window.__lrConTimeoutAviso){ promesaBorrado.then(function(){ showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO'); }); return; }
+      if(!window.__lrConTimeoutAviso){
+        promesaBorrado.then(function(){
+          delete window.__lrBorradosPendientes[nombre];
+          showToast('OK - "'+nombre+'" eliminado');
+        });
+        return;
+      }
       window.__lrConTimeoutAviso(promesaBorrado, 15000, intentarBorrado).then(function(r){
         if(r.pendiente){
-          showToast('💾 Borrado guardado localmente — se confirmará solo cuando haya señal');
+          showToast('Guardado: "'+nombre+'" se confirmara cuando haya senal');
         } else {
+          delete window.__lrBorradosPendientes[nombre];
           if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
-          showToast('✅ PRODUCTO ELIMINADO Y CONFIRMADO');
+          showToast('OK - "'+nombre+'" eliminado y confirmado');
         }
       }).catch(function(e){
-        showToast('❌ NO SE PUDO BORRAR: '+(e && e.message ? e.message : 'error de conexión'), true);
+        showToast('No se pudo borrar "'+nombre+'" - reintentando solo', true);
         if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(intentarBorrado);
-        alert('⚠️ El producto NO se pudo borrar.\n\nMotivo: '+(e && e.message ? e.message : 'error')+'\n\nTocá "🔄 Reintentar guardado" cuando quieras reintentar.');
       });
     }
     intentarBorrado();
@@ -7728,6 +7747,14 @@ function doConfirmarVenta() {
       okPuntos.style.display='none';
     }
   }
+  // Si esta venta era un pedido de delivery, marcarlo cobrado automáticamente:
+  // el pago ya se registró acá, no hace falta que nadie toque otro botón. Con
+  // eso, al repartidor se le habilita solo el botón de "Entregado".
+  if(_pedidoWebEnCarrito){
+    marcarPedidoWebCobrado(_pedidoWebEnCarrito);
+    _pedidoWebEnCarrito = null;
+  }
+
   var ok = document.getElementById('ventaOk');
   ok.classList.add('show');
   setTimeout(function(){
@@ -7741,6 +7768,21 @@ function doConfirmarVenta() {
     document.getElementById('cartPanel').classList.remove('open');
     buildFavs();
   },2000);
+}
+
+// Marca un pedido web como cobrado y listo para que el repartidor lo retire.
+// Se dispara solo al confirmar la venta desde el carrito.
+function marcarPedidoWebCobrado(id){
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p || p.pagoConfirmado) return;
+  p.pagoConfirmado = true;
+  p.cobradoEn = new Date().toISOString();
+  p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
+  p.listoParaRetirar = true;
+  savePedidosWeb(pedidos);
+  showToast('💰 Pedido de '+p.nombre+' cobrado — el repartidor ya puede retirarlo');
+  if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
 }
 
 // ── CIERRE DE TURNO ────────────────────────────────────────────────────────
@@ -14597,7 +14639,7 @@ function renderLogCatalogo() {
     }).join('');
     return '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.05)">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
-        '<span style="font-size:.82rem;color:var(--white);font-weight:500">'+(l.tipo==='nuevo'?'➕ ':'✏️ ')+l.producto+'</span>'+
+        '<span style="font-size:.82rem;color:'+(l.tipo==='eliminado'?'var(--red)':'var(--white)')+';font-weight:500">'+(l.tipo==='nuevo'?'➕ ':(l.tipo==='eliminado'?'🗑️ ':'✏️ '))+l.producto+'</span>'+
         '<span style="font-size:.68rem;color:var(--gray)">'+fecha+'</span>'+
       '</div>'+
       cambiosHtml+
@@ -15629,15 +15671,23 @@ function eliminarProdModal() {
     if(!ok) return;
     var idxFinal = PRODUCTS.findIndex(function(p){ return p.name===nombre; });
     if(idxFinal===-1){ showToast('Ese producto ya no está en la lista', true); closeProdModal(); filterAll(); return; }
+    var prodDel = PRODUCTS[idxFinal];
     PRODUCTS.splice(idxFinal,1);
     limpiarReferenciasProducto(nombre);
+    if(!window.__lrBorradosPendientes) window.__lrBorradosPendientes = {};
+    window.__lrBorradosPendientes[nombre] = Date.now();
+    registrarCambioCatalogo('eliminado', nombre, [
+      {campo:'Categoria', antes: (prodDel && prodDel.cat) || '-', despues:'(eliminado)'},
+      {campo:'Precio venta', antes: (prodDel && prodDel.pventa) || 0, despues:'-'}
+    ], currentEmp ? currentEmp.nombre : 'Admin');
     closeProdModal(); renderCatalogo(); filterAll();
     // Borrado explícito: saveLocal() ya no borra nada por su cuenta, así que
     // hay que pedir el borrado de este producto puntual.
     if(window.__lrSaveProductos){
       showToast('⏳ Eliminando en la nube...');
       window.__lrSaveProductos(PRODUCTS, [nombre]).then(function(){
-        showToast('✅ Producto eliminado y confirmado');
+        delete window.__lrBorradosPendientes[nombre];
+        showToast('✅ "'+nombre+'" eliminado y confirmado');
       }).catch(function(){
         showToast('💾 Eliminación guardada — se confirmará cuando haya señal', true);
       });
@@ -17398,8 +17448,10 @@ function renderPanelRepartidor() {
         '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>'+
-      '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--green)':'var(--gold)')+'">'+
-        (p.estado==='cargado' ? '✅ El local ya lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>'+
+      (p.pagoConfirmado
+        ? '<div style="font-size:.78rem;margin-top:5px;color:#052e16;background:#22c55e;border-radius:5px;padding:6px 9px;font-weight:700;text-align:center">✅ PAGADO Y LISTO — pasá a retirarlo</div>'
+        : '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--gold)':'var(--gray)')+'">'+
+            (p.estado==='cargado' ? '📦 El local lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>')+
       (dir ? '<div style="font-size:.8rem;color:var(--light);margin-top:5px">📍 '+dir+'</div>' : '')+
       (p.referencia ? '<div style="font-size:.74rem;color:var(--gold);margin-top:2px">🏠 '+p.referencia+'</div>' : '')+
       (p.gps
@@ -17683,7 +17735,29 @@ function marcarEntregado(id) {
   });
 }
 
+// Avisa al repartidor cuando un pedido suyo pasa a estar pagado y listo.
+var _pagadosVistosRep = null;
+function chequearPedidosListosRepartidor(){
+  if(!currentEmp) return;
+  var mios = getPedidosWeb().filter(function(p){ return p.repartidor === currentEmp.nombre; });
+  var ahora = {};
+  mios.forEach(function(p){ ahora[String(p.id)] = !!p.pagoConfirmado; });
+  if(_pagadosVistosRep !== null){
+    var reciennn = mios.filter(function(p){
+      return p.pagoConfirmado && _pagadosVistosRep[String(p.id)] === false;
+    });
+    if(reciennn.length){
+      var pl = reciennn[reciennn.length-1];
+      showToast('✅ El pedido de '+pl.nombre+' ya está pagado — pasá a retirarlo');
+      if(navigator.vibrate) navigator.vibrate([200,100,200]);
+      if(typeof sonarAvisoPedido==='function') sonarAvisoPedido();
+    }
+  }
+  _pagadosVistosRep = ahora;
+}
+
 function actualizarContadorRepartidor() {
+  chequearPedidosListosRepartidor();
   var el = document.getElementById('btnGoDeliveryCount');
   if(!el || !currentEmp) return;
   var libres = getPedidosWeb().filter(function(p){
@@ -18024,10 +18098,15 @@ function actualizarDeliveryPendBadge() {
 }
 
 function abrirDeliveryPendModal() {
-  var pendientes = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && p.estado !== 'cargado'; });
+  // Se muestran TODOS los pedidos vivos, no solo los que faltan cargar: el
+  // empleado necesita seguir viendo los que ya cargó al carrito hasta que el
+  // repartidor los entregue, para saber en qué anda cada uno.
+  var pendientes = getPedidosWeb()
+    .filter(function(p){ return p.estado !== 'resuelto'; })
+    .sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
   var cont = document.getElementById('deliveryPendList');
   if(!pendientes.length){
-    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;font-size:.85rem">No hay pedidos pendientes</div>';
+    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;font-size:.85rem">No hay pedidos en curso</div>';
   } else {
     cont.innerHTML = pendientes.map(function(p){
       var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
@@ -18039,15 +18118,29 @@ function abrirDeliveryPendModal() {
             p.notasManuales.map(function(n){ return '<div style="color:var(--light)">• '+n.nombre+': <b>'+n.texto+'</b></div>'; }).join('')+
           '</div>'
         : '';
-      var repHtml;
-      if(p.estadoDelivery === 'entregado'){
-        var hEnt = p.entregadoEn ? new Date(p.entregadoEn).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
-        repHtml = '<div style="font-size:.76rem;color:var(--green);margin-top:4px;font-weight:700">✅ ENTREGADO por '+p.repartidor+(hEnt?' · '+hEnt:'')+'</div>';
-      } else if(p.repartidor){
-        repHtml = '<div style="font-size:.74rem;color:#22c55e;margin-top:4px">🛵 En camino con <b>'+p.repartidor+'</b></div>';
-      } else {
-        repHtml = '<div style="font-size:.74rem;color:var(--gold);margin-top:4px">⏳ Esperando que un repartidor lo tome</div>';
+      // Línea de tiempo del pedido, para que el empleado vea de un vistazo en
+      // qué paso está y qué le falta hacer.
+      function pasoHtml(hecho, activo, texto, hora){
+        var color = hecho ? 'var(--green)' : (activo ? 'var(--gold)' : 'var(--gray)');
+        var icono = hecho ? '✅' : (activo ? '▶' : '○');
+        return '<div style="display:flex;align-items:center;gap:7px;font-size:.72rem;color:'+color+';padding:2px 0">'+
+          '<span style="width:14px;flex-shrink:0">'+icono+'</span>'+
+          '<span'+(hecho?' style="opacity:.8"':'')+'>'+texto+'</span>'+
+          (hora?'<span style="color:var(--gray);font-size:.66rem;margin-left:auto">'+hora+'</span>':'')+
+        '</div>';
       }
+      function hh(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : ''; }
+
+      var tomado    = !!p.repartidor;
+      var cobrado   = !!p.pagoConfirmado;
+      var entregado = p.estadoDelivery === 'entregado';
+
+      var repHtml = '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;margin-top:7px">'+
+        pasoHtml(true, false, 'Pedido recibido', hh(p.fecha))+
+        pasoHtml(tomado, !tomado, tomado ? 'Lo lleva '+p.repartidor : 'Esperando repartidor', hh(p.tomadoEn))+
+        pasoHtml(cobrado, tomado && !cobrado, cobrado ? 'Cobrado por '+(p.cobradoPor||'el local') : 'Falta cobrar', hh(p.cobradoEn))+
+        pasoHtml(entregado, cobrado && !entregado, entregado ? 'Entregado' : 'En camino al cliente', hh(p.entregadoEn))+
+      '</div>';
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
@@ -18063,7 +18156,9 @@ function abrirDeliveryPendModal() {
           (p.pagoConfirmado
             ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
             : '<button onclick="confirmarCobroPedido('+p.id+')" style="flex:1;min-width:110px;background:transparent;border:1.5px solid var(--green);color:var(--green);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
-          '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>'+
+          (p.estado === 'cargado'
+            ? '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">Volver a cargar</button>'
+            : '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>')+
         '</div>'+
       '</div>';
     }).join('');
@@ -18071,10 +18166,23 @@ function abrirDeliveryPendModal() {
   document.getElementById('deliveryPendModal').classList.add('open');
 }
 
+// Guarda qué pedido web está cargado en el carrito, para poder marcarlo como
+// cobrado automáticamente cuando se confirme la venta.
+var _pedidoWebEnCarrito = null;
+
 function cargarPedidoAlCarrito(id) {
   var pedidos = getPedidosWeb();
   var pedido = pedidos.find(function(p){ return p.id===id; });
   if(!pedido) return;
+
+  // Avisar si el carrito ya tiene algo cargado: mezclar dos pedidos distintos
+  // es la forma más fácil de cobrarle mal a alguien.
+  if(cart.length && _pedidoWebEnCarrito && _pedidoWebEnCarrito !== id){
+    if(!confirm('⚠️ El carrito ya tiene cargado otro pedido.\n\nSi seguís, se van a mezclar los dos y podés cobrar de más.\n\n¿Seguro que querés agregarlo igual?')) return;
+  } else if(cart.length && !_pedidoWebEnCarrito){
+    if(!confirm('⚠️ El carrito ya tiene productos cargados.\n\n¿Agregamos el pedido de '+pedido.nombre+' arriba de lo que ya está?')) return;
+  }
+  _pedidoWebEnCarrito = id;
 
   (pedido.items||[]).forEach(function(it){
     var prod = PRODUCTS.find(function(p){ return p.name===it.nombre; });
