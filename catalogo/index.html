@@ -248,10 +248,25 @@ function chequearListo(){
   }
 }
 
+// Recalcular el precio según la hora cada minuto, por si el cliente deja la
+// página abierta cruzando las 00:00 o las 08:00.
+setInterval(function(){
+  var deberia = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
+  if(deberia !== PRECIO_NOCTURNO){
+    PRECIO_NOCTURNO = deberia;
+    if(typeof renderList === 'function') renderList();
+    if(typeof renderPromos === 'function') renderPromos();
+  }
+}, 60000);
+
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
-  PRECIO_NOCTURNO = doc.exists ? !!doc.data().precioNocturno : false;
+  // El precio nocturno se decide por la HORA, igual que en el panel de venta:
+  // de 00:00 a 08:00 rigen los nocturnos. Antes dependía de que alguien se
+  // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
+  // mostraba precios diurnos toda la madrugada.
+  PRECIO_NOCTURNO = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
   if(!activo && !sesionVencida){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'none';
