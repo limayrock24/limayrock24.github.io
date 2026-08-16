@@ -33,14 +33,21 @@ self.addEventListener('push', function(event) {
   // Las notificaciones se mandan como "data" desde la Cloud Function
   var info = d.data || d;
   var titulo = info.titulo || 'Limay Rock';
+  var esPedido = (info.tag === 'pedido');
   var opciones = {
     body: info.cuerpo || '',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: '/icon-512.png',      // ícono grande: es el que se ve como "logo" del aviso
+    badge: '/icon-192.png',     // ícono chico de la barra de estado
     tag: info.tag || 'limayrock',
     renotify: true,
-    vibrate: [200, 100, 200],
-    data: { url: info.url || '/' }
+    // Los pedidos vibran más fuerte y quedan fijos hasta que se los mira:
+    // de madrugada, un aviso que se va solo se pierde.
+    vibrate: esPedido ? [300, 100, 300, 100, 300] : [200, 100, 200],
+    requireInteraction: esPedido,
+    silent: false,
+    timestamp: Date.now(),
+    data: { url: info.url || '/' },
+    actions: esPedido ? [{ action: 'ver', title: 'Ver pedido' }] : []
   };
   event.waitUntil(self.registration.showNotification(titulo, opciones));
 });

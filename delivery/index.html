@@ -88,9 +88,20 @@
           reject(new Error('No diste permiso para recibir notificaciones'));
           return;
         }
-        // El service worker vive en la raíz para poder cubrir todas las
-        // secciones del sitio (/, /admin/, /delivery/).
-        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        // UN SOLO service worker para todo (/sw.js), en la raíz para cubrir
+        // todas las secciones del sitio.
+        //
+        // Antes se registraba también firebase-messaging-sw.js, y los dos
+        // competían por el mismo alcance: cuál quedaba al mando dependía del
+        // orden en que arrancaran. Cuando ganaba el que no sabía mostrar
+        // notificaciones, Android mostraba el aviso genérico de Chrome en vez
+        // del de Limay Rock. Con uno solo, el comportamiento es siempre el
+        // mismo. No hace falta el SDK de Firebase adentro del service worker:
+        // los avisos se mandan como datos y se arman a mano en el evento push.
+        navigator.serviceWorker.register('/sw.js?v=3')
+          .then(function(reg){
+            return navigator.serviceWorker.ready.then(function(){ return reg; });
+          })
           .then(function(reg){
             var messaging = firebase.messaging();
             return messaging.getToken({
