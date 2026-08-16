@@ -2276,10 +2276,13 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .fiado-hint{font-size:.7rem;color:var(--gray);margin-top:5px}
 
 /* CUENTAS CORRIENTES EN ADMIN */
-.cc-card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:10px}
-.cc-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
-.cc-nombre{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--white)}
-.cc-deuda{font-family:'Oswald',sans-serif;font-size:1.3rem;color:var(--red)}
+/* Fila compacta, igual que Consumos de empleados: solo nombre y deuda, y el
+   detalle se despliega al tocar. */
+.cc-card{background:var(--card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden}
+.cc-header{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;gap:12px}
+.cc-header:hover{background:rgba(255,255,255,.02)}
+.cc-nombre{font-family:'Oswald',sans-serif;font-size:.95rem;letter-spacing:1px;color:var(--gold)}
+.cc-deuda{font-family:'Oswald',sans-serif;font-size:1.1rem;color:var(--red)}
 .cc-deuda.saldada{color:var(--green);font-size:1rem}
 /* Altura mayor y texto que baja de línea: antes los productos se cortaban a
    30 caracteres y la lista era tan baja que no se llegaba a leer la compra. */
@@ -12596,21 +12599,27 @@ function renderFiados() {
     card.className = 'cc-card';
     card.innerHTML =
       '<div class="cc-header" onclick="toggleFiadoDetalle(\''+idMovs+'\')" style="cursor:pointer">'+
-        '<div>'+
-          '<div class="cc-nombre">'+nombre+'</div>'+
-          '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+
-            '<span id="'+idMovs+'_flecha">▶</span> '+c.movs.length+' compra'+(c.movs.length===1?'':'s')+
+        '<div style="flex:1;min-width:0">'+
+          '<div class="cc-nombre">👤 '+nombre+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray);margin-top:1px">'+
+            c.movs.length+' compra'+(c.movs.length===1?'':'s')+
             (c.movs&&c.movs[0]&&c.movs[0].telefono?' · '+c.movs[0].telefono:'')+
           '</div>'+
         '</div>'+
-        '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
-          '<div class="cc-deuda '+(saldo<=0?'saldada':'')+'">'+(saldo>0?fmt(saldo):'✓ Al día')+'</div>'+
-          (saldo>0?'<div style="font-size:.68rem;color:var(--gray)">pendiente de cobro</div>':'')+
-          '<button class="del-cliente-fiado" onclick="event.stopPropagation()" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:3px;padding:2px 7px;font-size:.62rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px">🗑 Eliminar cliente</button>'+
-        '</div>'+
+        '<div class="cc-deuda '+(saldo<=0?'saldada':'')+'">'+(saldo>0?fmt(saldo):'✓ Al día')+'</div>'+
+        '<span id="'+idMovs+'_flecha" style="color:var(--gray);font-size:.8rem;flex-shrink:0">▼</span>'+
       '</div>'+
-      '<div class="cc-movs" id="'+idMovs+'" style="display:none">'+movsHtml+'</div>'+
-      (saldo>0?'<button class="cc-saldar-btn" onclick="abrirCobroFiado(this.dataset.cliente)" data-cliente="'+nombre+'">💳 Cobrar</button>':'<div style="font-size:.72rem;color:var(--green);text-align:center">✓ Sin deuda pendiente</div>');
+      // Todo lo que sigue vive adentro del desplegable, para que la fila
+      // cerrada quede tan limpia como en Consumos de empleados.
+      '<div id="'+idMovs+'" style="display:none;padding:0 16px 14px">'+
+        '<div class="cc-movs">'+movsHtml+'</div>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          (saldo>0
+            ? '<button class="cc-saldar-btn" style="flex:1;margin:0" onclick="event.stopPropagation();abrirCobroFiado(this.dataset.cliente)" data-cliente="'+nombre+'">💳 Cobrar</button>'
+            : '<div style="flex:1;font-size:.72rem;color:var(--green);text-align:center">✓ Sin deuda pendiente</div>')+
+          '<button class="del-cliente-fiado" onclick="event.stopPropagation()" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:4px;padding:8px 11px;font-size:.64rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px;white-space:nowrap">🗑 Eliminar</button>'+
+        '</div>'+
+      '</div>';
     return card;
   }
 
