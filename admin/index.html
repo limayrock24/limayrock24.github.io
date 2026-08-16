@@ -7062,6 +7062,32 @@ function anularVenta(id) {
       return {name:i.name, qty:i.qty, precio:0, subtotal:0};
     }), 0, currentEmp?currentEmp.nombre:'Admin', 'Anulación venta #'+id);
 
+    // Si esta venta venía de un pedido de delivery, anular también ese pedido:
+    // si no, quedaba contabilizado como vendido y entregado aunque la venta se
+    // haya dado de baja, inflando los totales y las estadísticas del delivery.
+    var idPedidoWeb = v.pedidoWebId;
+    if(!idPedidoWeb){
+      // Compatibilidad con pedidos anteriores a la referencia cruzada:
+      // se busca por el vínculo del otro lado.
+      var pw = getPedidosWeb().find(function(x){ return x.ventaId === id; });
+      if(pw) idPedidoWeb = pw.id;
+    }
+    if(idPedidoWeb){
+      var peds = getPedidosWeb();
+      var ped = peds.find(function(x){ return x.id === idPedidoWeb; });
+      if(ped){
+        ped.anulado = true;
+        ped.estado = 'resuelto';
+        ped.pagoConfirmado = false;
+        ped.listoParaRetirar = false;
+        ped.anuladoEn = new Date().toISOString();
+        ped.anuladoPor = currentEmp ? currentEmp.nombre : 'Admin';
+        savePedidosWeb(peds);
+        showToast('🛵 También se anuló el pedido de delivery de '+ped.nombre, true);
+        if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
+      }
+    }
+
     renderVentas('');
     showToast('Venta anulada — stock devuelto');
   });
@@ -7750,7 +7776,11 @@ function doConfirmarVenta() {
   // el pago ya se registró acá, no hace falta que nadie toque otro botón. Con
   // eso, al repartidor se le habilita solo el botón de "Entregado".
   if(_pedidoWebEnCarrito){
-    marcarPedidoWebCobrado(_pedidoWebEnCarrito);
+    // Se deja la referencia cruzada: la venta sabe de qué pedido vino y el
+    // pedido sabe con qué venta se cobró. Sin esto, anular la venta dejaba el
+    // pedido dado por cobrado y entregado, inflando los números del delivery.
+    venta.pedidoWebId = _pedidoWebEnCarrito;
+    marcarPedidoWebCobrado(_pedidoWebEnCarrito, venta.id);
     _pedidoWebEnCarrito = null;
   }
 
@@ -7771,7 +7801,7 @@ function doConfirmarVenta() {
 
 // Marca un pedido web como cobrado y listo para que el repartidor lo retire.
 // Se dispara solo al confirmar la venta desde el carrito.
-function marcarPedidoWebCobrado(id){
+function marcarPedidoWebCobrado(id, ventaId){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p || p.pagoConfirmado) return;
@@ -7779,6 +7809,7 @@ function marcarPedidoWebCobrado(id){
   p.cobradoEn = new Date().toISOString();
   p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
   p.listoParaRetirar = true;
+  if(ventaId) p.ventaId = ventaId;
   savePedidosWeb(pedidos);
   showToast('💰 Pedido de '+p.nombre+' cobrado — el repartidor ya puede retirarlo');
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
@@ -17417,7 +17448,7 @@ function renderPanelRepartidor() {
     avisoN.style.display = yaTiene ? 'none' : 'block';
   }
   var yo = currentEmp.nombre;
-  var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+  var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; });
 
   // El historial mira TODOS los pedidos (incluidos los ya cerrados), no solo
   // los que siguen vivos.
@@ -17633,7 +17664,7 @@ function renderHistorialRepartidor(){
   if(!cont || !currentEmp) return;
   var yo = currentEmp.nombre;
   var mios = getPedidosWeb().filter(function(p){
-    return p.repartidor === yo && p.estadoDelivery === 'entregado';
+    return p.repartidor === yo && p.estadoDelivery === 'entregado' && !p.anulado;
   }).sort(function(a,b){ return new Date(b.entregadoEn||b.fecha) - new Date(a.entregadoEn||a.fecha); });
 
   var hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -17760,7 +17791,7 @@ function actualizarContadorRepartidor() {
   var el = document.getElementById('btnGoDeliveryCount');
   if(!el || !currentEmp) return;
   var libres = getPedidosWeb().filter(function(p){
-    return p.estado !== 'resuelto' && !p.repartidor && p.estadoDelivery !== 'entregado';
+    return p.estado !== 'resuelto' && !p.repartidor && p.estadoDelivery !== 'entregado' && !p.anulado;
   }).length;
   el.textContent = libres > 0 ? '('+libres+')' : '';
   var ov = document.getElementById('repartidorOverlay');
@@ -18101,7 +18132,7 @@ function abrirDeliveryPendModal() {
   // empleado necesita seguir viendo los que ya cargó al carrito hasta que el
   // repartidor los entregue, para saber en qué anda cada uno.
   var pendientes = getPedidosWeb()
-    .filter(function(p){ return p.estado !== 'resuelto'; })
+    .filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; })
     .sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
   var cont = document.getElementById('deliveryPendList');
   if(!pendientes.length){
@@ -19323,6 +19354,7 @@ function renderDeliveryControl() {
   var hoy = new Date(); hoy.setHours(0,0,0,0);
   var entregadosHoy = {};
   getPedidosWeb().forEach(function(p){
+    if(p.anulado) return;
     if(p.estadoDelivery === 'entregado' && p.repartidor && p.entregadoEn && new Date(p.entregadoEn) >= hoy){
       entregadosHoy[p.repartidor] = (entregadosHoy[p.repartidor]||0) + 1;
     }
@@ -19331,6 +19363,7 @@ function renderDeliveryControl() {
   // Totales históricos y montos por repartidor, para ver el reparto de trabajo
   var statsRep = {};
   getPedidosWeb().forEach(function(p){
+    if(p.anulado) return; // los pedidos anulados no cuentan para nada
     if(p.estadoDelivery !== 'entregado' || !p.repartidor) return;
     if(!statsRep[p.repartidor]) statsRep[p.repartidor] = {total:0, monto:0, envios:0, hoyMonto:0};
     var s = statsRep[p.repartidor];
@@ -19416,7 +19449,7 @@ function renderDeliveryPanel() {
   var hoyD = deliveriesTodas.filter(function(d){ return new Date(d.fecha)>=hoy; });
   var totalHoy = hoyD.reduce(function(s,d){ return s+d.monto; },0);
 
-  var pedidosWeb = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto'; });
+  var pedidosWeb = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; });
   var pedidosWebHtml = '';
   if(pedidosWeb.length){
     pedidosWebHtml = '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 14px;margin-bottom:14px">'+
