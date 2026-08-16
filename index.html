@@ -7063,6 +7063,17 @@ function anularVenta(id) {
       return {name:i.name, qty:i.qty, precio:0, subtotal:0};
     }), 0, currentEmp?currentEmp.nombre:'Admin', 'Anulación venta #'+id);
 
+    // Sacar el registro del envío cobrado: si no, el historial de deliveries
+    // seguía contabilizando el envío de una venta dada de baja, inflando los
+    // totales y lo que figura entregado por cada repartidor.
+    var dels = getDeliveries();
+    var antesDels = dels.length;
+    dels = dels.filter(function(d){ return d.ventaId !== id && d.id !== id; });
+    if(dels.length !== antesDels){
+      saveDeliveries(dels);
+      if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+    }
+
     // Si esta venta venía de un pedido de delivery, anular también ese pedido:
     // si no, quedaba contabilizado como vendido y entregado aunque la venta se
     // haya dado de baja, inflando los totales y las estadísticas del delivery.
@@ -19356,6 +19367,7 @@ function renderDeliveryControl() {
   var entregadosHoy = {};
   getPedidosWeb().forEach(function(p){
     if(p.anulado) return;
+    if(p.anulado) return; // los pedidos anulados no cuentan
     if(p.estadoDelivery === 'entregado' && p.repartidor && p.entregadoEn && new Date(p.entregadoEn) >= hoy){
       entregadosHoy[p.repartidor] = (entregadosHoy[p.repartidor]||0) + 1;
     }
@@ -19365,6 +19377,7 @@ function renderDeliveryControl() {
   var statsRep = {};
   getPedidosWeb().forEach(function(p){
     if(p.anulado) return; // los pedidos anulados no cuentan para nada
+    if(p.anulado) return; // los pedidos anulados no cuentan
     if(p.estadoDelivery !== 'entregado' || !p.repartidor) return;
     if(!statsRep[p.repartidor]) statsRep[p.repartidor] = {total:0, monto:0, envios:0, hoyMonto:0};
     var s = statsRep[p.repartidor];
