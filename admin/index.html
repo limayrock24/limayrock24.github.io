@@ -9435,13 +9435,42 @@ function abrirDevolucionRecibidaModal() {
   document.getElementById('drFormWrap').style.display = 'none';
   var lista = document.getElementById('drLista');
   lista.innerHTML = '';
+  var todosPrest2 = getPrestamos();
   nombres.sort().forEach(function(n){
+    var movs = todosPrest2.filter(function(p){
+      return p.quien === n && (p.tipo === 'prestamo-dado' || p.tipo === 'devolucion-recibida');
+    }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+
+    var detalle = movs.map(function(m){
+      var f = new Date(m.fecha);
+      var fechaTxt = f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) +
+                     ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      var esDado = m.tipo === 'prestamo-dado';
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.7rem">'+
+        '<div style="flex:1;min-width:0">'+
+          '<span style="color:'+(esDado?'var(--gold)':'var(--green)')+'">'+(esDado?'↑ Le prestaste':'↓ Te devolvió')+'</span>'+
+          '<div style="color:var(--gray);font-size:.66rem">'+fechaTxt+' · '+(m.medio||'—')+(m.nota?' · '+m.nota:'')+'</div>'+
+        '</div>'+
+        '<span style="font-family:Oswald,sans-serif;color:'+(esDado?'var(--gold)':'var(--green)')+';white-space:nowrap">'+(esDado?'+':'−')+fmt(m.monto)+'</span>'+
+      '</div>';
+    }).join('');
+
+    var idDet2 = 'drDet_' + n.replace(/[^a-zA-Z0-9]/g,'_');
     var div = document.createElement('div');
-    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:4px;margin-bottom:6px;cursor:pointer;transition:.1s';
-    div.innerHTML = '<span style="font-size:.88rem;color:var(--white)">'+n+'</span><span style="font-family:Oswald,sans-serif;color:var(--green)">'+fmt(porQuien[n])+'</span>';
-    div.onmouseover = function(){ this.style.borderColor='var(--green)'; };
-    div.onmouseout  = function(){ this.style.borderColor='var(--border)'; };
-    div.onclick = (function(nombre, pendiente){ return function(){ elegirQuienDevolucionRecibida(nombre, pendiente); }; })(n, porQuien[n]);
+    div.style.cssText = 'border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden';
+    div.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 12px;cursor:pointer" onclick="elegirQuienDevolucionRecibida(\''+n.replace(/'/g,"\\'")+'\','+porQuien[n]+')">'+
+        '<div>'+
+          '<div style="font-size:.9rem;color:var(--white)">'+n+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray)">'+movs.length+' movimiento'+(movs.length===1?'':'s')+'</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem">'+fmt(porQuien[n])+'</div>'+
+          '<div style="font-size:.62rem;color:var(--gray)">te debe</div>'+
+        '</div>'+
+      '</div>'+
+      '<div onclick="var d=document.getElementById(\''+idDet2+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';" style="border-top:1px solid rgba(255,255,255,.06);padding:6px 12px;font-size:.66rem;color:var(--gray);cursor:pointer;text-align:center">▼ Ver detalle</div>'+
+      '<div id="'+idDet2+'" style="display:none;padding:4px 12px 10px;background:rgba(0,0,0,.2)">'+(detalle||'<div style="color:var(--gray);font-size:.7rem;padding:6px 0">Sin movimientos</div>')+'</div>';
     lista.appendChild(div);
   });
   document.getElementById('devolucionRecibidaModal').classList.add('open');
@@ -9581,13 +9610,44 @@ function abrirDevolucionPrestamoModal() {
   document.getElementById('dpFormWrap').style.display = 'none';
   var lista = document.getElementById('dpLista');
   lista.innerHTML = '';
+  var todosPrest = getPrestamos();
   nombres.sort().forEach(function(n){
+    // Detalle de cada préstamo y cada devolución de esa persona, para poder
+    // ver de dónde sale el saldo pendiente en vez de solo el número final.
+    var movs = todosPrest.filter(function(p){
+      return p.quien === n && (p.tipo === 'prestamo' || p.tipo === 'devolucion');
+    }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+
+    var detalle = movs.map(function(m){
+      var f = new Date(m.fecha);
+      var fechaTxt = f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) +
+                     ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      var esPrest = m.tipo === 'prestamo';
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.7rem">'+
+        '<div style="flex:1;min-width:0">'+
+          '<span style="color:'+(esPrest?'var(--gold)':'var(--green)')+'">'+(esPrest?'↓ Te prestó':'↑ Le devolviste')+'</span>'+
+          '<div style="color:var(--gray);font-size:.66rem">'+fechaTxt+' · '+(m.medio||'—')+(m.nota?' · '+m.nota:'')+'</div>'+
+        '</div>'+
+        '<span style="font-family:Oswald,sans-serif;color:'+(esPrest?'var(--gold)':'var(--green)')+';white-space:nowrap">'+(esPrest?'+':'−')+fmt(m.monto)+'</span>'+
+      '</div>';
+    }).join('');
+
+    var idDet = 'dpDet_' + n.replace(/[^a-zA-Z0-9]/g,'_');
     var div = document.createElement('div');
-    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:4px;margin-bottom:6px;cursor:pointer;transition:.1s';
-    div.innerHTML = '<span style="font-size:.88rem;color:var(--white)">'+n+'</span><span style="font-family:Oswald,sans-serif;color:var(--green)">'+fmt(porQuien[n])+'</span>';
-    div.onmouseover = function(){ this.style.borderColor='var(--green)'; };
-    div.onmouseout  = function(){ this.style.borderColor='var(--border)'; };
-    div.onclick = (function(nombre, pendiente){ return function(){ elegirQuienDevolver(nombre, pendiente); }; })(n, porQuien[n]);
+    div.style.cssText = 'border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden';
+    div.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 12px;cursor:pointer" onclick="elegirQuienDevolver(\''+n.replace(/'/g,"\\'")+'\','+porQuien[n]+')">'+
+        '<div>'+
+          '<div style="font-size:.9rem;color:var(--white)">'+n+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray)">'+movs.length+' movimiento'+(movs.length===1?'':'s')+'</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem">'+fmt(porQuien[n])+'</div>'+
+          '<div style="font-size:.62rem;color:var(--gray)">pendiente</div>'+
+        '</div>'+
+      '</div>'+
+      '<div onclick="var d=document.getElementById(\''+idDet+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';" style="border-top:1px solid rgba(255,255,255,.06);padding:6px 12px;font-size:.66rem;color:var(--gray);cursor:pointer;text-align:center">▼ Ver detalle de los préstamos</div>'+
+      '<div id="'+idDet+'" style="display:none;padding:4px 12px 10px;background:rgba(0,0,0,.2)">'+(detalle||'<div style="color:var(--gray);font-size:.7rem;padding:6px 0">Sin movimientos</div>')+'</div>';
     lista.appendChild(div);
   });
   document.getElementById('devolucionPrestamoModal').classList.add('open');
@@ -9602,8 +9662,11 @@ function elegirQuienDevolver(quien, pendiente) {
   document.getElementById('dpListaWrap').style.display = 'none';
   document.getElementById('dpFormWrap').style.display = 'block';
   document.getElementById('dpPendienteTexto').textContent = quien+' — pendiente: '+fmt(pendiente);
-  document.getElementById('dpMonto').value = String(Math.round(pendiente));
-  formatMontoInput(document.getElementById('dpMonto'));
+  // Campo vacío: el monto lo escribe el usuario. Antes venía precargado con el
+  // total y había que borrarlo para poner un pago parcial.
+  var inpM = document.getElementById('dpMonto');
+  inpM.value = '';
+  inpM.placeholder = 'Escribí cuánto le devolvés';
 
   // Atajos para pagos parciales: no hace falta devolver todo de una, se puede
   // ir pagando de a partes y el sistema lleva la cuenta de lo que falta.
