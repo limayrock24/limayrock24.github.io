@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1786921839";
+  window.__LR_BUILD = "1786922143";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -6850,7 +6850,6 @@ function renderVentas() {
 
   // KPIs
   var ventasDiaSinFiado = ventasDia.filter(function(v){ return !v.fiadoCarga; });
-  var totalDia = ventasDiaSinFiado.reduce(function(s,v){ return s+v.total; },0);
   // Solo ventas reales (sin fiados) para todos los cálculos de $
   var ventasReales  = ventasDia.filter(function(v){ return !v.fiadoCarga; });
   var diurnas       = ventasReales.filter(function(v){ return v.turno==='Diurno'; });
@@ -7222,7 +7221,8 @@ function exportarPDF() {
   var fechaTxt = fechaEl ? fechaEl.value : new Date().toLocaleDateString('es-AR');
   var turnoTxt = _filtroTurno || 'Todos los turnos';
 
-  var totalDia = ventas.filter(function(v){return !v.anulada;}).reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalDia = ventas.filter(function(v){return !v.anulada;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var medios = {Efectivo:0, Transferencia:0, 'Débito':0};
   ventas.filter(function(v){return !v.anulada;}).forEach(function(v){
     medios[v.medio] = (medios[v.medio]||0) + v.total;
@@ -10706,7 +10706,8 @@ function exportarRentabilidadPDF() {
     var d=new Date(c.fecha); return d>=rango.desde&&d<=rango.hasta;
   });
 
-  var totalIng = ventas.reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalIng = ventas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var totalEgr = egresos.reduce(function(s,e){return s+e.monto;},0);
   var totalCon = consumos.reduce(function(s,c){return s+c.total;},0);
   var medios={Efectivo:0,Transferencia:0,'Débito':0};
@@ -11307,7 +11308,8 @@ function renderAuditoria() {
 
   // Stats
   var totalVentas = ventas.filter(function(v){return !v.anulada;});
-  var totalMonto  = totalVentas.reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalMonto  = totalVentas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var anuladas    = ventas.filter(function(v){return v.anulada;});
   var ticketProm  = totalVentas.length ? Math.round(totalMonto/totalVentas.length) : 0;
 
@@ -11374,7 +11376,8 @@ function exportarAuditoriaPDF() {
   var ventas = VENTAS.filter(function(v){
     var d=new Date(v.fecha); return d>=desde&&d<=hasta&&(!empFiltro||v.empleado===empFiltro);
   });
-  var total=ventas.filter(function(v){return !v.anulada;}).reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var total=ventas.filter(function(v){return !v.anulada;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var rows=ventas.slice().reverse().map(function(v){
     var d=new Date(v.fecha);
     var prods=v.items?v.items.map(function(i){return i.name+' ×'+i.qty;}).join(', ').slice(0,50):'';
@@ -13441,8 +13444,9 @@ function renderReportes() {
   var vA = ventasEnRango(r.aDesde, r.aHasta);
   var vB = ventasEnRango(r.bDesde, r.bHasta);
 
-  var totalA = vA.reduce(function(s,v){return s+v.total;},0);
-  var totalB = vB.reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalA = vA.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var totalB = vB.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var ticketA = vA.length ? Math.round(totalA/vA.length) : 0;
   var ticketB = vB.length ? Math.round(totalB/vB.length) : 0;
 
@@ -13629,8 +13633,9 @@ function exportarReportePDF() {
   var r  = getRepRangos();
   var vA = ventasEnRango(r.aDesde, r.aHasta);
   var vB = ventasEnRango(r.bDesde, r.bHasta);
-  var totalA = vA.reduce(function(s,v){return s+v.total;},0);
-  var totalB = vB.reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalA = vA.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var totalB = vB.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var ticketA = vA.length ? Math.round(totalA/vA.length) : 0;
   var labelA = _repPeriodo==='semana'?'Esta semana':_repPeriodo==='mes'?'Este mes':'Período A';
   var labelB = _repPeriodo==='semana'?'Semana anterior':_repPeriodo==='mes'?'Mes anterior':'Período B';
@@ -14905,7 +14910,8 @@ function renderDashboard() {
   var fin = new Date(); fin.setHours(23,59,59,999);
 
   var ventasHoy = getVentasYFiadosDelDia(hoy.toDateString());
-  var totalHoy  = ventasHoy.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalHoy  = ventasHoy.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
 
   var medios={Efectivo:0,Transferencia:0,'Débito':0};
   ventasHoy.forEach(function(v){
@@ -20151,7 +20157,8 @@ function exportarReporteGeneral() {
   var cierres  = getCierres();
   var inv      = getStockInv();
 
-  var totalVentas = ventas.reduce(function(s,v){return s+v.total;},0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalVentas = ventas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var totalConsumos = consumos.reduce(function(s,c){return s+c.total;},0);
   var medios={Efectivo:0,Transferencia:0,'Débito':0};
   ventas.forEach(function(v){medios[v.medio]=(medios[v.medio]||0)+v.total;});
@@ -20988,7 +20995,8 @@ function calcularYMostrarCierre(desde, hasta) {
     var f = fechaLocalStr(new Date(v.fecha));
     return !v.anulada && f>=desde && f<=hasta;
   });
-  var totalVentas = ventas.reduce(function(s,v){ return s+v.total; },0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalVentas = ventas.reduce(function(s,v){ return s+(v.total-(v.recargo||0)); },0);
   var egresos = getEgresos().filter(function(e){ return e.fecha>=desde && e.fecha<=hasta; });
   var totalEgresos = egresos.reduce(function(s,e){ return s+e.monto; },0);
 
