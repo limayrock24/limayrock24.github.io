@@ -114,6 +114,21 @@
             if(!token) throw new Error('No se pudo registrar el dispositivo');
             // Se guarda con el token como id, así un mismo celular no queda
             // duplicado si se vuelve a activar.
+            //
+            // Además se limpian los registros viejos de ESTE mismo dispositivo:
+            // si la dirección cambió (actualización del sistema, limpieza de
+            // datos), el registro anterior queda muerto y haría que se intente
+            // notificar a un destino que ya no existe.
+            try{
+              window.__lrDB.collection('fcmTokens')
+                .where('dispositivo', '==', navigator.userAgent.slice(0,120))
+                .where('quien', '==', quien || '')
+                .get().then(function(snap){
+                  snap.forEach(function(doc){
+                    if(doc.id !== token.slice(-40)) doc.ref.delete();
+                  });
+                }).catch(function(){});
+            }catch(e){}
             return window.__lrDB.collection('fcmTokens').doc(token.slice(-40)).set({
               token: token,
               destino: destino,
@@ -9306,6 +9321,14 @@ document.addEventListener('DOMContentLoaded', function(){
   // de resguardo pero los productos reales ya habían llegado de la nube,
   // restaurarlos. Evita el caso de ver 854 productos al recargar y tener que
   // cerrar y reabrir la app para volver a los reales.
+  // Restaurar el estado de los avisos del dueño apenas carga la app
+  setTimeout(function(){
+    if(typeof restaurarEstadoNotificaciones==='function' &&
+       !(typeof esModoDelivery==='function' && esModoDelivery())){
+      restaurarEstadoNotificaciones('dueno', 'Admin', 'btnNotifDueno');
+    }
+  }, 2500);
+
   if(Array.isArray(window.__lrProductosNube) && window.__lrProductosNube.length > 0
      && window.PRODUCTS !== window.__lrProductosNube){
     window.PRODUCTS = window.__lrProductosNube;
@@ -17485,6 +17508,39 @@ function _lrActivarNotifs(destino, quien, btnId){
   });
 }
 
+// Al abrir la app, si el permiso ya está dado, se vuelve a registrar el
+// dispositivo EN SILENCIO y se deja el botón mostrando que está activo.
+//
+// Dos motivos: (1) el botón guardaba su estado solo en memoria, así que al
+// cerrar y abrir la app volvía a decir "Activar avisos" y parecía que se
+// habían desactivado solos; (2) más importante, la dirección que identifica al
+// dispositivo puede cambiar sola (actualización del sistema, limpieza de datos
+// del navegador), y si no se vuelve a registrar, los avisos dejan de llegar de
+// verdad sin que nadie se entere. Re-registrar en cada arranque lo evita.
+function restaurarEstadoNotificaciones(destino, quien, btnId){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  var btn = document.getElementById(btnId);
+  if(btn){
+    btn.textContent = '🔔 Avisos activados';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color = 'var(--green)';
+  }
+  if(window.__lrActivarNotificaciones){
+    window.__lrActivarNotificaciones(destino, quien)
+      .then(function(){ if(window.__lrEscucharNotifsEnVivo) window.__lrEscucharNotifsEnVivo(); })
+      .catch(function(e){
+        // Si el re-registro falla, avisar: es la diferencia entre creer que
+        // están activos y que realmente lleguen.
+        if(btn){
+          btn.textContent = '⚠️ Reactivar avisos';
+          btn.style.borderColor = 'var(--gold)';
+          btn.style.color = 'var(--gold)';
+        }
+        console.warn('No se pudo re-registrar para notificaciones:', e);
+      });
+  }
+}
+
 function activarNotifsRepartidor(){
   _lrActivarNotifs('repartidor', currentEmp ? currentEmp.nombre : '', 'btnNotifRepartidor');
 }
@@ -17615,6 +17671,7 @@ function abrirPanelRepartidor() {
   var saludo = document.getElementById('repartidorSaludo');
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
+  restaurarEstadoNotificaciones('repartidor', currentEmp.nombre, 'btnNotifRepartidor');
   pintarEstadoDisponible();
   setFiltroRepartidor('libres');
   document.getElementById('repartidorOverlay').classList.add('open');
