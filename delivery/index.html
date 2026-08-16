@@ -12531,6 +12531,15 @@ function registrarFiado() {
 }
 
 // ── CUENTAS CORRIENTES (ADMIN) ──────────────────────────────────────────────
+function toggleFiadoDetalle(id){
+  var el = document.getElementById(id);
+  var fl = document.getElementById(id+'_flecha');
+  if(!el) return;
+  var abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : 'block';
+  if(fl) fl.textContent = abierto ? '▶' : '▼';
+}
+
 function renderFiados() {
   var fiados  = getFiados();
   var grid    = document.getElementById('ccGrid');
@@ -12578,21 +12587,28 @@ function renderFiados() {
       '</div>';
     }).join('');
 
+    // Las compras arrancan PLEGADAS: se ve solo el nombre y la deuda, y se
+    // despliegan al tocar. Con clientes de 15 compras, la lista abierta hacía
+    // imposible recorrer la pantalla.
+    var idMovs = 'ccMovs_' + nombre.replace(/[^a-zA-Z0-9]/g,'_');
     var card = document.createElement('div');
     card.className = 'cc-card';
     card.innerHTML =
-      '<div class="cc-header">'+
+      '<div class="cc-header" onclick="toggleFiadoDetalle(\''+idMovs+'\')" style="cursor:pointer">'+
         '<div>'+
           '<div class="cc-nombre">'+nombre+'</div>'+
-          '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+c.movs.length+' compras'+(c.movs&&c.movs[0]&&c.movs[0].telefono?' · '+c.movs[0].telefono:'')+'</div>'+
+          '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+
+            '<span id="'+idMovs+'_flecha">▶</span> '+c.movs.length+' compra'+(c.movs.length===1?'':'s')+
+            (c.movs&&c.movs[0]&&c.movs[0].telefono?' · '+c.movs[0].telefono:'')+
+          '</div>'+
         '</div>'+
         '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
           '<div class="cc-deuda '+(saldo<=0?'saldada':'')+'">'+(saldo>0?fmt(saldo):'✓ Al día')+'</div>'+
           (saldo>0?'<div style="font-size:.68rem;color:var(--gray)">pendiente de cobro</div>':'')+
-          '<button class="del-cliente-fiado" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:3px;padding:2px 7px;font-size:.62rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px">🗑 Eliminar cliente</button>'+
+          '<button class="del-cliente-fiado" onclick="event.stopPropagation()" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:3px;padding:2px 7px;font-size:.62rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px">🗑 Eliminar cliente</button>'+
         '</div>'+
       '</div>'+
-      '<div class="cc-movs">'+movsHtml+'</div>'+
+      '<div class="cc-movs" id="'+idMovs+'" style="display:none">'+movsHtml+'</div>'+
       (saldo>0?'<button class="cc-saldar-btn" onclick="abrirCobroFiado(this.dataset.cliente)" data-cliente="'+nombre+'">💳 Cobrar</button>':'<div style="font-size:.72rem;color:var(--green);text-align:center">✓ Sin deuda pendiente</div>');
     return card;
   }
