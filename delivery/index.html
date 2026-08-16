@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1786921390";
+  window.__LR_BUILD = "1786921636";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15021,6 +15021,9 @@ function renderDashboard() {
         return new Date(cv.fecha).getTime() >= inicioTs;
       });
       var gananciaCargasTurno = cargasTurnoVivo.reduce(function(s,cv){ return s + (cv.ganancia||0); }, 0);
+      // La ganancia de las cargas se suma al monto de ventas del turno: es
+      // plata que entró igual, y así el número refleja todo lo generado.
+      totalVentasTurnoVivo += gananciaCargasTurno;
 
       var detalleTurno = getMovimientos().filter(function(m){
         // Excluir los movimientos internos de descuento de stock por ingrediente
@@ -15056,20 +15059,10 @@ function renderDashboard() {
           '</div>'+
           '<div class="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
         '</div>'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:'+(gananciaCargasTurno?'4px':'8px')+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
         '</div>'+
-        (gananciaCargasTurno
-          ? '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:4px">'+
-              '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📱 Ganancia cargas virtuales</span>'+
-              '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(gananciaCargasTurno)+' · '+cargasTurnoVivo.length+' carga'+(cargasTurnoVivo.length===1?'':'s')+'</span>'+
-            '</div>'+
-            '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(46,204,113,.10);border:1px solid rgba(46,204,113,.35);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
-              '<span style="font-size:.72rem;color:var(--green);text-transform:uppercase;letter-spacing:1px">💰 Total generado en el turno</span>'+
-              '<span style="font-family:Oswald,sans-serif;font-size:1.05rem;color:var(--green);font-weight:700">'+fmt(totalVentasTurnoVivo + gananciaCargasTurno)+'</span>'+
-            '</div>'
-          : '')+
         '<div style="text-align:center">'+
           '<button onclick="window.__lrTurnoVivoExpandido=window.__lrTurnoVivoExpandido||{};window.__lrTurnoVivoExpandido[\''+claveExpandido+'\']=!window.__lrTurnoVivoExpandido[\''+claveExpandido+'\'];renderDashboard();" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
             (expandido ? '▲ Ocultar movimientos' : '▼ Ver movimientos del turno')+
