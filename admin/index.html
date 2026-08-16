@@ -2280,11 +2280,13 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cc-nombre{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:1px;color:var(--white)}
 .cc-deuda{font-family:'Oswald',sans-serif;font-size:1.3rem;color:var(--red)}
 .cc-deuda.saldada{color:var(--green);font-size:1rem}
-.cc-movs{max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;margin-bottom:10px}
-.cc-mov-row{display:grid;grid-template-columns:70px 1fr auto auto;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:.75rem}
+/* Altura mayor y texto que baja de línea: antes los productos se cortaban a
+   30 caracteres y la lista era tan baja que no se llegaba a leer la compra. */
+.cc-movs{max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;margin-bottom:10px}
+.cc-mov-row{display:grid;grid-template-columns:66px 1fr auto auto;gap:8px;align-items:start;padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:.75rem}
 .cc-mov-row:last-child{border-bottom:none}
 .cc-mov-fecha{color:var(--gray);font-size:.7rem}
-.cc-mov-prods{color:var(--light)}
+.cc-mov-prods{color:var(--light);white-space:normal;word-break:break-word;line-height:1.4}
 .cc-mov-monto{font-family:'Oswald',sans-serif;color:var(--red);white-space:nowrap}
 .cc-mov-estado{font-size:.68rem;padding:2px 6px;border-radius:3px;font-family:'Oswald',sans-serif;white-space:nowrap}
 .cc-mov-estado.pendiente{background:rgba(204,0,0,.12);color:var(--red)}
@@ -12568,7 +12570,7 @@ function renderFiados() {
       var turnoIcon = f.turno==='Nocturno' ? '🌙' : (f.turno==='Diurno' ? '☀️' : '');
       return '<div class="cc-mov-row" style="flex-wrap:wrap">'+
         '<span class="cc-mov-fecha">'+fecha+' '+hora+'</span>'+
-        '<span class="cc-mov-prods" title="'+prods+'">'+prods.slice(0,30)+((prods&&prods.length>30)?'…':'')+(f.telefono?' · <span style=\"color:var(--gold)\">'+f.telefono+'</span>':'')+'</span>'+
+        '<span class="cc-mov-prods" title="'+prods+'">'+prods+(f.telefono?' · <span style=\"color:var(--gold)\">'+f.telefono+'</span>':'')+'</span>'+
         '<span class="cc-mov-monto">'+fmt(f.total)+'</span>'+
         '<span class="cc-mov-estado '+(f.pagado?'pagado':'pendiente')+'">'+(f.pagado?'✓ Cobrado '+(f.fechaPago?new Date(f.fechaPago).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""):'⏳ Pendiente')+'</span>'+
         delBtn+
