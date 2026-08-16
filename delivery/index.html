@@ -3348,7 +3348,7 @@ body.night-on{background:#080005}
           <div class="emp-rol-btns">
             <div class="emp-rol-btn" id="emRolEmpleado" onclick="selEmpRol('empleado')">👤 Empleado</div>
             <div class="emp-rol-btn" id="emRolAdmin" onclick="selEmpRol('admin')">⭐ Admin</div>
-            <div class="emp-rol-btn" id="emRolRepartidor" onclick="selEmpRol('repartidor')">🛵 Repartidor</div>
+            <div class="emp-rol-btn" id="emRolRepartidor" onclick="selEmpRol('repartidor')">🛵 Delivery</div>
           </div>
         </div>
         <div class="field">
@@ -5205,7 +5205,7 @@ body.night-on{background:#080005}
         <label>Monto que devolvés ($)</label>
         <div style="position:relative;display:flex;align-items:center">
           <span style="position:absolute;left:14px;font-family:'Oswald',sans-serif;font-size:1.3rem;color:var(--green);font-weight:700;pointer-events:none;z-index:1">$</span>
-          <input type="text" inputmode="numeric" id="dpMonto" placeholder="0" oninput="formatMontoInput(this);validarDevolucion()"
+          <input type="text" inputmode="numeric" id="dpMonto" placeholder="0" oninput="formatMontoInput(this);validarDevolucion();actualizarRestanteDevolucion()"
             style="width:100%;background:var(--dark);border:2px solid var(--green);border-radius:8px;padding:16px 14px 16px 36px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:700;outline:none">
         </div>
       </div>
@@ -9327,9 +9327,11 @@ function registrarPrestamo() {
 
 // Pendiente agrupado por persona/entidad, para elegir a quién le devolvés
 function getPrestamosPendientePorQuien() {
-  var cfg = getLiquidezCfg();
-  var desdeTs = cfg.configTs ? new Date(cfg.configTs) : new Date('2000-01-01');
-  var todos = getPrestamos().filter(function(p){ return new Date(p.fecha)>=desdeTs; });
+  // A diferencia del cálculo de liquidez, acá NO se filtra por la fecha de
+  // corte: una deuda pendiente sigue existiendo aunque se hayan reconfigurado
+  // los saldos. Antes, al reconfigurar liquidez, los préstamos anteriores
+  // desaparecían de la lista de pendientes aunque nunca se hubieran devuelto.
+  var todos = getPrestamos();
   var porQuien = {};
   todos.forEach(function(p){
     if(p.tipo==='prestamo'){
@@ -9354,9 +9356,9 @@ function getPrestamosPorCobrar() {
   return dados - recibidos;
 }
 function getPrestamosPorCobrarPorQuien() {
-  var cfg = getLiquidezCfg();
-  var desdeTs = cfg.configTs ? new Date(cfg.configTs) : new Date('2000-01-01');
-  var todos = getPrestamos().filter(function(p){ return new Date(p.fecha)>=desdeTs; });
+  // Igual que arriba: lo que alguien te debe no se borra porque hayas
+  // reconfigurado los saldos de liquidez.
+  var todos = getPrestamos();
   var porQuien = {};
   todos.forEach(function(p){
     if(p.tipo==='prestamo-dado'){
@@ -9591,18 +9593,71 @@ function abrirDevolucionPrestamoModal() {
   document.getElementById('devolucionPrestamoModal').classList.add('open');
 }
 
+var _dpPendienteActual = 0;
+
 function elegirQuienDevolver(quien, pendiente) {
   _dpQuienSeleccionado = quien;
+  _dpPendienteActual = pendiente;
   _dpMedio = null;
   document.getElementById('dpListaWrap').style.display = 'none';
   document.getElementById('dpFormWrap').style.display = 'block';
   document.getElementById('dpPendienteTexto').textContent = quien+' — pendiente: '+fmt(pendiente);
   document.getElementById('dpMonto').value = String(Math.round(pendiente));
   formatMontoInput(document.getElementById('dpMonto'));
+
+  // Atajos para pagos parciales: no hace falta devolver todo de una, se puede
+  // ir pagando de a partes y el sistema lleva la cuenta de lo que falta.
+  var atajos = document.getElementById('dpAtajosParciales');
+  if(!atajos){
+    atajos = document.createElement('div');
+    atajos.id = 'dpAtajosParciales';
+    atajos.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px';
+    var inp = document.getElementById('dpMonto');
+    if(inp && inp.parentNode) inp.parentNode.insertBefore(atajos, inp.nextSibling);
+  }
+  atajos.innerHTML =
+    '<div style="width:100%;font-size:.66rem;color:var(--gray);margin-bottom:2px">Pago parcial:</div>'+
+    [['Mitad', Math.round(pendiente/2)], ['Un tercio', Math.round(pendiente/3)], ['Todo', Math.round(pendiente)]]
+      .map(function(par){
+        return '<button type="button" onclick="setMontoDevolucion('+par[1]+')" style="flex:1;min-width:80px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:7px 4px;font-size:.7rem;cursor:pointer">'+par[0]+'<br><span style="color:var(--light);font-size:.72rem">'+fmt(par[1])+'</span></button>';
+      }).join('');
   document.getElementById('dpNota').value = '';
   document.querySelectorAll('#devolucionPrestamoModal .pago-btn').forEach(function(b){ b.classList.remove('selected'); });
   document.getElementById('dpConfirmarBtn').disabled = true;
   setTimeout(function(){ var i=document.getElementById('dpMonto'); if(i) i.focus(); },100);
+}
+
+function setMontoDevolucion(monto){
+  var inp = document.getElementById('dpMonto');
+  if(!inp) return;
+  inp.value = String(monto);
+  formatMontoInput(inp);
+  actualizarRestanteDevolucion();
+}
+
+// Muestra cuánto va a quedar debiendo después de este pago
+function actualizarRestanteDevolucion(){
+  var monto = getMontoInputValue('dpMonto') || 0;
+  var el = document.getElementById('dpRestante');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'dpRestante';
+    el.style.cssText = 'font-size:.72rem;margin-top:6px';
+    var at = document.getElementById('dpAtajosParciales');
+    if(at && at.parentNode) at.parentNode.insertBefore(el, at.nextSibling);
+  }
+  var resta = _dpPendienteActual - monto;
+  if(monto <= 0){ el.textContent = ''; return; }
+  if(resta > 0){
+    el.style.color = 'var(--gold)';
+    el.innerHTML = '💡 Pago parcial — después de esto va a quedar debiendo <b>'+fmt(resta)+'</b>';
+  } else if(resta === 0){
+    el.style.color = 'var(--green)';
+    el.innerHTML = '✅ Con esto queda saldado por completo';
+  } else {
+    el.style.color = 'var(--red)';
+    el.innerHTML = '⚠️ Estás devolviendo '+fmt(Math.abs(resta))+' de más';
+  }
 }
 
 function volverListaDevolucion() {
@@ -15980,18 +16035,36 @@ function renderEmpAdmin() {
     var vh    = parseFloat(emp.valorHora)||0;
     var sueldo= vh>0 ? fmt(Math.round((minutos/60)*vh)) : '—';
 
+    var esDelivery = (emp.rol === 'repartidor') || (!!emp.accesoDelivery && emp.rol !== 'admin');
+    var dispDeliv  = esDelivery && !!emp.disponibleDelivery;
+
     var card = document.createElement('div');
     card.className = 'emp-card';
+    // Los repartidores se distinguen con borde y fondo verde, para poder
+    // separarlos de un vistazo del personal del local.
+    if(esDelivery){
+      card.style.borderColor = 'rgba(34,197,94,.55)';
+      card.style.background = 'linear-gradient(90deg, rgba(34,197,94,.07), transparent 60%)';
+    }
     card.onclick = function(){ abrirEmpModal(i); };
+
+    var claseRol = emp.rol==='admin' ? 'admin' : 'empleado';
+    var textoRol = esDelivery ? '🛵 Delivery'
+                 : (emp.rol==='admin' ? '⭐ Admin' : '👤 Empleado');
+
     card.innerHTML =
-      '<div class="emp-avatar '+(emp.rol==='admin'?'admin':'empleado')+'">'+emp.nombre[0].toUpperCase()+'</div>'+
+      '<div class="emp-avatar '+claseRol+'"'+(esDelivery?' style="background:#22c55e;color:#052e16"':'')+'>'+emp.nombre[0].toUpperCase()+'</div>'+
       '<div class="emp-info">'+
-        '<div class="en">'+emp.nombre+'</div>'+
-        '<div class="er '+(emp.rol==='admin'?'admin':'empleado')+'">'+(emp.rol==='admin'?'⭐ Admin':'👤 Empleado')+(emp.funcion?' · '+emp.funcion:'')+'</div>'+
+        '<div class="en">'+emp.nombre+
+          (dispDeliv?' <span style="font-size:.62rem;color:#22c55e;vertical-align:middle">● en línea</span>':'')+'</div>'+
+        '<div class="er '+claseRol+'"'+(esDelivery?' style="color:#22c55e"':'')+'>'+textoRol+(emp.funcion?' · '+emp.funcion:'')+'</div>'+
       '</div>'+
       '<div class="emp-stats">'+
-        '<div>Turno este mes: <b>'+horasStr+'</b></div>'+
-        '<div>Sueldo est.: <b>'+sueldo+'</b></div>'+
+        (esDelivery
+          ? '<div>Entregas hoy: <b>'+entregasHoyDe(emp.nombre)+'</b></div>'+
+            '<div>Total entregas: <b>'+entregasTotalesDe(emp.nombre)+'</b></div>'
+          : '<div>Turno este mes: <b>'+horasStr+'</b></div>'+
+            '<div>Sueldo est.: <b>'+sueldo+'</b></div>')+
         (consumoPend>0?'<div style="color:var(--red)">Consumo: <b>'+fmt(consumoPend)+'</b></div>':'')+
       '</div>';
     el.appendChild(card);
@@ -16005,6 +16078,20 @@ function renderEmpAdmin() {
   el.appendChild(addCard);
 }
 
+
+// Entregas de un repartidor (excluyendo pedidos anulados)
+function entregasHoyDe(nombre){
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  return getPedidosWeb().filter(function(p){
+    return !p.anulado && p.repartidor === nombre && p.estadoDelivery === 'entregado'
+        && p.entregadoEn && new Date(p.entregadoEn) >= hoy;
+  }).length;
+}
+function entregasTotalesDe(nombre){
+  return getPedidosWeb().filter(function(p){
+    return !p.anulado && p.repartidor === nombre && p.estadoDelivery === 'entregado';
+  }).length;
+}
 
 function toggleRecepAcceso() {
   var sw = document.getElementById('emRecepToggle');
