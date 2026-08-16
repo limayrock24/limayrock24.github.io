@@ -12616,7 +12616,7 @@ function renderFiados() {
           (saldo>0
             ? '<button class="cc-saldar-btn" style="flex:1;margin:0" onclick="event.stopPropagation();abrirCobroFiado(this.dataset.cliente)" data-cliente="'+nombre+'">💳 Cobrar</button>'
             : '<div style="flex:1;font-size:.72rem;color:var(--green);text-align:center">✓ Sin deuda pendiente</div>')+
-          '<button class="del-cliente-fiado" onclick="event.stopPropagation()" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:4px;padding:8px 11px;font-size:.64rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px;white-space:nowrap">🗑 Eliminar</button>'+
+          '<button onclick="event.stopPropagation();eliminarClienteFiado(this.dataset.nombre)" data-nombre="'+nombre.replace(/"/g,'&quot;')+'" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:4px;padding:8px 11px;font-size:.64rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px;white-space:nowrap">🗑 Eliminar</button>'+
         '</div>'+
       '</div>';
     return card;
@@ -12632,11 +12632,10 @@ function renderFiados() {
     conDeuda.forEach(function(n){ grid.appendChild(buildCard(n)); });
   }
 
-  // Event delegation para botones de eliminar cliente
-  grid.onclick = function(e) {
-    var btn = e.target.closest('.del-cliente-fiado');
-    if(btn) eliminarClienteFiado(btn.dataset.nombre);
-  };
+  // (El botón de eliminar llama directo a la función. Antes se usaba un
+  // manejador general acá, pero el propio botón cortaba la propagación del
+  // click para no abrir el desplegable, con lo cual ese manejador nunca se
+  // enteraba y el botón no hacía nada.)
 
   if(alDia.length){
     var lblDia = document.createElement('div');
