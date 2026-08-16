@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1786921636";
+  window.__LR_BUILD = "1786921839";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -5752,7 +5752,8 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
     if(fv > ultimaActividad) ultimaActividad = fv;
   });
   var ahoraFin2 = ultimaActividad;
-  var totalTurno = ventasDeEsteTurno.filter(function(v){ return !v.anulada && !v.fiadoCarga; }).reduce(function(s,v){ return s+v.total; },0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalTurno = ventasDeEsteTurno.filter(function(v){ return !v.anulada && !v.fiadoCarga; }).reduce(function(s,v){ return s + (v.total - (v.recargo||0)); },0);
   var efectivoInicial = sesion.efectivoInicial || 0;
   var egresosEfecTurno = getEgresos().filter(function(e){
     if(!(e.medio==='Efectivo'||e.medio==='Mixto')) return false;
@@ -8101,7 +8102,8 @@ function confirmarArqueoYCerrar() {
     var fv = new Date(v.fecha);
     return fv>=turnoInicio2 && fv<=ahoraFin2;
   });
-  var totalTurno = ventasTurno.reduce(function(s,v){ return s+v.total; },0);
+  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
+  var totalTurno = ventasTurno.reduce(function(s,v){ return s + (v.total - (v.recargo||0)); },0);
   var efectivoInicial = (currentEmp && currentEmp.efectivoInicial) ? currentEmp.efectivoInicial : 0;
   // Egresos en efectivo del turno
   var egresosEfecTurno = getEgresos().filter(function(e){
@@ -15012,7 +15014,11 @@ function renderDashboard() {
       var claveExpandido = 'exp_'+nombreEmp;
 
       var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs; });
-      var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s+v.total; },0);
+      // Se descuenta el recargo del Posnet: esa plata no entra al negocio, se la
+      // lleva la comisión. El resumen del día ya lo descontaba, pero el turno en
+      // vivo sumaba el total con recargo incluido, así que los dos números no
+      // coincidían.
+      var totalVentasTurnoVivo = ventasTurnoVivo.reduce(function(s,v){ return s + (v.total - (v.recargo||0)); },0);
 
       // Ganancia de las cargas virtuales hechas en este turno. No son ventas de
       // productos, pero SÍ es plata que entró durante el turno, y es justamente
