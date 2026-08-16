@@ -160,6 +160,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
         📍 Compartir mi ubicación
       </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
+      <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
       <div style="font-size:.68rem;color:var(--gray);margin-top:6px">Necesitamos tu ubicación para poder llegar. Los datos de abajo son opcionales pero nos ayudan.</div>
       <input type="text" id="clienteDireccion" placeholder="Calle y número (opcional)" style="margin-top:8px">
       <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
@@ -231,6 +232,69 @@ let STOCK = {};
 let CARRITO = {};
 let CARRITO_MANUAL = {}; // { itemId: {nombre, categoria, texto} }
 let COSTO_ENVIO = 0;
+let ZONA_CFG = null;
+let ZONA_ACTUAL = null;   // 'urbana' | 'rural' | null (todavía sin ubicación)
+
+// Distancia en km entre dos puntos del planeta (fórmula del semiverseno).
+function distanciaKm(lat1, lng1, lat2, lng2){
+  var R = 6371; // radio de la Tierra en km
+  var dLat = (lat2-lat1) * Math.PI/180;
+  var dLng = (lng2-lng1) * Math.PI/180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+          Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+          Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Define el costo de envío según a qué distancia del local está el cliente.
+// Sin ubicación compartida todavía, se usa la tarifa urbana como referencia.
+function recalcularEnvioPorZona(){
+  if(!ZONA_CFG || ZONA_CFG.lat == null || !UBICACION_GPS){
+    ZONA_ACTUAL = null;
+    if(ZONA_CFG && ZONA_CFG.costoUrbano != null) COSTO_ENVIO = ZONA_CFG.costoUrbano;
+    actualizarCartelZona();
+    return;
+  }
+  var km = distanciaKm(ZONA_CFG.lat, ZONA_CFG.lng, UBICACION_GPS.lat, UBICACION_GPS.lng);
+  var radio = ZONA_CFG.radioKm != null ? ZONA_CFG.radioKm : 2;
+  ZONA_ACTUAL = (km <= radio) ? 'urbana' : 'rural';
+  ZONA_DISTANCIA = km;
+  COSTO_ENVIO = (ZONA_ACTUAL === 'rural')
+    ? (ZONA_CFG.costoRural != null ? ZONA_CFG.costoRural : COSTO_ENVIO)
+    : (ZONA_CFG.costoUrbano != null ? ZONA_CFG.costoUrbano : COSTO_ENVIO);
+  actualizarCartelZona();
+  // Refrescar los montos que están a la vista en el carrito, para que el
+  // cliente vea el envío corregido en el momento en que comparte su ubicación.
+  var envEl = document.getElementById('cartEnvioModal');
+  if(envEl){
+    envEl.textContent = fmt(COSTO_ENVIO);
+    var fila = document.getElementById('envioRow');
+    if(fila) fila.style.display = COSTO_ENVIO > 0 ? 'flex' : 'none';
+    var totEl = document.getElementById('cartTotalModal');
+    if(totEl) totEl.textContent = fmt(totalConEnvio());
+  }
+}
+let ZONA_DISTANCIA = 0;
+
+// Le muestra al cliente qué envío se le aplicó y por qué, para que no se
+// sorprenda con un monto distinto al que esperaba.
+function actualizarCartelZona(){
+  var el = document.getElementById('zonaEnvioAviso');
+  if(!el) return;
+  if(!ZONA_ACTUAL){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  if(ZONA_ACTUAL === 'rural'){
+    el.style.background = 'rgba(244,180,0,.12)';
+    el.style.borderColor = 'rgba(244,180,0,.45)';
+    el.innerHTML = '<b style="color:#F4B400">🚜 Zona chacra / rural</b><br>'+
+      '<span style="color:var(--gray)">Estás a ' + ZONA_DISTANCIA.toFixed(1) + ' km del local, así que el envío es de <b style="color:#F4B400">' + fmt(COSTO_ENVIO) + '</b>.</span>';
+  } else {
+    el.style.background = 'rgba(46,204,113,.10)';
+    el.style.borderColor = 'rgba(46,204,113,.4)';
+    el.innerHTML = '<b style="color:#2ecc71">🏘️ Zona urbana</b><br>'+
+      '<span style="color:var(--gray)">Envío: <b style="color:#2ecc71">' + fmt(COSTO_ENVIO) + '</b></span>';
+  }
+}
 let PRECIO_NOCTURNO = false;
 let sesionVencida = false;
 let CATEGORIA_SEL = 'Todas';
@@ -295,6 +359,8 @@ setInterval(function(){
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+  ZONA_CFG = doc.exists ? (doc.data().zonaCfg || null) : null;
+  recalcularEnvioPorZona();
   // El precio nocturno se decide por la HORA, igual que en el panel de venta:
   // de 00:00 a 08:00 rigen los nocturnos. Antes dependía de que alguien se
   // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
@@ -577,6 +643,7 @@ function usarMiUbicacion(){
       precision: Math.round(pos.coords.accuracy)
     };
     if(btn){ btn.textContent = '✓ Ubicación compartida'; btn.style.background = '#2ecc71'; btn.style.color = '#052e16'; btn.disabled = false; }
+    recalcularEnvioPorZona();
     if(est){
       est.style.display = 'block';
       est.style.color = '#2ecc71';
@@ -655,6 +722,8 @@ function confirmarPedido(){
     referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
     medioPago: MEDIO_PAGO_SEL,
+    zona: ZONA_ACTUAL,
+    distanciaKm: ZONA_ACTUAL ? Math.round(ZONA_DISTANCIA*10)/10 : null,
     items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
     notasManuales: notasManuales,
     subtotal: subtotal,
@@ -686,7 +755,7 @@ function confirmarPedido(){
 
   msg += '\n💰 *TOTAL*\n';
   msg += 'Subtotal: '+fmt(subtotal)+'\n';
-  if(envio>0) msg += 'Envío: '+fmt(envio)+'\n';
+  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':'')+': '+fmt(envio)+'\n';
   msg += '*Total: '+fmt(total)+'*';
   if(notasManuales.length) msg += ' _(sin lo que falta confirmar)_';
   msg += '\n';

@@ -1094,6 +1094,9 @@
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+    // Configuración de zonas de envío: el costo cambia según la distancia
+    // entre la ubicación del cliente y la del local.
+    window.__lrZonaCfg = doc.exists ? (doc.data().zonaCfg || null) : null;
     window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
     window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
     // Refrescar el panel de Delivery del admin también cuando cambia esta
@@ -1110,7 +1113,7 @@
   }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno, modo){
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno, modo: modo || window.__lrModoDelivery || 'auto'}).catch(function(e){
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno, modo: modo || window.__lrModoDelivery || 'auto', zonaCfg: window.__lrZonaCfg || null}).catch(function(e){
       console.error('Error guardando delivery activo', e);
     });
   };
@@ -17678,7 +17681,8 @@ function renderPanelRepartidor() {
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
-      (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">🛵 Envío: '+fmt(p.envio)+'</div>' : '')+
+      (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio)+
+        (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : '')+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+
@@ -18365,6 +18369,7 @@ function abrirDeliveryPendModal() {
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
+        (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : '')+
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
         repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
@@ -19622,7 +19627,76 @@ function renderDeliveryControl() {
 
       '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Repartidores</div>'+
       repHtml+
-    '</div>';
+    '</div>'+
+    renderConfigZonas();
+}
+
+// Configuración de zonas de envío: el sistema mide la distancia entre la
+// ubicación que comparte el cliente y la del local, y cobra distinto si está
+// dentro del radio urbano o afuera (chacra / zona rural).
+function renderConfigZonas(){
+  var z = window.__lrZonaCfg || {};
+  var tieneLocal = z.lat != null && z.lng != null;
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">📍 Zonas de envío</div>'+
+    '<div style="font-size:.68rem;color:var(--gray);margin-bottom:12px">El costo se calcula solo según a qué distancia del local está el cliente.</div>'+
+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío urbano</div>'+
+        '<input type="number" value="'+(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+'" min="0" onchange="guardarZonaCfg(\'costoUrbano\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--green);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío chacra / rural</div>'+
+        '<input type="number" value="'+(z.costoRural != null ? z.costoRural : 0)+'" min="0" onchange="guardarZonaCfg(\'costoRural\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Radio urbano (km)</div>'+
+        '<input type="number" step="0.1" value="'+(z.radioKm != null ? z.radioKm : 2)+'" min="0.1" onchange="guardarZonaCfg(\'radioKm\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+    '</div>'+
+
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+      '<button onclick="marcarUbicacionLocal()" style="background:'+(tieneLocal?'transparent':'#D2201F')+';border:1px solid '+(tieneLocal?'var(--green)':'#D2201F')+';color:'+(tieneLocal?'var(--green)':'#fff')+';border-radius:6px;padding:10px 15px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">'+
+        (tieneLocal ? '✓ Ubicación del local guardada — volver a marcar' : '📍 Marcar ubicación del local')+
+      '</button>'+
+      (tieneLocal
+        ? '<a href="https://maps.google.com/?q='+z.lat+','+z.lng+'" target="_blank" style="font-size:.68rem;color:#1e90ff;text-decoration:none">Ver en el mapa</a>'
+        : '<span style="font-size:.68rem;color:var(--red)">⚠ Sin esto, todos pagan el envío urbano</span>')+
+    '</div>'+
+  '</div>';
+}
+
+function guardarZonaCfg(campo, valor){
+  if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+  window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  if(campo === 'costoUrbano') window.__lrCostoEnvio = window.__lrZonaCfg[campo];
+  persistirZonaCfg();
+  showToast('✓ Guardado');
+}
+
+function persistirZonaCfg(){
+  if(window.__lrSaveDeliveryActivo){
+    window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0,
+      window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto');
+  }
+}
+
+// Toma la ubicación actual como la del local. Hay que tocarlo estando EN el
+// local, una sola vez: es el punto desde el que se mide la distancia.
+function marcarUbicacionLocal(){
+  if(!navigator.geolocation){ showToast('Este dispositivo no permite ubicación', true); return; }
+  showToast('📍 Tomando la ubicación...');
+  navigator.geolocation.getCurrentPosition(function(pos){
+    if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+    window.__lrZonaCfg.lat = pos.coords.latitude;
+    window.__lrZonaCfg.lng = pos.coords.longitude;
+    persistirZonaCfg();
+    showToast('✅ Ubicación del local guardada');
+    renderDeliveryPanel();
+  }, function(){
+    showToast('No se pudo tomar la ubicación — revisá los permisos', true);
+  }, { enableHighAccuracy:true, timeout:12000 });
 }
 
 function renderDeliveryPanel() {
