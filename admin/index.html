@@ -17804,35 +17804,39 @@ var TITULAR_MP = 'Martin Ezequiel Monsalve';
 // si hay que mandarle cambio.
 // Mensaje del REPARTIDOR: solo avisa que va en camino.
 function mensajeEnCamino(p){
-  var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
-  msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *Limay Rock* 🛵\n';
+  var msg = '¡Hola ' + p.nombre + '! 😃\n\n';
+  msg += 'Soy ' + (currentEmp ? currentEmp.nombre : 'el repartidor') + ' de *LIMAY ROCK*\n';
   msg += 'Tomé tu pedido y salgo para tu casa.\n\n';
   if(p.direccion) msg += '📍 ' + p.direccion + '\n';
-  msg += '📦 Total: *' + fmt(p.total) + '*\n\n';
+  msg += '🛒 Total: *' + fmt(p.total) + '*\n\n';
   msg += 'Cualquier cosa escribime por acá 🙌';
   return msg;
 }
 
 // Mensaje del LOCAL: los datos para cobrar.
 function mensajeConfirmacionPedido(p){
-  var msg = '¡Hola ' + p.nombre + '! 👋\n\n';
-  msg += 'Gracias por elegir *Limay Rock* ⚡\n';
+  // Se usan emojis "clásicos" (los que existen desde hace años y están en
+  // todos los teclados). Los más nuevos, como el rayo o la moto, salían como
+  // un rombo negro en WhatsApp Web y en teléfonos viejos.
+  var msg = '¡Hola ' + p.nombre + '! 😃\n\n';
+  msg += 'Gracias por elegir *LIMAY ROCK* 🔥\n';
   msg += 'Tu pedido fue confirmado y ya lo estamos preparando.\n\n';
-  msg += '📦 *Tu pedido:* ' + fmt(p.total) + '\n';
+  msg += '🛒 *Tu pedido:* ' + fmt(p.total) + '\n';
   if(p.direccion) msg += '📍 ' + p.direccion + '\n';
 
   if(p.medioPago === 'Transferencia'){
-    msg += '\n💳 *Para pagar por transferencia:*\n';
-    msg += 'Alias: *' + ALIAS_MP + '*\n';
-    msg += 'Mercado Pago — ' + TITULAR_MP + '\n';
-    msg += 'Monto: *' + fmt(p.total) + '*\n\n';
-    msg += 'Mandanos el comprobante por acá y sale tu pedido para tu casa 🛵\n';
-    msg += '¡Gracias por la compra! ⚡';
+    msg += '\n💳 *PARA PAGAR POR TRANSFERENCIA*\n';
+    msg += '▸ Alias: *' + ALIAS_MP + '*\n';
+    msg += '▸ Mercado Pago\n';
+    msg += '▸ Titular: ' + TITULAR_MP + '\n';
+    msg += '▸ Monto: *' + fmt(p.total) + '*\n\n';
+    msg += '✅ Mandanos el comprobante por acá y sale tu pedido para tu casa.\n\n';
+    msg += '¡Gracias por la compra! 🙌';
   } else if(p.medioPago === 'Efectivo'){
-    msg += '\n💵 *Vas a pagar en efectivo: ' + fmt(p.total) + '*\n\n';
+    msg += '\n💵 *VAS A PAGAR EN EFECTIVO: ' + fmt(p.total) + '*\n\n';
     msg += '¿Abonás con el monto justo o necesitás cambio?\n';
     msg += 'Avisanos con cuánto pagás así te llevamos el vuelto preparado 👍\n\n';
-    msg += '¡Gracias por la compra! ⚡';
+    msg += '¡Gracias por la compra! 🙌';
   } else {
     msg += '\n¿Cómo vas a abonar, efectivo o transferencia?';
   }

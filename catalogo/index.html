@@ -670,15 +670,15 @@ function confirmarPedido(){
   // Mensaje pensado para que el local pueda leerlo de un vistazo a las 3 de la
   // mañana: primero QUÉ pidió, después A DÓNDE va y CÓMO paga, que es lo que
   // define si sale el pedido o no.
-  var msg = '🛵 *NUEVO PEDIDO — LIMAY ROCK*\n';
-  msg += '━━━━━━━━━━━━━━━━\n\n';
+  var msg = '🛒 *NUEVO PEDIDO - LIMAY ROCK*\n';
+  msg += '- - - - - - - - - - - -\n\n';
 
-  msg += '🛒 *PEDIDO*\n';
+  msg += '📋 *PEDIDO*\n';
   items.forEach(function(it){
     msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
   });
   if(notasManuales.length){
-    msg += '\n📝 *A confirmar disponibilidad:*\n';
+    msg += '\n❗ *A confirmar disponibilidad:*\n';
     notasManuales.forEach(function(it){
       msg += '• '+it.nombre+': '+it.texto+'\n';
     });
@@ -698,7 +698,7 @@ function confirmarPedido(){
   var refTxt = (document.getElementById('clienteReferencia').value||'').trim();
   if(refTxt) msg += '_' + refTxt + '_\n';
   if(UBICACION_GPS){
-    msg += '🗺️ Ubicación en el mapa:\n';
+    msg += 'Ubicación en el mapa:\n';
     msg += 'https://maps.google.com/?q=' + UBICACION_GPS.lat + ',' + UBICACION_GPS.lng + '\n';
   }
 
@@ -706,7 +706,7 @@ function confirmarPedido(){
   msg += nombre + '\n';
   msg += '📞 ' + telefono + '\n';
 
-  msg += '\n━━━━━━━━━━━━━━━━\n';
+  msg += '\n- - - - - - - - - - - -\n';
   msg += '_Pedido enviado desde el catálogo web_';
 
   var url = 'https://wa.me/'+NUMERO_WHATSAPP+'?text='+encodeURIComponent(msg);
