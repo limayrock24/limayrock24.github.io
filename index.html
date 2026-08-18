@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787094289";
+  window.__LR_BUILD = "1787095745";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1158,6 +1158,18 @@
     // Configuración de zonas de envío: el costo cambia según la distancia
     // entre la ubicación del cliente y la del local.
     window.__lrZonaCfg = doc.exists ? (doc.data().zonaCfg || null) : null;
+    // Ubicación del local (Av. Pascual Puente 774, Senillosa). Queda fija como
+    // valor de arranque para que las zonas de envío funcionen desde el primer
+    // pedido, sin depender de que alguien se acuerde de marcarla. Se puede
+    // corregir en cualquier momento con el botón "Marcar ubicación del local",
+    // que la reemplaza por la posición real del GPS estando ahí.
+    if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+    if(window.__lrZonaCfg.lat == null){
+      window.__lrZonaCfg.lat = -39.0136;
+      window.__lrZonaCfg.lng = -68.4319;
+      window.__lrZonaCfg.aproximada = true;
+    }
+    if(window.__lrZonaCfg.radioKm == null) window.__lrZonaCfg.radioKm = 2;
     window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
     window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
     // Refrescar el panel de Delivery del admin también cuando cambia esta
@@ -1173,8 +1185,26 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando delivery activo:', err); window.__lrSync.deliveryActivoListos = true; ocultarCargaSiListo(); });
 
-  window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno, modo){
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({activo: activo, costoEnvio: costoEnvio||0, precioNocturno: !!precioNocturno, modo: modo || window.__lrModoDelivery || 'auto', zonaCfg: window.__lrZonaCfg || null}).catch(function(e){
+  // Guardar la configuración de delivery CONSERVANDO lo que no se pasa.
+  //
+  // Antes cada llamada tenía que acordarse de pasar todos los valores, y las
+  // que no lo hacían borraban el resto: cambiar el costo de envío, por ejemplo,
+  // dejaba el modo y la configuración de zonas en null. Ahora cualquier valor
+  // que llegue vacío se completa con el que ya estaba.
+  window.__lrSaveDeliveryActivo = function(activo, costoEnvio, precioNocturno, modo, zonaCfg){
+    var datos = {
+      activo: (activo !== undefined && activo !== null) ? activo : (window.__lrDeliveryActivo !== false),
+      costoEnvio: (costoEnvio !== undefined && costoEnvio !== null) ? costoEnvio : (window.__lrCostoEnvio || 0),
+      precioNocturno: (precioNocturno !== undefined && precioNocturno !== null) ? !!precioNocturno : !!window.__lrPrecioNocturnoCatalogo,
+      modo: modo || window.__lrModoDelivery || 'auto',
+      zonaCfg: zonaCfg || window.__lrZonaCfg || null
+    };
+    // Mantener sincronizadas las copias en memoria
+    window.__lrDeliveryActivo = datos.activo;
+    window.__lrCostoEnvio = datos.costoEnvio;
+    window.__lrModoDelivery = datos.modo;
+    window.__lrZonaCfg = datos.zonaCfg;
+    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set(datos).catch(function(e){
       console.error('Error guardando delivery activo', e);
     });
   };
@@ -19948,9 +19978,10 @@ function renderConfigZonas(){
       '<button onclick="marcarUbicacionLocal()" style="background:'+(tieneLocal?'transparent':'#D2201F')+';border:1px solid '+(tieneLocal?'var(--green)':'#D2201F')+';color:'+(tieneLocal?'var(--green)':'#fff')+';border-radius:6px;padding:10px 15px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">'+
         (tieneLocal ? '✓ Ubicación del local guardada — volver a marcar' : '📍 Marcar ubicación del local')+
       '</button>'+
-      (tieneLocal
-        ? '<a href="https://maps.google.com/?q='+z.lat+','+z.lng+'" target="_blank" style="font-size:.68rem;color:#1e90ff;text-decoration:none">Ver en el mapa</a>'
-        : '<span style="font-size:.68rem;color:var(--red)">⚠ Sin esto, todos pagan el envío urbano</span>')+
+      '<a href="https://maps.google.com/?q='+z.lat+','+z.lng+'" target="_blank" style="font-size:.68rem;color:#1e90ff;text-decoration:none">Ver en el mapa</a>'+
+      (z.aproximada
+        ? '<div style="width:100%;font-size:.68rem;color:var(--gold);margin-top:6px">⚠ Ubicación aproximada (Av. Pascual Puente 774). Para que las distancias sean exactas, tocá el botón estando en el local.</div>'
+        : '<div style="width:100%;font-size:.68rem;color:var(--green);margin-top:6px">✓ Ubicación tomada en el local</div>')+
     '</div>'+
   '</div>';
 }
@@ -19979,6 +20010,7 @@ function marcarUbicacionLocal(){
     if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
     window.__lrZonaCfg.lat = pos.coords.latitude;
     window.__lrZonaCfg.lng = pos.coords.longitude;
+    window.__lrZonaCfg.aproximada = false;
     persistirZonaCfg();
     showToast('✅ Ubicación del local guardada');
     renderDeliveryPanel();
