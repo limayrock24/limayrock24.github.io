@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1786922143";
+  window.__LR_BUILD = "1787048368";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -116,7 +116,7 @@
         // del de Limay Rock. Con uno solo, el comportamiento es siempre el
         // mismo. No hace falta el SDK de Firebase adentro del service worker:
         // los avisos se mandan como datos y se arman a mano en el evento push.
-        navigator.serviceWorker.register('/sw.js?v=3')
+        navigator.serviceWorker.register('/sw.js?v=4', { updateViaCache: 'none' })
           .then(function(reg){
             return navigator.serviceWorker.ready.then(function(){ return reg; });
           })
@@ -21403,7 +21403,7 @@ if(new URLSearchParams(window.location.search).get('admin') === '1'){
 }
 
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register("/sw.js?v=3").catch(function(e){ console.error('Error registrando service worker:', e); });
+  navigator.serviceWorker.register("/sw.js?v=4", { updateViaCache: 'none' }).catch(function(e){ console.error('Error registrando service worker:', e); });
 }
 
 </script>
