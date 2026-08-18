@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787088769";
+  window.__LR_BUILD = "1787094289";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4310,6 +4310,7 @@ body.night-on{background:#080005}
           <option value="">Todas las categorías</option>
         </select>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap" onclick="abrirProdModal(null)">+ Nuevo producto</button>
+        <button id="btnMoverCat" onclick="abrirMoverCategoria()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--gold);color:var(--black);border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">📁 Mover a categoría (0)</button>
         <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
@@ -15201,11 +15202,34 @@ function renderDashboard() {
 
 // ── CATÁLOGO DE PRODUCTOS ───────────────────────────────────────────────────
 function initCatalogo() {
-  var sel = document.getElementById('catFiltCat');
-  if(sel && sel.options.length<=1){
-    ALL_CATS.forEach(function(c){ var o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
-  }
+  refrescarFiltroCategorias();
   renderCatalogo();
+}
+
+// Rearma el desplegable de categorías con la cantidad de productos de cada una,
+// y agrega "Sin categoría" arriba de todo cuando hay productos sueltos: es lo
+// primero que hay que acomodar al ordenar el catálogo.
+function refrescarFiltroCategorias() {
+  var sel = document.getElementById('catFiltCat');
+  if(!sel) return;
+  var seleccionActual = sel.value;
+
+  var conteo = {};
+  PRODUCTS.forEach(function(p){
+    var cat = p.cat || 'Sin categoría';
+    conteo[cat] = (conteo[cat]||0) + 1;
+  });
+
+  var html = '<option value="">Todas las categorías ('+PRODUCTS.length+')</option>';
+  if(conteo['Sin categoría']){
+    html += '<option value="Sin categoría">⚠ Sin categoría ('+conteo['Sin categoría']+')</option>';
+  }
+  ALL_CATS.forEach(function(cat){
+    if(cat === 'Sin categoría') return;
+    html += '<option value="'+cat.replace(/"/g,'&quot;')+'">'+cat+' ('+(conteo[cat]||0)+')</option>';
+  });
+  sel.innerHTML = html;
+  sel.value = seleccionActual;
 }
 
 function renderCatalogo() {
@@ -16756,11 +16780,98 @@ function actualizarBotonCartelitos() {
     btnDel.style.display = n>0 ? 'inline-block' : 'none';
     btnDel.textContent = '🗑️ Eliminar ('+n+')';
   }
+  var btnMov = document.getElementById('btnMoverCat');
+  if(btnMov){
+    btnMov.style.display = n>0 ? 'inline-block' : 'none';
+    btnMov.textContent = '📁 Mover a categoría ('+n+')';
+  }
 }
 
 // Borra de una vez todos los productos tildados. Antes había que borrarlos de
 // a uno, confirmando cada uno y esperando la nube cada vez — para acomodar un
 // catálogo entero era imposible.
+// Mueve de una vez todos los productos tildados a otra categoría. Es el
+// camino natural para acomodar el catálogo: se filtra, se tilda lo que va
+// junto, y se manda a la categoría que corresponde. Antes había que entrar a
+// cada categoría y buscar los productos ahí adentro, uno por uno.
+function abrirMoverCategoria() {
+  var nombres = Object.keys(window._cartelitosSel);
+  if(!nombres.length){ showToast('No hay productos tildados', true); return; }
+
+  var ov = document.getElementById('moverCatOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'moverCatOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:2400;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:380px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">📁 Mover a categoría</div>'+
+        '<div id="moverCatResumen" style="font-size:.74rem;color:var(--gray);margin-bottom:12px"></div>'+
+        '<input type="text" id="moverCatNueva" placeholder="O escribí una categoría nueva..." style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none;margin-bottom:10px">'+
+        '<div id="moverCatLista" style="flex:1;overflow-y:auto;min-height:100px"></div>'+
+        '<button onclick="cerrarMoverCategoria()" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+
+  document.getElementById('moverCatResumen').textContent =
+    nombres.length + ' producto' + (nombres.length===1?'':'s') + ' seleccionado' + (nombres.length===1?'':'s');
+  document.getElementById('moverCatNueva').value = '';
+
+  var lista = document.getElementById('moverCatLista');
+  lista.innerHTML = ALL_CATS.map(function(cat){
+    var cuantos = PRODUCTS.filter(function(p){ return p.cat === cat; }).length;
+    return '<div onclick="moverAcategoria(\''+cat.replace(/'/g,"\\'")+'\')" style="display:flex;justify-content:space-between;align-items:center;padding:11px 12px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;cursor:pointer">'+
+      '<span style="font-size:.86rem;color:var(--white)">'+cat+'</span>'+
+      '<span style="font-size:.68rem;color:var(--gray)">'+cuantos+'</span>'+
+    '</div>';
+  }).join('');
+
+  var inp = document.getElementById('moverCatNueva');
+  inp.onkeydown = function(ev){
+    if(ev.key === 'Enter' && inp.value.trim()) moverAcategoria(inp.value.trim());
+    if(ev.key === 'Escape') cerrarMoverCategoria();
+  };
+}
+
+function cerrarMoverCategoria(){
+  var ov = document.getElementById('moverCatOverlay');
+  if(ov) ov.style.display = 'none';
+}
+
+function moverAcategoria(cat){
+  var nombres = Object.keys(window._cartelitosSel);
+  if(!nombres.length || !cat) return;
+
+  // Si es una categoría nueva, se crea sola.
+  if(ALL_CATS.indexOf(cat) === -1){
+    ALL_CATS.push(cat);
+    ALL_CATS.sort();
+    if(window.__lrSaveCatsCustom) window.__lrSaveCatsCustom(ALL_CATS);
+  }
+
+  var movidos = 0;
+  nombres.forEach(function(nombre){
+    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+    if(!p || p.cat === cat) return;
+    registrarCambioCatalogo('edicion', nombre, [
+      {campo:'Categoría', antes: p.cat || 'Sin categoría', despues: cat}
+    ], currentEmp ? currentEmp.nombre : 'Admin');
+    p.cat = cat;
+    movidos++;
+  });
+
+  window._cartelitosSel = {};
+  actualizarBotonCartelitos();
+  cerrarMoverCategoria();
+  buildPills(); refrescarFiltroCategorias(); renderCatalogo(); filterAll();
+  if(typeof renderCatModalList === 'function') renderCatModalList();
+
+  if(!movidos){ showToast('Esos productos ya estaban en "'+cat+'"'); return; }
+  saveLocal('✅ '+movidos+' producto'+(movidos===1?'':'s')+' movido'+(movidos===1?'':'s')+' a "'+cat+'"');
+}
+
 function borrarSeleccionados() {
   var nombres = Object.keys(window._cartelitosSel);
   if(!nombres.length){ showToast('No hay productos tildados', true); return; }
