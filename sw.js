@@ -10,7 +10,16 @@ self.addEventListener('install', function(event) {
 });
 
 self.addEventListener('activate', function(event) {
-  event.waitUntil(self.clients.claim());
+  // Borrar TODO lo que haya quedado guardado de versiones anteriores. Sin esto,
+  // un dispositivo podía seguir abriendo una copia vieja de la app durante días
+  // (era lo que hacía reaparecer la tarjeta de Lemon Cash ya eliminada).
+  event.waitUntil(
+    caches.keys().then(function(nombres){
+      return Promise.all(nombres.map(function(n){ return caches.delete(n); }));
+    }).then(function(){
+      return self.clients.claim();
+    })
+  );
 });
 
 self.addEventListener('fetch', function(event) {
