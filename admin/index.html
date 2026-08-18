@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787088721";
+  window.__LR_BUILD = "1787088769";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -329,6 +329,22 @@
       mapa[d.name] = JSON.parse(JSON.stringify(d));
     });
     if(lista.length > 0){
+      // Sacar los productos cuya baja todavía no se confirmó en la nube. Sin
+      // esto, la sincronización los devolvía a la lista y el producto
+      // "reaparecía" a los pocos segundos de borrarlo — que es lo que hacía
+      // sentir que no se podía borrar nada.
+      var pendBorrado = window.__lrBorradosPendientes || {};
+      var nombresPend = Object.keys(pendBorrado);
+      if(nombresPend.length){
+        var ahoraTs = Date.now();
+        nombresPend.forEach(function(n){
+          // Margen amplio: con conexión floja, un margen corto hacía que el
+          // producto volviera a la lista antes de confirmarse la baja.
+          if(ahoraTs - pendBorrado[n] > 900000) delete pendBorrado[n];
+        });
+        lista = lista.filter(function(p){ return !pendBorrado[p.name]; });
+      }
+
       window.PRODUCTS = lista;
       // Copia aparte: si por algún motivo el resguardo fijo llegara a pisar
       // window.PRODUCTS más adelante, esta copia permite recuperar los reales
