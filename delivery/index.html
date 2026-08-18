@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787048368";
+  window.__LR_BUILD = "1787088721";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4293,6 +4293,7 @@ body.night-on{background:#080005}
           <option value="">Todas las categorías</option>
         </select>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap" onclick="abrirProdModal(null)">+ Nuevo producto</button>
+        <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirAumentoMasivoModal()">📈 Aumento masivo</button>
@@ -16728,9 +16729,59 @@ window._cartelitosSel = window._cartelitosSel || {}; // { nombreProducto: true }
 function actualizarBotonCartelitos() {
   var n = Object.keys(window._cartelitosSel).length;
   var btn = document.getElementById('btnCartelitos');
-  if(!btn) return;
-  btn.textContent = '🏷️ Cartelitos ('+n+')';
-  btn.disabled = n===0;
+  if(btn){
+    btn.textContent = '🏷️ Cartelitos ('+n+')';
+    btn.disabled = n===0;
+  }
+  // Botón de borrado múltiple: aparece solo cuando hay algo tildado
+  var btnDel = document.getElementById('btnBorrarSel');
+  if(btnDel){
+    btnDel.style.display = n>0 ? 'inline-block' : 'none';
+    btnDel.textContent = '🗑️ Eliminar ('+n+')';
+  }
+}
+
+// Borra de una vez todos los productos tildados. Antes había que borrarlos de
+// a uno, confirmando cada uno y esperando la nube cada vez — para acomodar un
+// catálogo entero era imposible.
+function borrarSeleccionados() {
+  var nombres = Object.keys(window._cartelitosSel);
+  if(!nombres.length){ showToast('No hay productos tildados', true); return; }
+
+  var lista = nombres.slice(0,12).map(function(n){ return '• '+n; }).join('\n');
+  if(nombres.length > 12) lista += '\n...y '+(nombres.length-12)+' más';
+
+  askConfirm('¿Eliminar '+nombres.length+' producto'+(nombres.length===1?'':'s')+'?\n\n'+lista).then(function(ok){
+    if(!ok) return;
+
+    if(!window.__lrBorradosPendientes) window.__lrBorradosPendientes = {};
+    nombres.forEach(function(nombre){
+      var i = PRODUCTS.findIndex(function(p){ return p.name === nombre; });
+      if(i === -1) return;
+      var prod = PRODUCTS[i];
+      PRODUCTS.splice(i,1);
+      limpiarReferenciasProducto(nombre);
+      window.__lrBorradosPendientes[nombre] = Date.now();
+      registrarCambioCatalogo('eliminado', nombre, [
+        {campo:'Categoria', antes: (prod && prod.cat) || '-', despues:'(eliminado)'},
+        {campo:'Precio venta', antes: (prod && prod.pventa) || 0, despues:'-'}
+      ], currentEmp ? currentEmp.nombre : 'Admin');
+    });
+
+    window._cartelitosSel = {};
+    actualizarBotonCartelitos();
+    renderCatalogo(); buildEditList(); buildPills(); filterAll();
+
+    // UNA sola escritura a la nube para todos, en vez de una por producto.
+    if(!window.__lrSaveProductos){ showToast(nombres.length+' productos eliminados (local)'); return; }
+    showToast('Eliminando '+nombres.length+' productos...');
+    window.__lrSaveProductos(PRODUCTS, nombres).then(function(){
+      nombres.forEach(function(n){ delete window.__lrBorradosPendientes[n]; });
+      showToast('✅ '+nombres.length+' productos eliminados');
+    }).catch(function(){
+      showToast('💾 Eliminados acá — se confirmarán cuando haya señal', true);
+    });
+  });
 }
 
 function toggleCartelitoSel(nombre, checked) {
