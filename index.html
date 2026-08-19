@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787108693";
+  window.__LR_BUILD = "1787156388";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15980,7 +15980,12 @@ function guardarProdModal() {
     provs.forEach(function(pr){
       if(!pr.productos) return;
       var i2 = pr.productos.indexOf(nombreViejo);
-      if(i2 !== -1){ pr.productos[i2] = nombre; tocoProv = true; }
+      if(i2 === -1) return;
+      // Si el proveedor YA tenía el nombre nuevo, se saca el viejo en vez de
+      // reemplazarlo: si no, el producto quedaba dos veces en su lista.
+      if(pr.productos.indexOf(nombre) !== -1) pr.productos.splice(i2, 1);
+      else pr.productos[i2] = nombre;
+      tocoProv = true;
     });
     if(tocoProv) saveProveedores(provs);
     var cbs = getCombos();
@@ -18909,8 +18914,21 @@ function limpiarProductosFantasma() {
   var plan = { porProveedor: [], stock: [] };
 
   provs.forEach(function(p, idx){
-    var fantasmas = (p.productos||[]).filter(function(n){
+    var lista = p.productos || [];
+    // Productos que ya no existen en el catálogo
+    var fantasmas = lista.filter(function(n){
       return !existeEnCatalogo(n);
+    });
+    // Y también los REPETIDOS: al renombrar un producto, el nombre nuevo se
+    // arrastra a la lista del proveedor, y si ese proveedor ya lo tenía, queda
+    // dos veces. Existe en el catálogo, así que no se detectaba como fantasma,
+    // pero ensucia igual el pedido.
+    var vistos = {};
+    lista.forEach(function(n){
+      var k = normalizarNombreProd(n);
+      if(!k) return;
+      if(vistos[k]) fantasmas.push(n + ' (repetido)');
+      else vistos[k] = true;
     });
     if(fantasmas.length){
       plan.porProveedor.push({ idx: idx, nombre: p.nombre, fantasmas: fantasmas });
@@ -18962,11 +18980,25 @@ function confirmarLimpiezaFantasma() {
     var p = provs[item.idx];
     if(!p) return;
     var antes = (p.productos||[]).length;
+    var yaVisto = {};
     p.productos = (p.productos||[]).filter(function(n){
-      return existeEnCatalogo(n);
+      if(!existeEnCatalogo(n)) return false;      // ya no está en el catálogo
+      var k = normalizarNombreProd(n);
+      if(yaVisto[k]) return false;                 // repetido: se deja uno solo
+      yaVisto[k] = true;
+      return true;
     });
     var quitados = antes - p.productos.length;
-    if(quitados > 0){ provsAfectados++; prodsSacadosProv += quitados; }
+    if(quitados > 0){
+      provsAfectados++; prodsSacadosProv += quitados;
+      // Seguro: invalidar la foto de comparación de este proveedor para forzar
+      // la escritura en la nube. Sin esto, si la comparación fallara por
+      // cualquier motivo, la limpieza quedaría solo en pantalla y los productos
+      // volverían a aparecer en la próxima sincronización.
+      if(window.__lrSync && window.__lrSync.ultimoProveedoresSnapshot){
+        delete window.__lrSync.ultimoProveedoresSnapshot[p.nombre];
+      }
+    }
   });
   saveProveedores(provs);
 
