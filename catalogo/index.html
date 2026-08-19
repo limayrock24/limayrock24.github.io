@@ -513,30 +513,104 @@ function renderItemsManuales(){
     porCat[cat].push(it);
   });
 
-  var html = '<div class="manual-title">📝 Fiambrería, frutas/verduras y sueltos</div>'+
-    '<div class="manual-sub">Estos productos se venden por peso o por unidad — escribí la cantidad que querés (ej. "200g", "2 unidades", "medio kilo"). No tienen precio fijo: te confirmamos el costo por WhatsApp antes de armar el pedido.</div>';
+  var html = '<div class="manual-title">🧀 Fiambrería, frutas/verduras y sueltos</div>'+
+    '<div class="manual-sub">Elegí la cantidad y el precio se calcula solo. Puede haber una diferencia mínima según el corte.</div>';
 
   orden.forEach(function(cat){
     html += '<div class="manual-cat-title">'+cat+'</div>';
     porCat[cat].forEach(function(it){
-      var valorActual = CARRITO_MANUAL[it.id] ? CARRITO_MANUAL[it.id].texto : '';
-      html += '<div class="manual-row">'+
-        '<span class="manual-name">'+it.nombre+'</span>'+
-        '<input type="text" placeholder="Cantidad" value="'+valorActual.replace(/"/g,'&quot;')+'" oninput="actualizarItemManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\',this.value)">'+
-      '</div>';
+      var sel = CARRITO_MANUAL[it.id];
+      var esPorPeso = (it.unidad !== 'unidad');
+      var tienePrecio = it.precioKg > 0;
+
+      html += '<div class="manual-row" style="flex-direction:column;align-items:stretch;gap:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+          '<span class="manual-name">'+it.nombre+'</span>'+
+          (tienePrecio
+            ? '<span style="color:#F4B400;font-size:.78rem;white-space:nowrap">'+fmt(it.precioKg)+(esPorPeso?' /kg':' c/u')+'</span>'
+            : '<span style="color:var(--gray);font-size:.7rem">a confirmar</span>')+
+        '</div>';
+
+      if(tienePrecio && esPorPeso){
+        // Botones rápidos de gramaje: es como se pide en el mostrador.
+        var gramos = [100, 200, 250, 500, 1000];
+        html += '<div style="display:flex;gap:5px;flex-wrap:wrap">';
+        gramos.forEach(function(g){
+          var activo = sel && sel.gramos === g;
+          var etiqueta = g >= 1000 ? '1 kg' : g+'g';
+          html += '<button type="button" onclick="setGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+g+','+it.precioKg+')" '+
+            'style="flex:1;min-width:58px;padding:8px 4px;border-radius:6px;cursor:pointer;font-size:.76rem;'+
+            (activo ? 'background:#D2201F;color:#fff;border:none;font-weight:600' : 'background:transparent;border:1px solid var(--gray);color:var(--gray)')+'">'+etiqueta+'</button>';
+        });
+        html += '<button type="button" onclick="pedirGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+it.precioKg+')" '+
+          'style="flex:1;min-width:58px;padding:8px 4px;border-radius:6px;cursor:pointer;font-size:.76rem;background:transparent;border:1px dashed var(--gray);color:var(--gray)">Otro</button>';
+        html += '</div>';
+
+        if(sel && sel.gramos){
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(210,32,31,.10);border-radius:5px;padding:7px 10px">'+
+            '<span style="font-size:.78rem;color:#fff">'+(sel.gramos>=1000 ? (sel.gramos/1000)+' kg' : sel.gramos+'g')+'</span>'+
+            '<div style="display:flex;align-items:center;gap:10px">'+
+              '<span style="color:#F4B400;font-weight:600;font-size:.82rem">'+fmt(sel.precio)+'</span>'+
+              '<button type="button" onclick="quitarItemManual('+it.id+')" style="background:transparent;border:none;color:var(--gray);font-size:1rem;cursor:pointer;padding:0 4px">✕</button>'+
+            '</div>'+
+          '</div>';
+        }
+      } else if(tienePrecio){
+        // Por unidad: contador simple
+        var cant = sel ? (sel.gramos||0) : 0;
+        html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px">'+
+          '<button type="button" onclick="setUnidadesManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+(cant-1)+','+it.precioKg+')" style="width:34px;height:34px;border-radius:6px;background:transparent;border:1px solid var(--gray);color:var(--gray);font-size:1.1rem;cursor:pointer">−</button>'+
+          '<span style="min-width:26px;text-align:center;font-size:.95rem;color:#fff">'+cant+'</span>'+
+          '<button type="button" onclick="setUnidadesManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+(cant+1)+','+it.precioKg+')" style="width:34px;height:34px;border-radius:6px;background:#D2201F;border:none;color:#fff;font-size:1.1rem;cursor:pointer">+</button>'+
+          (cant ? '<span style="color:#F4B400;font-weight:600;font-size:.82rem;min-width:70px;text-align:right">'+fmt(sel.precio)+'</span>' : '')+
+        '</div>';
+      } else {
+        // Sin precio cargado: se sigue pidiendo a texto libre, como antes
+        var valorActual = sel ? (sel.texto||'') : '';
+        html += '<input type="text" placeholder="Cantidad (ej. 200g)" value="'+valorActual.replace(/"/g,'&quot;')+'" oninput="actualizarItemManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\',this.value)">';
+      }
+      html += '</div>';
     });
   });
   cont.innerHTML = html;
 }
 
-function actualizarItemManual(id, nombre, categoria, valor){
-  if(valor.trim()){
-    CARRITO_MANUAL[id] = {nombre:nombre, categoria:categoria, texto:valor.trim()};
-  } else {
-    delete CARRITO_MANUAL[id];
-  }
+// Cantidad por peso: el precio se calcula sobre el precio por kilo.
+function setGramosManual(id, nombre, cat, gramos, precioKg){
+  var precio = Math.round(precioKg * gramos / 1000);
+  CARRITO_MANUAL[id] = {
+    nombre: nombre, categoria: cat, gramos: gramos, precio: precio,
+    texto: (gramos>=1000 ? (gramos/1000)+' kg' : gramos+'g')
+  };
+  renderItemsManuales();
   actualizarCartBar();
 }
+
+function pedirGramosManual(id, nombre, cat, precioKg){
+  var txt = prompt('¿Cuántos gramos de '+nombre+'?\n\nEscribí solo el número (ej: 350)');
+  if(txt === null) return;
+  var g = parseInt(String(txt).replace(/\D/g,''), 10);
+  if(!g || g <= 0){ alert('Poné un número de gramos válido'); return; }
+  setGramosManual(id, nombre, cat, g, precioKg);
+}
+
+function setUnidadesManual(id, nombre, cat, cant, precioUnidad){
+  if(cant <= 0){ quitarItemManual(id); return; }
+  CARRITO_MANUAL[id] = {
+    nombre: nombre, categoria: cat, gramos: cant,
+    precio: Math.round(precioUnidad * cant),
+    texto: cant + ' unidad' + (cant===1?'':'es')
+  };
+  renderItemsManuales();
+  actualizarCartBar();
+}
+
+function quitarItemManual(id){
+  delete CARRITO_MANUAL[id];
+  renderItemsManuales();
+  actualizarCartBar();
+}
+
 function cantidadItemsManuales(){ return Object.keys(CARRITO_MANUAL).length; }
 
 function cambiarCantidad(nombre, delta){
@@ -553,12 +627,21 @@ function cambiarCantidad(nombre, delta){
 function subtotalCarrito(){
   var total = 0;
   Object.keys(CARRITO).forEach(function(k){ total += CARRITO[k].precio * CARRITO[k].cantidad; });
+  // Sumar también los sueltos que ya tienen precio calculado (fiambrería,
+  // verdulería). Los que quedaron a confirmar no suman, porque todavía no se
+  // sabe cuánto valen.
+  Object.keys(CARRITO_MANUAL).forEach(function(k){
+    if(CARRITO_MANUAL[k].precio) total += CARRITO_MANUAL[k].precio;
+  });
   return total;
 }
 function totalConEnvio(){ return subtotalCarrito() + (cantidadCarrito()>0 ? COSTO_ENVIO : 0); }
 function cantidadCarrito(){
   var cant = 0;
   Object.keys(CARRITO).forEach(function(k){ cant += CARRITO[k].cantidad; });
+  Object.keys(CARRITO_MANUAL).forEach(function(k){
+    if(CARRITO_MANUAL[k].precio) cant += 1;
+  });
   return cant;
 }
 
@@ -587,11 +670,26 @@ function armarListaItemsHtml(){
 function armarListaManualHtml(){
   var keys = Object.keys(CARRITO_MANUAL);
   if(!keys.length) return '';
-  var html = '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--red);text-transform:uppercase;margin-top:14px;margin-bottom:6px">📝 Pedido especial (a confirmar)</div>';
-  keys.forEach(function(k){
-    var it = CARRITO_MANUAL[k];
-    html += '<div class="cart-item"><span>'+it.nombre+'</span><span style="color:var(--gray)">'+it.texto+'</span></div>';
-  });
+  // Se separan los que ya tienen precio (suman al total) de los que quedaron a
+  // confirmar, para que el cliente entienda qué está pagando y qué falta definir.
+  var conPrecio = keys.filter(function(k){ return CARRITO_MANUAL[k].precio; });
+  var aConfirmar = keys.filter(function(k){ return !CARRITO_MANUAL[k].precio; });
+  var html = '';
+
+  if(conPrecio.length){
+    html += '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:#F4B400;text-transform:uppercase;margin-top:14px;margin-bottom:6px">🧀 Sueltos</div>';
+    conPrecio.forEach(function(k){
+      var it = CARRITO_MANUAL[k];
+      html += '<div class="cart-item"><span>'+it.nombre+' <span style="color:var(--gray)">('+it.texto+')</span></span><span>'+fmt(it.precio)+'</span></div>';
+    });
+  }
+  if(aConfirmar.length){
+    html += '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--red);text-transform:uppercase;margin-top:14px;margin-bottom:6px">📝 A confirmar precio</div>';
+    aConfirmar.forEach(function(k){
+      var it = CARRITO_MANUAL[k];
+      html += '<div class="cart-item"><span>'+it.nombre+'</span><span style="color:var(--gray)">'+it.texto+'</span></div>';
+    });
+  }
   return html;
 }
 
@@ -747,10 +845,20 @@ function confirmarPedido(){
     msg += '• '+it.nombre+' ×'+it.cantidad+' — '+fmt(it.precio*it.cantidad)+'\n';
   });
   if(notasManuales.length){
-    msg += '\n❗ *A confirmar disponibilidad:*\n';
-    notasManuales.forEach(function(it){
-      msg += '• '+it.nombre+': '+it.texto+'\n';
-    });
+    var conPr = notasManuales.filter(function(it){ return it.precio; });
+    var sinPr = notasManuales.filter(function(it){ return !it.precio; });
+    if(conPr.length){
+      msg += '\n🧀 *SUELTOS*\n';
+      conPr.forEach(function(it){
+        msg += '• '+it.nombre+' ('+it.texto+') — '+fmt(it.precio)+'\n';
+      });
+    }
+    if(sinPr.length){
+      msg += '\n❗ *A confirmar precio:*\n';
+      sinPr.forEach(function(it){
+        msg += '• '+it.nombre+': '+it.texto+'\n';
+      });
+    }
   }
 
   msg += '\n💰 *TOTAL*\n';

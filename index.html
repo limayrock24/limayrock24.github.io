@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787095745";
+  window.__LR_BUILD = "1787108693";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -556,9 +556,19 @@
 
   // Guarda solo el stock que cambió — clave para que una venta no reescriba
   // el inventario completo cada vez.
-  window.__lrSaveStockInv = function(inv){
+  // Guardar el stock. Acepta borrados explícitos: sin esto, sacar un producto
+  // del inventario solo lo quitaba de la lista en pantalla, la nube lo seguía
+  // teniendo, y a la siguiente sincronización volvía a aparecer. Era lo que
+  // hacía que el limpiador de productos fantasma no tuviera efecto real.
+  window.__lrSaveStockInv = function(inv, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoInventarioSnapshot || {};
+    (nombresABorrar || []).forEach(function(nombre){
+      __promesas.push(
+        window.__lrDB.collection(window.__lrCOL.inventario).doc(idSeguro(nombre)).delete()
+          .catch(function(e){ console.error('Error borrando stock', nombre, e); throw e; })
+      );
+    });
     Object.keys(inv).forEach(function(nombre){
       try{
         var antes = prev[nombre];
@@ -4073,6 +4083,11 @@ body.night-on{background:#080005}
           <option value="Snacks sueltos">Snacks sueltos</option>
         </select>
         <input type="text" id="imNombreInput" placeholder="Nombre del producto" style="flex:2;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+        <input type="number" id="imPrecioKgInput" placeholder="$ por kilo" min="0" style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:8px 10px;font-size:.8rem">
+        <select id="imUnidadInput" style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
+          <option value="kg">Por peso (kg)</option>
+          <option value="unidad">Por unidad</option>
+        </select>
         <button onclick="agregarItemManual()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
       </div>
 
@@ -7379,7 +7394,7 @@ function autoRecalc(idx,inp) {
 // Al borrar un producto del catálogo, lo saca también de Stock y de cualquier proveedor que lo tuviera
 function limpiarReferenciasProducto(nombre) {
   var inv = getStockInv();
-  if(inv[nombre] !== undefined){ delete inv[nombre]; saveStockInv(inv); }
+  if(inv[nombre] !== undefined){ delete inv[nombre]; saveStockInv(inv, [nombre]); }
   var provs = getProveedores();
   var huboCambio = false;
   provs.forEach(function(p){
@@ -9160,13 +9175,27 @@ function agregarItemManual() {
   var categoria = document.getElementById('imCategoriaInput').value;
   var nombre = document.getElementById('imNombreInput').value.trim();
   if(!nombre){ showToast('Escribí el nombre del producto'); return; }
+  var precioKg = parseFloat((document.getElementById('imPrecioKgInput')||{}).value) || 0;
+  var unidad = ((document.getElementById('imUnidadInput')||{}).value) || 'kg';
   var items = getItemsManuales();
-  items.push({id: Date.now(), categoria: categoria, nombre: nombre, activo: true});
+  items.push({id: Date.now(), categoria: categoria, nombre: nombre, activo: true,
+              precioKg: precioKg, unidad: unidad});
   saveItemsManuales(items);
   document.getElementById('imNombreInput').value = '';
-  showToast('📝 '+nombre+' agregado a '+categoria);
+  if(document.getElementById('imPrecioKgInput')) document.getElementById('imPrecioKgInput').value = '';
+  showToast('📝 '+nombre+' agregado a '+categoria+(precioKg?' — '+fmt(precioKg)+(unidad==='kg'?'/kg':' c/u'):''));
   if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
+function cambiarPrecioItemManual(id, valor) {
+  var items = getItemsManuales();
+  var it = items.find(function(i){ return i.id===id; });
+  if(!it) return;
+  it.precioKg = parseFloat(valor) || 0;
+  saveItemsManuales(items);
+  showToast(it.precioKg ? '💲 '+it.nombre+': '+fmt(it.precioKg)+(it.unidad==='unidad'?' c/u':'/kg') : 'Precio quitado de '+it.nombre);
+  if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
+}
+
 function eliminarItemManual(id) {
   var items = getItemsManuales().filter(function(i){ return i.id!==id; });
   saveItemsManuales(items);
@@ -15945,7 +15974,7 @@ function guardarProdModal() {
     // Arrastrar el nombre nuevo a stock, proveedores y combos, para que el
     // producto no quede huérfano en esas listas.
     var inv = getStockInv();
-    if(inv[nombreViejo]){ inv[nombre] = inv[nombreViejo]; delete inv[nombreViejo]; saveStockInv(inv); }
+    if(inv[nombreViejo]){ inv[nombre] = inv[nombreViejo]; delete inv[nombreViejo]; saveStockInv(inv, [nombreViejo]); }
     var provs = getProveedores();
     var tocoProv = false;
     provs.forEach(function(pr){
@@ -18943,7 +18972,9 @@ function confirmarLimpiezaFantasma() {
 
   var inv = getStockInv();
   plan.stock.forEach(function(k){ delete inv[k]; });
-  saveStockInv(inv);
+  // Se pasan los nombres para que también se borren EN LA NUBE, no solo de la
+  // lista en memoria: si no, volvían a aparecer en la siguiente sincronización.
+  saveStockInv(inv, plan.stock);
 
   document.getElementById('limpiezaPreviewModal').classList.remove('open');
   showToast('🧹 Listo: '+prodsSacadosProv+' productos sacados de '+provsAfectados+' proveedor(es), '+plan.stock.length+' del stock');
@@ -19201,7 +19232,10 @@ function renderItemsManualesAdmin() {
     return '<div style="font-size:.7rem;color:var(--gold);margin:8px 0 4px">'+cat+'</div>'+
       porCat[cat].map(function(it){
         return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px">'+
-          '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+'</span>'+
+          '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+
+            (it.precioKg ? '<span style="color:var(--gold);font-size:.72rem"> · '+fmt(it.precioKg)+(it.unidad==='unidad'?' c/u':'/kg')+'</span>'
+                         : '<span style="color:var(--gray);font-size:.7rem"> · sin precio</span>')+'</span>'+
+          '<input type="number" value="'+(it.precioKg||'')+'" min="0" placeholder="$/kg" onchange="cambiarPrecioItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:90px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-size:.75rem;margin-left:auto;margin-right:8px">'+
           '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
         '</div>';
       }).join('');
@@ -20441,9 +20475,10 @@ function existeEnCatalogo(nombre) {
 }
 
 function getStockInv() { return window.__lrStockInvCache || {}; }
-function saveStockInv(s) {
+function saveStockInv(s, nombresABorrar) {
   window.__lrStockInvCache = s;
-  if(window.__lrSaveStockInv) window.__lrSaveStockInv(s);
+  if(window.__lrSaveStockInv) return window.__lrSaveStockInv(s, nombresABorrar);
+  return Promise.resolve();
 }
 
 function seleccionarProdStockPorIdx(idx) {
