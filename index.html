@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787156388";
+  window.__LR_BUILD = "1787346654";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -2969,6 +2969,7 @@ body.night-on{background:#080005}
       <span class="turno-badge">👤 <span id="empActual">Martin · Nocturno</span></span>
       <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
       <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
+      <button id="btnAnularUltimas" onclick="abrirAnularUltimas()" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">↩ Anular venta</button>
       <button id="btnGoDelivery" onclick="abrirPanelRepartidor()" style="display:none;background:transparent;border:1px solid #1e90ff;color:#1e90ff;border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="btnGoDeliveryCount"></span></button>
       <button id="btnGoCargaStock" onclick="abrirCargaStock()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📋 Cargar Stock</button>
       <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
@@ -7149,6 +7150,14 @@ function buildTurnoFilter() { /* legacy — replaced */ }
 function anularVenta(id) {
   askConfirm('¿Anulás esta venta? Esto va a devolver el stock de los productos.').then(function(ok){
     if(!ok) return;
+    anularVentaDirecto(id);
+  });
+}
+
+// La anulación en sí, sin preguntar. Se usa desde el panel de venta, donde la
+// confirmación ya se hizo antes. El callback corre al terminar.
+function anularVentaDirecto(id, alTerminar) {
+  (function(){
     var v = VENTAS.find(function(v){ return v.id===id; });
     if(!v) return;
     v.anulada = true;
@@ -7215,9 +7224,12 @@ function anularVenta(id) {
       }
     }
 
-    renderVentas('');
+    if(typeof renderVentas==='function') renderVentas('');
+    if(typeof updateStockNotif==='function') updateStockNotif();
+    if(typeof filterAll==='function') filterAll();
     showToast('Venta anulada — stock devuelto');
-  });
+    if(typeof alTerminar === 'function') alTerminar();
+  })();
 }
 
 // TOP PRODUCTOS
@@ -18345,6 +18357,94 @@ function actualizarContadorRepartidor() {
   if(ov && ov.classList.contains('open')) renderPanelRepartidor();
 }
 
+// ── ANULAR UNA VENTA DEL TURNO ──────────────────────────────────────────────
+// Caso real: el cliente se lleva unos cigarrillos, vuelve a los cinco minutos
+// porque no eran esos, y hay que rehacer la venta. Sin esto, el stock quedaba
+// mal y la plata del turno también.
+//
+// El empleado solo ve las ventas de SU turno actual, y alcanza con su propio
+// PIN — es una corrección de mostrador, no puede esperar a que venga el
+// administrador. Todo queda registrado con nombre y hora.
+function abrirAnularUltimas() {
+  if(!currentEmp) return;
+  var inicioTs = currentEmp.turnoInicio ? new Date(currentEmp.turnoInicio).getTime() : 0;
+
+  var delTurno = VENTAS.filter(function(v){
+    return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs;
+  }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,5);
+
+  var ov = document.getElementById('anularUltimasOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'anularUltimasOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:440px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:4px">↩ Anular una venta</div>'+
+        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:12px">Últimas 5 ventas de tu turno. Al anular, el stock vuelve y la plata se descuenta.</div>'+
+        '<div id="anularUltimasLista" style="flex:1;overflow-y:auto"></div>'+
+        '<button onclick="cerrarAnularUltimas()" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+
+  var lista = document.getElementById('anularUltimasLista');
+  if(!delTurno.length){
+    lista.innerHTML = '<div style="text-align:center;color:var(--gray);padding:26px;font-size:.85rem">Todavía no hiciste ventas en este turno</div>';
+    return;
+  }
+
+  lista.innerHTML = delTurno.map(function(v){
+    var hora = new Date(v.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    var prods = (v.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
+    return '<div style="border:1px solid var(--border);border-radius:7px;padding:12px;margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.8rem;color:var(--light);line-height:1.4">'+prods+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+hora+' · '+(v.medio||'—')+'</div>'+
+        '</div>'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--gold);white-space:nowrap">'+fmt(v.total)+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:7px;margin-top:10px">'+
+        '<button onclick="anularYRehacer('+v.id+')" style="flex:1;background:var(--gold);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;font-weight:700;letter-spacing:.5px;cursor:pointer">↻ Anular y rehacer</button>'+
+        '<button onclick="anularDesdeVenta('+v.id+')" style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:.5px;cursor:pointer">✕ Solo anular</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function cerrarAnularUltimas(){
+  var ov = document.getElementById('anularUltimasOverlay');
+  if(ov) ov.style.display = 'none';
+}
+
+// Anula sin más: el cliente devolvió y no se lleva nada.
+function anularDesdeVenta(id){
+  cerrarAnularUltimas();
+  anularVenta(id);
+}
+
+// Anula y deja los productos cargados en el carrito, para corregir la venta
+// (cambiar un producto por otro, ajustar cantidades) y volver a cobrar.
+function anularYRehacer(id){
+  var v = VENTAS.find(function(x){ return x.id===id; });
+  if(!v) return;
+  var itemsCopia = JSON.parse(JSON.stringify(v.items||[]));
+  cerrarAnularUltimas();
+
+  askConfirm('Se va a anular esta venta y sus productos van a quedar cargados en el carrito para rehacerla.\n\n¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    anularVentaDirecto(id, function(){
+      cart = itemsCopia.filter(function(i){ return !i.manual; });
+      pagoSel = null;
+      updateCart();
+      document.getElementById('cartPanel').classList.add('open');
+      showToast('↻ Venta anulada — corregí el carrito y volvé a cobrar');
+    });
+  });
+}
+
 function abrirCargaStock() {
   if(!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin')) return;
   document.getElementById('cargaStockOverlay').classList.add('open');
@@ -18463,6 +18563,13 @@ function updateRecepBtn() {
   if(btnStock) btnStock.style.display = (currentEmp && currentEmp.accesoStock) ? 'inline-block' : 'none';
   var btnDeliv = document.getElementById('btnGoDelivery');
   if(btnDeliv) btnDeliv.style.display = (currentEmp && currentEmp.accesoDelivery) ? 'inline-block' : 'none';
+  // El botón de anular solo tiene sentido con un turno abierto, y nunca en la
+  // pantalla del repartidor.
+  var btnAnul = document.getElementById('btnAnularUltimas');
+  if(btnAnul){
+    var enDelivery = (typeof esModoDelivery==='function' && esModoDelivery());
+    btnAnul.style.display = (currentEmp && !enDelivery && currentEmp.rol !== 'repartidor') ? 'inline-block' : 'none';
+  }
   actualizarContadorRepartidor();
 }
 
