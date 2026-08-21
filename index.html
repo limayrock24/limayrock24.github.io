@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787346654";
+  window.__LR_BUILD = "1787346773";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -16655,8 +16655,8 @@ function abrirRecepMercProveedor(idx) {
     var p = PRODUCTS.find(function(x){return x.name===name;});
     if(!p) return '';
     var stockActual = inv[p.name] ? inv[p.name].stock : 0;
-    return '<div class="rm-item" id="rmItem'+i+'">'+
-      '<div class="rin">'+p.name+'</div>'+
+    return '<div class="rm-item" id="rmItem'+i+'" data-nombre="'+p.name.toLowerCase().replace(/"/g,'&quot;')+'" data-codigo="'+((p.codigo||'')+'').toLowerCase()+'">'+
+      '<div class="rin">'+p.name+(p.codigo?'<div style="font-size:.6rem;color:var(--gray)">'+p.codigo+'</div>':'')+'</div>'+
       '<div class="rm-stock"><span class="lbl">Stock</span><span class="val">'+stockActual+'</span></div>'+
       '<input type="number" id="rmCant'+i+'" placeholder="0" min="0" inputmode="numeric">'+
     '</div>';
@@ -16667,7 +16667,14 @@ function abrirRecepMercProveedor(idx) {
       '<div class="title">🚚 '+prov.nombre+'</div>'+
       '<button class="rm-back" onclick="initRecepMerc()">← Volver</button>'+
     '</div>'+
-    '<div style="font-size:.68rem;color:var(--gold);padding:0 12px 8px">📟 Escaneá cada producto: se abre un cuadro para poner la cantidad y sigue con el próximo</div>'+
+    '<div style="font-size:.68rem;color:var(--gold);padding:0 12px 8px">📟 Escaneá cada producto, o buscalo por nombre o código acá abajo</div>'+
+    // Buscador: con proveedores de muchos productos, encontrar uno a mano en
+    // la lista completa era imposible. Filtra por nombre o por código.
+    '<div style="padding:0 12px 8px">'+
+      '<input type="text" id="rmBuscar" placeholder="🔍 Buscar por nombre o código..." autocomplete="off" oninput="filtrarRecepMercItems()" '+
+        'style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:11px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none">'+
+      '<div id="rmBuscarInfo" style="font-size:.64rem;color:var(--gray);margin-top:4px"></div>'+
+    '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 70px 90px;gap:10px;padding:0 12px 6px;font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">'+
       '<span>Producto</span><span style="text-align:center">Stock</span><span style="text-align:center">Cantidad</span>'+
     '</div>'+
@@ -16675,6 +16682,43 @@ function abrirRecepMercProveedor(idx) {
     '<button class="rm-add-prod-btn" onclick="mostrarBuscadorRmProd('+idx+')">+ Agregar producto de este proveedor</button>'+
     '<div id="rmAddProdBox"></div>'+
     '<button class="rm-confirm-btn" onclick="confirmarRecepcionMerc('+idx+')">✓ Confirmar recepción</button>';
+}
+
+// Filtra la lista de productos del proveedor por nombre o código, sin perder
+// las cantidades que ya se hayan escrito (solo se ocultan las filas).
+function filtrarRecepMercItems() {
+  var inp = document.getElementById('rmBuscar');
+  var info = document.getElementById('rmBuscarInfo');
+  if(!inp) return;
+  var term = inp.value.toLowerCase().trim();
+  var filas = document.querySelectorAll('#rmItemsList .rm-item');
+  var visibles = 0;
+
+  for(var i=0; i<filas.length; i++){
+    var f = filas[i];
+    var coincide = !term
+      || (f.dataset.nombre||'').indexOf(term) !== -1
+      || (f.dataset.codigo && f.dataset.codigo.indexOf(term) !== -1);
+    f.style.display = coincide ? '' : 'none';
+    if(coincide) visibles++;
+  }
+
+  if(info){
+    if(!term) info.textContent = '';
+    else if(!visibles) info.innerHTML = '<span style="color:var(--red)">Ningún producto de este proveedor coincide con "'+term+'"</span>';
+    else info.textContent = visibles + ' de ' + filas.length + ' productos';
+  }
+
+  // Si el código escaneado coincide con uno solo, saltar directo a su cantidad
+  if(term.length >= 8 && visibles === 1){
+    for(var j=0; j<filas.length; j++){
+      if(filas[j].style.display !== 'none'){
+        var campo = filas[j].querySelector('input[type=number]');
+        if(campo){ campo.focus(); campo.select(); }
+        break;
+      }
+    }
+  }
 }
 
 function mostrarBuscadorRmProd(provIdx) {
