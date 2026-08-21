@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787346773";
+  window.__LR_BUILD = "1787350893";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -346,6 +346,28 @@
         lista = lista.filter(function(p){ return !pendBorrado[p.name]; });
       }
 
+      // ── PRODUCTOS CREADOS QUE TODAVÍA NO SUBIERON ──────────────────────
+      // La sincronización reemplaza la lista entera con lo que hay en la nube.
+      // Si se acaba de crear un producto y la subida está pendiente, ese
+      // producto NO viene en la lista de la nube y desaparecía de la pantalla:
+      // el usuario lo creaba, veía "guardado local", y no lo encontraba en
+      // ningún lado. Acá se vuelven a agregar hasta que la nube los confirme.
+      var pendAlta = leerAltasPendientes();
+      var nombresAlta = Object.keys(pendAlta);
+      if(nombresAlta.length){
+        var enNube = {};
+        lista.forEach(function(p){ enNube[p.name] = true; });
+        nombresAlta.forEach(function(n){
+          if(enNube[n]){
+            // Ya llegó a la nube: se saca de pendientes
+            delete pendAlta[n];
+          } else {
+            lista.push(pendAlta[n].datos);
+          }
+        });
+        guardarAltasPendientes(pendAlta);
+      }
+
       window.PRODUCTS = lista;
       // Copia aparte: si por algún motivo el resguardo fijo llegara a pisar
       // window.PRODUCTS más adelante, esta copia permite recuperar los reales
@@ -520,6 +542,42 @@
   // Ahora: guardar SOLO agrega y actualiza, nunca borra. El borrado es
   // explícito — hay que pasar los nombres a borrar en el segundo parámetro
   // (lo hace delProd cuando el usuario confirma que quiere eliminar algo).
+  // Registro de productos creados que todavía no se confirmaron en la nube.
+  // Vive en el propio dispositivo, así sobrevive a recargas y cierres de la
+  // app: el producto se sigue viendo aunque no haya conexión, y no hay que
+  // volver a crearlo.
+  var SK_ALTAS_PEND = 'lr_altas_pendientes';
+
+  window.leerAltasPendientes = function(){
+    try{
+      var raw = localStorage.getItem(SK_ALTAS_PEND);
+      if(!raw) return {};
+      var obj = JSON.parse(raw);
+      // Descartar los que quedaron colgados más de 48 h
+      var ahora = Date.now();
+      Object.keys(obj).forEach(function(n){
+        if(!obj[n] || ahora - (obj[n].ts||0) > 172800000) delete obj[n];
+      });
+      return obj;
+    }catch(e){ return {}; }
+  };
+
+  window.guardarAltasPendientes = function(obj){
+    try{ localStorage.setItem(SK_ALTAS_PEND, JSON.stringify(obj||{})); }catch(e){}
+  };
+
+  window.registrarAltaPendiente = function(prod){
+    if(!prod || !prod.name) return;
+    var pend = window.leerAltasPendientes();
+    pend[prod.name] = { ts: Date.now(), datos: JSON.parse(JSON.stringify(prod)) };
+    window.guardarAltasPendientes(pend);
+  };
+
+  window.confirmarAltaPendiente = function(nombre){
+    var pend = window.leerAltasPendientes();
+    if(pend[nombre]){ delete pend[nombre]; window.guardarAltasPendientes(pend); }
+  };
+
   window.__lrSaveProductos = function(lista, nombresABorrar){
     var prev = window.__lrSync.ultimoProductosSnapshot || {};
     var promesas = [];
@@ -7498,6 +7556,14 @@ function iniciarReintentoAutomaticoProductos() {
     if(!raw || !window.__lrSaveProductos){ clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null; return; }
     window.__lrSaveProductos(PRODUCTS).then(function(){
       limpiarPendienteLocalProductos();
+      if(window.leerAltasPendientes && window.guardarAltasPendientes){
+        var pendA = window.leerAltasPendientes();
+        Object.keys(pendA).forEach(function(n){
+          if(PRODUCTS.some(function(p){ return p.name === n; })) delete pendA[n];
+        });
+        window.guardarAltasPendientes(pendA);
+        if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+      }
       if(typeof showToast==='function') showToast('✅ Cambio pendiente confirmado en la nube');
       if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
       clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null;
@@ -7511,6 +7577,41 @@ window.addEventListener('online', function(){
 
 // Igual que saveLocal, pero además borra registros viejos (se usa al renombrar
 // un producto, para que no quede duplicado el nombre anterior).
+// Muestra un cartelito fijo con cuántos productos están esperando subir, para
+// que se vea de un vistazo que hay cosas sin confirmar y no se pierda de vista.
+function mostrarBadgePendientes(){
+  var pend = window.leerAltasPendientes ? window.leerAltasPendientes() : {};
+  var n = Object.keys(pend).length;
+  var el = document.getElementById('badgeAltasPendientes');
+  if(!el){
+    if(!n) return;
+    el = document.createElement('div');
+    el.id = 'badgeAltasPendientes';
+    el.style.cssText = 'position:fixed;bottom:60px;left:10px;z-index:99996;background:#F4B400;color:#1a1a1a;font-family:system-ui,sans-serif;font-size:.7rem;font-weight:700;padding:7px 12px;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer';
+    el.onclick = function(){ if(typeof reintentarAltasPendientes==='function') reintentarAltasPendientes(); };
+    document.body.appendChild(el);
+  }
+  if(!n){ el.style.display='none'; return; }
+  el.style.display = 'block';
+  el.textContent = '⏳ ' + n + ' producto' + (n===1?'':'s') + ' sin subir — tocá para reintentar';
+}
+
+function reintentarAltasPendientes(){
+  if(!window.__lrSaveProductos){ showToast('Sin conexión al sistema', true); return; }
+  showToast('⏳ Reintentando subir...');
+  window.__lrSaveProductos(PRODUCTS).then(function(){
+    var pend = window.leerAltasPendientes();
+    Object.keys(pend).forEach(function(n){
+      if(PRODUCTS.some(function(p){ return p.name === n; })) delete pend[n];
+    });
+    window.guardarAltasPendientes(pend);
+    mostrarBadgePendientes();
+    showToast('✅ Productos subidos y confirmados');
+  }).catch(function(){
+    showToast('Todavía sin señal — se sigue reintentando solo', true);
+  });
+}
+
 function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   // Red de seguridad: si quedaron dos productos con el mismo nombre, dejar uno
   // solo. En la nube cada producto se guarda bajo su nombre, así que dos con el
@@ -7531,10 +7632,25 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   if(!window.__lrConTimeoutAviso) return promesa.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito); });
   return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
     if(r.pendiente){
-      showToast('💾 Guardado localmente — se subirá solo cuando haya señal');
+      var cuantas = window.leerAltasPendientes ? Object.keys(window.leerAltasPendientes()).length : 0;
+      showToast(cuantas
+        ? '💾 Guardado acá — ' + cuantas + ' producto' + (cuantas===1?'':'s') + ' esperando subir. Podés seguir cargando.'
+        : '💾 Guardado localmente — se subirá solo cuando haya señal');
       iniciarReintentoAutomaticoProductos();
+      if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
     } else {
       limpiarPendienteLocalProductos();
+      if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+      // Confirmado en la nube: los productos que estaban esperando ya no
+      // necesitan reinsertarse en cada sincronización.
+      if(window.leerAltasPendientes && window.guardarAltasPendientes){
+        var pend = window.leerAltasPendientes();
+        var hayCambio = false;
+        Object.keys(pend).forEach(function(n){
+          if(PRODUCTS.some(function(p){ return p.name === n; })){ delete pend[n]; hayCambio = true; }
+        });
+        if(hayCambio) window.guardarAltasPendientes(pend);
+      }
       if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
       showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
     }
@@ -9437,6 +9553,17 @@ document.addEventListener('DOMContentLoaded', function(){
       restaurarEstadoNotificaciones('dueno', 'Admin', 'btnNotifDueno');
     }
   }, 2500);
+
+  // Si quedaron productos sin subir de una sesión anterior, mostrarlos y
+  // reintentar la subida apenas haya conexión.
+  setTimeout(function(){
+    if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+    var pend = window.leerAltasPendientes ? window.leerAltasPendientes() : {};
+    if(Object.keys(pend).length && typeof iniciarReintentoAutomaticoProductos==='function'){
+      guardarPendienteLocalProductos(PRODUCTS);
+      iniciarReintentoAutomaticoProductos();
+    }
+  }, 3500);
 
   if(Array.isArray(window.__lrProductosNube) && window.__lrProductosNube.length > 0
      && window.PRODUCTS !== window.__lrProductosNube){
@@ -15941,6 +16068,9 @@ function guardarProdModal() {
   }
   else {
     PRODUCTS.push(prod);
+    // Queda anotado como "creado pero sin confirmar en la nube", para que no
+    // desaparezca de la lista cuando llegue la próxima sincronización.
+    if(window.registrarAltaPendiente) window.registrarAltaPendiente(prod);
     registrarCambioCatalogo('nuevo', nombre, [{campo:'Categoría',antes:'—',despues:cat},{campo:'Precio venta',antes:'—',despues:pventa||0}], currentEmp?currentEmp.nombre:'Admin');
   }
   // Guardar stock ajustado desde el modal
