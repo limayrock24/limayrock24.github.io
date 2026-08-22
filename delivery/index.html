@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787369493";
+  window.__LR_BUILD = "1787369819";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1271,9 +1271,24 @@
     window.__lrCostoEnvio = datos.costoEnvio;
     window.__lrModoDelivery = datos.modo;
     window.__lrZonaCfg = datos.zonaCfg;
-    window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set(datos).catch(function(e){
-      console.error('Error guardando delivery activo', e);
-    });
+    return window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set(datos)
+      .then(function(){
+        // Verificación real: releer lo que quedó guardado. Si algo no se
+        // escribió, hay que enterarse en el momento, no dos días después.
+        return window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').get();
+      })
+      .then(function(doc){
+        var g = doc.exists ? doc.data() : {};
+        if(datos.zonaCfg && (!g.zonaCfg || g.zonaCfg.lat !== datos.zonaCfg.lat)){
+          if(typeof showToast==='function') showToast('⚠️ La configuración no quedó guardada — revisá la conexión', true);
+        }
+        return g;
+      })
+      .catch(function(e){
+        console.error('Error guardando delivery activo', e);
+        if(typeof showToast==='function') showToast('❌ No se pudo guardar: '+(e && e.message ? e.message : 'error de conexión'), true);
+        throw e;
+      });
   };
 
   // Pedidos hechos desde el catálogo público (sin login, por eso van en su
@@ -20360,15 +20375,15 @@ function renderConfigZonas(){
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
       '<div style="flex:1;min-width:150px">'+
         '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío urbano</div>'+
-        '<input type="number" value="'+(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+'" min="0" onchange="guardarZonaCfg(\'costoUrbano\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--green);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+        '<input type="number" value="'+(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+'" min="0" oninput="guardarZonaCfgDemorado(\'costoUrbano\', this.value)" onblur="guardarZonaCfg(\'costoUrbano\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--green);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
       '</div>'+
       '<div style="flex:1;min-width:150px">'+
         '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío chacra / rural</div>'+
-        '<input type="number" value="'+(z.costoRural != null ? z.costoRural : 0)+'" min="0" onchange="guardarZonaCfg(\'costoRural\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+        '<input type="number" value="'+(z.costoRural != null ? z.costoRural : 0)+'" min="0" oninput="guardarZonaCfgDemorado(\'costoRural\', this.value)" onblur="guardarZonaCfg(\'costoRural\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
       '</div>'+
       '<div style="flex:1;min-width:150px">'+
         '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Radio urbano (km)</div>'+
-        '<input type="number" step="0.1" value="'+(z.radioKm != null ? z.radioKm : 2)+'" min="0.1" onchange="guardarZonaCfg(\'radioKm\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+        '<input type="number" step="0.1" value="'+(z.radioKm != null ? z.radioKm : 2)+'" min="0.1" oninput="guardarZonaCfgDemorado(\'radioKm\', this.value)" onblur="guardarZonaCfg(\'radioKm\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
       '</div>'+
     '</div>'+
 
@@ -20385,6 +20400,19 @@ function renderConfigZonas(){
   '</div>';
 }
 
+// Guarda mientras se escribe, esperando un segundo desde la última tecla.
+// Antes solo se guardaba al salir del campo (onchange), así que si se escribía
+// un monto y se cerraba el panel de una, el guardado nunca llegaba a dispararse
+// y el valor se perdía.
+var _zonaCfgTimer = null;
+function guardarZonaCfgDemorado(campo, valor){
+  if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+  window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  if(campo === 'costoUrbano') window.__lrCostoEnvio = window.__lrZonaCfg[campo];
+  clearTimeout(_zonaCfgTimer);
+  _zonaCfgTimer = setTimeout(function(){ persistirZonaCfg(); }, 900);
+}
+
 function guardarZonaCfg(campo, valor){
   if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
   window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
@@ -20397,9 +20425,10 @@ function persistirZonaCfg(){
   if(window.__lrSaveDeliveryActivo){
     // Se pasa la configuración de zonas EXPLÍCITAMENTE: es lo que se acaba de
     // editar, y dejarla librada al valor conservado podía perder el cambio.
-    window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0,
+    return window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0,
       window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto', window.__lrZonaCfg);
   }
+  return Promise.resolve();
 }
 
 // Mapa para elegir la ubicación del local a mano, desde la computadora. Es la
@@ -20526,10 +20555,25 @@ function guardarUbicacionDelMapa(){
   window.__lrZonaCfg.lat = window._mapaLocalLat;
   window.__lrZonaCfg.lng = window._mapaLocalLng;
   window.__lrZonaCfg.aproximada = false;
-  persistirZonaCfg();
-  cerrarMapaLocal();
-  showToast('✅ Ubicación guardada: ' + window._mapaLocalLat.toFixed(5) + ', ' + window._mapaLocalLng.toFixed(5));
-  if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+
+  showToast('⏳ Guardando ubicación...');
+  // Se espera la confirmación REAL antes de decir que quedó guardada, y se
+  // vuelve a leer de la nube para comprobarlo. Antes se avisaba "guardado" al
+  // instante, sin saber si la escritura había llegado.
+  Promise.resolve(persistirZonaCfg()).then(function(){
+    return window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').get();
+  }).then(function(doc){
+    var z = (doc.exists && doc.data().zonaCfg) ? doc.data().zonaCfg : null;
+    if(z && z.lat != null){
+      cerrarMapaLocal();
+      showToast('✅ Ubicación confirmada en la nube: ' + Number(z.lat).toFixed(5) + ', ' + Number(z.lng).toFixed(5));
+      if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+    } else {
+      showToast('⚠️ No se pudo confirmar el guardado — probá de nuevo', true);
+    }
+  }).catch(function(e){
+    showToast('❌ No se guardó: '+(e && e.message ? e.message : 'error de conexión'), true);
+  });
 }
 
 function cerrarMapaLocal(){
