@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787401620";
+  window.__LR_BUILD = "1787419685";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -17468,11 +17468,11 @@ function abrirRecepProdModal(idx) {
       '<div class="field"><label>Nombre del producto</label><input type="text" id="recepNombre" placeholder="Nombre completo"></div>'+
       '<div class="field"><label>Código de barra (opcional)</label><input type="text" id="recepCodigo" inputmode="numeric" placeholder="Escaneá o escribí el código..."></div>'+
       '<div class="field-row">'+
-        '<div class="field"><label>Categoría</label><select id="recepCat" onchange="recalcRecepPrecioNuevo()">'+catOpts+'</select></div>'+
+        '<div class="field"><label>Categoría</label><select id="recepCat" onchange="var mg=document.getElementById(\'recepMargen\'); if(mg) mg.dataset.editadoAMano=\'\'; recalcRecepPrecioNuevo()">'+catOpts+'</select></div>'+
         '<div class="field"><label>Costo ($)</label><input type="number" id="recepCosto" placeholder="0" min="0" oninput="recalcRecepPrecioNuevo()"></div>'+
       '</div>'+
       '<div class="field-row">'+
-        '<div class="field"><label>Margen (%)</label><input type="number" id="recepMargen" placeholder="50" value="50" min="1" max="200" oninput="recalcRecepPrecioNuevo()"></div>'+
+        '<div class="field"><label>Margen (%)</label><input type="number" id="recepMargen" placeholder="50" value="50" min="1" max="200" oninput="this.dataset.editadoAMano=\'1\';recalcRecepPrecioNuevo()"></div>'+
         '<div class="field"><label>Precio nocturno ($)</label><input type="number" id="recepNoc" placeholder="Opcional" min="0" oninput="updateRecepNocPreview()"></div>'+
       '</div>'+
       '<div class="precio-preview">'+
@@ -17554,8 +17554,23 @@ function recalcRecepPrecio(idx) {
 function recalcRecepPrecioNuevo() {
   var c   = parseFloat(document.getElementById('recepCosto').value)||0;
   var cat = document.getElementById('recepCat').value;
-  var m   = MARGINS[cat] || 50;
-  document.getElementById('recepMargen').value = m;
+  var campoMargen = document.getElementById('recepMargen');
+
+  // El margen que escribe el empleado MANDA.
+  //
+  // Antes esta función sobrescribía el campo con el margen de la categoría cada
+  // vez que se ejecutaba — y como corre al tocar el propio campo de margen, el
+  // número volvía solo al valor de la categoría y no se podía cambiar.
+  // Ahora el margen de la categoría solo se usa como valor de arranque: se
+  // aplica al elegir categoría, pero no pisa lo que la persona ya escribió.
+  var m;
+  if(campoMargen && campoMargen.dataset.editadoAMano === '1'){
+    m = parseFloat(campoMargen.value) || 0;
+  } else {
+    m = MARGINS[cat] || 50;
+    if(campoMargen) campoMargen.value = m;
+  }
+
   var elP = document.getElementById('recepPrecioCalc');
   var elN = document.getElementById('recepNocCalc');
   var nocEl = document.getElementById('recepNoc');
