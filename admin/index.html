@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787364670";
+  window.__LR_BUILD = "1787369493";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -5902,7 +5902,26 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
     var fc = new Date(c.fecha);
     return fc>=turnoInicio2 && fc<=ahoraFin2;
   }).reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
-  var esperado = efectivoInicial + ventasEfec - egresosEfecTurno - retirosSoloTurno + ingresosSoloTurno;
+  // Mismo criterio que el arqueo manual: las transferencias entre cuentas y los
+  // préstamos en efectivo mueven la caja y hay que contemplarlos, si no la
+  // plata que se pasó a Mercado Pago figura como faltante.
+  var transfNetoEfec2 = 0;
+  (typeof getTransferCuentas === 'function' ? getTransferCuentas() : []).forEach(function(t){
+    var ft = new Date(t.fecha);
+    if(!(ft>=turnoInicio2 && ft<=ahoraFin2)) return;
+    if(t.desde === 'Efectivo') transfNetoEfec2 -= (t.monto||0);
+    if(t.hacia === 'Efectivo') transfNetoEfec2 += (t.monto||0);
+  });
+  var prestNetoEfec2 = 0;
+  (typeof getPrestamos === 'function' ? getPrestamos() : []).forEach(function(p){
+    if(p.medio !== 'Efectivo') return;
+    var fp = new Date(p.fecha);
+    if(!(fp>=turnoInicio2 && fp<=ahoraFin2)) return;
+    if(p.tipo === 'prestamo' || p.tipo === 'devolucion-recibida') prestNetoEfec2 += (p.monto||0);
+    if(p.tipo === 'devolucion' || p.tipo === 'prestamo-dado') prestNetoEfec2 -= (p.monto||0);
+  });
+
+  var esperado = efectivoInicial + ventasEfec - egresosEfecTurno - retirosSoloTurno + ingresosSoloTurno + transfNetoEfec2 + prestNetoEfec2;
   var durMinutos = Math.round((ahoraFin2 - turnoInicio2) / 60000);
 
   var cierres = getCierres();
@@ -8246,9 +8265,36 @@ function abrirArqueoModal() {
     return fr>=turnoInicio && fr<=ahora;
   }).reduce(function(s,r){return s+montoNetoRetiro(r);},0);
 
+  // Transferencias entre cuentas hechas durante el turno.
+  //
+  // Si se pasa plata de Efectivo a Mercado Pago, esa plata SALIÓ de la caja: no
+  // va a estar al contar. Antes el arqueo no lo contemplaba y la marcaba como
+  // faltante — por ejemplo, pasar $180.000 a Mercado Pago daba $180.000 de
+  // faltante, cuando el dinero simplemente había cambiado de lugar.
+  // Y al revés: si entra plata a Efectivo desde otra cuenta, suma.
+  var transferNetoEfec = 0;
+  (typeof getTransferCuentas === 'function' ? getTransferCuentas() : []).forEach(function(t){
+    var ft = new Date(t.fecha);
+    if(!(ft>=turnoInicio && ft<=ahora)) return;
+    if(t.desde === 'Efectivo') transferNetoEfec -= (t.monto||0);
+    if(t.hacia === 'Efectivo') transferNetoEfec += (t.monto||0);
+  });
+
+  // Préstamos y devoluciones en efectivo del turno: también mueven la caja.
+  var prestamosNetoEfec = 0;
+  (typeof getPrestamos === 'function' ? getPrestamos() : []).forEach(function(p){
+    if(p.medio !== 'Efectivo') return;
+    var fp = new Date(p.fecha);
+    if(!(fp>=turnoInicio && fp<=ahora)) return;
+    // Entra plata: alguien te presta, o te devuelven lo que prestaste
+    if(p.tipo === 'prestamo' || p.tipo === 'devolucion-recibida') prestamosNetoEfec += (p.monto||0);
+    // Sale plata: devolvés un préstamo, o le prestás a alguien
+    if(p.tipo === 'devolucion' || p.tipo === 'prestamo-dado') prestamosNetoEfec -= (p.monto||0);
+  });
+
   // ESPERADO = inicial + ventas efectivo - egresos efectivo - retiros
-  // Los retiros restan porque ese dinero no va a estar en la caja al contar
-  var esperado = inicial + ventasEfec - egresosEfec - retirosCaja;
+  //            + movimientos entre cuentas + préstamos, todo en efectivo
+  var esperado = inicial + ventasEfec - egresosEfec - retirosCaja + transferNetoEfec + prestamosNetoEfec;
 
   document.getElementById('abInicial').textContent = String(inicial);
   document.getElementById('abVentas').textContent = String(ventasEfec);
@@ -20361,8 +20407,8 @@ function persistirZonaCfg(){
 // con el celular. Se usa OpenStreetMap, que no necesita ninguna clave ni cuenta.
 function abrirMapaUbicacionLocal(){
   var z = window.__lrZonaCfg || {};
-  var lat = z.lat != null ? z.lat : -39.0136;
-  var lng = z.lng != null ? z.lng : -68.4319;
+  window._mapaLocalLat = z.lat != null ? z.lat : -39.0136;
+  window._mapaLocalLng = z.lng != null ? z.lng : -68.4319;
 
   var ov = document.getElementById('mapaLocalOverlay');
   if(!ov){
@@ -20370,22 +20416,15 @@ function abrirMapaUbicacionLocal(){
     ov.id = 'mapaLocalOverlay';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2450;display:flex;align-items:center;justify-content:center;padding:14px';
     ov.innerHTML =
-      '<div style="background:var(--surface);border-radius:10px;padding:16px;width:720px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column">'+
+      '<div style="background:var(--surface);border-radius:10px;padding:16px;width:760px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column">'+
         '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">📍 Ubicación del local</div>'+
-        '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Arrastrá el mapa hasta que la cruz roja quede justo sobre el local, y guardá. Se fija una sola vez.</div>'+
-        '<div style="position:relative;flex:1;min-height:380px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">'+
-          '<iframe id="mapaLocalFrame" style="width:100%;height:100%;min-height:380px;border:0" loading="lazy"></iframe>'+
-          // Cruz fija en el centro: la posición se toma del centro del mapa
-          '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:5">'+
-            '<div style="width:34px;height:34px;border:3px solid #D2201F;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.8)"></div>'+
-            '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;background:#D2201F;border-radius:50%"></div>'+
-          '</div>'+
-        '</div>'+
-        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">'+
+        '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Tocá en el mapa el punto exacto del local. Se fija una sola vez.</div>'+
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'+
           '<input type="text" id="mapaLocalBuscar" placeholder="Buscar dirección..." value="Av. Pascual Puente 774, Senillosa, Neuquén" '+
             'style="flex:2;min-width:200px;background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none">'+
           '<button onclick="buscarDireccionMapa()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:9px 14px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔍 Buscar</button>'+
         '</div>'+
+        '<div id="mapaLocalCanvas" style="flex:1;min-height:400px;border-radius:8px;border:1px solid var(--border);background:var(--dark)"></div>'+
         '<div id="mapaLocalCoords" style="font-size:.68rem;color:var(--gray);margin-top:6px"></div>'+
         '<div style="display:flex;gap:8px;margin-top:10px">'+
           '<button onclick="guardarUbicacionDelMapa()" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:6px;padding:12px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Guardar esta ubicación</button>'+
@@ -20395,24 +20434,72 @@ function abrirMapaUbicacionLocal(){
     document.body.appendChild(ov);
   }
   ov.style.display = 'flex';
-  window._mapaLocalLat = lat;
-  window._mapaLocalLng = lng;
-  actualizarMapaLocal();
+  cargarLeafletYMapa();
 }
 
-function actualizarMapaLocal(){
-  var lat = window._mapaLocalLat, lng = window._mapaLocalLng;
-  var d = 0.004; // zoom del recuadro visible
-  var fr = document.getElementById('mapaLocalFrame');
-  if(fr){
-    fr.src = 'https://www.openstreetmap.org/export/embed.html?bbox='+
-      (lng-d)+'%2C'+(lat-d)+'%2C'+(lng+d)+'%2C'+(lat+d)+'&layer=mapnik&marker='+lat+'%2C'+lng;
-  }
+// Carga la librería de mapas (Leaflet) la primera vez y arma el mapa. Es un
+// mapa interactivo de verdad: al tocarlo, el marcador se mueve ahí y el sistema
+// SÍ se entera de la posición. El intento anterior era una imagen fija dentro
+// de un recuadro, así que arrastrarla no informaba nada.
+function cargarLeafletYMapa(){
+  if(window.L && window.L.map){ armarMapaLocal(); return; }
   var co = document.getElementById('mapaLocalCoords');
-  if(co) co.textContent = 'Posición elegida: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+  if(co) co.textContent = 'Cargando mapa...';
+
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(css);
+
+  var js = document.createElement('script');
+  js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  js.onload = function(){ armarMapaLocal(); };
+  js.onerror = function(){
+    if(co) co.innerHTML = '<span style="color:var(--red)">No se pudo cargar el mapa. Revisá la conexión y volvé a abrirlo.</span>';
+  };
+  document.head.appendChild(js);
 }
 
-// Busca la dirección escrita y centra el mapa ahí.
+function armarMapaLocal(){
+  var cont = document.getElementById('mapaLocalCanvas');
+  if(!cont || !window.L) return;
+
+  if(window._mapaLocalObj){
+    try{ window._mapaLocalObj.remove(); }catch(e){}
+    window._mapaLocalObj = null;
+  }
+  cont.innerHTML = '';
+
+  var mapa = L.map(cont).setView([window._mapaLocalLat, window._mapaLocalLng], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(mapa);
+
+  var marcador = L.marker([window._mapaLocalLat, window._mapaLocalLng], {draggable:true}).addTo(mapa);
+
+  function fijar(lat, lng){
+    window._mapaLocalLat = lat;
+    window._mapaLocalLng = lng;
+    marcador.setLatLng([lat, lng]);
+    var co = document.getElementById('mapaLocalCoords');
+    if(co) co.textContent = 'Posición elegida: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+  }
+
+  mapa.on('click', function(e){ fijar(e.latlng.lat, e.latlng.lng); });
+  marcador.on('dragend', function(){
+    var p = marcador.getLatLng();
+    fijar(p.lat, p.lng);
+  });
+
+  window._mapaLocalObj = mapa;
+  window._mapaLocalMarcador = marcador;
+  fijar(window._mapaLocalLat, window._mapaLocalLng);
+
+  // El mapa necesita recalcular su tamaño después de que el recuadro se muestra
+  setTimeout(function(){ try{ mapa.invalidateSize(); }catch(e){} }, 250);
+}
+
 function buscarDireccionMapa(){
   var q = (document.getElementById('mapaLocalBuscar')||{}).value || '';
   if(!q.trim()) return;
@@ -20421,22 +20508,27 @@ function buscarDireccionMapa(){
   fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
     .then(function(r){ return r.json(); })
     .then(function(res){
-      if(!res || !res.length){ if(co) co.innerHTML = '<span style="color:var(--red)">No se encontró esa dirección. Probá escribiéndola distinto.</span>'; return; }
+      if(!res || !res.length){ if(co) co.innerHTML = '<span style="color:var(--red)">No se encontró esa dirección. Movés el mapa a mano y tocás el punto.</span>'; return; }
       window._mapaLocalLat = parseFloat(res[0].lat);
       window._mapaLocalLng = parseFloat(res[0].lon);
-      actualizarMapaLocal();
+      if(window._mapaLocalObj){
+        window._mapaLocalObj.setView([window._mapaLocalLat, window._mapaLocalLng], 17);
+        window._mapaLocalMarcador.setLatLng([window._mapaLocalLat, window._mapaLocalLng]);
+      }
+      if(co) co.textContent = 'Posición elegida: ' + window._mapaLocalLat.toFixed(6) + ', ' + window._mapaLocalLng.toFixed(6);
     })
-    .catch(function(){ if(co) co.innerHTML = '<span style="color:var(--red)">No se pudo buscar. Revisá la conexión.</span>'; });
+    .catch(function(){ if(co) co.innerHTML = '<span style="color:var(--red)">No se pudo buscar. Movés el mapa a mano y tocás el punto.</span>'; });
 }
 
 function guardarUbicacionDelMapa(){
+  if(window._mapaLocalLat == null){ showToast('Elegí un punto en el mapa primero', true); return; }
   if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
   window.__lrZonaCfg.lat = window._mapaLocalLat;
   window.__lrZonaCfg.lng = window._mapaLocalLng;
   window.__lrZonaCfg.aproximada = false;
   persistirZonaCfg();
   cerrarMapaLocal();
-  showToast('✅ Ubicación del local guardada');
+  showToast('✅ Ubicación guardada: ' + window._mapaLocalLat.toFixed(5) + ', ' + window._mapaLocalLng.toFixed(5));
   if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
 }
 
