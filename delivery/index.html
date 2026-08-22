@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787350893";
+  window.__LR_BUILD = "1787364670";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -9336,8 +9336,14 @@ function eliminarItemManual(id) {
 function cambiarCostoEnvio(valor) {
   var num = parseFloat(valor) || 0;
   window.__lrCostoEnvio = num;
-  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, num, window.__lrPrecioNocturnoCatalogo);
+  // Este campo y el "Envío urbano" de la sección Delivery son el MISMO número.
+  // Antes eran dos valores distintos y cada uno pisaba al otro, así que el
+  // monto parecía volver a cero solo.
+  if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+  window.__lrZonaCfg.costoUrbano = num;
+  if(window.__lrSaveDeliveryActivo) window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, num, window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto', window.__lrZonaCfg);
   showToast('🛵 Costo de envío actualizado: '+fmt(num));
+  if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
 }
 function cambiarPrecioNocturnoCatalogo(nocturno) {
   window.__lrPrecioNocturnoCatalogo = nocturno;
@@ -20321,9 +20327,10 @@ function renderConfigZonas(){
     '</div>'+
 
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
-      '<button onclick="marcarUbicacionLocal()" style="background:'+(tieneLocal?'transparent':'#D2201F')+';border:1px solid '+(tieneLocal?'var(--green)':'#D2201F')+';color:'+(tieneLocal?'var(--green)':'#fff')+';border-radius:6px;padding:10px 15px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">'+
-        (tieneLocal ? '✓ Ubicación del local guardada — volver a marcar' : '📍 Marcar ubicación del local')+
-      '</button>'+
+      // Elegir en el mapa es la forma cómoda desde la computadora; el GPS
+      // sirve si se está parado en el local con el celular.
+      '<button onclick="abrirMapaUbicacionLocal()" style="background:#D2201F;border:none;color:#fff;border-radius:6px;padding:10px 15px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗺️ Elegir en el mapa</button>'+
+      '<button onclick="marcarUbicacionLocal()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px 15px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📍 Usar mi GPS</button>'+
       '<a href="https://maps.google.com/?q='+z.lat+','+z.lng+'" target="_blank" style="font-size:.68rem;color:#1e90ff;text-decoration:none">Ver en el mapa</a>'+
       (z.aproximada
         ? '<div style="width:100%;font-size:.68rem;color:var(--gold);margin-top:6px">⚠ Ubicación aproximada (Av. Pascual Puente 774). Para que las distancias sean exactas, tocá el botón estando en el local.</div>'
@@ -20342,9 +20349,100 @@ function guardarZonaCfg(campo, valor){
 
 function persistirZonaCfg(){
   if(window.__lrSaveDeliveryActivo){
+    // Se pasa la configuración de zonas EXPLÍCITAMENTE: es lo que se acaba de
+    // editar, y dejarla librada al valor conservado podía perder el cambio.
     window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0,
-      window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto');
+      window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto', window.__lrZonaCfg);
   }
+}
+
+// Mapa para elegir la ubicación del local a mano, desde la computadora. Es la
+// forma cómoda de fijarla una sola vez sin tener que estar parado en el local
+// con el celular. Se usa OpenStreetMap, que no necesita ninguna clave ni cuenta.
+function abrirMapaUbicacionLocal(){
+  var z = window.__lrZonaCfg || {};
+  var lat = z.lat != null ? z.lat : -39.0136;
+  var lng = z.lng != null ? z.lng : -68.4319;
+
+  var ov = document.getElementById('mapaLocalOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'mapaLocalOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2450;display:flex;align-items:center;justify-content:center;padding:14px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:16px;width:720px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">📍 Ubicación del local</div>'+
+        '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Arrastrá el mapa hasta que la cruz roja quede justo sobre el local, y guardá. Se fija una sola vez.</div>'+
+        '<div style="position:relative;flex:1;min-height:380px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">'+
+          '<iframe id="mapaLocalFrame" style="width:100%;height:100%;min-height:380px;border:0" loading="lazy"></iframe>'+
+          // Cruz fija en el centro: la posición se toma del centro del mapa
+          '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:5">'+
+            '<div style="width:34px;height:34px;border:3px solid #D2201F;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.8)"></div>'+
+            '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:6px;height:6px;background:#D2201F;border-radius:50%"></div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">'+
+          '<input type="text" id="mapaLocalBuscar" placeholder="Buscar dirección..." value="Av. Pascual Puente 774, Senillosa, Neuquén" '+
+            'style="flex:2;min-width:200px;background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none">'+
+          '<button onclick="buscarDireccionMapa()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:9px 14px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔍 Buscar</button>'+
+        '</div>'+
+        '<div id="mapaLocalCoords" style="font-size:.68rem;color:var(--gray);margin-top:6px"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:10px">'+
+          '<button onclick="guardarUbicacionDelMapa()" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:6px;padding:12px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Guardar esta ubicación</button>'+
+          '<button onclick="cerrarMapaLocal()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:12px 20px;font-family:Oswald,sans-serif;font-size:.76rem;cursor:pointer">Cancelar</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  window._mapaLocalLat = lat;
+  window._mapaLocalLng = lng;
+  actualizarMapaLocal();
+}
+
+function actualizarMapaLocal(){
+  var lat = window._mapaLocalLat, lng = window._mapaLocalLng;
+  var d = 0.004; // zoom del recuadro visible
+  var fr = document.getElementById('mapaLocalFrame');
+  if(fr){
+    fr.src = 'https://www.openstreetmap.org/export/embed.html?bbox='+
+      (lng-d)+'%2C'+(lat-d)+'%2C'+(lng+d)+'%2C'+(lat+d)+'&layer=mapnik&marker='+lat+'%2C'+lng;
+  }
+  var co = document.getElementById('mapaLocalCoords');
+  if(co) co.textContent = 'Posición elegida: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+}
+
+// Busca la dirección escrita y centra el mapa ahí.
+function buscarDireccionMapa(){
+  var q = (document.getElementById('mapaLocalBuscar')||{}).value || '';
+  if(!q.trim()) return;
+  var co = document.getElementById('mapaLocalCoords');
+  if(co) co.textContent = 'Buscando...';
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(!res || !res.length){ if(co) co.innerHTML = '<span style="color:var(--red)">No se encontró esa dirección. Probá escribiéndola distinto.</span>'; return; }
+      window._mapaLocalLat = parseFloat(res[0].lat);
+      window._mapaLocalLng = parseFloat(res[0].lon);
+      actualizarMapaLocal();
+    })
+    .catch(function(){ if(co) co.innerHTML = '<span style="color:var(--red)">No se pudo buscar. Revisá la conexión.</span>'; });
+}
+
+function guardarUbicacionDelMapa(){
+  if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
+  window.__lrZonaCfg.lat = window._mapaLocalLat;
+  window.__lrZonaCfg.lng = window._mapaLocalLng;
+  window.__lrZonaCfg.aproximada = false;
+  persistirZonaCfg();
+  cerrarMapaLocal();
+  showToast('✅ Ubicación del local guardada');
+  if(typeof renderDeliveryPanel==='function') renderDeliveryPanel();
+}
+
+function cerrarMapaLocal(){
+  var ov = document.getElementById('mapaLocalOverlay');
+  if(ov) ov.style.display = 'none';
 }
 
 // Toma la ubicación actual como la del local. Hay que tocarlo estando EN el
