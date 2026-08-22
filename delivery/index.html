@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787369819";
+  window.__LR_BUILD = "1787401620";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1224,7 +1224,30 @@
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
     // Configuración de zonas de envío: el costo cambia según la distancia
     // entre la ubicación del cliente y la del local.
-    window.__lrZonaCfg = doc.exists ? (doc.data().zonaCfg || null) : null;
+    var zonaLeida = doc.exists ? (doc.data().zonaCfg || null) : null;
+    if(zonaLeida && zonaLeida.lat != null){
+      window.__lrZonaCfg = zonaLeida;
+      // Copia de respaldo en el propio dispositivo: si otro equipo borrara la
+      // configuración de la nube, se puede restaurar desde acá en vez de
+      // perderla y tener que cargarla de nuevo.
+      try{ localStorage.setItem('lr_zona_cfg_backup', JSON.stringify(zonaLeida)); }catch(e){}
+    } else {
+      // No vino en la nube: intentar recuperarla del respaldo local antes de
+      // caer en los valores por defecto.
+      var respaldo = null;
+      try{ respaldo = JSON.parse(localStorage.getItem('lr_zona_cfg_backup')||'null'); }catch(e){}
+      if(respaldo && respaldo.lat != null){
+        window.__lrZonaCfg = respaldo;
+        // Y volver a subirla, porque en la nube ya no está.
+        setTimeout(function(){
+          if(window.__lrSaveDeliveryActivo){
+            window.__lrSaveDeliveryActivo(undefined, undefined, undefined, undefined, respaldo);
+          }
+        }, 1500);
+      } else {
+        window.__lrZonaCfg = null;
+      }
+    }
     // Ubicación del local (Av. Pascual Puente 774, Senillosa). Queda fija como
     // valor de arranque para que las zonas de envío funcionen desde el primer
     // pedido, sin depender de que alguien se acuerde de marcarla. Se puede
@@ -1263,15 +1286,29 @@
       activo: (activo !== undefined && activo !== null) ? activo : (window.__lrDeliveryActivo !== false),
       costoEnvio: (costoEnvio !== undefined && costoEnvio !== null) ? costoEnvio : (window.__lrCostoEnvio || 0),
       precioNocturno: (precioNocturno !== undefined && precioNocturno !== null) ? !!precioNocturno : !!window.__lrPrecioNocturnoCatalogo,
-      modo: modo || window.__lrModoDelivery || 'auto',
-      zonaCfg: zonaCfg || window.__lrZonaCfg || null
+      modo: modo || window.__lrModoDelivery || 'auto'
     };
+    // La configuración de zonas SOLO se incluye si realmente hay algo que
+    // escribir. Si no, no se toca el campo: así un dispositivo que todavía no
+    // la conoce no puede borrarla.
+    var zc = zonaCfg || window.__lrZonaCfg;
+    if(zc && zc.lat != null) datos.zonaCfg = zc;
+
     // Mantener sincronizadas las copias en memoria
     window.__lrDeliveryActivo = datos.activo;
     window.__lrCostoEnvio = datos.costoEnvio;
     window.__lrModoDelivery = datos.modo;
-    window.__lrZonaCfg = datos.zonaCfg;
-    return window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set(datos)
+    if(datos.zonaCfg) window.__lrZonaCfg = datos.zonaCfg;
+
+    // merge:true — actualiza SOLO los campos enviados, sin borrar el resto.
+    //
+    // Sin esto, cada escritura reemplazaba el documento entero: bastaba con que
+    // otro dispositivo (por ejemplo la netbook del local, corriendo todavía una
+    // versión anterior) guardara el estado del delivery sin incluir la
+    // configuración de zonas, para que esa configuración se borrara. Por eso
+    // los montos y la ubicación desaparecían solos al rato de cargarlos, sin
+    // que nadie los tocara.
+    return window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set(datos, {merge:true})
       .then(function(){
         // Verificación real: releer lo que quedó guardado. Si algo no se
         // escribió, hay que enterarse en el momento, no dos días después.
