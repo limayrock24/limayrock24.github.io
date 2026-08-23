@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787468731";
+  window.__LR_BUILD = "1787468907";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -8811,9 +8811,20 @@ function sugerirClienteFiado() {
   box.innerHTML = '';
   matches.forEach(function(n){
     var deuda = clientes[n];
-    var deudaHtml = deuda>0
-      ? '<span style="color:#9B59B6;font-family:Oswald,sans-serif;font-size:.75rem">debe '+fmt(deuda)+'</span>'
-      : '<span style="color:var(--green);font-size:.7rem">al día</span>';
+    // El monto adeudado es información sensible: solo lo ve el administrador.
+    // El empleado necesita saber que el cliente YA TIENE cuenta (para no crear
+    // una repetida), pero no cuánto debe.
+    var esAdmin = currentEmp && currentEmp.rol === 'admin';
+    var deudaHtml;
+    if(esAdmin){
+      deudaHtml = deuda>0
+        ? '<span style="color:#9B59B6;font-family:Oswald,sans-serif;font-size:.75rem">debe '+fmt(deuda)+'</span>'
+        : '<span style="color:var(--green);font-size:.7rem">al día</span>';
+    } else {
+      deudaHtml = deuda>0
+        ? '<span style="color:#9B59B6;font-size:.7rem">con cuenta</span>'
+        : '<span style="color:var(--green);font-size:.7rem">al día</span>';
+    }
     var div = document.createElement('div');
     div.style.cssText='padding:8px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center';
     div.innerHTML = '<span>'+n+'</span>'+deudaHtml;
@@ -12994,9 +13005,15 @@ function sugerirClienteFiadoParcial(){
   cont.innerHTML = coincid.map(function(n){
     var deuda = getFiados().filter(function(f){ return f.cliente===n && !f.pagado; })
                            .reduce(function(s,f){ return s+(f.total-(f.pagadoParcial||0)); },0);
+    // Solo el administrador ve cuánto debe. El empleado ve que ya tiene cuenta.
+    var esAdmin2 = currentEmp && currentEmp.rol === 'admin';
+    var etiqueta = deuda>0
+      ? (esAdmin2 ? '<span style="color:var(--red);font-size:.7rem">debe '+fmt(deuda)+'</span>'
+                  : '<span style="color:#9B59B6;font-size:.7rem">con cuenta</span>')
+      : '';
     return '<div onclick="elegirClienteFiadoParcial(\''+n.replace(/'/g,"\\'")+'\')" style="padding:7px 9px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:.78rem;display:flex;justify-content:space-between">'+
       '<span style="color:var(--light)">'+n+'</span>'+
-      (deuda>0?'<span style="color:var(--red);font-size:.7rem">debe '+fmt(deuda)+'</span>':'')+
+      etiqueta+
     '</div>';
   }).join('');
 }
