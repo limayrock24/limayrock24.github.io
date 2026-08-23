@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787419685";
+  window.__LR_BUILD = "1787456415";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -6015,19 +6015,30 @@ function chequearSesionInterrumpida() {
   var sesion = getSesionActivaGuardada();
   if(!sesion) return false;
 
-  var hoyStr = fechaLocalStr(new Date());
-  var sesionEsDeHoy = sesion.turnoInicio && fechaLocalStr(new Date(sesion.turnoInicio)) === hoyStr;
+  // Un turno se considera "en curso" por las HORAS que pasaron, no por el día
+  // del calendario.
+  //
+  // El local trabaja de noche: un turno que arranca 00:08 y sigue hasta las 6
+  // de la mañana cruza el cambio de día. Con la comparación por fecha, al
+  // recargar la página el sistema veía un turno "de ayer", lo cerraba solo y
+  // mandaba al login sin preguntar nada — perdiendo el efectivo inicial y
+  // obligando a contar la caja de nuevo a mitad del turno. Ahora se ofrece
+  // retomarlo mientras no hayan pasado más de 16 horas desde que abrió.
+  var horasDesdeInicio = sesion.turnoInicio
+    ? (Date.now() - new Date(sesion.turnoInicio).getTime()) / 3600000
+    : 999;
+  var sesionEnCurso = sesion.turnoInicio && horasDesdeInicio < 16;
 
-  if(sesionEsDeHoy){
+  if(sesionEnCurso){
     document.getElementById('sesionRecTexto').innerHTML =
       '<b style="color:var(--gold)">'+sesion.nombre+'</b> empezó turno a las '+
       new Date(sesion.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
-      ' y no lo cerró — probablemente se apagó la netbook o se cerró el sistema.';
+      ' y no lo cerró — probablemente se apagó la netbook, se recargó la página o se cerró el sistema.';
     document.getElementById('sesionRecOverlay').classList.add('open');
     return true;
   } else {
     // Quedó de un día anterior: se cierra solo, sin bloquear el uso de hoy
-    var ok = cerrarTurnoInterrumpido(sesion, 'Turno de un día anterior, cerrado automáticamente al reabrir el sistema');
+    var ok = cerrarTurnoInterrumpido(sesion, 'Turno de más de 16 horas sin cerrar, cerrado automáticamente al reabrir el sistema');
     if(ok){
       limpiarSesionActiva(sesion.nombre);
     } else {
