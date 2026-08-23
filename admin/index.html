@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787456415";
+  window.__LR_BUILD = "1787468731";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -8983,7 +8983,7 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-fiado','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
@@ -9016,6 +9016,13 @@ function setupOpButtons() {
   btnF.innerHTML = '📋 Fiado';
   btnF.onclick = function(){ selOpFiado(); };
   opBtns.appendChild(btnF);
+
+  // Fiado parcial: paga una parte ahora y queda debiendo el resto
+  var btnFP = document.createElement('button');
+  btnFP.className = 'op-btn'; btnFP.id = 'op-fiado-parcial';
+  btnFP.innerHTML = '📋½ Fiado parcial';
+  btnFP.onclick = function(){ abrirFiadoParcial(); };
+  opBtns.appendChild(btnFP);
 
   // Separador visual
   var sep = document.createElement('div');
@@ -12862,6 +12869,209 @@ function selOpFiado() {
     cb.style.color = '#fff';
   }
   showVuelto(false);
+}
+
+// ── FIADO PARCIAL ───────────────────────────────────────────────────────────
+// El cliente paga una parte ahora y queda debiendo el resto. Ejemplo: la compra
+// es $5.000, paga $4.700 y quedan $300 anotados en su cuenta.
+//
+// Los números quedan así: a la caja del turno entran SOLO los $4.700, los $300
+// van a la cuenta corriente del cliente, y el stock se descuenta completo
+// porque se llevó toda la mercadería.
+var _fpMedio = null;
+
+function abrirFiadoParcial() {
+  if(!cart.length){ showToast('El carrito está vacío', true); return; }
+  var total = cart.reduce(function(s,i){ return s+i.subtotal; }, 0);
+  _fpMedio = null;
+
+  var ov = document.getElementById('fiadoParcialOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'fiadoParcialOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:400px;max-width:96vw;max-height:90vh;overflow-y:auto">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:#E67E22;text-transform:uppercase;margin-bottom:4px">📋½ Fiado parcial</div>'+
+        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:14px">Paga una parte ahora y queda debiendo el resto.</div>'+
+
+        '<div style="background:var(--dark);border-radius:7px;padding:12px;margin-bottom:14px">'+
+          '<div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--gray)">'+
+            '<span>Total de la compra</span><b id="fpTotal" style="color:var(--white);font-family:Oswald,sans-serif;font-size:1.1rem">—</b>'+
+          '</div>'+
+        '</div>'+
+
+        '<div class="field">'+
+          '<label>¿Cuánto paga ahora?</label>'+
+          '<input type="text" inputmode="numeric" id="fpPaga" placeholder="0" oninput="formatMontoInput(this);calcularRestoFiadoParcial()">'+
+        '</div>'+
+
+        '<div id="fpResto" style="font-size:.85rem;padding:10px 12px;border-radius:6px;margin-bottom:12px;display:none"></div>'+
+
+        '<div class="field">'+
+          '<label>¿Con qué paga esa parte?</label>'+
+          '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
+            '<button type="button" id="fpMedioEfectivo" onclick="selFpMedio(\'Efectivo\')" class="pago-btn" style="flex:1;min-width:95px">💵 Efectivo</button>'+
+            '<button type="button" id="fpMedioTransferencia" onclick="selFpMedio(\'Transferencia\')" class="pago-btn" style="flex:1;min-width:95px">📲 Transferencia</button>'+
+            '<button type="button" id="fpMedioDébito" onclick="selFpMedio(\'Débito\')" class="pago-btn" style="flex:1;min-width:95px">💳 Posnet</button>'+
+          '</div>'+
+        '</div>'+
+
+        '<div class="field">'+
+          '<label>¿Quién queda debiendo?</label>'+
+          '<input type="text" id="fpCliente" placeholder="Nombre del cliente" autocomplete="off" oninput="sugerirClienteFiadoParcial()">'+
+          '<div id="fpSugerencias" style="max-height:130px;overflow-y:auto;margin-top:4px"></div>'+
+          '<input type="tel" id="fpTelefono" placeholder="Teléfono (opcional)" style="margin-top:6px">'+
+        '</div>'+
+
+        '<div style="display:flex;gap:8px;margin-top:6px">'+
+          '<button onclick="confirmarFiadoParcial()" style="flex:1;background:#E67E22;color:#1a1a1a;border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Confirmar</button>'+
+          '<button onclick="cerrarFiadoParcial()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:13px 18px;font-family:Oswald,sans-serif;font-size:.76rem;cursor:pointer">Cancelar</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  document.getElementById('fpTotal').textContent = fmt(total);
+  document.getElementById('fpPaga').value = '';
+  document.getElementById('fpCliente').value = '';
+  document.getElementById('fpTelefono').value = '';
+  document.getElementById('fpSugerencias').innerHTML = '';
+  document.getElementById('fpResto').style.display = 'none';
+  document.querySelectorAll('#fiadoParcialOverlay .pago-btn').forEach(function(b){ b.classList.remove('selected'); });
+  setTimeout(function(){ document.getElementById('fpPaga').focus(); }, 120);
+}
+
+function cerrarFiadoParcial(){
+  var ov = document.getElementById('fiadoParcialOverlay');
+  if(ov) ov.style.display = 'none';
+}
+
+function selFpMedio(m){
+  _fpMedio = m;
+  document.querySelectorAll('#fiadoParcialOverlay .pago-btn').forEach(function(b){ b.classList.remove('selected'); });
+  var b = document.getElementById('fpMedio'+m);
+  if(b) b.classList.add('selected');
+}
+
+function calcularRestoFiadoParcial(){
+  var total = cart.reduce(function(s,i){ return s+i.subtotal; }, 0);
+  var paga = getMontoInputValue('fpPaga') || 0;
+  var el = document.getElementById('fpResto');
+  if(!el) return;
+  if(paga <= 0){ el.style.display='none'; return; }
+  var resto = total - paga;
+  el.style.display = 'block';
+  if(resto > 0){
+    el.style.background = 'rgba(230,126,34,.12)';
+    el.style.color = '#E67E22';
+    el.innerHTML = 'Queda debiendo <b>'+fmt(resto)+'</b>';
+  } else if(resto === 0){
+    el.style.background = 'rgba(46,204,113,.12)';
+    el.style.color = 'var(--green)';
+    el.innerHTML = 'Paga todo — no queda deuda. Podés usar el cobro normal.';
+  } else {
+    el.style.background = 'rgba(204,0,0,.12)';
+    el.style.color = 'var(--red)';
+    el.innerHTML = 'Está pagando <b>'+fmt(Math.abs(resto))+'</b> de más';
+  }
+}
+
+// Sugiere clientes que ya tienen cuenta, para sumar la deuda al mismo en vez
+// de crear uno repetido con el nombre escrito distinto.
+function sugerirClienteFiadoParcial(){
+  var term = (document.getElementById('fpCliente').value||'').toLowerCase().trim();
+  var cont = document.getElementById('fpSugerencias');
+  if(!cont) return;
+  if(term.length < 2){ cont.innerHTML=''; return; }
+  var nombres = {};
+  getFiados().forEach(function(f){ if(f.cliente) nombres[f.cliente] = true; });
+  var coincid = Object.keys(nombres).filter(function(n){
+    return n.toLowerCase().indexOf(term) !== -1;
+  }).slice(0,5);
+  if(!coincid.length){ cont.innerHTML=''; return; }
+  cont.innerHTML = coincid.map(function(n){
+    var deuda = getFiados().filter(function(f){ return f.cliente===n && !f.pagado; })
+                           .reduce(function(s,f){ return s+(f.total-(f.pagadoParcial||0)); },0);
+    return '<div onclick="elegirClienteFiadoParcial(\''+n.replace(/'/g,"\\'")+'\')" style="padding:7px 9px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer;font-size:.78rem;display:flex;justify-content:space-between">'+
+      '<span style="color:var(--light)">'+n+'</span>'+
+      (deuda>0?'<span style="color:var(--red);font-size:.7rem">debe '+fmt(deuda)+'</span>':'')+
+    '</div>';
+  }).join('');
+}
+
+function elegirClienteFiadoParcial(nombre){
+  document.getElementById('fpCliente').value = nombre;
+  document.getElementById('fpSugerencias').innerHTML = '';
+  var f = getFiados().find(function(x){ return x.cliente===nombre && x.telefono; });
+  if(f && f.telefono) document.getElementById('fpTelefono').value = f.telefono;
+}
+
+function confirmarFiadoParcial(){
+  var total = cart.reduce(function(s,i){ return s+i.subtotal; }, 0);
+  var paga = getMontoInputValue('fpPaga') || 0;
+  var resto = total - paga;
+  var nombre = (document.getElementById('fpCliente').value||'').trim();
+  var tel = (document.getElementById('fpTelefono').value||'').trim();
+
+  if(paga <= 0){ showToast('Poné cuánto paga ahora', true); return; }
+  if(resto <= 0){ showToast('No queda deuda — usá el cobro normal', true); return; }
+  if(!_fpMedio){ showToast('Elegí con qué paga esa parte', true); return; }
+  if(!nombre){ showToast('Escribí quién queda debiendo', true); return; }
+
+  var itemsCopia = JSON.parse(JSON.stringify(cart));
+  var ahora = new Date().toISOString();
+
+  // 1) La parte que SÍ se cobró entra como venta normal, por el monto pagado
+  var venta = {
+    id:       Date.now(),
+    fecha:    ahora,
+    empleado: currentEmp ? currentEmp.nombre : '—',
+    turno:    turnoActual(),
+    medio:    _fpMedio,
+    subtotal: paga,
+    recargo:  0,
+    total:    paga,
+    items:    itemsCopia,
+    esFiadoParcial: true,
+    cliente:  nombre,
+    nota:     'Pago parcial de '+nombre+' — quedó debiendo '+fmt(resto),
+    anulada:  false
+  };
+  VENTAS.push(venta);
+  saveVentas(VENTAS);
+
+  // 2) El resto queda anotado en la cuenta corriente del cliente
+  var fiados = getFiados();
+  fiados.push({
+    id:        Date.now()+1,
+    fecha:     ahora,
+    cliente:   nombre,
+    telefono:  tel,
+    empleado:  currentEmp ? currentEmp.nombre : '—',
+    turno:     turnoActual(),
+    items:     itemsCopia,
+    total:     resto,
+    pagado:    false,
+    fechaPago: null,
+    nota:      'Saldo de una compra de '+fmt(total)+' — pagó '+fmt(paga)+' en '+_fpMedio
+  });
+  saveFiados(fiados);
+
+  // 3) El stock se descuenta COMPLETO: se llevó toda la mercadería
+  descontarStock(cart, 'venta');
+  updateProdCount(cart);
+  registrarOperacion('fiado-parcial', itemsCopia, paga, currentEmp?currentEmp.nombre:'—',
+    'Pago parcial de '+nombre+' ('+_fpMedio+') — debe '+fmt(resto));
+
+  cerrarFiadoParcial();
+  cart = []; pagoSel = null;
+  updateCart(); resetOpButtons();
+  document.getElementById('cartPanel').classList.remove('open');
+  buildFavs(); filterAll();
+  if(typeof updateStockNotif==='function') updateStockNotif();
+
+  showToast('✅ Cobrado '+fmt(paga)+' — '+nombre+' quedó debiendo '+fmt(resto));
 }
 
 function registrarFiado() {
