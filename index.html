@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787613654";
+  window.__LR_BUILD = "1787613957";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4314,7 +4314,8 @@ body.night-on{background:#080005}
         <input type="hidden" id="mprogId" value="">
         <div class="field">
           <label>Mensaje</label>
-          <textarea id="mprogTexto" placeholder="Ej: Recordá reponer las góndolas y mantener la limpieza" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;min-height:70px;resize:vertical"></textarea>
+          <textarea id="mprogTexto" placeholder="Pedido Loguiquen&#10;&#10;* 12u Imperial 473cc&#10;* 6u Heineken 710" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;min-height:120px;resize:vertical;line-height:1.5"></textarea>
+          <div style="font-size:.64rem;color:var(--gray);margin-top:4px">💡 Podés usar varias líneas. Las que empiecen con <b>*</b> o <b>-</b> se muestran como lista.</div>
         </div>
         <div class="field" style="margin-top:10px">
           <label>¿Cuándo se muestra?</label>
@@ -20333,7 +20334,7 @@ function renderMensajesPanel() {
           var fechaColor = esPasado ? 'var(--red)' : (esHoy ? 'var(--green)' : 'var(--gold)');
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin-bottom:6px">'+
             '<div><div style="font-size:.78rem;color:var(--white)">'+m.empleado+' <span style="color:'+fechaColor+';font-size:.65rem">· '+fechaTxt+(esPasado?' (atrasado)':'')+'</span></div>'+
-            '<div style="font-size:.72rem;color:var(--gray);margin-top:2px">'+m.texto+'</div></div>'+
+            '<div style="font-size:.72rem;color:var(--gray);margin-top:2px;line-height:1.4">'+formatearTextoMensaje(m.texto)+'</div></div>'+
             '<button onclick="eliminarMensajePuntual('+m.id+')" style="background:none;border:none;color:rgba(204,0,0,.5);font-size:.85rem;cursor:pointer">🗑</button>'+
           '</div>';
         }).join('');
@@ -20353,7 +20354,7 @@ function renderMensajesPanel() {
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
             '<div style="flex:1">'+
               '<div style="font-size:.68rem;color:var(--gold);font-family:Oswald,sans-serif">'+momentoLabel[m.momento]+(m.momento==='durante'?' cada '+(m.intervaloHoras||2)+'h':'')+'</div>'+
-              '<div style="font-size:.82rem;color:var(--white);margin-top:3px">'+m.texto+'</div>'+
+              '<div style="font-size:.82rem;color:var(--white);margin-top:3px;line-height:1.4">'+formatearTextoMensaje(m.texto)+'</div>'+
               '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">Para: '+destTxt+'</div>'+
             '</div>'+
             '<div style="display:flex;gap:4px;flex-shrink:0">'+
@@ -20509,6 +20510,39 @@ function mostrarMensajesAlIniciar() {
   if(cola.length) mostrarColaMensajes(cola);
   iniciarChequeoMensajesDurante();
 }
+// Convierte el texto de un mensaje en HTML respetando cómo fue escrito:
+// los saltos de línea se mantienen y las líneas que empiezan con * o - se
+// muestran como viñetas de verdad.
+//
+// Antes el texto se insertaba tal cual como HTML, y el navegador ignora los
+// saltos de línea: un pedido escrito en varias líneas salía todo pegado en un
+// renglón, difícil de leer y fácil de confundir al armarlo.
+function formatearTextoMensaje(txt) {
+  if(!txt) return '';
+  // Escapar primero, para que el texto del mensaje no pueda romper la pantalla
+  var seguro = String(txt)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  var lineas = seguro.split(/\r?\n/);
+  var html = '';
+  var enLista = false;
+
+  lineas.forEach(function(linea){
+    var t = linea.trim();
+    var esVineta = /^[*\-•]\s+/.test(t);
+    if(esVineta){
+      if(!enLista){ html += '<ul style="margin:6px 0 6px 4px;padding-left:18px">'; enLista = true; }
+      html += '<li style="margin:3px 0">' + t.replace(/^[*\-•]\s+/,'') + '</li>';
+    } else {
+      if(enLista){ html += '</ul>'; enLista = false; }
+      if(!t){ html += '<div style="height:7px"></div>'; }
+      else { html += '<div style="margin:2px 0">' + t + '</div>'; }
+    }
+  });
+  if(enLista) html += '</ul>';
+  return html;
+}
+
 function mostrarColaMensajes(cola) {
   _mensajeQueueMostrar = _mensajeQueueMostrar.concat(cola);
   if(!document.getElementById('empMensajeOverlay').classList.contains('open')){
@@ -20519,7 +20553,7 @@ var _mensajesDelTurno = [];
 function mostrarSiguienteMensajeEmpleado() {
   if(!_mensajeQueueMostrar.length) return;
   var texto = _mensajeQueueMostrar.shift();
-  document.getElementById('empMensajeTexto').innerHTML = texto;
+  document.getElementById('empMensajeTexto').innerHTML = formatearTextoMensaje(texto);
   var restantes = _mensajeQueueMostrar.length;
   var contador = document.getElementById('empMensajeContador');
   if(contador) contador.textContent = restantes>0 ? 'Hay '+restantes+' mensaje'+(restantes>1?'s':'')+' más después de este' : '';
@@ -20550,7 +20584,7 @@ function abrirHistorialMensajes() {
     lista.innerHTML = _mensajesDelTurno.slice().reverse().map(function(m){
       return '<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)">'+
         '<div style="font-size:.66rem;color:var(--gray);margin-bottom:2px">'+m.hora+'</div>'+
-        '<div style="font-size:.85rem;color:var(--white);line-height:1.4">'+m.texto+'</div>'+
+        '<div style="font-size:.85rem;color:var(--white);line-height:1.45">'+formatearTextoMensaje(m.texto)+'</div>'+
       '</div>';
     }).join('');
   }
