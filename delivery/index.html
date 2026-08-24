@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787613957";
+  window.__LR_BUILD = "1787614838";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -6089,9 +6089,12 @@ function retomarSesionInterrumpida() {
   cart=[]; pagoSel=null; tipoOp='venta';
   updateCart();
   buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); actualizarDeliveryPendBadge(); iniciarBackupAutomatico();
-  _mensajesDelTurno = [];
-  actualizarBadgeMensajes();
-  showToast('↩️ Turno retomado — seguís donde lo dejaste');
+  // Recuperar los mensajes que ya había recibido en este mismo turno
+  restaurarMensajesTurno();
+  var cuantosMsj = _mensajesDelTurno.length;
+  showToast(cuantosMsj
+    ? '↩️ Turno retomado — tenés '+cuantosMsj+' mensaje'+(cuantosMsj===1?'':'s')+' guardado'+(cuantosMsj===1?'':'s')
+    : '↩️ Turno retomado — seguís donde lo dejaste');
   guardarSesionActiva();
 }
 
@@ -8244,7 +8247,10 @@ function confirmarEfectivoInicial() {
     showToast('Turno iniciado con $'+Number(monto).toLocaleString('es-AR')+' en caja');
   }
 
+  // Turno nuevo: arranca sin mensajes, y se limpia también lo guardado del
+  // turno anterior para que no se mezclen.
   _mensajesDelTurno = [];
+  guardarMensajesTurno();
   actualizarBadgeMensajes();
   if(typeof mostrarMensajesAlIniciar==='function') mostrarMensajesAlIniciar();
   guardarSesionActiva();
@@ -20548,6 +20554,46 @@ function mostrarColaMensajes(cola) {
     mostrarSiguienteMensajeEmpleado();
   }
 }
+// Mensajes recibidos durante el turno.
+//
+// Se guardan en el propio dispositivo y NO solo en memoria: antes, si se
+// recargaba la pantalla (F5, una actualización del sistema, o se cerraba y se
+// retomaba el turno), la lista se vaciaba y el empleado perdía los mensajes
+// que le habían dejado — justo lo que necesita tener a mano para armar un
+// pedido o cumplir una indicación.
+var SK_MENSAJES_TURNO = 'lr_mensajes_turno';
+
+function leerMensajesTurno(){
+  try{
+    var d = JSON.parse(localStorage.getItem(SK_MENSAJES_TURNO)||'null');
+    if(!d || !d.desde || !Array.isArray(d.lista)) return null;
+    return d;
+  }catch(e){ return null; }
+}
+
+function guardarMensajesTurno(){
+  try{
+    localStorage.setItem(SK_MENSAJES_TURNO, JSON.stringify({
+      desde: (currentEmp && currentEmp.turnoInicio) ? currentEmp.turnoInicio : null,
+      empleado: currentEmp ? currentEmp.nombre : '',
+      lista: _mensajesDelTurno
+    }));
+  }catch(e){}
+}
+
+// Recupera los mensajes si son del MISMO turno que se está retomando. Si es un
+// turno nuevo (otro empleado u otro horario de inicio), arranca limpio.
+function restaurarMensajesTurno(){
+  var d = leerMensajesTurno();
+  if(d && currentEmp && d.desde === currentEmp.turnoInicio && d.empleado === currentEmp.nombre){
+    _mensajesDelTurno = d.lista || [];
+  } else {
+    _mensajesDelTurno = [];
+    guardarMensajesTurno();
+  }
+  actualizarBadgeMensajes();
+}
+
 var _mensajesDelTurno = [];
 function mostrarSiguienteMensajeEmpleado() {
   if(!_mensajeQueueMostrar.length) return;
@@ -20558,6 +20604,7 @@ function mostrarSiguienteMensajeEmpleado() {
   if(contador) contador.textContent = restantes>0 ? 'Hay '+restantes+' mensaje'+(restantes>1?'s':'')+' más después de este' : '';
   document.getElementById('empMensajeOverlay').classList.add('open');
   _mensajesDelTurno.push({ texto: texto, hora: new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) });
+  guardarMensajesTurno();
   actualizarBadgeMensajes();
 }
 function cerrarMensajeEmpleado() {
