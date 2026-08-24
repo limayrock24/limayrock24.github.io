@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787542123";
+  window.__LR_BUILD = "1787613654";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1847,7 +1847,9 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
 .header-actions{display:flex;gap:7px;align-items:center}
 .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .header-count{font-family:'Oswald',sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
-.turno-badge{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px 9px;font-size:.68rem;font-family:'Oswald',sans-serif;letter-spacing:1px;color:var(--light)}
+.turno-badge{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px 9px;font-size:.68rem;font-family:'Oswald',sans-serif;letter-spacing:1px;color:var(--light);transition:.12s}
+/* Se toca para ver los consumos propios del mes */
+#badgeEmpleado:hover{border-color:#16A085;color:#16A085}
 .turno-badge span{color:var(--green)}
 
 /* BUTTONS */
@@ -3075,7 +3077,7 @@ body.night-on{background:#080005}
     </div>
     <div class="header-right">
       <span class="header-count">⚡ <strong id="totalCount">4 / 716</strong> productos</span>
-      <span class="turno-badge">👤 <span id="empActual">Martin · Nocturno</span></span>
+      <span class="turno-badge" id="badgeEmpleado" onclick="abrirMisConsumos()" title="Ver mis consumos del mes" style="cursor:pointer">👤 <span id="empActual">Martin · Nocturno</span> <span style="opacity:.5;font-size:.85em">▾</span></span>
       <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
       <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
       <button id="btnAnularUltimas" onclick="abrirAnularUltimas()" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">↩ Anular venta</button>
@@ -8994,7 +8996,7 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-mis-consumos','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
@@ -9048,14 +9050,6 @@ function setupOpButtons() {
   btnCF.style.cssText = 'border-color:#9B59B6;color:#9B59B6;grid-column:1/-1';
   btnCF.onclick = function(){ abrirListaFiadosRecep(); };
   opBtns.appendChild(btnCF);
-
-  // Mis consumos: solo lectura, del mes en curso
-  var btnMC = document.createElement('button');
-  btnMC.className = 'op-btn'; btnMC.id = 'op-mis-consumos';
-  btnMC.innerHTML = '📊 Mis consumos del mes';
-  btnMC.style.cssText = 'border-color:#16A085;color:#16A085;grid-column:1/-1';
-  btnMC.onclick = function(){ abrirMisConsumos(); };
-  opBtns.appendChild(btnMC);
 
   // Consumo de empleado: disponible para todos (acción directa)
   var btnCE = document.createElement('button');
