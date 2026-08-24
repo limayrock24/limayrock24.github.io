@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787468907";
+  window.__LR_BUILD = "1787542123";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -8994,7 +8994,7 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-mis-consumos','op-sep'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
@@ -9048,6 +9048,14 @@ function setupOpButtons() {
   btnCF.style.cssText = 'border-color:#9B59B6;color:#9B59B6;grid-column:1/-1';
   btnCF.onclick = function(){ abrirListaFiadosRecep(); };
   opBtns.appendChild(btnCF);
+
+  // Mis consumos: solo lectura, del mes en curso
+  var btnMC = document.createElement('button');
+  btnMC.className = 'op-btn'; btnMC.id = 'op-mis-consumos';
+  btnMC.innerHTML = '📊 Mis consumos del mes';
+  btnMC.style.cssText = 'border-color:#16A085;color:#16A085;grid-column:1/-1';
+  btnMC.onclick = function(){ abrirMisConsumos(); };
+  opBtns.appendChild(btnMC);
 
   // Consumo de empleado: disponible para todos (acción directa)
   var btnCE = document.createElement('button');
@@ -12890,6 +12898,91 @@ function selOpFiado() {
 // van a la cuenta corriente del cliente, y el stock se descuenta completo
 // porque se llevó toda la mercadería.
 var _fpMedio = null;
+
+// ── MIS CONSUMOS (solo lectura) ─────────────────────────────────────────────
+// Cada empleado puede ver lo que consumió en el mes en curso, sin poder
+// modificar ni borrar nada. Solo lo suyo: no ve los consumos de los demás.
+function abrirMisConsumos() {
+  if(!currentEmp) return;
+  var yo = currentEmp.nombre;
+  var ahora = new Date();
+  var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+
+  var mios = getConsumos().filter(function(cn){
+    return cn.empleado === yo && new Date(cn.fecha) >= inicioMes;
+  }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+
+  var total = mios.reduce(function(s,cn){ return s + (cn.total||0); }, 0);
+  var pendiente = mios.filter(function(cn){ return !cn.saldado; })
+                      .reduce(function(s,cn){ return s + (cn.total||0); }, 0);
+
+  var nombreMes = ahora.toLocaleDateString('es-AR', {month:'long', year:'numeric'});
+
+  var ov = document.getElementById('misConsumosOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'misConsumosOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:430px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:#16A085;text-transform:uppercase;margin-bottom:2px">📊 Mis consumos</div>'+
+        '<div id="mcSubtitulo" style="font-size:.7rem;color:var(--gray);margin-bottom:12px"></div>'+
+        '<div id="mcResumen" style="margin-bottom:12px"></div>'+
+        '<div id="mcLista" style="flex:1;overflow-y:auto"></div>'+
+        '<button onclick="cerrarMisConsumos()" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cerrar</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+
+  document.getElementById('mcSubtitulo').textContent = yo + ' · ' + nombreMes;
+
+  document.getElementById('mcResumen').innerHTML =
+    '<div style="display:flex;gap:8px">'+
+      '<div style="flex:1;background:var(--dark);border-radius:7px;padding:11px;text-align:center">'+
+        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Consumido este mes</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:var(--white)">'+fmt(total)+'</div>'+
+      '</div>'+
+      (pendiente>0
+        ? '<div style="flex:1;background:rgba(230,126,34,.10);border:1px solid rgba(230,126,34,.35);border-radius:7px;padding:11px;text-align:center">'+
+            '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">A descontar</div>'+
+            '<div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:#E67E22">'+fmt(pendiente)+'</div>'+
+          '</div>'
+        : '<div style="flex:1;background:rgba(46,204,113,.10);border:1px solid rgba(46,204,113,.35);border-radius:7px;padding:11px;text-align:center">'+
+            '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Estado</div>'+
+            '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green)">Al día</div>'+
+          '</div>')+
+    '</div>';
+
+  var lista = document.getElementById('mcLista');
+  if(!mios.length){
+    lista.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px 20px;font-size:.85rem">No tenés consumos registrados este mes</div>';
+    return;
+  }
+
+  lista.innerHTML = mios.map(function(cn){
+    var f = new Date(cn.fecha);
+    var fechaTxt = f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) + ' ' +
+                   f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    var prods = (cn.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
+    return '<div style="padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.05)">'+
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.8rem;color:var(--light);line-height:1.4">'+prods+'</div>'+
+          '<div style="font-size:.65rem;color:var(--gray);margin-top:2px">'+fechaTxt+
+            (cn.saldado ? ' · <span style="color:var(--green)">saldado</span>' : ' · <span style="color:#E67E22">a descontar</span>')+
+          '</div>'+
+        '</div>'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--gold);white-space:nowrap">'+fmt(cn.total)+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function cerrarMisConsumos(){
+  var ov = document.getElementById('misConsumosOverlay');
+  if(ov) ov.style.display = 'none';
+}
 
 function abrirFiadoParcial() {
   if(!cart.length){ showToast('El carrito está vacío', true); return; }
