@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787619756";
+  window.__LR_BUILD = "1787620152";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -13000,18 +13000,24 @@ function calcularCambioEfectivo(){
 
   el.style.display = 'block';
   el.innerHTML =
+    // El desglose se lee de arriba hacia abajo como una cuenta: lo que se
+    // lleva, más la comisión, da lo que tiene que transferir.
     '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'+
-      '<span style="font-size:.8rem;color:var(--gray)">📲 Te transfiere</span>'+
-      '<b style="color:#1e90ff;font-family:Oswald,sans-serif;font-size:1.15rem">'+fmt(monto+com)+'</b>'+
+      '<span style="font-size:.8rem;color:var(--gray)">💵 Se lleva en efectivo</span>'+
+      '<b style="color:var(--green);font-family:Oswald,sans-serif;font-size:1.05rem">'+fmt(monto)+'</b>'+
     '</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0 3px;border-top:1px solid rgba(255,255,255,.07);margin-top:5px">'+
-      '<span style="font-size:.8rem;color:var(--gray)">💵 Le das en efectivo</span>'+
-      '<b style="color:var(--green);font-family:Oswald,sans-serif;font-size:1.15rem">'+fmt(monto)+'</b>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'+
+      '<span style="font-size:.8rem;color:var(--gray)">Comisión</span>'+
+      '<b style="color:var(--gold);font-family:Oswald,sans-serif;font-size:1.05rem">'+(com>0?'+ '+fmt(com):'—')+'</b>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0 3px;border-top:2px solid rgba(30,144,255,.35);margin-top:6px">'+
+      '<span style="font-size:.86rem;color:var(--white);font-weight:600">📲 DEBE TRANSFERIR</span>'+
+      '<b style="color:#1e90ff;font-family:Oswald,sans-serif;font-size:1.35rem">'+fmt(monto+com)+'</b>'+
     '</div>'+
     (com>0
-      ? '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'+
-          '<span style="font-size:.75rem;color:var(--gray)">Queda de ganancia</span>'+
-          '<b style="color:var(--gold);font-size:.95rem">'+fmt(com)+'</b>'+
+      ? '<div style="font-size:.68rem;color:var(--gray);margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);line-height:1.5">'+
+          'Salen '+fmt(monto)+' de la caja y pasan a Mercado Pago.<br>'+
+          'A los ingresos suman solo los <b style="color:var(--gold)">'+fmt(com)+'</b> de comisión.'+
         '</div>'
       : '')+
     (!alcanza
