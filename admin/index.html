@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787614838";
+  window.__LR_BUILD = "1787618311";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1222,6 +1222,9 @@
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
     window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+    // Comisión que se cobra por cambiar transferencia a efectivo
+    window.__lrComisionCambio = doc.exists && doc.data().comisionCambio != null
+      ? doc.data().comisionCambio : 500;
     // Configuración de zonas de envío: el costo cambia según la distancia
     // entre la ubicación del cliente y la del local.
     var zonaLeida = doc.exists ? (doc.data().zonaCfg || null) : null;
@@ -1286,7 +1289,8 @@
       activo: (activo !== undefined && activo !== null) ? activo : (window.__lrDeliveryActivo !== false),
       costoEnvio: (costoEnvio !== undefined && costoEnvio !== null) ? costoEnvio : (window.__lrCostoEnvio || 0),
       precioNocturno: (precioNocturno !== undefined && precioNocturno !== null) ? !!precioNocturno : !!window.__lrPrecioNocturnoCatalogo,
-      modo: modo || window.__lrModoDelivery || 'auto'
+      modo: modo || window.__lrModoDelivery || 'auto',
+      comisionCambio: (window.__lrComisionCambio != null) ? window.__lrComisionCambio : 500
     };
     // La configuración de zonas SOLO se incluye si realmente hay algo que
     // escribir. Si no, no se toca el campo: así un dispositivo que todavía no
@@ -9003,7 +9007,7 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cambio-efectivo','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
@@ -9036,6 +9040,14 @@ function setupOpButtons() {
   btnF.innerHTML = '📋 Fiado';
   btnF.onclick = function(){ selOpFiado(); };
   opBtns.appendChild(btnF);
+
+  // Cambio de efectivo: el cliente transfiere y se lleva billetes
+  var btnCE2 = document.createElement('button');
+  btnCE2.className = 'op-btn'; btnCE2.id = 'op-cambio-efectivo';
+  btnCE2.innerHTML = '💱 Cambio de efectivo';
+  btnCE2.style.cssText = 'border-color:#16A085;color:#16A085';
+  btnCE2.onclick = function(){ abrirCambioEfectivo(); };
+  opBtns.appendChild(btnCE2);
 
   // Fiado parcial: paga una parte ahora y queda debiendo el resto
   var btnFP = document.createElement('button');
@@ -9469,6 +9481,17 @@ function eliminarItemManual(id) {
 // (cambiarDeliveryActivo fue reemplazada por cambiarModoDelivery, que maneja
 // los tres modos: automático según repartidores, forzado abierto, forzado
 // cerrado. Se eliminó para no dejar dos caminos que hagan lo mismo distinto.)
+// Comisión por cambiar transferencia a efectivo. Es el valor que aparece
+// propuesto en el panel de venta; el empleado igual puede ajustarlo por caso.
+function cambiarComisionCambio(valor) {
+  window.__lrComisionCambio = parseFloat(valor) || 0;
+  if(window.__lrSaveDeliveryActivo){
+    window.__lrSaveDeliveryActivo(window.__lrDeliveryActivo!==false, window.__lrCostoEnvio||0,
+      window.__lrPrecioNocturnoCatalogo, window.__lrModoDelivery||'auto', window.__lrZonaCfg);
+  }
+  showToast('💱 Comisión por cambio: '+fmt(window.__lrComisionCambio));
+}
+
 function cambiarCostoEnvio(valor) {
   var num = parseFloat(valor) || 0;
   window.__lrCostoEnvio = num;
@@ -12889,6 +12912,162 @@ function selOpFiado() {
     cb.style.color = '#fff';
   }
   showVuelto(false);
+}
+
+// ── CAMBIO DE EFECTIVO ──────────────────────────────────────────────────────
+// Servicio para el cliente: transfiere al local y se lleva billetes. El local
+// cobra una comisión por el cambio.
+//
+// Ejemplo: quiere $10.000 en efectivo con comisión de $500 → transfiere
+// $10.500 y se lleva $10.000. La comisión es la ganancia del local.
+//
+// Efecto en la caja: ENTRA plata a Mercado Pago y SALE efectivo de la caja. Se
+// registra como una transferencia entre cuentas, así el arqueo lo contempla y
+// no aparece como faltante.
+function abrirCambioEfectivo() {
+  var comisionDefault = (window.__lrComisionCambio != null) ? window.__lrComisionCambio : 500;
+
+  var ov = document.getElementById('cambioEfectivoOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'cambioEfectivoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:390px;max-width:96vw;max-height:90vh;overflow-y:auto">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:#16A085;text-transform:uppercase;margin-bottom:4px">💱 Cambio de efectivo</div>'+
+        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:14px">El cliente transfiere y se lleva billetes.</div>'+
+
+        '<div class="field">'+
+          '<label>¿Cuánto efectivo se lleva?</label>'+
+          '<input type="text" inputmode="numeric" id="ceMonto" placeholder="0" oninput="formatMontoInput(this);calcularCambioEfectivo()">'+
+        '</div>'+
+
+        '<div class="field">'+
+          '<label>Comisión del cambio</label>'+
+          '<input type="text" inputmode="numeric" id="ceComision" oninput="formatMontoInput(this);calcularCambioEfectivo()">'+
+        '</div>'+
+
+        '<div id="ceResumen" style="display:none;background:var(--dark);border-radius:8px;padding:13px;margin-bottom:14px"></div>'+
+
+        '<div class="field">'+
+          '<label>Nombre del cliente (opcional)</label>'+
+          '<input type="text" id="ceCliente" placeholder="Para dejar registro de quién fue" autocomplete="off">'+
+        '</div>'+
+
+        '<div style="display:flex;gap:8px">'+
+          '<button onclick="confirmarCambioEfectivo()" style="flex:1;background:#16A085;color:#04231d;border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Confirmar cambio</button>'+
+          '<button onclick="cerrarCambioEfectivo()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:13px 18px;font-family:Oswald,sans-serif;font-size:.76rem;cursor:pointer">Cancelar</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  document.getElementById('ceMonto').value = '';
+  document.getElementById('ceCliente').value = '';
+  var inpCom = document.getElementById('ceComision');
+  inpCom.value = String(comisionDefault);
+  formatMontoInput(inpCom);
+  document.getElementById('ceResumen').style.display = 'none';
+  setTimeout(function(){ document.getElementById('ceMonto').focus(); }, 120);
+}
+
+function cerrarCambioEfectivo(){
+  var ov = document.getElementById('cambioEfectivoOverlay');
+  if(ov) ov.style.display = 'none';
+}
+
+function calcularCambioEfectivo(){
+  var monto = getMontoInputValue('ceMonto') || 0;
+  var com   = getMontoInputValue('ceComision') || 0;
+  var el = document.getElementById('ceResumen');
+  if(!el) return;
+  if(monto <= 0){ el.style.display = 'none'; return; }
+
+  var efectivoDisponible = (typeof calcularLiquidez==='function') ? calcularLiquidez().efectivoCaja : null;
+  var alcanza = (efectivoDisponible == null) || (efectivoDisponible >= monto);
+
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem">'+
+      '<span style="color:var(--gray)">📲 El cliente te transfiere</span>'+
+      '<b style="color:#1e90ff;font-family:Oswald,sans-serif;font-size:1.05rem">'+fmt(monto+com)+'</b>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem;border-top:1px solid rgba(255,255,255,.07);margin-top:4px;padding-top:8px">'+
+      '<span style="color:var(--gray)">💵 Le das en efectivo</span>'+
+      '<b style="color:var(--green);font-family:Oswald,sans-serif;font-size:1.05rem">'+fmt(monto)+'</b>'+
+    '</div>'+
+    (com>0
+      ? '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.76rem">'+
+          '<span style="color:var(--gray)">Ganancia del local</span>'+
+          '<b style="color:var(--gold)">'+fmt(com)+'</b>'+
+        '</div>'
+      : '')+
+    (!alcanza
+      ? '<div style="margin-top:9px;padding:8px;background:rgba(204,0,0,.12);border-radius:5px;font-size:.72rem;color:var(--red)">⚠️ En caja hay '+fmt(efectivoDisponible)+' — no alcanza para este cambio</div>'
+      : '');
+}
+
+function confirmarCambioEfectivo(){
+  var monto = getMontoInputValue('ceMonto') || 0;
+  var com   = getMontoInputValue('ceComision') || 0;
+  var cliente = (document.getElementById('ceCliente').value||'').trim();
+
+  if(monto <= 0){ showToast('Poné cuánto efectivo se lleva', true); return; }
+
+  var totalTransfiere = monto + com;
+  var nota = 'Cambio de efectivo' + (cliente ? ' — '+cliente : '') +
+             (com>0 ? ' (comisión '+fmt(com)+')' : '');
+
+  askConfirm('El cliente transfiere '+fmt(totalTransfiere)+' y se lleva '+fmt(monto)+' en efectivo.\n\n¿Confirmás?').then(function(ok){
+    if(!ok) return;
+
+    // Se registra como movimiento entre cuentas: sale efectivo, entra a MP.
+    // Así el arqueo de caja lo contempla y no figura como faltante.
+    var transfers = getTransferCuentas();
+    transfers.push({
+      id: Date.now(),
+      fecha: new Date().toISOString(),
+      desde: 'Efectivo',
+      hacia: 'MercadoPago',
+      monto: monto,
+      nota: nota,
+      empleado: currentEmp ? currentEmp.nombre : '—',
+      turno: turnoActual(),
+      esCambioCliente: true,
+      comision: com,
+      cliente: cliente
+    });
+    window.__lrTransferCuentasCache = transfers;
+
+    // La comisión entra como ganancia del local, por Mercado Pago
+    if(com > 0){
+      var cargas = getCargasVirtuales();
+      cargas.push({
+        id: Date.now()+1,
+        fecha: new Date().toISOString(),
+        tipo: 'cambio-efectivo',
+        empleado: currentEmp ? currentEmp.nombre : '—',
+        turno: turnoActual(),
+        medio: 'Transferencia',
+        montoCarga: 0,
+        montoCobrado: 0,
+        ganancia: com,
+        nota: nota
+      });
+      window.__lrCargasVirtualesCache = cargas;
+      if(typeof saveCargasVirtuales === 'function') saveCargasVirtuales(cargas);
+    }
+
+    registrarOperacion('cambio-efectivo',
+      [{name:'Cambio de efectivo'+(cliente?' — '+cliente:''), qty:1, precio:monto, subtotal:monto}],
+      monto, currentEmp?currentEmp.nombre:'—', nota);
+
+    guardarOperacionProtegida('TransferCuentas', getTransferCuentas, 'Cambio de efectivo de '+fmt(monto));
+
+    cerrarCambioEfectivo();
+    if(typeof renderLiquidez==='function') renderLiquidez();
+    showToast('✅ Cambio hecho — entraron '+fmt(totalTransfiere)+', salieron '+fmt(monto)+' en efectivo');
+  });
 }
 
 // ── FIADO PARCIAL ───────────────────────────────────────────────────────────
@@ -20811,6 +20990,10 @@ function renderDeliveryControl() {
         '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Costo de envío</div>'+
           '<input type="number" value="'+(window.__lrCostoEnvio||0)+'" min="0" onchange="cambiarCostoEnvio(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--gold);font-family:Oswald,sans-serif;font-size:1.1rem;outline:none;padding:2px 0">'+
+        '</div>'+
+        '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Comisión por cambio</div>'+
+          '<input type="number" value="'+((window.__lrComisionCambio!=null)?window.__lrComisionCambio:500)+'" min="0" onchange="cambiarComisionCambio(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:#16A085;font-family:Oswald,sans-serif;font-size:1.1rem;outline:none;padding:2px 0">'+
         '</div>'+
       '</div>'+
 
