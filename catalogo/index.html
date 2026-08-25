@@ -14,9 +14,23 @@
 }
 *{box-sizing:border-box}
 body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;margin:0;padding-bottom:90px;min-height:100vh}
-.header{padding:20px 16px 12px;text-align:center;border-bottom:2px solid var(--red)}
-.header img{height:70px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 2px 10px rgba(204,0,0,.6));margin-bottom:6px}
-.header .sub{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase}
+/* Encabezado de marca: el logo deja de ser un cuadrito centrado y pasa a ser
+   parte de la pantalla, sobre un fondo con profundidad y un resplandor rojo
+   que lo asienta, como en las apps de las marcas grandes. */
+.header{position:relative;padding:30px 16px 20px;text-align:center;overflow:hidden;
+  background:radial-gradient(ellipse 70% 100% at 50% 0%, rgba(210,32,31,.20), transparent 70%), #050505}
+.header::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 32%, rgba(244,180,0,.10), transparent 55%);
+  pointer-events:none}
+/* Línea inferior degradada, más elegante que un borde plano */
+.header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,#D2201F 20%,#F4B400 50%,#D2201F 80%,transparent)}
+.header img{position:relative;z-index:1;height:96px;max-width:88%;object-fit:contain;
+  mix-blend-mode:screen;
+  filter:drop-shadow(0 0 34px rgba(210,32,31,.5)) drop-shadow(0 4px 10px rgba(0,0,0,.85))}
+.header .sub{position:relative;z-index:1;font-family:'Oswald',sans-serif;font-size:.7rem;
+  letter-spacing:5px;color:var(--gray);text-transform:uppercase;margin-top:12px}
+@media(max-width:420px){ .header img{height:76px} .header{padding:24px 14px 16px} }
 .delivery-banner{text-align:center;padding:8px 14px;font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;background:rgba(46,204,113,.1);color:var(--green);border-bottom:1px solid rgba(46,204,113,.25)}
 .wrap{max-width:600px;margin:0 auto;padding:14px}
 #searchInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.95rem;outline:none;margin-bottom:14px}
@@ -117,7 +131,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 
 <div id="mainContent" style="display:none">
   <div class="header">
-    <img src="../icon-512.png" alt="Limay Rock">
+    <img src="../logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
   </div>
   <div class="delivery-banner">🛵 Delivery activo — hacé tu pedido</div>
