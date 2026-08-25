@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787694228";
+  window.__LR_BUILD = "1787694665";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1865,9 +1865,10 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
    asienta en la pantalla, como en las marcas grandes. */
 /* El logo es un PNG sin fondo, así que se apoya directamente sobre el fondo de
    la pantalla y ocupa su rincón sin recuadro ni bordes. */
-.logo-wrap{display:flex;align-items:center;padding-right:14px}
-.logo-wrap img{height:54px;object-fit:contain;display:block}
-@media(max-width:700px){ .logo-wrap img{height:40px} .logo-wrap{padding-right:10px} }
+.logo-wrap{display:flex;align-items:center;padding-right:16px}
+.logo-wrap img{height:82px;object-fit:contain;display:block}
+@media(max-width:1100px){ .logo-wrap img{height:66px} }
+@media(max-width:700px){ .logo-wrap img{height:46px} .logo-wrap{padding-right:10px} }
 .header-actions{display:flex;gap:7px;align-items:center}
 .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .header-count{font-family:'Oswald',sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
@@ -3047,7 +3048,7 @@ body.night-on{background:#080005}
 <style>@keyframes lrPulsoActualizacion{0%,100%{opacity:1}50%{opacity:.75}}</style>
 <div id="adminNotifStack" style="position:fixed;top:12px;left:12px;right:12px;z-index:99998;display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:center"></div>
 <div id="lrLoadingOverlay" style="position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:radial-gradient(ellipse 80% 60% at 50% 40%, rgba(210,32,31,.16), transparent 70%), #050505">
-  <img src="logo.png" alt="Limay Rock" style="height:160px;max-width:82%;object-fit:contain;animation:lrLatido 2.4s ease-in-out infinite">
+  <img src="/logo.png" alt="Limay Rock" style="height:160px;max-width:82%;object-fit:contain;animation:lrLatido 2.4s ease-in-out infinite">
   <div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:4px;color:#F4B400;text-transform:uppercase;margin-top:26px">Cargando el sistema</div>
   <div style="font-size:12px;color:#777;margin-top:7px">Conectando con la base de datos</div>
 </div>
@@ -3057,7 +3058,7 @@ body.night-on{background:#080005}
 
 <!-- LOGIN SCREEN -->
 <div id="loginScreen" class="hidden">
-  <img src="logo.png" alt="Limay Rock Drugstore">
+  <img src="/logo.png" alt="Limay Rock Drugstore">
   <div class="login-sub" style="margin-top:-4px">Sistema de Ventas</div>
   <div class="pin-dots" style="margin:16px 0">
     <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div>
@@ -3084,7 +3085,7 @@ body.night-on{background:#080005}
 <header>
   <div class="header-top">
     <div class="logo-wrap">
-      <img src="logo-barra.png" alt="Limay Rock Drugstore">
+      <img src="/logo-barra.png" alt="Limay Rock Drugstore">
     </div>
     <div class="header-actions">
       <button class="btn btn-night on" id="nightBtn" onclick="toggleNight()" title="Activá el modo nocturno para aplicar precios nocturnos">🌙 Nocturno</button>
