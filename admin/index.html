@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787620152";
+  window.__LR_BUILD = "1787622341";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -19592,9 +19592,20 @@ function actualizarDeliveryPendBadge() {
     }
   }
   if(!pendientes.length) cerrarAvisoPedidoNuevo(false);
+  // Entregados de hoy: el botón queda visible aunque no haya pedidos en curso,
+  // para poder consultar lo que se entregó en el día.
+  var hoyIni0 = new Date(); hoyIni0.setHours(0,0,0,0);
+  var entregHoy = getPedidosWeb().filter(function(p){
+    return !p.anulado && p.estadoDelivery === 'entregado' &&
+           p.entregadoEn && new Date(p.entregadoEn) >= hoyIni0;
+  }).length;
+
   var countEl = document.getElementById('deliveryPendCount');
-  if(countEl) countEl.textContent = pendientes.length;
-  btn.style.display = pendientes.length>0 ? 'inline-block' : 'none';
+  if(countEl){
+    countEl.innerHTML = pendientes.length +
+      (entregHoy ? ' <span style="color:var(--green);font-size:.9em">✓'+entregHoy+'</span>' : '');
+  }
+  btn.style.display = (pendientes.length>0 || entregHoy>0) ? 'inline-block' : 'none';
   // Si la ventana de pedidos pendientes ya estaba abierta, refrescar también
   // su contenido — si no, un pedido resuelto desde otro lado se quedaba
   // "pegado" en la lista hasta cerrar y volver a abrir la ventana.
@@ -19604,6 +19615,32 @@ function actualizarDeliveryPendBadge() {
   }
 }
 
+// Lista de los pedidos entregados en el día, para el panel de venta. El aviso
+// del momento se puede pasar por alto si el empleado estaba atendiendo, así
+// que acá queda el registro para consultarlo cuando quiera.
+function armarEntregadosHoyHtml(lista){
+  if(!lista || !lista.length) return '';
+  var totalMonto  = lista.reduce(function(s,p){ return s + (p.total||0); }, 0);
+  var totalEnvios = lista.reduce(function(s,p){ return s + (p.envio||0); }, 0);
+
+  return '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--green);text-transform:uppercase">✅ Entregados hoy ('+lista.length+')</span>'+
+      '<span style="font-size:.72rem;color:var(--gray)">'+fmt(totalMonto)+(totalEnvios?' · envíos '+fmt(totalEnvios):'')+'</span>'+
+    '</div>'+
+    lista.map(function(p){
+      var h = p.entregadoEn ? new Date(p.entregadoEn).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.22);border-radius:6px;margin-bottom:6px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.8rem;color:var(--light)">'+p.nombre+'</div>'+
+          '<div style="font-size:.65rem;color:var(--gray)">'+h+' · lo llevó '+(p.repartidor||'—')+'</div>'+
+        '</div>'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--green);white-space:nowrap">'+fmt(p.total)+'</div>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+
 function abrirDeliveryPendModal() {
   // Se muestran TODOS los pedidos vivos, no solo los que faltan cargar: el
   // empleado necesita seguir viendo los que ya cargó al carrito hasta que el
@@ -19611,7 +19648,19 @@ function abrirDeliveryPendModal() {
   var pendientes = getPedidosWeb()
     .filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; })
     .sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+  var hoyIni = new Date(); hoyIni.setHours(0,0,0,0);
+  var entregadosHoy = getPedidosWeb().filter(function(p){
+    return !p.anulado && p.estadoDelivery === 'entregado' &&
+           p.entregadoEn && new Date(p.entregadoEn) >= hoyIni;
+  }).sort(function(a,b){ return new Date(b.entregadoEn) - new Date(a.entregadoEn); });
+
   var cont = document.getElementById('deliveryPendList');
+  if(!pendientes.length && entregadosHoy.length){
+    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:14px;font-size:.82rem">No hay pedidos en curso</div>'
+                     + armarEntregadosHoyHtml(entregadosHoy);
+    document.getElementById('deliveryPendModal').classList.add('open');
+    return;
+  }
   if(!pendientes.length){
     cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;font-size:.85rem">No hay pedidos en curso</div>';
   } else {
@@ -19671,6 +19720,8 @@ function abrirDeliveryPendModal() {
       '</div>';
     }).join('');
   }
+  // El registro de lo entregado hoy va siempre al final de la lista
+  cont.innerHTML += armarEntregadosHoyHtml(entregadosHoy);
   document.getElementById('deliveryPendModal').classList.add('open');
 }
 
