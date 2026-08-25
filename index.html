@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787618311";
+  window.__LR_BUILD = "1787618395";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -3075,6 +3075,7 @@ body.night-on{background:#080005}
       <button class="btn" style="background:var(--surface);border:1px solid var(--border);color:var(--gray);font-size:.72rem" onclick="cerrarTurno()">⏹ Cerrar turno</button>
       <button class="btn" id="btnRetiroCaja" style="background:var(--surface);border:1px solid rgba(245,194,0,.4);color:var(--gold);font-size:.72rem;display:none" onclick="abrirRetiroModal()" title="Registrar retiro de efectivo de caja">💵 Retiro</button>
       <button class="btn" id="btnCargaVirtual" style="background:var(--surface);border:1px solid rgba(30,144,255,.4);color:#1e90ff;font-size:.72rem" onclick="abrirCargaVirtualModal()" title="Registrar carga virtual (celular / DirecTV)">📱 Carga virtual</button>
+      <button class="btn" id="btnCambioEfectivo" style="background:var(--surface);border:1px solid rgba(22,160,133,.45);color:#16A085;font-size:.72rem" onclick="abrirCambioEfectivo()" title="El cliente transfiere y se lleva efectivo">💱 Cambio</button>
       <button class="btn" id="btnHistorialMensajes" style="background:var(--surface);border:1px solid rgba(155,89,182,.4);color:#9B59B6;font-size:.72rem;position:relative" onclick="abrirHistorialMensajes()" title="Ver los mensajes de este turno">
         💬 Mensajes<span id="badgeMensajes" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--red);color:var(--white);border-radius:10px;font-size:.6rem;padding:1px 5px;font-family:Oswald,sans-serif"></span>
       </button>
@@ -9008,7 +9009,7 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cambio-efectivo','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
@@ -9041,14 +9042,6 @@ function setupOpButtons() {
   btnF.innerHTML = '📋 Fiado';
   btnF.onclick = function(){ selOpFiado(); };
   opBtns.appendChild(btnF);
-
-  // Cambio de efectivo: el cliente transfiere y se lleva billetes
-  var btnCE2 = document.createElement('button');
-  btnCE2.className = 'op-btn'; btnCE2.id = 'op-cambio-efectivo';
-  btnCE2.innerHTML = '💱 Cambio de efectivo';
-  btnCE2.style.cssText = 'border-color:#16A085;color:#16A085';
-  btnCE2.onclick = function(){ abrirCambioEfectivo(); };
-  opBtns.appendChild(btnCE2);
 
   // Fiado parcial: paga una parte ahora y queda debiendo el resto
   var btnFP = document.createElement('button');
