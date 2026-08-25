@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787618395";
+  window.__LR_BUILD = "1787619756";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1221,7 +1221,18 @@
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
-    window.__lrCostoEnvio = doc.exists ? (doc.data().costoEnvio || 0) : 0;
+    // El costo de envío urbano es UNO SOLO. Manda el de la configuración de
+    // zonas: es el que se edita en la sección Delivery y el que usa el catálogo
+    // para cobrarle al cliente. El campo suelto de la pantalla Inicio es el
+    // mismo número, no otro.
+    //
+    // Antes eran dos valores independientes y se desincronizaban: Inicio
+    // mostraba 0 mientras Delivery decía 4.000, y no había forma de saber cuál
+    // se le estaba cobrando realmente al cliente.
+    var _zc = doc.exists ? (doc.data().zonaCfg || null) : null;
+    window.__lrCostoEnvio = (_zc && _zc.costoUrbano != null)
+      ? _zc.costoUrbano
+      : (doc.exists ? (doc.data().costoEnvio || 0) : 0);
     // Comisión que se cobra por cambiar transferencia a efectivo
     window.__lrComisionCambio = doc.exists && doc.data().comisionCambio != null
       ? doc.data().comisionCambio : 500;
@@ -5562,6 +5573,41 @@ body.night-on{background:#080005}
     </div>
     <button class="arqueo-confirm" id="tcConfirmarBtn" onclick="registrarTransferCuentas()" style="margin-top:14px;background:#9B59B6" disabled>✓ Transferir</button>
     <button onclick="cerrarTransferCuentasModal()" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>
+  </div>
+</div>
+
+<div class="arqueo-modal" id="cambioEfectivoModal" style="z-index:712">
+  <div class="arqueo-box">
+    <h3>💱 Cambio de efectivo</h3>
+    <div class="sub">El cliente transfiere al local y se lleva billetes. No es una venta: la plata cambia de lugar y el local cobra una comisión por el servicio.</div>
+
+    <div class="arqueo-field">
+      <label>Efectivo que se lleva el cliente</label>
+      <div style="position:relative;display:flex;align-items:center">
+        <span style="position:absolute;left:14px;font-family:'Oswald',sans-serif;font-size:1.3rem;color:#16A085;font-weight:700;pointer-events:none;z-index:1">$</span>
+        <input type="text" inputmode="numeric" id="ceMonto" placeholder="0" oninput="formatMontoInput(this);calcularCambioEfectivo()"
+          style="width:100%;background:var(--dark);border:2px solid #16A085;border-radius:8px;padding:16px 14px 16px 36px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:700;outline:none">
+      </div>
+    </div>
+
+    <div class="arqueo-field" style="margin-top:10px">
+      <label>Comisión del cambio</label>
+      <div style="position:relative;display:flex;align-items:center">
+        <span style="position:absolute;left:14px;font-family:'Oswald',sans-serif;font-size:1.05rem;color:var(--gold);font-weight:700;pointer-events:none;z-index:1">$</span>
+        <input type="text" inputmode="numeric" id="ceComision" oninput="formatMontoInput(this);calcularCambioEfectivo()"
+          style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:8px;padding:13px 14px 13px 34px;color:var(--gold);font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;outline:none">
+      </div>
+    </div>
+
+    <div id="ceResumen" style="display:none;background:var(--dark);border-radius:8px;padding:13px;margin-top:12px"></div>
+
+    <div class="arqueo-field" style="margin-top:10px">
+      <label>Cliente (opcional)</label>
+      <input type="text" id="ceCliente" placeholder="Para dejar registro de quién fue" autocomplete="off" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none">
+    </div>
+
+    <button class="arqueo-confirm" id="ceConfirmarBtn" onclick="confirmarCambioEfectivo()" style="margin-top:14px;background:#16A085" disabled>✓ Confirmar cambio</button>
+    <button onclick="cerrarCambioEfectivo()" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>
   </div>
 </div>
 
@@ -12919,85 +12965,60 @@ function selOpFiado() {
 // no aparece como faltante.
 function abrirCambioEfectivo() {
   var comisionDefault = (window.__lrComisionCambio != null) ? window.__lrComisionCambio : 500;
-
-  var ov = document.getElementById('cambioEfectivoOverlay');
-  if(!ov){
-    ov = document.createElement('div');
-    ov.id = 'cambioEfectivoOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
-    ov.innerHTML =
-      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:390px;max-width:96vw;max-height:90vh;overflow-y:auto">'+
-        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:#16A085;text-transform:uppercase;margin-bottom:4px">💱 Cambio de efectivo</div>'+
-        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:14px">El cliente transfiere y se lleva billetes.</div>'+
-
-        '<div class="field">'+
-          '<label>¿Cuánto efectivo se lleva?</label>'+
-          '<input type="text" inputmode="numeric" id="ceMonto" placeholder="0" oninput="formatMontoInput(this);calcularCambioEfectivo()">'+
-        '</div>'+
-
-        '<div class="field">'+
-          '<label>Comisión del cambio</label>'+
-          '<input type="text" inputmode="numeric" id="ceComision" oninput="formatMontoInput(this);calcularCambioEfectivo()">'+
-        '</div>'+
-
-        '<div id="ceResumen" style="display:none;background:var(--dark);border-radius:8px;padding:13px;margin-bottom:14px"></div>'+
-
-        '<div class="field">'+
-          '<label>Nombre del cliente (opcional)</label>'+
-          '<input type="text" id="ceCliente" placeholder="Para dejar registro de quién fue" autocomplete="off">'+
-        '</div>'+
-
-        '<div style="display:flex;gap:8px">'+
-          '<button onclick="confirmarCambioEfectivo()" style="flex:1;background:#16A085;color:#04231d;border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Confirmar cambio</button>'+
-          '<button onclick="cerrarCambioEfectivo()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:13px 18px;font-family:Oswald,sans-serif;font-size:.76rem;cursor:pointer">Cancelar</button>'+
-        '</div>'+
-      '</div>';
-    document.body.appendChild(ov);
-  }
-  ov.style.display = 'flex';
   document.getElementById('ceMonto').value = '';
   document.getElementById('ceCliente').value = '';
   var inpCom = document.getElementById('ceComision');
   inpCom.value = String(comisionDefault);
   formatMontoInput(inpCom);
   document.getElementById('ceResumen').style.display = 'none';
+  document.getElementById('ceConfirmarBtn').disabled = true;
+  document.getElementById('cambioEfectivoModal').classList.add('open');
   setTimeout(function(){ document.getElementById('ceMonto').focus(); }, 120);
 }
 
 function cerrarCambioEfectivo(){
-  var ov = document.getElementById('cambioEfectivoOverlay');
-  if(ov) ov.style.display = 'none';
+  document.getElementById('cambioEfectivoModal').classList.remove('open');
 }
 
 function calcularCambioEfectivo(){
   var monto = getMontoInputValue('ceMonto') || 0;
   var com   = getMontoInputValue('ceComision') || 0;
-  var el = document.getElementById('ceResumen');
+  var el  = document.getElementById('ceResumen');
+  var btn = document.getElementById('ceConfirmarBtn');
   if(!el) return;
-  if(monto <= 0){ el.style.display = 'none'; return; }
 
+  if(monto <= 0){
+    el.style.display = 'none';
+    if(btn) btn.disabled = true;
+    return;
+  }
+
+  // Avisar si no hay efectivo suficiente en caja para cubrir el cambio: es
+  // mejor que el empleado lo sepa antes de comprometerse con el cliente.
   var efectivoDisponible = (typeof calcularLiquidez==='function') ? calcularLiquidez().efectivoCaja : null;
   var alcanza = (efectivoDisponible == null) || (efectivoDisponible >= monto);
 
   el.style.display = 'block';
   el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem">'+
-      '<span style="color:var(--gray)">📲 El cliente te transfiere</span>'+
-      '<b style="color:#1e90ff;font-family:Oswald,sans-serif;font-size:1.05rem">'+fmt(monto+com)+'</b>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'+
+      '<span style="font-size:.8rem;color:var(--gray)">📲 Te transfiere</span>'+
+      '<b style="color:#1e90ff;font-family:Oswald,sans-serif;font-size:1.15rem">'+fmt(monto+com)+'</b>'+
     '</div>'+
-    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem;border-top:1px solid rgba(255,255,255,.07);margin-top:4px;padding-top:8px">'+
-      '<span style="color:var(--gray)">💵 Le das en efectivo</span>'+
-      '<b style="color:var(--green);font-family:Oswald,sans-serif;font-size:1.05rem">'+fmt(monto)+'</b>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0 3px;border-top:1px solid rgba(255,255,255,.07);margin-top:5px">'+
+      '<span style="font-size:.8rem;color:var(--gray)">💵 Le das en efectivo</span>'+
+      '<b style="color:var(--green);font-family:Oswald,sans-serif;font-size:1.15rem">'+fmt(monto)+'</b>'+
     '</div>'+
     (com>0
-      ? '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.76rem">'+
-          '<span style="color:var(--gray)">Ganancia del local</span>'+
-          '<b style="color:var(--gold)">'+fmt(com)+'</b>'+
+      ? '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'+
+          '<span style="font-size:.75rem;color:var(--gray)">Queda de ganancia</span>'+
+          '<b style="color:var(--gold);font-size:.95rem">'+fmt(com)+'</b>'+
         '</div>'
       : '')+
     (!alcanza
-      ? '<div style="margin-top:9px;padding:8px;background:rgba(204,0,0,.12);border-radius:5px;font-size:.72rem;color:var(--red)">⚠️ En caja hay '+fmt(efectivoDisponible)+' — no alcanza para este cambio</div>'
+      ? '<div style="margin-top:9px;padding:8px;background:rgba(204,0,0,.12);border-radius:5px;font-size:.72rem;color:var(--red)">⚠️ En caja hay '+fmt(efectivoDisponible)+' — no alcanza</div>'
       : '');
+
+  if(btn) btn.disabled = false;
 }
 
 function confirmarCambioEfectivo(){
@@ -13014,8 +13035,8 @@ function confirmarCambioEfectivo(){
   askConfirm('El cliente transfiere '+fmt(totalTransfiere)+' y se lleva '+fmt(monto)+' en efectivo.\n\n¿Confirmás?').then(function(ok){
     if(!ok) return;
 
-    // Se registra como movimiento entre cuentas: sale efectivo, entra a MP.
-    // Así el arqueo de caja lo contempla y no figura como faltante.
+    // Se registra como movimiento entre cuentas: sale efectivo de la caja y
+    // entra a Mercado Pago. Así el arqueo lo contempla y no da faltante.
     var transfers = getTransferCuentas();
     transfers.push({
       id: Date.now(),
@@ -13032,7 +13053,7 @@ function confirmarCambioEfectivo(){
     });
     window.__lrTransferCuentasCache = transfers;
 
-    // La comisión entra como ganancia del local, por Mercado Pago
+    // La comisión entra como ganancia del turno
     if(com > 0){
       var cargas = getCargasVirtuales();
       cargas.push({
