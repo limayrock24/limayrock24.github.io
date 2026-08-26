@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787713107";
+  window.__LR_BUILD = "1787713683";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -13658,6 +13658,10 @@ function saldarFiado(cliente) {
         total:    totalCobrado,
         items:    itemsCobrados,
         esFiado:  true,
+        // Cobro de una deuda vieja: la plata entra hoy, pero la mercadería
+        // salió el día en que se registró el fiado. Esta marca sirve para que
+        // los informes de productos vendidos no la cuenten como venta de hoy.
+        esCobroFiado: true,
         cliente:  cliente,
         nota:     'Saldo de fiado — '+cliente,
         anulada:  false
@@ -21848,14 +21852,24 @@ function ingresarStock() {
 }
 
 // ── PRODUCTOS VENDIDOS POR FECHA (para controlar stock físico vs sistema) ──
+// Ventas y fiados de un período, para los informes de PRODUCTOS vendidos.
+//
+// El criterio es la fecha en que salió la mercadería, no la fecha en que entró
+// la plata. Por eso:
+//   • Se excluye el cobro de un fiado: la plata entra ese día, pero los
+//     productos ya salieron cuando se registró la deuda. Sin esto, aparecían
+//     como vendidos el día del cobro, que no es cuando se vendieron.
+//   • Los fiados se cuentan en SU fecha, estén pagados o no. Antes solo se
+//     contaban los impagos, así que al cobrar una deuda esos productos
+//     desaparecían también del día original y el historial quedaba mal.
 function getVentasYFiadosDelRango(desde, hasta) {
   var ventas = VENTAS.filter(function(v){
     var f = new Date(v.fecha);
-    return !v.anulada && !v.fiadoCarga && f>=desde && f<=hasta;
+    return !v.anulada && !v.fiadoCarga && !v.esCobroFiado && f>=desde && f<=hasta;
   });
   var fiados = getFiados().filter(function(f){
     var fd = new Date(f.fecha);
-    return !f.pagado && fd>=desde && fd<=hasta;
+    return fd>=desde && fd<=hasta;
   });
   fiados.forEach(function(f){
     ventas.push({
