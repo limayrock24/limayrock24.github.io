@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787694665";
+  window.__LR_BUILD = "1787713107";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1860,17 +1860,25 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 
 /* ── HEADER ── */
 header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid var(--red);position:sticky;top:0;z-index:100;box-shadow:0 4px 24px rgba(204,0,0,.4)}
-.header-top{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 5px;gap:10px;flex-wrap:wrap}
+.header-top{display:flex;align-items:flex-start;justify-content:space-between;padding:6px 14px 8px;gap:10px;flex-wrap:wrap}
+@media(max-width:700px){ .header-top{align-items:center} }
 /* El logo se integra a la barra en vez de quedar como un recuadro pegado:
    el fondo negro se funde con el encabezado y un resplandor rojo detrás lo
    asienta en la pantalla, como en las marcas grandes. */
 /* El logo es un PNG sin fondo, así que se apoya directamente sobre el fondo de
    la pantalla y ocupa su rincón sin recuadro ni bordes. */
-.logo-wrap{display:flex;align-items:center;padding-right:16px}
-.logo-wrap img{height:82px;object-fit:contain;display:block}
-@media(max-width:1100px){ .logo-wrap img{height:66px} }
-@media(max-width:700px){ .logo-wrap img{height:46px} .logo-wrap{padding-right:10px} }
-.header-actions{display:flex;gap:7px;align-items:center}
+/* El logo ocupa el bloque de la esquina superior izquierda, alineado arriba
+   para que acompañe la altura de la fila de botones. */
+.logo-wrap{display:flex;align-items:flex-start;padding:2px 20px 0 4px;flex-shrink:0}
+.logo-wrap img{height:118px;object-fit:contain;display:block}
+@media(max-width:1300px){ .logo-wrap img{height:96px} }
+@media(max-width:1100px){ .logo-wrap img{height:74px} }
+@media(max-width:700px){ .logo-wrap img{height:48px} .logo-wrap{padding:0 10px 0 0;align-items:center} }
+/* Los botones bajan un poco para quedar a media altura del logo, en vez de
+   pegados al borde superior de la barra. */
+.header-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:34px}
+@media(max-width:1100px){ .header-actions{margin-top:24px} }
+@media(max-width:700px){ .header-actions{margin-top:0} }
 .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .header-count{font-family:'Oswald',sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
 .turno-badge{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px 9px;font-size:.68rem;font-family:'Oswald',sans-serif;letter-spacing:1px;color:var(--light);transition:.12s}
