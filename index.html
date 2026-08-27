@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787863862";
+  window.__LR_BUILD = "1787864901";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1869,7 +1869,8 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
    la pantalla y ocupa su rincón sin recuadro ni bordes. */
 /* El logo ocupa el bloque de la esquina superior izquierda, alineado arriba
    para que acompañe la altura de la fila de botones. */
-.logo-wrap{display:flex;align-items:flex-start;padding:2px 20px 0 4px;flex-shrink:0}
+.logo-wrap{display:flex;align-items:flex-start;padding:2px 20px 0 26px;flex-shrink:0}
+@media(max-width:700px){ .logo-wrap{padding-left:8px} }
 .logo-wrap img{height:170px;object-fit:contain;display:block}
 @media(max-width:1300px){ .logo-wrap img{height:140px} }
 @media(max-width:1100px){ .logo-wrap img{height:104px} }
