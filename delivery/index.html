@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787958594";
+  window.__LR_BUILD = "1787959338";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7697,6 +7697,8 @@ function delProd(idx) {
     // sincronizacion no lo va a volver a mostrar.
     if(!window.__lrBorradosPendientes) window.__lrBorradosPendientes = {};
     window.__lrBorradosPendientes[nombre] = Date.now();
+    // Nada que revisar del resto del catálogo: solo se está borrando este.
+    window.__lrProductosTocados = [];
 
     // Queda registrado en el Log de catalogo, igual que las ediciones y altas.
     registrarCambioCatalogo('eliminado', nombre, [
@@ -7830,8 +7832,13 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   guardarPendienteLocalProductos(PRODUCTS);
-  showToast('⏳ Guardando en la nube...');
-  var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar);
+  // El cambio ya está aplicado en pantalla: se avisa que quedó y se deja seguir
+  // trabajando. La subida corre por detrás y, si falla, el sistema reintenta
+  // solo y avisa. Antes había que esperar la confirmación de la nube para poder
+  // continuar, y con conexión lenta eso frenaba todo el trabajo.
+  showToast(mensajeExito || '✅ Guardado');
+  var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar, window.__lrProductosTocados);
+  window.__lrProductosTocados = null;
   var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar); };
   if(!window.__lrConTimeoutAviso) return promesa.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito); });
   return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
@@ -7856,7 +7863,6 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
         if(hayCambio) window.guardarAltasPendientes(pend);
       }
       if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
-      showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS');
     }
   }).catch(function(){
     showToast('❌ Falló el intento, pero quedó guardado acá — reintentando solo', true);
@@ -16871,19 +16877,24 @@ function guardarProdModal() {
     if(tocoCombo) saveCombos(cbs);
   }
 
-  saveLocalConBorrado(esNuevo ? '✅ Producto agregado y confirmado en la nube' : '✅ Producto actualizado y confirmado en la nube', huboRename ? [nombreViejo] : null)
-    .then(function(){
-      // Solo cerramos el modal y refrescamos las listas DESPUÉS de que la nube
-      // confirmó el guardado — antes se cerraba al toque, y si fallaba la subida
-      // (wifi cortado, etc.) el producto quedaba "editado" en pantalla pero
-      // nunca llegaba a la nube, sin que quedara aviso claro de eso.
-      closeProdModal(); renderCatalogo(); buildPills(); filterAll();
-    })
+  // Se avisa cuál producto se tocó, para que el guardado revise solo ese en vez
+  // de recorrer el catálogo entero.
+  window.__lrProductosTocados = [nombre];
+  // El modal se cierra AL INSTANTE y la lista se refresca: el cambio ya está
+  // aplicado y guardado en el dispositivo, así que se puede seguir cargando el
+  // siguiente producto sin esperar nada.
+  //
+  // Antes se esperaba la confirmación de la nube para cerrarlo, como red de
+  // seguridad por si la subida fallaba. Esa red ya no hace falta: los productos
+  // sin subir quedan anotados, se reintentan solos, y el cartelito amarillo
+  // avisa cuántos faltan. Esperar por cada producto hacía que cargar unos pocos
+  // llevara muchísimo tiempo.
+  closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+
+  saveLocalConBorrado(esNuevo ? '✅ Producto agregado' : '✅ Producto actualizado', huboRename ? [nombreViejo] : null)
     .catch(function(){
-      // saveLocal ya mostró el error y el botón de "Reintentar guardado".
-      // Dejamos el modal ABIERTO con los datos tal cual los escribiste, para
-      // que no se pierda nada y puedas reintentar sin volver a tipear todo.
-      renderCatalogo(); buildPills(); filterAll();
+      // El aviso de error y el reintento ya los maneja el guardado.
+      if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
     });
 }
 
@@ -17878,6 +17889,7 @@ function borrarSeleccionados() {
     });
 
     window._cartelitosSel = {};
+    window.__lrProductosTocados = [];   // solo hay bajas, nada que revisar
     actualizarBotonCartelitos();
     renderCatalogo(); buildEditList(); buildPills(); filterAll();
 
