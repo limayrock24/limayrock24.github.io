@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787959361";
+  window.__LR_BUILD = "1787960869";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -6894,6 +6894,10 @@ function doConfirmarVenta2() {
   };
   VENTAS.push(venta);
   saveVentas(VENTAS);
+  // Republicar el estado del turno junto con la venta. Si por cualquier motivo
+  // el registro del turno no llegó a la nube al abrirlo, se recompone acá: es
+  // imposible que haya ventas y el turno no figure.
+  if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
 
   if(delivery > 0) {
     var deliveries = getDeliveries();
@@ -15927,11 +15931,12 @@ function renderDashboard() {
   var sesionesVivas = window.__lrSesionesActivasCache || {};
   var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){ return sesionesVivas[n] && sesionesVivas[n].turnoInicio; });
 
-  // Red de seguridad: si no figura ningún turno abierto pero HAY ventas
-  // recientes, es que el registro del turno no llegó a la nube. Antes eso
-  // hacía que el admin mostrara "sin turno" mientras el local vendía, sin
-  // ninguna explicación. Se avisa para que no parezca que el sistema perdió
-  // datos: las ventas están, lo que falta es el estado del turno.
+  // Si el registro del turno no llegó a la nube pero HAY ventas recientes, se
+  // reconstruye el turno a partir de esas ventas: quién vende, desde cuándo y
+  // cuánto lleva. Es información real y sirve igual.
+  //
+  // Antes acá salía un cartel de advertencia, pero avisar de un problema
+  // técnico no le sirve de nada a quien solo quiere ver cómo va el turno.
   var avisoTurnoFantasma = '';
   if(!nombresConTurno.length){
     var haceUnaHora = Date.now() - 3600000;
@@ -15939,16 +15944,31 @@ function renderDashboard() {
       return !v.anulada && new Date(v.fecha).getTime() > haceUnaHora;
     });
     if(ventasRecientes.length){
-      var ultima = ventasRecientes.sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); })[0];
+      var ordenadas = ventasRecientes.slice().sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
+      var quien = ordenadas[ordenadas.length-1].empleado || '—';
+      // Todas las ventas de ese empleado en las últimas 16 horas, para estimar
+      // desde cuándo viene trabajando
+      var desdeMs = Date.now() - 16*3600000;
+      var suyas = VENTAS.filter(function(v){
+        return !v.anulada && v.empleado === quien && new Date(v.fecha).getTime() > desdeMs;
+      }).sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
+      var inicioEstimado = suyas.length ? new Date(suyas[0].fecha) : new Date(ordenadas[0].fecha);
+      var totalSuyas = suyas.reduce(function(s,v){ return s + (v.total - (v.recargo||0)); }, 0);
+      var mins = Math.floor((Date.now() - inicioEstimado.getTime())/60000);
+      var durTxt = Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m';
+
       avisoTurnoFantasma =
-        '<div style="background:rgba(244,180,0,.10);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:12px 14px;margin-bottom:12px">'+
-          '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--gold);text-transform:uppercase">⚠ Turno no publicado</div>'+
-          '<div style="font-size:.76rem;color:var(--light);margin-top:5px;line-height:1.5">'+
-            'Hay <b>'+ventasRecientes.length+' venta'+(ventasRecientes.length===1?'':'s')+'</b> en la última hora'+
-            (ultima.empleado ? ' de <b>'+ultima.empleado+'</b>' : '')+', así que el local está trabajando, '+
-            'pero el estado del turno no llegó a la nube.<br>'+
-            '<span style="color:var(--gray)">Las ventas están guardadas. Se reintenta solo cada 2 minutos; si sigue, recargá la pantalla del local.</span>'+
+        '<div style="background:var(--card);border:1px solid rgba(46,204,113,.35);border-radius:8px;padding:13px 15px;margin-bottom:12px">'+
+          '<div style="font-size:.9rem;color:var(--light)">'+
+            '<span style="color:var(--green);font-weight:700">🟢 Turno en curso</span> — <b>'+quien+'</b>'+
+            ' · desde las '+inicioEstimado.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
+            ' · <span style="color:var(--gold);font-family:Oswald,sans-serif">'+durTxt+'</span>'+
           '</div>'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-top:9px">'+
+            '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
+            '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalSuyas)+' · '+suyas.length+' venta'+(suyas.length===1?'':'s')+'</span>'+
+          '</div>'+
+          '<div style="font-size:.64rem;color:var(--gray);margin-top:7px">Calculado a partir de las ventas — el detalle completo aparece cuando la pantalla del local vuelva a publicar el turno.</div>'+
         '</div>';
     }
   }
@@ -16047,7 +16067,8 @@ function renderDashboard() {
     turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>';
   }
 
-  el.innerHTML = avisoTurnoFantasma + turnoVivoHtml + retiroBtn +
+  // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
+  el.innerHTML = (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
