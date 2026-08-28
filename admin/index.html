@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787864901";
+  window.__LR_BUILD = "1787958594";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1543,7 +1543,24 @@
     // también en la variable vieja (la usan un par de funciones que
     // todavía esperan una sola).
     var claves = Object.keys(mapa);
-    window.__lrSesionActivaCache = claves.length===1 ? mapa[claves[0]] : null;
+    // Turno vigente para las pantallas que esperan uno solo (el panel de admin,
+    // el cálculo de caja).
+    //
+    // Antes, si había MÁS de una sesión guardada en la nube, esto devolvía
+    // "ninguna" y el admin mostraba que no había turno abierto aunque el local
+    // estuviera vendiendo. Bastaba con que hubiera quedado una sesión vieja sin
+    // cerrar para romperlo. Ahora se toma la más reciente, y se descartan las
+    // que llevan más de 16 horas abiertas, que ya no pueden ser un turno en
+    // curso y son restos de un cierre que no se completó.
+    var ahoraMs = Date.now();
+    var vigentes = claves.map(function(k){ return mapa[k]; }).filter(function(s){
+      if(!s || !s.turnoInicio) return false;
+      return (ahoraMs - new Date(s.turnoInicio).getTime()) < 16*3600000;
+    }).sort(function(a,b){
+      return new Date(b.turnoInicio) - new Date(a.turnoInicio);
+    });
+    window.__lrSesionActivaCache = vigentes.length ? vigentes[0] : null;
+    window.__lrSesionesVigentes = vigentes;
     window.__lrSync.sesionActivaListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -1552,11 +1569,31 @@
   }, function(err){ console.error('Error sincronizando sesiones activas:', err); window.__lrSync.sesionActivaListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveSesionActiva = function(datos){
-    if(!datos || !datos.nombre) return;
-    window.__lrDB.collection('sesionesActivas').doc(idSeguro(datos.nombre)).set(limpiarUndefined(datos)).catch(function(e){
-      console.error('Error guardando sesión activa', e);
-    });
+    if(!datos || !datos.nombre) return Promise.resolve();
+    // Se guarda una copia acá al lado, para poder reintentar si la escritura
+    // falla: sin esto, un corte de conexión justo al abrir el turno dejaba al
+    // panel de admin y al celular mostrando que no había turno abierto, aunque
+    // el local estuviera vendiendo con normalidad.
+    window.__lrUltimaSesionParaReintento = datos;
+    return window.__lrDB.collection('sesionesActivas').doc(idSeguro(datos.nombre))
+      .set(limpiarUndefined(datos))
+      .then(function(){ window.__lrSesionPendienteSubir = false; })
+      .catch(function(e){
+        console.error('Error guardando sesión activa', e);
+        window.__lrSesionPendienteSubir = true;
+      });
   };
+
+  // Reintento periódico: mientras haya un turno abierto en este dispositivo, se
+  // vuelve a publicar su estado cada dos minutos. Así, si una escritura falló o
+  // el registro se perdió, se recompone solo sin que nadie tenga que notarlo.
+  setInterval(function(){
+    try{
+      if(typeof currentEmp === 'undefined' || !currentEmp || !currentEmp.turnoInicio) return;
+      if(typeof esModoDelivery === 'function' && esModoDelivery()) return;
+      if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
+    }catch(e){}
+  }, 120000);
   window.__lrBorrarSesionActiva = function(nombre){
     var quien = nombre || (typeof currentEmp!=='undefined' && currentEmp ? currentEmp.nombre : null);
     if(!quien) return;
@@ -5951,8 +5988,16 @@ function limpiarSesionActiva(nombre) {
   var quienBorrar = nombre || (currentEmp && currentEmp.nombre);
   if(quienBorrar && window.__lrSesionesActivasCache){
     delete window.__lrSesionesActivasCache[quienBorrar];
-    var clavesRestantes = Object.keys(window.__lrSesionesActivasCache);
-    window.__lrSesionActivaCache = clavesRestantes.length===1 ? window.__lrSesionesActivasCache[clavesRestantes[0]] : null;
+    // Mismo criterio que al leer de la nube: queda la más reciente que siga
+    // siendo un turno posible, no "ninguna" apenas hay más de una.
+    var restantes = Object.keys(window.__lrSesionesActivasCache)
+      .map(function(k){ return window.__lrSesionesActivasCache[k]; })
+      .filter(function(s){
+        if(!s || !s.turnoInicio) return false;
+        return (Date.now() - new Date(s.turnoInicio).getTime()) < 16*3600000;
+      })
+      .sort(function(a,b){ return new Date(b.turnoInicio) - new Date(a.turnoInicio); });
+    window.__lrSesionActivaCache = restantes.length ? restantes[0] : null;
   }
   if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva(nombre);
 }
@@ -15871,6 +15916,33 @@ function renderDashboard() {
   // solas con la misma lógica que ya usa la pantalla de Liquidez).
   var sesionesVivas = window.__lrSesionesActivasCache || {};
   var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){ return sesionesVivas[n] && sesionesVivas[n].turnoInicio; });
+
+  // Red de seguridad: si no figura ningún turno abierto pero HAY ventas
+  // recientes, es que el registro del turno no llegó a la nube. Antes eso
+  // hacía que el admin mostrara "sin turno" mientras el local vendía, sin
+  // ninguna explicación. Se avisa para que no parezca que el sistema perdió
+  // datos: las ventas están, lo que falta es el estado del turno.
+  var avisoTurnoFantasma = '';
+  if(!nombresConTurno.length){
+    var haceUnaHora = Date.now() - 3600000;
+    var ventasRecientes = VENTAS.filter(function(v){
+      return !v.anulada && new Date(v.fecha).getTime() > haceUnaHora;
+    });
+    if(ventasRecientes.length){
+      var ultima = ventasRecientes.sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); })[0];
+      avisoTurnoFantasma =
+        '<div style="background:rgba(244,180,0,.10);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:12px 14px;margin-bottom:12px">'+
+          '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--gold);text-transform:uppercase">⚠ Turno no publicado</div>'+
+          '<div style="font-size:.76rem;color:var(--light);margin-top:5px;line-height:1.5">'+
+            'Hay <b>'+ventasRecientes.length+' venta'+(ventasRecientes.length===1?'':'s')+'</b> en la última hora'+
+            (ultima.empleado ? ' de <b>'+ultima.empleado+'</b>' : '')+', así que el local está trabajando, '+
+            'pero el estado del turno no llegó a la nube.<br>'+
+            '<span style="color:var(--gray)">Las ventas están guardadas. Se reintenta solo cada 2 minutos; si sigue, recargá la pantalla del local.</span>'+
+          '</div>'+
+        '</div>';
+    }
+  }
+
   var turnoVivoHtml;
 
   if(nombresConTurno.length > 0) {
@@ -15965,7 +16037,7 @@ function renderDashboard() {
     turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>';
   }
 
-  el.innerHTML = turnoVivoHtml + retiroBtn +
+  el.innerHTML = avisoTurnoFantasma + turnoVivoHtml + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
