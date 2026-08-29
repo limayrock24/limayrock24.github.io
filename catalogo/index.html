@@ -439,11 +439,13 @@ db.collection('promos').onSnapshot(function(snap){
 
 // Combos armados desde el panel de admin (Fernet + Coca, etc.). Se muestran
 // igual que en el panel de venta, para que el cliente pueda pedirlos.
-db.collection('combos').onSnapshot(function(snap){
+// Se lee de 'promos' porque es la colección que este catálogo tiene permiso de
+// consultar; el panel de admin publica ahí una copia de cada combo al guardarlo.
+db.collection('promos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
     var d = doc.data();
-    if(d.activo !== false && d.precio > 0) lista.push(d);
+    if(d.activo !== false && d.precio > 0 && d.nombre) lista.push(d);
   });
   COMBOS = lista;
   combosListos = true;
