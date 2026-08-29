@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787972576";
+  window.__LR_BUILD = "1788013607";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -520,14 +520,35 @@
   // 0000, mientras la netbook está con un turno abierto. Se protege con
   // "typeof" e "if" por si se dispara antes de que la página haya terminado
   // de armar el HTML (en el arranque inicial).
+  // Redibujar la lista completa de productos es lo más pesado del sistema, y
+  // con más de mil productos se nota en la netbook. Dos cuidados:
+  //
+  //  • Se agrupan los cambios que llegan seguidos: si se editan varios
+  //    productos de una, se redibuja una sola vez al final y no una por cada
+  //    uno, que era lo que hacía que la pantalla quedara trabada un rato.
+  //  • No se redibuja si el panel de admin está abierto tapando la venta: no
+  //    tiene sentido gastar en dibujar algo que no se está viendo. Al cerrar
+  //    el panel se refresca.
+  var _refrescoTimer = null;
   function refrescarPantallaVentaSiExiste(){
-    if(document.getElementById('searchInput')){
+    if(!document.getElementById('searchInput')) return;
+
+    var ovAdm = document.getElementById('adminOverlay');
+    if(ovAdm && ovAdm.classList.contains('open')){
+      window.__lrVentaNecesitaRefresco = true;
+      return;
+    }
+
+    clearTimeout(_refrescoTimer);
+    _refrescoTimer = setTimeout(function(){
       if(typeof buildPills==='function') buildPills();
       if(typeof filterAll==='function') filterAll();
       if(typeof buildFavs==='function') buildFavs();
       if(typeof buildCombosGrid==='function') buildCombosGrid();
-    }
+      window.__lrVentaNecesitaRefresco = false;
+    }, 400);
   }
+  window.__lrRefrescarVenta = refrescarPantallaVentaSiExiste;
 
   // IMPORTANTE — cambio de diseño (14/8): antes, esta función borraba de la
   // nube CUALQUIER producto que estuviera en el snapshot anterior pero no en
@@ -6018,6 +6039,22 @@ document.addEventListener('DOMContentLoaded', function(){
 // quede abierta toda la noche.
 setInterval(aplicarNocturnoAutomatico, 60000);
 
+// El panel de admin se refresca solo mientras está abierto, sin esperar a que
+// llegue un movimiento nuevo. Antes el reloj del turno, los totales y la lista
+// de movimientos quedaban congelados hasta que alguien cargara una venta, y
+// desde la oficina o el celular parecía que el sistema no estaba conectado.
+setInterval(function(){
+  try{
+    var ov = document.getElementById('adminOverlay');
+    if(!ov || !ov.classList.contains('open')) return;
+    // Solo si está mirando el Inicio: refrescar otras pestañas mientras se
+    // trabaja en ellas sería molesto (se perderían filtros y scroll).
+    var pane = document.getElementById('pane-dashboard');
+    if(!pane || !pane.classList.contains('active')) return;
+    if(typeof renderDashboard === 'function') renderDashboard();
+  }catch(e){}
+}, 5000);
+
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 // ── RECUPERACIÓN DE TURNOS INTERRUMPIDOS ────────────────────────────────
 // El turno activo se guarda en disco apenas arranca, para poder recuperarlo
@@ -7053,6 +7090,10 @@ function openAdmin() {
 }
 function closeAdmin() {
   document.getElementById('adminOverlay').classList.remove('open');
+  // Aplicar los cambios que llegaron mientras el panel tapaba la venta
+  if(window.__lrVentaNecesitaRefresco && typeof window.__lrRefrescarVenta === 'function'){
+    window.__lrRefrescarVenta();
+  }
   // Si se entró con el atajo 0000 (sin loguear empleado ni abrir turno),
   // al cerrar el panel hay que volver a la pantalla de login, no dejar
   // al usuario "colgado" en una pantalla de venta sin sesión.
