@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787963442";
+  window.__LR_BUILD = "1787963840";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4661,7 +4661,7 @@ body.night-on{background:#080005}
             <span style="font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">📈 Edición masiva de precios</span>
             <button onclick="cerrarEdMasiva()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:5px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Cerrar</button>
           </div>
-          <div style="font-size:.7rem;color:var(--gray);margin-top:4px">Tildá los productos y elegí qué cambiar: por porcentaje o poniendo el valor a mano.</div>
+          <div style="font-size:.7rem;color:var(--gray);margin-top:4px">Tocá cualquier número para cambiarlo al toque, o tildá varios productos para aplicarles un cambio en conjunto.</div>
         </div>
 
         <!-- Filtros -->
@@ -16514,22 +16514,66 @@ function renderEdMasiva() {
     return;
   }
 
+  // Cada número es un campo editable: se toca, se escribe y se guarda solo al
+  // salir. Es la forma rápida de corregir un producto puntual sin abrir su
+  // ficha ni pasar por la barra de cambios en lote.
+  function campo(p, cp, color, tam){
+    var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return '<input type="number" value="'+(p[cp]||'')+'" placeholder="—" '+
+      'onclick="event.preventDefault();event.stopPropagation()" '+
+      'onchange="edMasEditarCampo(this,\''+esc+'\',\''+cp+'\')" '+
+      'style="width:100%;box-sizing:border-box;background:transparent;border:1px solid transparent;border-radius:4px;padding:5px 6px;text-align:right;'+
+      'font-family:Oswald,sans-serif;font-size:'+tam+';color:'+color+';outline:none;cursor:text" '+
+      'onfocus="this.style.borderColor=\'#3498DB\';this.style.background=\'var(--dark)\';this.select()" '+
+      'onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">';
+  }
+
   cont.innerHTML = encabezado + lista.slice(0, 400).map(function(p){
     var marcado = window._edMasSel[p.name] ? 'checked' : '';
     var fondo = window._edMasSel[p.name] ? 'background:rgba(52,152,219,.10)' : '';
-    return '<label style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;align-items:center;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;'+fondo+'">'+
-      '<input type="checkbox" '+marcado+' onchange="edMasToggle(this,\''+p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')" style="width:16px;height:16px;accent-color:#3498DB">'+
+    var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return '<div style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.05);'+fondo+'">'+
+      '<input type="checkbox" '+marcado+' onchange="edMasToggle(this,\''+esc+'\')" style="width:16px;height:16px;accent-color:#3498DB;cursor:pointer">'+
       '<span style="font-size:.82rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+
         '<span style="display:block;font-size:.62rem;color:var(--gray)">'+(p.cat||'Sin categoría')+'</span></span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:'+(p.costo?'var(--gray)':'rgba(255,255,255,.2)')+'">'+(p.costo?fmt(p.costo):'—')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:var(--gray)">'+(p.margin||'—')+(p.margin?'%':'')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.9rem;color:var(--green)">'+(p.pventa?fmt(p.pventa):'—')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:'+(p.pnoc?'var(--gold)':'rgba(255,255,255,.2)')+'">'+(p.pnoc?fmt(p.pnoc):'—')+'</span>'+
-    '</label>';
+      campo(p,'costo','var(--gray)','.82rem')+
+      campo(p,'margin','var(--gray)','.82rem')+
+      campo(p,'pventa','var(--green)','.9rem')+
+      campo(p,'pnoc','var(--gold)','.82rem')+
+    '</div>';
   }).join('') +
   (lista.length > 400 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando los primeros 400 de '+lista.length+' — afiná la búsqueda para ver el resto</div>' : '');
 
   actualizarBarraEdMasiva();
+}
+
+// Guarda el cambio de un campo escrito directamente en la tabla. Si se toca el
+// costo o el margen, el precio de venta se recalcula solo, igual que en la
+// ficha del producto.
+function edMasEditarCampo(inp, nombre, campo){
+  var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+  if(!p) return;
+  var val = inp.value === '' ? null : parseFloat(inp.value);
+  if(val !== null && (isNaN(val) || val < 0)){ showToast('Valor inválido', true); inp.value = p[campo]||''; return; }
+
+  p[campo] = val;
+
+  // Recalcular el precio si cambió costo o margen y no hay precio puesto a mano
+  if((campo === 'costo' || campo === 'margin') && p.costo > 0 && p.margin > 0){
+    var nuevoPrecio = Math.ceil(p.costo * (1 + p.margin/100) / 100) * 100;
+    p.pventa = nuevoPrecio;
+    var fila = inp.parentNode;
+    var campoPrecio = fila ? fila.querySelectorAll('input[type=number]')[2] : null;
+    if(campoPrecio) campoPrecio.value = nuevoPrecio;
+  }
+
+  registrarCambioCatalogo('edicion', nombre,
+    [{campo: {costo:'Costo', margin:'Margen', pventa:'Precio venta', pnoc:'Precio nocturno'}[campo],
+      antes:'—', despues: val === null ? '(vacío)' : val}],
+    currentEmp?currentEmp.nombre:'Admin');
+
+  window.__lrProductosTocados = [nombre];
+  saveLocal('✓ '+nombre);
 }
 
 function edMasToggle(chk, nombre){
