@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787964863";
+  window.__LR_BUILD = "1787972309";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4664,6 +4664,18 @@ body.night-on{background:#080005}
           <div style="font-size:.7rem;color:var(--gray);margin-top:4px">Tocá cualquier número para cambiarlo al toque, o tildá varios productos para aplicarles un cambio en conjunto.</div>
         </div>
 
+        <!-- Zona de trabajo: los productos elegidos se editan acá arriba -->
+        <div id="edMasZona" style="display:none;flex-shrink:0;max-height:46vh;overflow-y:auto;padding:12px 18px;background:rgba(52,152,219,.05);border-bottom:2px solid #3498DB">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span id="edMasZonaTitulo" style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;color:#3498DB"></span>
+            <div style="display:flex;gap:8px">
+              <button onclick="edMasLimpiar()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:7px 13px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">Vaciar</button>
+              <button onclick="guardarEdMasiva()" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 20px;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;font-weight:700;cursor:pointer">💾 Guardar cambios</button>
+            </div>
+          </div>
+          <div id="edMasFichas"></div>
+        </div>
+
         <!-- Filtros -->
         <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex-shrink:0">
           <input type="text" id="edMasBuscar" placeholder="🔍 Buscar producto o código..." oninput="renderEdMasiva()" autocomplete="off"
@@ -4676,50 +4688,14 @@ body.night-on{background:#080005}
 
         <!-- Tabla con todos los datos -->
         <div style="flex:1;overflow-y:auto;padding:0 18px">
+          <div style="display:grid;grid-template-columns:34px 1fr 88px 78px 88px 88px;gap:8px;padding:9px 4px;position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);font-family:Oswald,sans-serif;font-size:.58rem;letter-spacing:1px;color:var(--gray);text-transform:uppercase;z-index:2">
+            <span></span><span>Producto</span>
+            <span style="text-align:right">Costo</span><span style="text-align:right">Margen</span>
+            <span style="text-align:right">Precio</span><span style="text-align:right">Nocturno</span>
+          </div>
           <div id="edMasLista"></div>
         </div>
 
-        <!-- Barra de cambios sin confirmar -->
-        <div id="edMasBorradorBarra" style="display:none;padding:11px 18px;background:rgba(52,152,219,.12);border-top:2px solid #3498DB;flex-shrink:0;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <span id="edMasBorradorTexto" style="font-family:Oswald,sans-serif;font-size:.76rem;color:#3498DB;letter-spacing:1px"></span>
-          <div style="display:flex;gap:8px">
-            <button onclick="descartarCambiosEdMasiva()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px 14px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Descartar</button>
-            <button onclick="revisarCambiosEdMasiva()" style="background:#3498DB;color:#fff;border:none;border-radius:5px;padding:9px 18px;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;font-weight:700;cursor:pointer">📋 Revisar y confirmar</button>
-          </div>
-        </div>
-
-        <!-- Barra de acciones -->
-        <div id="edMasAcciones" style="padding:12px 18px;border-top:2px solid #3498DB;background:var(--dark);flex-shrink:0;display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <span id="edMasContador" style="font-family:Oswald,sans-serif;font-size:.78rem;color:#3498DB;letter-spacing:1px"></span>
-            <button onclick="edMasLimpiar()" style="background:none;border:none;color:var(--gray);font-size:.68rem;cursor:pointer;text-decoration:underline">Destildar todos</button>
-          </div>
-
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-            <div class="field" style="flex:1;min-width:130px;margin:0">
-              <label>Qué cambiar</label>
-              <select id="edMasCampo" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem">
-                <option value="todos">Todo (precio, costo y nocturno)</option>
-                <option value="pventa">Solo precio de venta</option>
-                <option value="costo">Solo costo</option>
-                <option value="pnoc">Solo precio nocturno</option>
-              </select>
-            </div>
-            <div class="field" style="flex:1;min-width:130px;margin:0">
-              <label>Cómo</label>
-              <select id="edMasTipo" onchange="edMasCambiarTipo()" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem">
-                <option value="pct">Aumentar un porcentaje</option>
-                <option value="manual">Poner este valor exacto</option>
-              </select>
-            </div>
-            <div class="field" style="flex:1;min-width:110px;margin:0">
-              <label id="edMasValorLabel">Porcentaje (%)</label>
-              <input type="number" id="edMasValor" step="0.1" placeholder="Ej: 12"
-                style="width:100%;background:var(--card);border:2px solid #3498DB;border-radius:5px;padding:9px;color:var(--white);font-family:Oswald,sans-serif;font-size:1rem;text-align:center">
-            </div>
-            <button onclick="aplicarEdMasiva()" style="background:#3498DB;color:#fff;border:none;border-radius:6px;padding:12px 22px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Aplicar</button>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -16517,233 +16493,36 @@ function renderEdMasiva() {
   if(!cont) return;
   var lista = edMasVisibles();
 
-  var encabezado =
-    '<div style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;padding:10px 4px;position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);font-family:Oswald,sans-serif;font-size:.6rem;letter-spacing:1px;color:var(--gray);text-transform:uppercase;z-index:2">'+
-      '<span></span><span>Producto</span>'+
-      '<span style="text-align:right">Costo</span>'+
-      '<span style="text-align:right">Margen</span>'+
-      '<span style="text-align:right">Precio</span>'+
-      '<span style="text-align:right">Nocturno</span>'+
-    '</div>';
+  renderFichasEdMasiva();
 
   if(!lista.length){
-    cont.innerHTML = encabezado + '<div style="padding:30px;text-align:center;color:var(--gray);font-size:.85rem">Ningún producto coincide con el filtro</div>';
-    actualizarBarraEdMasiva();
+    cont.innerHTML = '<div style="padding:26px;text-align:center;color:var(--gray);font-size:.85rem">Ningún producto coincide con el filtro</div>';
     return;
   }
 
-  // Cada número es un campo editable: se toca, se escribe y se guarda solo al
-  // salir. Es la forma rápida de corregir un producto puntual sin abrir su
-  // ficha ni pasar por la barra de cambios en lote.
-  function campo(p, cp, color, tam){
+  // Lista de abajo: solo para elegir. Toda la edición pasa arriba, en las
+  // fichas, que es donde se ven los cuatro valores juntos.
+  cont.innerHTML = lista.slice(0, 400).map(function(p){
+    var elegido = !!window._edMasSel[p.name];
     var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    // Si hay un cambio sin confirmar para este campo, se muestra ese valor
-    // resaltado en azul, para distinguir lo pendiente de lo ya guardado.
-    var b = (window._edMasBorrador||{})[p.name];
-    var pendiente = b && b[cp] !== undefined;
-    var valorMostrar = pendiente ? (b[cp]===null?'':b[cp]) : (p[cp]||'');
-    if(pendiente){ color = '#3498DB'; }
-    return '<input type="number" value="'+valorMostrar+'" placeholder="—" '+
-      (pendiente ? 'data-pend="1" ' : '')+
-      'onclick="event.preventDefault();event.stopPropagation()" '+
-      'onchange="edMasEditarCampo(this,\''+esc+'\',\''+cp+'\')" '+
-      'style="width:100%;box-sizing:border-box;background:transparent;border:1px solid transparent;border-radius:4px;padding:5px 6px;text-align:right;'+
-      'font-family:Oswald,sans-serif;font-size:'+tam+';color:'+color+';outline:none;cursor:text;'+(pendiente?'font-weight:700':'')+'" '+
-      'onfocus="this.style.borderColor=\'#3498DB\';this.style.background=\'var(--dark)\';this.select()" '+
-      'onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">';
-  }
-
-  cont.innerHTML = encabezado + lista.slice(0, 400).map(function(p){
-    var marcado = window._edMasSel[p.name] ? 'checked' : '';
-    var fondo = window._edMasSel[p.name] ? 'background:rgba(52,152,219,.10)' : '';
-    var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    var tienePend = !!(window._edMasBorrador||{})[p.name];
-    var marcaPend = tienePend ? 'border-left:3px solid #3498DB;' : 'border-left:3px solid transparent;';
-    return '<div style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.05);'+marcaPend+fondo+'">'+
-      '<input type="checkbox" '+marcado+' onchange="edMasToggle(this,\''+esc+'\')" style="width:16px;height:16px;accent-color:#3498DB;cursor:pointer">'+
+    return '<label style="display:grid;grid-template-columns:34px 1fr 88px 78px 88px 88px;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;'+
+      (elegido?'background:rgba(52,152,219,.10)':'')+'">'+
+      '<input type="checkbox" '+(elegido?'checked':'')+' onchange="edMasToggle(this,\''+esc+'\')" style="width:16px;height:16px;accent-color:#3498DB;cursor:pointer">'+
       '<span style="font-size:.82rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+
         '<span style="display:block;font-size:.62rem;color:var(--gray)">'+(p.cat||'Sin categoría')+'</span></span>'+
-      campo(p,'costo','var(--gray)','.82rem')+
-      campo(p,'margin','var(--gray)','.82rem')+
-      campo(p,'pventa','var(--green)','.9rem')+
-      campo(p,'pnoc','var(--gold)','.82rem')+
-    '</div>';
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:'+(p.costo?'var(--gray)':'rgba(255,255,255,.2)')+'">'+(p.costo?fmt(p.costo):'—')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:var(--gray)">'+(p.margin?p.margin+'%':'—')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.86rem;color:var(--green)">'+(p.pventa?fmt(p.pventa):'—')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:'+(p.pnoc?'var(--gold)':'rgba(255,255,255,.2)')+'">'+(p.pnoc?fmt(p.pnoc):'—')+'</span>'+
+    '</label>';
   }).join('') +
-  (lista.length > 400 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando los primeros 400 de '+lista.length+' — afiná la búsqueda para ver el resto</div>' : '');
-
-  actualizarBarraEdMasiva();
-}
-
-// Los cambios escritos en la tabla NO se guardan al instante: se anotan como
-// borrador y se aplican todos juntos al confirmar.
-//
-// Es lo que hace falta para trabajar tranquilo: se puede cargar el costo, ver
-// cómo queda el precio, ajustar el margen y recién entonces confirmar. Si se
-// guardara en cada tecleo, cada paso intermedio quedaría registrado como un
-// cambio real.
-window._edMasBorrador = {};   // { nombreProducto: {costo, margin, pventa, pnoc} }
-
-function edMasEditarCampo(inp, nombre, campo){
-  var p = PRODUCTS.find(function(x){ return x.name === nombre; });
-  if(!p) return;
-  var val = inp.value === '' ? null : parseFloat(inp.value);
-  if(val !== null && (isNaN(val) || val < 0)){ showToast('Valor inválido', true); inp.value = edMasValorActual(p, campo); return; }
-
-  if(!window._edMasBorrador[nombre]) window._edMasBorrador[nombre] = {};
-  window._edMasBorrador[nombre][campo] = val;
-
-  // Si cambió el costo o el margen, se muestra cómo quedaría el precio —
-  // salvo que el precio se haya escrito a mano en este mismo borrador.
-  var b = window._edMasBorrador[nombre];
-  var costoAhora  = (b.costo  !== undefined) ? b.costo  : p.costo;
-  var margenAhora = (b.margin !== undefined) ? b.margin : p.margin;
-  if((campo === 'costo' || campo === 'margin') && costoAhora > 0 && margenAhora > 0 && b.pventa === undefined){
-    var nuevoPrecio = Math.ceil(costoAhora * (1 + margenAhora/100) / 100) * 100;
-    b.pventa = nuevoPrecio;
-    var fila = inp.parentNode;
-    var campoPrecio = fila ? fila.querySelectorAll('input[type=number]')[2] : null;
-    if(campoPrecio){
-      campoPrecio.value = nuevoPrecio;
-      campoPrecio.style.fontWeight = '700';
-    }
-  }
-
-  // Marcar visualmente que este valor está pendiente de confirmar
-  inp.style.color = '#3498DB';
-  inp.style.fontWeight = '700';
-  var filaEl = inp.closest('div[style*="grid-template-columns"]');
-  if(filaEl) filaEl.style.borderLeft = '3px solid #3498DB';
-
-  actualizarBarraBorrador();
-}
-
-// Valor que hay que mostrar en un campo: el del borrador si se tocó, si no el real
-function edMasValorActual(p, campo){
-  var b = window._edMasBorrador[p.name];
-  if(b && b[campo] !== undefined) return b[campo] === null ? '' : b[campo];
-  return p[campo] || '';
-}
-
-function edMasHayBorrador(){
-  return Object.keys(window._edMasBorrador || {}).length > 0;
-}
-
-function actualizarBarraBorrador(){
-  var n = Object.keys(window._edMasBorrador || {}).length;
-  var barra = document.getElementById('edMasBorradorBarra');
-  var txt   = document.getElementById('edMasBorradorTexto');
-  if(barra) barra.style.display = n ? 'flex' : 'none';
-  if(txt) txt.textContent = n + ' producto' + (n===1?'':'s') + ' con cambios sin confirmar';
-  actualizarBarraEdMasiva();
-}
-
-// Muestra TODO lo que se va a cambiar antes de aplicarlo
-function revisarCambiosEdMasiva(){
-  var nombres = Object.keys(window._edMasBorrador || {});
-  if(!nombres.length){ showToast('No hay cambios para confirmar', true); return; }
-
-  var etiquetas = {costo:'Costo', margin:'Margen', pventa:'Precio', pnoc:'Nocturno'};
-  var filas = [];
-  nombres.forEach(function(nombre){
-    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
-    if(!p) return;
-    var b = window._edMasBorrador[nombre];
-    var cambios = [];
-    Object.keys(b).forEach(function(cp){
-      var antes = p[cp];
-      var despues = b[cp];
-      if((antes||null) === (despues||null)) return;   // no cambió realmente
-      cambios.push(
-        '<div style="display:flex;justify-content:space-between;gap:10px;font-size:.74rem;padding:2px 0">'+
-          '<span style="color:var(--gray)">'+etiquetas[cp]+'</span>'+
-          '<span><span style="color:var(--gray);text-decoration:line-through">'+(antes?fmt(antes):'—')+'</span>'+
-          ' <span style="color:#3498DB">→</span> '+
-          '<b style="color:var(--green)">'+(despues?fmt(despues):'—')+'</b></span>'+
-        '</div>');
-    });
-    if(cambios.length){
-      filas.push('<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)">'+
-        '<div style="font-size:.82rem;color:var(--light);margin-bottom:3px">'+p.name+'</div>'+
-        cambios.join('')+
-      '</div>');
-    }
-  });
-
-  if(!filas.length){ showToast('Los valores quedaron igual que antes'); return; }
-
-  var ov = document.getElementById('edMasRevisionOverlay');
-  if(!ov){
-    ov = document.createElement('div');
-    ov.id = 'edMasRevisionOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2500;display:flex;align-items:center;justify-content:center;padding:16px';
-    ov.innerHTML =
-      '<div style="background:var(--surface);border-radius:10px;padding:18px;width:460px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column">'+
-        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase;margin-bottom:4px">📋 Revisar cambios</div>'+
-        '<div id="edMasRevSub" style="font-size:.7rem;color:var(--gray);margin-bottom:12px"></div>'+
-        '<div id="edMasRevLista" style="flex:1;overflow-y:auto"></div>'+
-        '<div style="display:flex;gap:8px;margin-top:14px">'+
-          '<button onclick="confirmarCambiosEdMasiva()" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Confirmar y guardar</button>'+
-          '<button onclick="cerrarRevisionEdMasiva()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:13px 18px;font-family:Oswald,sans-serif;font-size:.76rem;cursor:pointer">Seguir editando</button>'+
-        '</div>'+
-      '</div>';
-    document.body.appendChild(ov);
-  }
-  ov.style.display = 'flex';
-  document.getElementById('edMasRevSub').textContent = filas.length + ' producto' + (filas.length===1?'':'s') + ' se van a modificar';
-  document.getElementById('edMasRevLista').innerHTML = filas.join('');
-}
-
-function cerrarRevisionEdMasiva(){
-  var ov = document.getElementById('edMasRevisionOverlay');
-  if(ov) ov.style.display = 'none';
-}
-
-function confirmarCambiosEdMasiva(){
-  var nombres = Object.keys(window._edMasBorrador || {});
-  var etiquetas = {costo:'Costo', margin:'Margen', pventa:'Precio venta', pnoc:'Precio nocturno'};
-  var tocados = [];
-
-  nombres.forEach(function(nombre){
-    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
-    if(!p) return;
-    var b = window._edMasBorrador[nombre];
-    var detalle = [];
-    Object.keys(b).forEach(function(cp){
-      if((p[cp]||null) === (b[cp]||null)) return;
-      detalle.push({campo: etiquetas[cp], antes: p[cp]||'—', despues: b[cp]===null?'(vacío)':b[cp]});
-      p[cp] = b[cp];
-    });
-    if(detalle.length){
-      registrarCambioCatalogo('edicion', nombre, detalle, currentEmp?currentEmp.nombre:'Admin');
-      tocados.push(nombre);
-    }
-  });
-
-  window._edMasBorrador = {};
-  cerrarRevisionEdMasiva();
-
-  if(!tocados.length){ showToast('No había cambios para guardar'); renderEdMasiva(); return; }
-
-  window.__lrProductosTocados = tocados;
-  saveLocal('✅ '+tocados.length+' producto'+(tocados.length===1?'':'s')+' actualizado'+(tocados.length===1?'':'s'));
-  renderEdMasiva();
-  renderCatalogo(); buildPills(); filterAll();
-}
-
-function descartarCambiosEdMasiva(){
-  if(!edMasHayBorrador()) return;
-  askConfirm('¿Descartás todos los cambios sin confirmar?').then(function(ok){
-    if(!ok) return;
-    window._edMasBorrador = {};
-    renderEdMasiva();
-    showToast('Cambios descartados');
-  });
+  (lista.length > 400 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando los primeros 400 de '+lista.length+' — afiná la búsqueda</div>' : '');
 }
 
 function edMasToggle(chk, nombre){
   if(chk.checked) window._edMasSel[nombre] = true;
-  else delete window._edMasSel[nombre];
-  actualizarBarraEdMasiva();
+  else { delete window._edMasSel[nombre]; delete window._edMasBorrador[nombre]; }
+  renderFichasEdMasiva();
 }
 
 function edMasMarcarVisibles(marcar){
@@ -16757,70 +16536,6 @@ function edMasMarcarVisibles(marcar){
 function edMasLimpiar(){
   window._edMasSel = {};
   renderEdMasiva();
-}
-
-function actualizarBarraEdMasiva(){
-  var n = Object.keys(window._edMasSel).length;
-  var barra = document.getElementById('edMasAcciones');
-  var cont  = document.getElementById('edMasContador');
-  if(barra) barra.style.display = n ? 'block' : 'none';
-  if(cont)  cont.textContent = n + ' producto' + (n===1?'':'s') + ' tildado' + (n===1?'':'s');
-}
-
-function edMasCambiarTipo(){
-  var tipo = document.getElementById('edMasTipo').value;
-  var lbl  = document.getElementById('edMasValorLabel');
-  var inp  = document.getElementById('edMasValor');
-  if(lbl) lbl.textContent = (tipo==='pct') ? 'Porcentaje (%)' : 'Valor en pesos';
-  if(inp) inp.placeholder = (tipo==='pct') ? 'Ej: 12' : 'Ej: 3500';
-}
-
-function aplicarEdMasiva(){
-  var nombres = Object.keys(window._edMasSel);
-  if(!nombres.length){ showToast('Tildá al menos un producto', true); return; }
-
-  var campo = document.getElementById('edMasCampo').value;
-  var tipo  = document.getElementById('edMasTipo').value;
-  var valor = parseFloat(document.getElementById('edMasValor').value);
-  if(isNaN(valor) || valor === 0){ showToast('Poné un valor válido', true); return; }
-
-  var etiquetaCampo = {todos:'precio, costo y nocturno', pventa:'precio de venta', costo:'costo', pnoc:'precio nocturno'}[campo];
-  var descripcion = (tipo==='pct')
-    ? (valor>0?'+':'')+valor+'% en '+etiquetaCampo
-    : 'poner '+fmt(valor)+' en '+etiquetaCampo;
-
-  askConfirm('Se va a aplicar '+descripcion+' a '+nombres.length+' producto'+(nombres.length===1?'':'s')+'.\n\n¿Confirmás?').then(function(ok){
-    if(!ok) return;
-
-    var factor = 1 + (valor/100);
-    var campos = (campo==='todos') ? ['pventa','costo','pnoc'] : [campo];
-    var tocados = 0;
-
-    nombres.forEach(function(nombre){
-      var p = PRODUCTS.find(function(x){ return x.name === nombre; });
-      if(!p) return;
-      campos.forEach(function(cp){
-        if(tipo==='pct'){
-          // Con porcentaje solo se tocan los que ya tienen un valor cargado:
-          // multiplicar un campo vacío no tendría sentido.
-          if(p[cp]) p[cp] = Math.round(p[cp]*factor);
-        } else {
-          p[cp] = Math.round(valor);
-        }
-      });
-      tocados++;
-    });
-
-    registrarCambioCatalogo('aumento-masivo', nombres.length+' productos',
-      [{campo:'Cambio aplicado', antes:'—', despues:descripcion}],
-      currentEmp?currentEmp.nombre:'Admin');
-
-    window.__lrProductosTocados = nombres;
-    saveLocal();
-    renderEdMasiva();
-    renderCatalogo(); buildPills(); filterAll();
-    showToast('✅ Aplicado a '+tocados+' producto'+(tocados===1?'':'s'));
-  });
 }
 
 // ── AUMENTO MASIVO DE PRECIOS POR CATEGORÍA O PROVEEDOR ─────────────────────
