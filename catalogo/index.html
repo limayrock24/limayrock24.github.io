@@ -40,7 +40,14 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 
 .cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:20px 0 8px;padding-left:2px;border-bottom:1px solid var(--border);padding-bottom:6px}
 
-.cat-pills{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none}
+/* Barra deslizadora VISIBLE en las categorías: sin ella no se notaba que la
+   lista seguía hacia el costado y quedaban categorías sin descubrir. */
+.cat-pills{display:flex;gap:8px;overflow-x:auto;padding-bottom:9px;margin-bottom:6px;
+  scrollbar-width:thin;scrollbar-color:#D2201F rgba(255,255,255,.08)}
+.cat-pills::-webkit-scrollbar{height:6px}
+.cat-pills::-webkit-scrollbar-track{background:rgba(255,255,255,.07);border-radius:3px}
+.cat-pills::-webkit-scrollbar-thumb{background:linear-gradient(90deg,#D2201F,#F4B400);border-radius:3px}
+.cat-pills::-webkit-scrollbar-thumb:hover{background:#D2201F}
 .cat-pills::-webkit-scrollbar{display:none}
 .cat-pill{flex-shrink:0;background:var(--card);border:1.5px solid var(--border);color:var(--light);border-radius:20px;padding:8px 16px;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
 .cat-pill.active{background:var(--red);border-color:var(--red);color:var(--white);font-weight:700}
@@ -420,40 +427,27 @@ db.collection('inventario').onSnapshot(function(snap){
   if(document.getElementById('mainContent').style.display==='block') renderList();
 });
 
+// Combos y promos: una sola lectura para las dos cosas. Antes había dos
+// suscripciones a la misma colección y se pisaban entre sí, y el listado viejo
+// terminaba tapando el de combos.
 db.collection('promos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
     var d = doc.data();
-    if(d.activa !== false) lista.push(d);
+    if(d.activo === false || d.activa === false) return;
+    if(!d.nombre || !(d.precio > 0)) return;
+    lista.push(d);
   });
   PROMOS = lista;
-  promosListos = true;
-  chequearListo();
-  if(document.getElementById('mainContent').style.display==='block') renderPromos();
-}, function(err){
-  console.error('Error cargando promos (se continúa sin mostrarlas):', err);
-  PROMOS = [];
-  promosListos = true;
-  chequearListo();
-});
-
-// Combos armados desde el panel de admin (Fernet + Coca, etc.). Se muestran
-// igual que en el panel de venta, para que el cliente pueda pedirlos.
-// Se lee de 'promos' porque es la colección que este catálogo tiene permiso de
-// consultar; el panel de admin publica ahí una copia de cada combo al guardarlo.
-db.collection('promos').onSnapshot(function(snap){
-  var lista = [];
-  snap.forEach(function(doc){
-    var d = doc.data();
-    if(d.activo !== false && d.precio > 0 && d.nombre) lista.push(d);
-  });
   COMBOS = lista;
+  promosListos = true;
   combosListos = true;
   chequearListo();
   if(document.getElementById('mainContent').style.display==='block') renderCombos();
 }, function(err){
-  console.error('Error sincronizando combos:', err);
-  combosListos = true;
+  console.error('Error cargando combos:', err);
+  PROMOS = []; COMBOS = [];
+  promosListos = true; combosListos = true;
   chequearListo();
 });
 
@@ -474,18 +468,13 @@ db.collection('itemsManualesCatalogo').onSnapshot(function(snap){
   chequearListo();
 });
 
+// Quedaba un listado viejo de promociones que dibujaba estos mismos datos como
+// tarjetas sin detalle y sin poder tocarlas. Ahora redirige al render de
+// combos, que es el que muestra qué trae cada uno y permite agregarlos.
 function renderPromos(){
-  var cont = document.getElementById('promoContainer');
-  if(!PROMOS.length){ cont.innerHTML = ''; return; }
-  var html = '<div class="promo-title">🔥 Promociones</div>';
-  PROMOS.forEach(function(p){
-    html += '<div class="promo-card">'+
-      '<div class="prod-info"><div class="prod-name">'+p.nombre+'</div>'+
-      (p.descripcion ? '<div style="font-size:.78rem;color:var(--light);margin-top:2px">'+p.descripcion+'</div>' : '')+
-      '<div class="prod-price">'+fmt(p.precio)+'</div></div>'+
-    '</div>';
-  });
-  cont.innerHTML = html;
+  var contViejo = document.getElementById('promoContainer');
+  if(contViejo) contViejo.innerHTML = '';
+  renderCombos();
 }
 
 function renderList(){
