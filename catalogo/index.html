@@ -547,12 +547,15 @@ function renderCombos(){
   cont.innerHTML =
     '<div class="cat-title" style="margin-top:4px">🎁 Combos y promos</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-bottom:18px">'+
-    COMBOS.map(function(cb){
+    COMBOS.map(function(cb, i){
       var enCarrito = CARRITO_COMBOS[cb.nombre] || 0;
+      // El panel de admin guarda la cantidad en 'qty'. Se contempla 'cant'
+      // también, por si algún combo viejo quedó con ese nombre.
       var detalle = (cb.items||[]).map(function(it){
-        return it.nombre + (it.cant>1 ? ' ×'+it.cant : '');
+        var n = it.qty || it.cant || 1;
+        return it.nombre + (n>1 ? ' ×'+n : '');
       }).join(' + ');
-      return '<div onclick="agregarCombo(\''+cb.nombre.replace(/'/g,"\\'")+'\')" '+
+      return '<div onclick="agregarComboPorIndice('+i+')" '+
         'style="background:var(--card);border:1.5px solid '+(enCarrito?'var(--green)':'rgba(210,32,31,.45)')+';border-radius:9px;padding:11px 10px;cursor:pointer;text-align:center;position:relative;transition:.12s">'+
         (enCarrito ? '<div style="position:absolute;top:-7px;right:-7px;background:var(--green);color:#04231d;border-radius:50%;width:23px;height:23px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700">'+enCarrito+'</div>' : '')+
         '<div style="font-size:1.6rem;line-height:1">'+(cb.emoji||'🎁')+'</div>'+
@@ -562,6 +565,11 @@ function renderCombos(){
       '</div>';
     }).join('')+
     '</div>';
+}
+
+function agregarComboPorIndice(i){
+  var cb = COMBOS[i];
+  if(cb) agregarCombo(cb.nombre);
 }
 
 function agregarCombo(nombre){
@@ -760,7 +768,7 @@ function armarListaCombosHtml(){
     var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
     if(!cb) return '';
     var cant = CARRITO_COMBOS[nombre];
-    var incluye = (cb.items||[]).map(function(it){ return it.nombre + (it.cant>1?' ×'+it.cant:''); }).join(' + ');
+    var incluye = (cb.items||[]).map(function(it){ var n=it.qty||it.cant||1; return it.nombre + (n>1?' ×'+n:''); }).join(' + ');
     return '<div class="cart-item">'+
       '<span>'+(cb.emoji||'🎁')+' '+cb.nombre+' ×'+cant+
         (incluye ? '<div style="font-size:.66rem;color:var(--gray)">'+incluye+'</div>' : '')+
@@ -965,7 +973,8 @@ function confirmarPedido(){
     var cant = CARRITO_COMBOS[nombre];
     msg += '• '+(cb.emoji||'')+' '+cb.nombre+' ×'+cant+' — '+fmt(cb.precio*cant)+'\n';
     (cb.items||[]).forEach(function(it){
-      msg += '    - '+it.nombre+(it.cant>1?' ×'+it.cant:'')+'\n';
+      var n = it.qty || it.cant || 1;
+      msg += '    - '+it.nombre+(n>1?' ×'+n:'')+'\n';
     });
   });
   items.forEach(function(it){
