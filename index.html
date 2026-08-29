@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788013607";
+  window.__LR_BUILD = "1788014233";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7942,13 +7942,23 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   guardarPendienteLocalProductos(PRODUCTS);
-  // El cambio ya está aplicado en pantalla: se avisa que quedó y se deja seguir
-  // trabajando. La subida corre por detrás y, si falla, el sistema reintenta
-  // solo y avisa. Antes había que esperar la confirmación de la nube para poder
-  // continuar, y con conexión lenta eso frenaba todo el trabajo.
-  showToast(mensajeExito || '✅ Guardado');
+  // Se avisa que quedó guardado ACÁ y se deja seguir trabajando, pero el aviso
+  // dice la verdad: recién cuando la nube confirma se muestra el visto.
+  //
+  // Antes decía "guardado" al instante pasara lo que pasara, así que si la
+  // subida fallaba el producto figuraba guardado y nunca llegaba — que es lo
+  // que hacía que un producto creado "desapareciera" después.
+  showToast('⏳ ' + (mensajeExito || 'Guardando') + '...');
   var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar, window.__lrProductosTocados);
   window.__lrProductosTocados = null;
+
+  // Confirmación real, sin frenar la pantalla
+  promesa.then(function(){
+    showToast((mensajeExito || '✅ Guardado') + ' — confirmado');
+  }).catch(function(){
+    showToast('⚠️ Guardado acá, todavía sin subir — se reintenta solo', true);
+    if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+  });
   var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar); };
   if(!window.__lrConTimeoutAviso) return promesa.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito); });
   return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
@@ -16311,6 +16321,17 @@ function renderCatalogo() {
   }
   if(!filtered.length){ body.innerHTML='<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--gray)">Sin resultados</td></tr>'; return; }
   body.innerHTML='';
+
+  // Se arma la tabla FUERA de la pantalla y se inserta de una sola vez.
+  //
+  // Antes cada fila se agregaba por separado, así que con más de mil productos
+  // el navegador tenía que recalcular la pantalla mil veces seguidas: eso era
+  // lo que dejaba todo trabado unos segundos después de crear o editar un
+  // producto, aunque el guardado en la nube ya hubiera terminado.
+  var _fragmento = document.createDocumentFragment();
+  var _bodyReal = body;
+  body = { appendChild: function(el){ _fragmento.appendChild(el); } };
+
   filtered.forEach(function(p){
     var idx=p._idx; var mrg=p.margin||MARGINS[p.cat]||50;
     var ss=inv[p.name]&&inv[p.name].stock===0;
@@ -16332,6 +16353,9 @@ function renderCatalogo() {
     tr.querySelectorAll('td:not(:first-child)').forEach(function(td){ td.onclick=function(){ abrirProdModalPorNombre(nombreProd); }; });
     body.appendChild(tr);
   });
+
+  // Una sola inserción: el navegador dibuja todo de una vez
+  _bodyReal.appendChild(_fragmento);
   actualizarBotonCartelitos();
 }
 
