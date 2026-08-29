@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788026663";
+  window.__LR_BUILD = "1788027100";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1744,7 +1744,7 @@
   // escribe lo que realmente cambió, para no generar tráfico al pedo cada vez
   // que llega la lista.
   window.__lrUltimoEspejoCombos = null;
-  function sincronizarCombosConCatalogo(lista){
+  window.sincronizarCombosConCatalogo = function(lista){
     try{
       var vigentes = (lista||[]).filter(function(cb){ return cb.activo !== false && cb.precio > 0 && cb.nombre; });
       var espejo = {};
@@ -1754,6 +1754,11 @@
           items: cb.items || [], activo: true, esCombo: true
         };
       });
+
+      // Si la lista llega vacía NO se toca nada. Puede pasar por una
+      // sincronización a medio cargar, y borrar todo por eso dejaría al
+      // catálogo del cliente sin combos sin que nadie lo haya pedido.
+      if(!vigentes.length) return;
 
       var anterior = window.__lrUltimoEspejoCombos;
       var textoAhora = JSON.stringify(espejo);
@@ -1766,7 +1771,9 @@
         window.__lrDB.collection('promos').doc(idSeguro(nombre)).set(espejo[nombre]).catch(function(){});
       });
 
-      // Sacar del catálogo los que ya no están o se desactivaron
+      // Sacar del catálogo los combos que se eliminaron o desactivaron. Solo se
+      // borra lo que este mismo mecanismo había publicado antes: nunca se toca
+      // una promo cargada por otra vía.
       if(anterior){
         var antes = JSON.parse(anterior);
         Object.keys(antes).forEach(function(nombre){
@@ -1778,7 +1785,7 @@
 
       window.__lrUltimoEspejoCombos = textoAhora;
     }catch(e){ console.error('No se pudo sincronizar los combos con el catálogo', e); }
-  }
+  };
 
   // Combos (lista curada, con borrado si se elimina uno)
   window.__lrDB.collection(window.__lrCOL.combos).onSnapshot(function(snap){
@@ -7168,6 +7175,15 @@ function switchTab(tab) {
   if(tab==='sorteos') renderSorteos();
   if(tab==='movimientos') initMovimientos();
   if(tab==='pedidos') renderPedidos();
+  // Al entrar a Combos, se republican en el catálogo del cliente sin comparar
+  // contra la última copia. Es la garantía de que lo que ve el dueño en esta
+  // pantalla es exactamente lo que ve el cliente.
+  if(tab==='combos'){
+    try{
+      window.__lrUltimoEspejoCombos = null;
+      if(typeof sincronizarCombosConCatalogo==='function') sincronizarCombosConCatalogo(getCombos());
+    }catch(e){}
+  }
   if(tab==='dashboard') renderDashboard();
   if(tab==='catalogo') initCatalogo();
   if(tab==='logcat') renderLogCatalogo();
