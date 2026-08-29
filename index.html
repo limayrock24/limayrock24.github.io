@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787972309";
+  window.__LR_BUILD = "1787972576";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -16475,6 +16475,167 @@ function cerrarEdMasiva() {
     return;
   }
   document.getElementById('edMasivaOverlay').classList.remove('open');
+}
+
+// Cambios pendientes de guardar: { nombreProducto: {costo, margin, pventa, pnoc} }
+window._edMasBorrador = {};
+
+// Valor vigente de un campo: el editado si se tocó, si no el que ya tenía.
+function edMasVal(p, cp){
+  var b = window._edMasBorrador[p.name];
+  if(b && b[cp] !== undefined) return b[cp];
+  return p[cp];
+}
+
+// Recalcula con la MISMA lógica que la ficha individual: el precio sale de
+// costo + margen, y en bebidas alcohólicas el nocturno acompaña sumando mil.
+// Todo en vivo, sin guardar nada.
+function edMasRecalcular(nombre, campoTocado){
+  var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+  if(!p) return;
+  var b = window._edMasBorrador[nombre] = window._edMasBorrador[nombre] || {};
+
+  var costo  = edMasVal(p,'costo')  || 0;
+  var margen = edMasVal(p,'margin') || 0;
+  var esAlc  = (p.cat === 'Bebidas Alcohólicas');
+
+  if(campoTocado === 'costo' || campoTocado === 'margin'){
+    if(costo > 0 && margen > 0){
+      b.pventa = Math.ceil(costo * (1 + margen/100) / 100) * 100;
+      if(esAlc && b.__nocManual !== true) b.pnoc = b.pventa + 1000;
+    }
+  }
+  if(campoTocado === 'pventa' && esAlc && b.__nocManual !== true){
+    var pv = edMasVal(p,'pventa') || 0;
+    if(pv > 0) b.pnoc = pv + 1000;
+  }
+  if(campoTocado === 'pnoc') b.__nocManual = true;
+
+  renderFichasEdMasiva();
+}
+
+function edMasEditarCampo(inp, nombre, campo){
+  var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+  if(!p) return;
+  var val = inp.value === '' ? null : parseFloat(inp.value);
+  if(val !== null && (isNaN(val) || val < 0)){ showToast('Valor inválido', true); return; }
+  window._edMasBorrador[nombre] = window._edMasBorrador[nombre] || {};
+  window._edMasBorrador[nombre][campo] = val;
+  edMasRecalcular(nombre, campo);
+}
+
+// Fichas de los productos elegidos, con el mismo formato que la ficha individual
+function renderFichasEdMasiva(){
+  var zona = document.getElementById('edMasZona');
+  var cont = document.getElementById('edMasFichas');
+  var tit  = document.getElementById('edMasZonaTitulo');
+  if(!cont) return;
+
+  var nombres = Object.keys(window._edMasSel || {});
+  if(!nombres.length){ if(zona) zona.style.display = 'none'; return; }
+  if(zona) zona.style.display = 'block';
+  if(tit) tit.textContent = nombres.length + ' producto' + (nombres.length===1?'':'s') + ' en edición';
+
+  cont.innerHTML = nombres.map(function(nombre){
+    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+    if(!p) return '';
+    var esc = nombre.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    var esAlc = (p.cat === 'Bebidas Alcohólicas');
+    var b = window._edMasBorrador[nombre] || {};
+    var cambio = Object.keys(b).filter(function(k){ return k.indexOf('__')!==0; }).length > 0;
+
+    var costo  = edMasVal(p,'costo');
+    var margen = edMasVal(p,'margin');
+    var pventa = edMasVal(p,'pventa');
+    var pnoc   = edMasVal(p,'pnoc');
+
+    function inp(cp, valor, color){
+      return '<input type="number" value="'+(valor==null?'':valor)+'" placeholder="—" '+
+        'oninput="edMasEditarCampo(this,\''+esc+'\',\''+cp+'\')" onfocus="this.select()" '+
+        'style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;'+
+        'padding:8px;color:'+color+';font-family:Oswald,sans-serif;font-size:1rem;text-align:center;outline:none">';
+    }
+
+    return '<div style="background:var(--card);border:1px solid '+(cambio?'#3498DB':'var(--border)')+';border-radius:8px;padding:11px 13px;margin-bottom:9px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:9px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.86rem;color:var(--light)">'+p.name+'</div>'+
+          '<div style="font-size:.63rem;color:var(--gray)">'+(p.cat||'Sin categoría')+(esAlc?' · 🌙 lleva nocturno':'')+'</div>'+
+        '</div>'+
+        '<button onclick="edMasQuitar(\''+esc+'\')" style="background:none;border:none;color:var(--gray);font-size:1rem;cursor:pointer;line-height:1" title="Sacar de la lista">✕</button>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+        '<div><div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Costo</div>'+inp('costo',costo,'var(--white)')+'</div>'+
+        '<div><div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Margen (%)</div>'+inp('margin',margen,'var(--white)')+'</div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<div><div style="font-size:.6rem;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">💚 Precio venta</div>'+inp('pventa',pventa,'var(--green)')+'</div>'+
+        '<div><div style="font-size:.6rem;color:'+(esAlc?'var(--gold)':'var(--gray)')+';text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🌙 Nocturno</div>'+inp('pnoc',pnoc,'var(--gold)')+'</div>'+
+      '</div>'+
+      (cambio && p.pventa && pventa && p.pventa !== pventa
+        ? '<div style="font-size:.68rem;color:var(--gray);margin-top:7px">Antes: <span style="text-decoration:line-through">'+fmt(p.pventa)+'</span> → <b style="color:var(--green)">'+fmt(pventa)+'</b></div>'
+        : '')+
+    '</div>';
+  }).join('');
+}
+
+function edMasQuitar(nombre){
+  delete window._edMasSel[nombre];
+  delete window._edMasBorrador[nombre];
+  renderEdMasiva();
+}
+
+function edMasHayBorrador(){
+  return Object.keys(window._edMasBorrador || {}).length > 0;
+}
+
+// Guarda todos los cambios de una, mostrando antes qué se va a modificar.
+function guardarEdMasiva(){
+  var nombres = Object.keys(window._edMasBorrador || {});
+  var etiquetas = {costo:'Costo', margin:'Margen', pventa:'Precio venta', pnoc:'Precio nocturno'};
+  var resumen = [];
+  var tocados = [];
+
+  nombres.forEach(function(nombre){
+    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+    if(!p) return;
+    var b = window._edMasBorrador[nombre];
+    var detalle = [];
+    ['costo','margin','pventa','pnoc'].forEach(function(cp){
+      if(b[cp] === undefined) return;
+      if((p[cp]||null) === (b[cp]||null)) return;
+      detalle.push({campo: etiquetas[cp], antes: p[cp]||'—', despues: b[cp]===null?'(vacío)':b[cp]});
+    });
+    if(detalle.length){
+      resumen.push('• '+p.name+': '+detalle.map(function(d){
+        return d.campo+' '+(d.antes==='—'?'—':fmt(d.antes))+' → '+(d.despues==='(vacío)'?'(vacío)':fmt(d.despues));
+      }).join(', '));
+      tocados.push({nombre:nombre, detalle:detalle, b:b, p:p});
+    }
+  });
+
+  if(!tocados.length){ showToast('No hay cambios para guardar', true); return; }
+
+  var texto = 'Se van a actualizar '+tocados.length+' producto'+(tocados.length===1?'':'s')+':\n\n'+
+              resumen.slice(0,12).join('\n')+
+              (resumen.length>12 ? '\n...y '+(resumen.length-12)+' más' : '');
+
+  askConfirm(texto).then(function(ok){
+    if(!ok) return;
+    var nombresTocados = [];
+    tocados.forEach(function(t){
+      ['costo','margin','pventa','pnoc'].forEach(function(cp){
+        if(t.b[cp] !== undefined) t.p[cp] = t.b[cp];
+      });
+      registrarCambioCatalogo('edicion', t.nombre, t.detalle, currentEmp?currentEmp.nombre:'Admin');
+      nombresTocados.push(t.nombre);
+    });
+    window._edMasBorrador = {};
+    window.__lrProductosTocados = nombresTocados;
+    saveLocal('✅ '+nombresTocados.length+' producto'+(nombresTocados.length===1?'':'s')+' actualizado'+(nombresTocados.length===1?'':'s'));
+    renderEdMasiva();
+    renderCatalogo(); buildPills(); filterAll();
+  });
 }
 
 function edMasVisibles() {
