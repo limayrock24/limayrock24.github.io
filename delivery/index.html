@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787963098";
+  window.__LR_BUILD = "1787963442";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4546,7 +4546,7 @@ body.night-on{background:#080005}
         <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
-        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirAumentoMasivoModal()">📈 Aumento masivo</button>
+        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">📈 Aumento masivo</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
         <button class="btn-save" id="btnCartelitos" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
       </div>
@@ -4651,6 +4651,68 @@ body.night-on{background:#080005}
     </div>
 
     <!-- MODAL EDITAR CATEGORÍA — pantalla completa, tipo Catálogo -->
+    <!-- EDICIÓN MASIVA DE PRECIOS — pantalla completa, con todos los datos a la vista -->
+    <div class="prod-modal-overlay" id="edMasivaOverlay" style="align-items:stretch;justify-content:stretch">
+      <div style="background:var(--card);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+
+        <div style="padding:14px 18px 10px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">📈 Edición masiva de precios</span>
+            <button onclick="cerrarEdMasiva()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:5px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Cerrar</button>
+          </div>
+          <div style="font-size:.7rem;color:var(--gray);margin-top:4px">Tildá los productos y elegí qué cambiar: por porcentaje o poniendo el valor a mano.</div>
+        </div>
+
+        <!-- Filtros -->
+        <div style="padding:10px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex-shrink:0">
+          <input type="text" id="edMasBuscar" placeholder="🔍 Buscar producto o código..." oninput="renderEdMasiva()" autocomplete="off"
+            style="flex:2;min-width:180px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 11px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none">
+          <select id="edMasCategoria" onchange="renderEdMasiva()"
+            style="flex:1;min-width:150px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem"></select>
+          <button onclick="edMasMarcarVisibles(true)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:5px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">✓ Marcar visibles</button>
+          <button onclick="edMasMarcarVisibles(false)" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">Desmarcar</button>
+        </div>
+
+        <!-- Tabla con todos los datos -->
+        <div style="flex:1;overflow-y:auto;padding:0 18px">
+          <div id="edMasLista"></div>
+        </div>
+
+        <!-- Barra de acciones -->
+        <div id="edMasAcciones" style="padding:12px 18px;border-top:2px solid #3498DB;background:var(--dark);flex-shrink:0;display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <span id="edMasContador" style="font-family:Oswald,sans-serif;font-size:.78rem;color:#3498DB;letter-spacing:1px"></span>
+            <button onclick="edMasLimpiar()" style="background:none;border:none;color:var(--gray);font-size:.68rem;cursor:pointer;text-decoration:underline">Destildar todos</button>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="flex:1;min-width:130px;margin:0">
+              <label>Qué cambiar</label>
+              <select id="edMasCampo" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem">
+                <option value="todos">Todo (precio, costo y nocturno)</option>
+                <option value="pventa">Solo precio de venta</option>
+                <option value="costo">Solo costo</option>
+                <option value="pnoc">Solo precio nocturno</option>
+              </select>
+            </div>
+            <div class="field" style="flex:1;min-width:130px;margin:0">
+              <label>Cómo</label>
+              <select id="edMasTipo" onchange="edMasCambiarTipo()" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem">
+                <option value="pct">Aumentar un porcentaje</option>
+                <option value="manual">Poner este valor exacto</option>
+              </select>
+            </div>
+            <div class="field" style="flex:1;min-width:110px;margin:0">
+              <label id="edMasValorLabel">Porcentaje (%)</label>
+              <input type="number" id="edMasValor" step="0.1" placeholder="Ej: 12"
+                style="width:100%;background:var(--card);border:2px solid #3498DB;border-radius:5px;padding:9px;color:var(--white);font-family:Oswald,sans-serif;font-size:1rem;text-align:center">
+            </div>
+            <button onclick="aplicarEdMasiva()" style="background:#3498DB;color:#fff;border:none;border-radius:6px;padding:12px 22px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;font-weight:700;cursor:pointer">✓ Aplicar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="prod-modal-overlay" id="editCatOverlay" style="align-items:stretch;justify-content:stretch">
       <div style="background:var(--card);width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
 
@@ -16386,6 +16448,170 @@ function abrirCatModal() {
 
 function closeCatModal() {
   document.getElementById('catModalOverlay').classList.remove('open');
+}
+
+// ── EDICIÓN MASIVA DE PRECIOS ───────────────────────────────────────────────
+// Pantalla completa con todos los productos y sus datos a la vista (costo,
+// margen, precio y nocturno). Se tildan los que se quieran y se elige qué
+// cambiar y cómo: aumentando un porcentaje o poniendo el valor exacto.
+//
+// La selección vive en memoria, no en las casillas de la pantalla: así se puede
+// filtrar y buscar sin perder lo que ya se tildó.
+window._edMasSel = {};
+
+function abrirEdMasiva() {
+  window._edMasSel = {};
+  var b = document.getElementById('edMasBuscar');
+  if(b) b.value = '';
+  var v = document.getElementById('edMasValor');
+  if(v) v.value = '';
+
+  var sel = document.getElementById('edMasCategoria');
+  if(sel){
+    var conteo = {};
+    PRODUCTS.forEach(function(p){ var k = p.cat||'Sin categoría'; conteo[k]=(conteo[k]||0)+1; });
+    sel.innerHTML = '<option value="">Todas las categorías ('+PRODUCTS.length+')</option>'+
+      ALL_CATS.slice().sort(function(a,b){ return a.localeCompare(b,'es'); })
+        .map(function(cat){ return '<option value="'+cat.replace(/"/g,'&quot;')+'">'+cat+' ('+(conteo[cat]||0)+')</option>'; }).join('');
+  }
+  renderEdMasiva();
+  document.getElementById('edMasivaOverlay').classList.add('open');
+}
+
+function cerrarEdMasiva() {
+  document.getElementById('edMasivaOverlay').classList.remove('open');
+}
+
+function edMasVisibles() {
+  var term = (document.getElementById('edMasBuscar').value||'').toLowerCase().trim();
+  var cat  = (document.getElementById('edMasCategoria').value||'');
+  return PRODUCTS.filter(function(p){
+    if(cat && (p.cat||'') !== cat) return false;
+    if(!term) return true;
+    return p.name.toLowerCase().indexOf(term) !== -1 ||
+           (p.codigo && String(p.codigo).toLowerCase().indexOf(term) !== -1);
+  });
+}
+
+function renderEdMasiva() {
+  var cont = document.getElementById('edMasLista');
+  if(!cont) return;
+  var lista = edMasVisibles();
+
+  var encabezado =
+    '<div style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;padding:10px 4px;position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--border);font-family:Oswald,sans-serif;font-size:.6rem;letter-spacing:1px;color:var(--gray);text-transform:uppercase;z-index:2">'+
+      '<span></span><span>Producto</span>'+
+      '<span style="text-align:right">Costo</span>'+
+      '<span style="text-align:right">Margen</span>'+
+      '<span style="text-align:right">Precio</span>'+
+      '<span style="text-align:right">Nocturno</span>'+
+    '</div>';
+
+  if(!lista.length){
+    cont.innerHTML = encabezado + '<div style="padding:30px;text-align:center;color:var(--gray);font-size:.85rem">Ningún producto coincide con el filtro</div>';
+    actualizarBarraEdMasiva();
+    return;
+  }
+
+  cont.innerHTML = encabezado + lista.slice(0, 400).map(function(p){
+    var marcado = window._edMasSel[p.name] ? 'checked' : '';
+    var fondo = window._edMasSel[p.name] ? 'background:rgba(52,152,219,.10)' : '';
+    return '<label style="display:grid;grid-template-columns:34px 1fr 92px 92px 92px 92px;gap:8px;align-items:center;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;'+fondo+'">'+
+      '<input type="checkbox" '+marcado+' onchange="edMasToggle(this,\''+p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')" style="width:16px;height:16px;accent-color:#3498DB">'+
+      '<span style="font-size:.82rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+
+        '<span style="display:block;font-size:.62rem;color:var(--gray)">'+(p.cat||'Sin categoría')+'</span></span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:'+(p.costo?'var(--gray)':'rgba(255,255,255,.2)')+'">'+(p.costo?fmt(p.costo):'—')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:var(--gray)">'+(p.margin||'—')+(p.margin?'%':'')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.9rem;color:var(--green)">'+(p.pventa?fmt(p.pventa):'—')+'</span>'+
+      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:'+(p.pnoc?'var(--gold)':'rgba(255,255,255,.2)')+'">'+(p.pnoc?fmt(p.pnoc):'—')+'</span>'+
+    '</label>';
+  }).join('') +
+  (lista.length > 400 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando los primeros 400 de '+lista.length+' — afiná la búsqueda para ver el resto</div>' : '');
+
+  actualizarBarraEdMasiva();
+}
+
+function edMasToggle(chk, nombre){
+  if(chk.checked) window._edMasSel[nombre] = true;
+  else delete window._edMasSel[nombre];
+  actualizarBarraEdMasiva();
+}
+
+function edMasMarcarVisibles(marcar){
+  edMasVisibles().forEach(function(p){
+    if(marcar) window._edMasSel[p.name] = true;
+    else delete window._edMasSel[p.name];
+  });
+  renderEdMasiva();
+}
+
+function edMasLimpiar(){
+  window._edMasSel = {};
+  renderEdMasiva();
+}
+
+function actualizarBarraEdMasiva(){
+  var n = Object.keys(window._edMasSel).length;
+  var barra = document.getElementById('edMasAcciones');
+  var cont  = document.getElementById('edMasContador');
+  if(barra) barra.style.display = n ? 'block' : 'none';
+  if(cont)  cont.textContent = n + ' producto' + (n===1?'':'s') + ' tildado' + (n===1?'':'s');
+}
+
+function edMasCambiarTipo(){
+  var tipo = document.getElementById('edMasTipo').value;
+  var lbl  = document.getElementById('edMasValorLabel');
+  var inp  = document.getElementById('edMasValor');
+  if(lbl) lbl.textContent = (tipo==='pct') ? 'Porcentaje (%)' : 'Valor en pesos';
+  if(inp) inp.placeholder = (tipo==='pct') ? 'Ej: 12' : 'Ej: 3500';
+}
+
+function aplicarEdMasiva(){
+  var nombres = Object.keys(window._edMasSel);
+  if(!nombres.length){ showToast('Tildá al menos un producto', true); return; }
+
+  var campo = document.getElementById('edMasCampo').value;
+  var tipo  = document.getElementById('edMasTipo').value;
+  var valor = parseFloat(document.getElementById('edMasValor').value);
+  if(isNaN(valor) || valor === 0){ showToast('Poné un valor válido', true); return; }
+
+  var etiquetaCampo = {todos:'precio, costo y nocturno', pventa:'precio de venta', costo:'costo', pnoc:'precio nocturno'}[campo];
+  var descripcion = (tipo==='pct')
+    ? (valor>0?'+':'')+valor+'% en '+etiquetaCampo
+    : 'poner '+fmt(valor)+' en '+etiquetaCampo;
+
+  askConfirm('Se va a aplicar '+descripcion+' a '+nombres.length+' producto'+(nombres.length===1?'':'s')+'.\n\n¿Confirmás?').then(function(ok){
+    if(!ok) return;
+
+    var factor = 1 + (valor/100);
+    var campos = (campo==='todos') ? ['pventa','costo','pnoc'] : [campo];
+    var tocados = 0;
+
+    nombres.forEach(function(nombre){
+      var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+      if(!p) return;
+      campos.forEach(function(cp){
+        if(tipo==='pct'){
+          // Con porcentaje solo se tocan los que ya tienen un valor cargado:
+          // multiplicar un campo vacío no tendría sentido.
+          if(p[cp]) p[cp] = Math.round(p[cp]*factor);
+        } else {
+          p[cp] = Math.round(valor);
+        }
+      });
+      tocados++;
+    });
+
+    registrarCambioCatalogo('aumento-masivo', nombres.length+' productos',
+      [{campo:'Cambio aplicado', antes:'—', despues:descripcion}],
+      currentEmp?currentEmp.nombre:'Admin');
+
+    window.__lrProductosTocados = nombres;
+    saveLocal();
+    renderEdMasiva();
+    renderCatalogo(); buildPills(); filterAll();
+    showToast('✅ Aplicado a '+tocados+' producto'+(tocados===1?'':'s'));
+  });
 }
 
 // ── AUMENTO MASIVO DE PRECIOS POR CATEGORÍA O PROVEEDOR ─────────────────────
