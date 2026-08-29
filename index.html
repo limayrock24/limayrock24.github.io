@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788043485";
+  window.__LR_BUILD = "1788045741";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -16132,11 +16132,15 @@ function renderDashboard() {
               var iconos = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', 'cambio-efectivo':'💱'};
               return '<div style="max-height:230px;overflow-y:auto">'+movs.map(function(m){
                 var h = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-                var det = (m.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ') || (m.nota||'');
+                // El movimiento guarda el detalle en 'resumen' y el importe en
+                // 'total'; los items usan 'nombre', no 'name'.
+                var det = m.resumen || (m.items||[]).map(function(i){ return i.nombre+' ×'+i.qty; }).join(', ') || m.extra || '';
+                var imp = (m.total != null) ? m.total : m.monto;
                 return '<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem;line-height:1.4">'+
                   '<span style="color:var(--gray)">'+h+'</span> '+(iconos[m.tipo]||'•')+' '+
                   '<span style="color:var(--light)">'+det+'</span>'+
-                  (m.monto ? ' <b style="color:var(--gold)">'+fmt(m.monto)+'</b>' : '')+
+                  (m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>' : '')+
+                  (imp ? ' <b style="color:var(--gold)">'+fmt(imp)+'</b>' : '')+
                 '</div>';
               }).join('')+'</div>';
             })()+
