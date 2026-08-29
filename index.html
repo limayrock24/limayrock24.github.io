@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1787960869";
+  window.__LR_BUILD = "1787963098";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4616,9 +4616,23 @@ body.night-on{background:#080005}
           <div style="display:flex;gap:8px;margin-top:4px">
             <button type="button" class="pago-btn" id="amModoCategoria" onclick="selAumentoMasivoModo('categoria')" style="flex:1">🏷 Categoría</button>
             <button type="button" class="pago-btn" id="amModoProveedor" onclick="selAumentoMasivoModo('proveedor')" style="flex:1">🚚 Proveedor</button>
+            <button type="button" class="pago-btn" id="amModoElegidos" onclick="selAumentoMasivoModo('elegidos')" style="flex:1">✓ Elegidos</button>
           </div>
         </div>
-        <div class="field" style="margin-top:10px">
+
+        <!-- Selección de productos sueltos: para aumentar solo algunos, sin
+             tener que tocar toda una categoría ni un proveedor entero. -->
+        <div class="field" id="amBloqueElegidos" style="display:none;margin-top:10px">
+          <label>Buscá y tildá los productos que querés aumentar</label>
+          <input type="text" id="amBuscarProd" placeholder="🔍 Buscar por nombre o código..." autocomplete="off" oninput="renderListaAumentoElegidos()"
+            style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:7px 0 4px">
+            <span id="amElegidosCount" style="font-size:.68rem;color:#3498DB">0 productos tildados</span>
+            <button type="button" onclick="limpiarSeleccionAumento()" style="background:none;border:none;color:var(--gray);font-size:.66rem;cursor:pointer;text-decoration:underline">Destildar todos</button>
+          </div>
+          <div id="amListaProd" style="max-height:210px;overflow-y:auto;border:1px solid var(--border);border-radius:5px"></div>
+        </div>
+        <div class="field" style="margin-top:10px" id="amBloqueGrupo">
           <label id="amGrupoLabel">Elegí una categoría</label>
           <select id="amGrupoSelect" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem">
             <option value="">Elegí...</option>
@@ -16382,6 +16396,9 @@ var _amPlan = null;
 function abrirAumentoMasivoModal() {
   _amModo = 'categoria';
   _amPlan = null;
+  window._amSeleccion = {};   // arranca sin nada tildado
+  var bp = document.getElementById('amBuscarProd');
+  if(bp) bp.value = '';
   document.getElementById('amPorcentaje').value = '';
   document.getElementById('amPreview').style.display = 'none';
   selAumentoMasivoModo('categoria');
@@ -16390,10 +16407,28 @@ function abrirAumentoMasivoModal() {
 function cerrarAumentoMasivoModal() {
   document.getElementById('aumentoMasivoOverlay').classList.remove('open');
 }
+// Productos tildados a mano para el aumento (modo "Elegidos")
+window._amSeleccion = window._amSeleccion || {};
+
 function selAumentoMasivoModo(modo) {
   _amModo = modo;
   document.getElementById('amModoCategoria').classList.toggle('selected', modo==='categoria');
   document.getElementById('amModoProveedor').classList.toggle('selected', modo==='proveedor');
+  var btnEleg = document.getElementById('amModoElegidos');
+  if(btnEleg) btnEleg.classList.toggle('selected', modo==='elegidos');
+
+  // En modo "elegidos" no hay grupo que elegir: se muestran los productos.
+  var bloqueGrupo = document.getElementById('amBloqueGrupo');
+  var bloqueEleg  = document.getElementById('amBloqueElegidos');
+  if(bloqueGrupo) bloqueGrupo.style.display = (modo==='elegidos') ? 'none' : '';
+  if(bloqueEleg)  bloqueEleg.style.display  = (modo==='elegidos') ? '' : 'none';
+
+  if(modo === 'elegidos'){
+    renderListaAumentoElegidos();
+    document.getElementById('amPreview').style.display = 'none';
+    return;
+  }
+
   document.getElementById('amGrupoLabel').textContent = modo==='categoria' ? 'Elegí una categoría' : 'Elegí un proveedor';
   var sel = document.getElementById('amGrupoSelect');
   var opciones = modo==='categoria' ? ALL_CATS.slice() : getProveedores().map(function(p){ return p.nombre; });
@@ -16402,14 +16437,70 @@ function selAumentoMasivoModo(modo) {
   document.getElementById('amPreview').style.display = 'none';
 }
 
+// Lista de productos con casillas. Solo se muestran los que coinciden con la
+// búsqueda, pero lo tildado se recuerda en memoria: así se puede buscar otra
+// cosa sin perder lo que ya se había elegido.
+function renderListaAumentoElegidos() {
+  var cont = document.getElementById('amListaProd');
+  if(!cont) return;
+  var term = (document.getElementById('amBuscarProd').value||'').toLowerCase().trim();
+
+  var lista = PRODUCTS.filter(function(p){
+    if(!term) return false;   // sin búsqueda no se listan los 1000 de golpe
+    return p.name.toLowerCase().indexOf(term) !== -1 ||
+           (p.codigo && String(p.codigo).toLowerCase().indexOf(term) !== -1);
+  }).slice(0, 60);
+
+  var tildados = Object.keys(window._amSeleccion).length;
+  var cEl = document.getElementById('amElegidosCount');
+  if(cEl) cEl.textContent = tildados + ' producto' + (tildados===1?'':'s') + ' tildado' + (tildados===1?'':'s');
+
+  if(!term){
+    cont.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.74rem">Escribí para buscar productos</div>';
+    return;
+  }
+  if(!lista.length){
+    cont.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.74rem">Ningún producto coincide con "'+term+'"</div>';
+    return;
+  }
+
+  cont.innerHTML = lista.map(function(p){
+    var marcado = window._amSeleccion[p.name] ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer">'+
+      '<input type="checkbox" '+marcado+' onchange="toggleProdAumento(this,\''+p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\')" style="width:16px;height:16px;accent-color:#3498DB">'+
+      '<span style="flex:1;font-size:.8rem;color:var(--light)">'+p.name+'</span>'+
+      '<span style="font-family:Oswald,sans-serif;color:var(--green);font-size:.8rem">'+fmt(p.pventa||0)+'</span>'+
+    '</label>';
+  }).join('');
+}
+
+function toggleProdAumento(chk, nombre){
+  if(chk.checked) window._amSeleccion[nombre] = true;
+  else delete window._amSeleccion[nombre];
+  var tildados = Object.keys(window._amSeleccion).length;
+  var cEl = document.getElementById('amElegidosCount');
+  if(cEl) cEl.textContent = tildados + ' producto' + (tildados===1?'':'s') + ' tildado' + (tildados===1?'':'s');
+}
+
+function limpiarSeleccionAumento(){
+  window._amSeleccion = {};
+  renderListaAumentoElegidos();
+}
+
 function previsualizarAumentoMasivo() {
   var grupo = document.getElementById('amGrupoSelect').value;
   var pct = parseFloat(document.getElementById('amPorcentaje').value);
-  if(!grupo){ showToast('Elegí '+(_amModo==='categoria'?'una categoría':'un proveedor'),true); return; }
+  if(_amModo!=='elegidos' && !grupo){ showToast('Elegí '+(_amModo==='categoria'?'una categoría':'un proveedor'),true); return; }
   if(!pct || pct===0){ showToast('Ingresá un porcentaje válido',true); return; }
 
   var afectados;
-  if(_amModo==='categoria'){
+  if(_amModo==='elegidos'){
+    var elegidos = window._amSeleccion || {};
+    if(!Object.keys(elegidos).length){ showToast('Tildá al menos un producto', true); return; }
+    afectados = PRODUCTS.map(function(p,i){ return {p:p, idx:i}; })
+                        .filter(function(x){ return elegidos[x.p.name]; });
+    grupo = Object.keys(elegidos).length + ' productos elegidos';
+  } else if(_amModo==='categoria'){
     afectados = PRODUCTS.map(function(p,i){ return {p:p, idx:i}; }).filter(function(x){ return x.p.cat===grupo; });
   } else {
     var prov = getProveedores().find(function(pv){ return pv.nombre===grupo; });
@@ -16452,6 +16543,8 @@ function confirmarAumentoMasivo() {
   registrarCambioCatalogo('aumento-masivo', _amPlan.grupo,
     [{campo:'Aumento aplicado', antes:'—', despues:_amPlan.pct+'% a '+_amPlan.afectados.length+' producto(s)'}],
     currentEmp?currentEmp.nombre:'Admin');
+  // Se avisa exactamente cuáles cambiaron, para no revisar el catálogo entero
+  window.__lrProductosTocados = _amPlan.afectados.map(function(x){ return x.p.name; });
   saveLocal();
   cerrarAumentoMasivoModal();
   renderCatalogo(); buildPills(); filterAll();
