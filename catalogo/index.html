@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788027100";
+window.__LR_BUILD = "1788043485";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -462,6 +462,55 @@ db.collection('inventario').onSnapshot(function(snap){
 // Combos y promos: una sola lectura para las dos cosas. Antes había dos
 // suscripciones a la misma colección y se pisaban entre sí, y el listado viejo
 // terminaba tapando el de combos.
+// Los combos se leen de DOS fuentes y se combinan: la colección real de combos
+// y la copia que el admin publica en promos. Antes se dependía solo de la
+// copia, y si esa copia fallaba o quedaba desactualizada el cliente no veía
+// nada. Con las dos, alcanza con que una funcione.
+var _combosDirecto = [], _combosCopia = [];
+
+function unificarCombos(){
+  var porNombre = {};
+  _combosCopia.forEach(function(cb){ porNombre[cb.nombre] = cb; });
+  _combosDirecto.forEach(function(cb){ porNombre[cb.nombre] = cb; }); // la fuente real manda
+  var lista = Object.keys(porNombre).map(function(n){ return porNombre[n]; });
+  PROMOS = lista;
+  COMBOS = lista;
+  if(lista.length) window.__lrErrorCombos = null;
+  renderCombos();
+}
+
+function normalizarCombo(d){
+  return {
+    nombre: d.nombre,
+    emoji: d.emoji || '🎁',
+    precio: Number(d.precio) || 0,
+    descripcion: d.descripcion || '',
+    items: d.items || []
+  };
+}
+
+// Fuente 1: la colección real de combos
+db.collection('combos').onSnapshot(function(snap){
+  var lista = [];
+  snap.forEach(function(doc){
+    var d = doc.data() || {};
+    if(d.activo === false || d.activa === false) return;
+    if(!d.nombre) return;
+    lista.push(normalizarCombo(d));
+  });
+  _combosDirecto = lista;
+  combosListos = true;
+  chequearListo();
+  unificarCombos();
+}, function(err){
+  console.warn('No se pudo leer la colección de combos, se usa la copia:', err);
+  _combosDirecto = [];
+  combosListos = true;
+  chequearListo();
+  unificarCombos();
+});
+
+// Fuente 2: la copia publicada por el panel de admin
 db.collection('promos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
@@ -471,28 +520,21 @@ db.collection('promos').onSnapshot(function(snap){
     // promos viejas que guardaban el precio en otro formato.
     if(d.activo === false || d.activa === false) return;
     if(!d.nombre) return;
-    lista.push({
-      nombre: d.nombre,
-      emoji: d.emoji || '🎁',
-      precio: Number(d.precio) || 0,
-      descripcion: d.descripcion || '',
-      items: d.items || []
-    });
+    lista.push(normalizarCombo(d));
   });
-  PROMOS = lista;
-  COMBOS = lista;
+  _combosCopia = lista;
   promosListos = true;
-  combosListos = true;
   chequearListo();
-  renderCombos();
+  unificarCombos();
 }, function(err){
   // Si no se pueden leer los combos, queda anotado de forma visible para poder
   // diagnosticarlo, en vez de que simplemente no aparezcan sin explicación.
   console.error('Error cargando combos:', err);
   window.__lrErrorCombos = (err && err.message) ? err.message : 'sin permiso o sin conexión';
-  PROMOS = []; COMBOS = [];
-  promosListos = true; combosListos = true;
+  _combosCopia = [];
+  promosListos = true;
   chequearListo();
+  unificarCombos();
 });
 
 db.collection('itemsManualesCatalogo').onSnapshot(function(snap){
