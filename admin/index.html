@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788014233";
+  window.__LR_BUILD = "1788024791";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -20343,6 +20343,23 @@ function cargarPedidoAlCarrito(id) {
     if(!confirm('⚠️ El carrito ya tiene productos cargados.\n\n¿Agregamos el pedido de '+pedido.nombre+' arriba de lo que ya está?')) return;
   }
   _pedidoWebEnCarrito = id;
+
+  // Combos pedidos desde el catálogo web: se cargan igual que si se hubieran
+  // tocado desde el panel de venta — se cobra el precio del combo y el stock de
+  // cada producto que lo compone se descuenta por separado.
+  (pedido.combos||[]).forEach(function(cb){
+    for(var n = 0; n < (cb.cantidad||1); n++){
+      cart.push({
+        name: (cb.emoji||'🎁')+' '+cb.nombre,
+        precio: cb.precio,
+        qty: 1,
+        subtotal: cb.precio,
+        esCombo: true,
+        comboItems: (cb.items||[]).slice(),
+        cat: 'Combo'
+      });
+    }
+  });
 
   (pedido.items||[]).forEach(function(it){
     var prod = PRODUCTS.find(function(p){ return p.name===it.nombre; });
