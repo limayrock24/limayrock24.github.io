@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788027100";
+  window.__LR_BUILD = "1788043485";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -16118,7 +16118,28 @@ function renderDashboard() {
             '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
             '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalSuyas)+' · '+suyas.length+' venta'+(suyas.length===1?'':'s')+'</span>'+
           '</div>'+
-          '<div style="font-size:.64rem;color:var(--gray);margin-top:7px">Calculado a partir de las ventas — el detalle completo aparece cuando la pantalla del local vuelva a publicar el turno.</div>'+
+          // Movimientos reales del turno, reconstruidos igual que en el panel
+          // normal. Lo que faltaba era el aviso del turno, no los datos.
+          '<div style="margin-top:10px">'+
+            '<div style="font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:6px">Movimientos del turno</div>'+
+            (function(){
+              var desde = inicioEstimado.getTime();
+              var movs = (typeof getMovimientos==='function' ? getMovimientos() : []).filter(function(m){
+                return new Date(m.fecha).getTime() >= desde && m.tipo !== 'descuento-ingrediente';
+              }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,40);
+              if(!movs.length) return '<div style="font-size:.72rem;color:var(--gray)">Sin movimientos todavía</div>';
+              var iconos = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', 'cambio-efectivo':'💱'};
+              return '<div style="max-height:230px;overflow-y:auto">'+movs.map(function(m){
+                var h = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+                var det = (m.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ') || (m.nota||'');
+                return '<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem;line-height:1.4">'+
+                  '<span style="color:var(--gray)">'+h+'</span> '+(iconos[m.tipo]||'•')+' '+
+                  '<span style="color:var(--light)">'+det+'</span>'+
+                  (m.monto ? ' <b style="color:var(--gold)">'+fmt(m.monto)+'</b>' : '')+
+                '</div>';
+              }).join('')+'</div>';
+            })()+
+          '</div>'+
         '</div>';
     }
   }
