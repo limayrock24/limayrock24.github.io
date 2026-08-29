@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788024791";
+  window.__LR_BUILD = "1788025242";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4271,31 +4271,8 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:6px 14px" onclick="abrirComboModal(null)">+ Nuevo combo</button>
       </div>
       <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Los combos aparecen en Recepción como botones de acceso rápido. Al cobrarse, se descuenta el stock de cada producto individualmente.</div>
-      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin:14px 0 8px">🔥 Promos (catálogo web y panel de venta)</div>
-      <div id="promoCardsAdmin"></div>
-      <div style="display:flex;gap:6px;margin:10px 0 18px;flex-wrap:wrap">
-        <input type="text" id="promoNombreInput" placeholder="Nombre de la promo" style="flex:2;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
-        <input type="text" id="promoDescInput" placeholder="Descripción (opcional)" style="flex:2;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
-        <input type="number" id="promoPrecioInput" placeholder="Precio" style="flex:1;min-width:80px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:8px 10px;font-size:.8rem">
-        <button onclick="agregarPromo()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
-      </div>
-
-      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin:14px 0 8px">📝 Productos sueltos / por peso (catálogo web)</div>
-      <div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Se muestran sin precio fijo — el cliente escribe la cantidad/peso que quiere, y llega como nota para cargar a mano (no se suma solo al total).</div>
-      <div id="itemsManualesCardsAdmin"></div>
-      <div style="display:flex;gap:6px;margin:10px 0 18px;flex-wrap:wrap">
-        <select id="imCategoriaInput" style="flex:1;min-width:130px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
-          <option value="Fiambrería">Fiambrería</option>
-          <option value="Frutas y Verduras">Frutas y Verduras</option>
-          <option value="Snacks sueltos">Snacks sueltos</option>
-        </select>
-        <input type="text" id="imNombreInput" placeholder="Nombre del producto" style="flex:2;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
-        <input type="number" id="imPrecioKgInput" placeholder="$ por kilo" min="0" style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:8px 10px;font-size:.8rem">
-        <select id="imUnidadInput" style="flex:1;min-width:110px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:8px 10px;font-size:.8rem">
-          <option value="kg">Por peso (kg)</option>
-          <option value="unidad">Por unidad</option>
-        </select>
-        <button onclick="agregarItemManual()" style="background:var(--red);color:var(--white);border:none;border-radius:4px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">+ Agregar</button>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button onclick="publicarCombosEnCatalogo()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer" title="Vuelve a publicar todos los combos en el catálogo del cliente">🔄 Republicar en el catálogo web</button>
       </div>
 
       <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:6px 0 8px">🎁 Combos</div>
@@ -21149,6 +21126,17 @@ function guardarComboModal() {
   if(!precio || precio <= 0) { showToast('Ingresá el precio del combo', true); return; }
   if(!_cmProductos.length) { showToast('Agregá al menos un producto al combo', true); return; }
   var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: true };
+
+  // Publicar una copia en 'promos', que es la colección que el catálogo web
+  // tiene permiso de leer. La colección 'combos' es interna del sistema y el
+  // catálogo no puede acceder a ella, por eso los combos no aparecían del lado
+  // del cliente.
+  if(window.__lrDB){
+    window.__lrDB.collection('promos').doc(idSeguro(nombre)).set({
+      nombre: nombre, emoji: emoji, precio: precio,
+      items: _cmProductos.slice(), activo: true, esCombo: true
+    }).catch(function(e){ console.error('No se pudo publicar el combo en el catálogo web', e); });
+  }
   if(idx >= 0 && COMBOS[idx]) {
     COMBOS[idx] = data;
     showToast('✅ '+nombre+' actualizado');
@@ -21161,6 +21149,27 @@ function guardarComboModal() {
   renderCombos();
 }
 
+// Vuelve a publicar TODOS los combos en el catálogo del cliente. Sirve para los
+// combos que ya existían antes de que el catálogo pudiera mostrarlos.
+function publicarCombosEnCatalogo() {
+  if(!window.__lrDB){ showToast('Sin conexión', true); return; }
+  var lista = getCombos().filter(function(cb){ return cb.activo !== false && cb.precio > 0; });
+  if(!lista.length){ showToast('No hay combos para publicar', true); return; }
+
+  showToast('⏳ Publicando '+lista.length+' combos...');
+  var promesas = lista.map(function(cb){
+    return window.__lrDB.collection('promos').doc(idSeguro(cb.nombre)).set({
+      nombre: cb.nombre, emoji: cb.emoji || '🎁', precio: cb.precio,
+      items: cb.items || [], activo: true, esCombo: true
+    });
+  });
+  Promise.all(promesas).then(function(){
+    showToast('✅ '+lista.length+' combo'+(lista.length===1?'':'s')+' visible'+(lista.length===1?'':'s')+' en el catálogo web');
+  }).catch(function(e){
+    showToast('❌ No se pudieron publicar: '+(e && e.message ? e.message : 'error'), true);
+  });
+}
+
 function eliminarComboModal() {
   var idx = parseInt(document.getElementById('comboModalIdx').value);
   if(idx < 0) return;
@@ -21169,6 +21178,10 @@ function eliminarComboModal() {
     if(!ok) return;
     COMBOS.splice(idx, 1);
     saveCombos(COMBOS, [nombre]);
+    // Sacarlo también del catálogo web
+    if(window.__lrDB){
+      window.__lrDB.collection('promos').doc(idSeguro(nombre)).delete().catch(function(){});
+    }
     closeComboModal();
     renderCombos();
     showToast(nombre+' eliminado');
