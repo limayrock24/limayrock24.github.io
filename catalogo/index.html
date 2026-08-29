@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788026663";
+window.__LR_BUILD = "1788027100";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -486,7 +486,10 @@ db.collection('promos').onSnapshot(function(snap){
   chequearListo();
   renderCombos();
 }, function(err){
+  // Si no se pueden leer los combos, queda anotado de forma visible para poder
+  // diagnosticarlo, en vez de que simplemente no aparezcan sin explicación.
   console.error('Error cargando combos:', err);
+  window.__lrErrorCombos = (err && err.message) ? err.message : 'sin permiso o sin conexión';
   PROMOS = []; COMBOS = [];
   promosListos = true; combosListos = true;
   chequearListo();
@@ -572,7 +575,12 @@ function renderList(){
 function renderCombos(){
   var cont = document.getElementById('combosContainer');
   if(!cont) return;
-  if(!COMBOS.length){ cont.innerHTML = ''; return; }
+  if(!COMBOS.length){
+    cont.innerHTML = window.__lrErrorCombos
+      ? '<div style="background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#F4B400">No se pudieron cargar los combos ('+window.__lrErrorCombos+')</div>'
+      : '';
+    return;
+  }
 
   cont.innerHTML =
     '<div class="cat-title" style="margin-top:4px">🎁 Combos y promos</div>'+
