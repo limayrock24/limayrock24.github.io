@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788026288";
+  window.__LR_BUILD = "1788026663";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -20934,7 +20934,14 @@ function buildCombosGrid() {
   var grid = document.getElementById('combosGrid');
   if(!section || !grid) return;
   var activeCombos = COMBOS.filter(function(c){ return c.activo !== false; });
-  var activePromos = (typeof getPromos==='function' ? getPromos() : []).filter(function(p){ return p.activa !== false; });
+  // Las promos que son copia de un combo NO se dibujan acá: el combo ya está en
+  // la lista de arriba y aparecerían dos veces. Esa copia existe únicamente
+  // para que el catálogo web pueda mostrarlos.
+  var activePromos = (typeof getPromos==='function' ? getPromos() : []).filter(function(p){
+    if(p.activa === false || p.activo === false) return false;
+    if(p.esCombo) return false;
+    return !COMBOS.some(function(cb){ return cb.nombre === p.nombre; });
+  });
   if(!activeCombos.length && !activePromos.length) { section.style.display='none'; return; }
   section.style.display = 'block';
   grid.innerHTML = '';

@@ -1,6 +1,38 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>
+// Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
+// propio celular de Martín) podía quedarse días viendo una copia vieja guardada
+// por el navegador, sin enterarse de precios o combos nuevos.
+window.__LR_BUILD = "1788026663";
+(function(){
+  var miVersion = null;
+  function chequear(){
+    fetch('../version.json?_='+Date.now(), {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if(!data || !data.v) return;
+        if(!miVersion){
+          miVersion = data.v;
+          // Si el archivo que se está ejecutando quedó viejo, recargar una vez
+          if(window.__LR_BUILD && window.__LR_BUILD !== data.v){
+            if(sessionStorage.getItem('lr_cat_recarga') !== data.v){
+              sessionStorage.setItem('lr_cat_recarga', data.v);
+              location.reload(true);
+            }
+          }
+          return;
+        }
+        if(data.v !== miVersion) location.reload(true);
+      }).catch(function(){});
+  }
+  chequear();
+  setInterval(chequear, 60000);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) chequear(); });
+  window.addEventListener('focus', chequear);
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Limay Rock — Pedí tu delivery</title>
