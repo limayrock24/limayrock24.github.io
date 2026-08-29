@@ -433,17 +433,26 @@ db.collection('inventario').onSnapshot(function(snap){
 db.collection('promos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
-    var d = doc.data();
+    var d = doc.data() || {};
+    // Solo se descarta lo explícitamente desactivado o lo que no tiene nombre.
+    // Antes se exigía además un precio mayor a cero, y eso dejaba afuera las
+    // promos viejas que guardaban el precio en otro formato.
     if(d.activo === false || d.activa === false) return;
-    if(!d.nombre || !(d.precio > 0)) return;
-    lista.push(d);
+    if(!d.nombre) return;
+    lista.push({
+      nombre: d.nombre,
+      emoji: d.emoji || '🎁',
+      precio: Number(d.precio) || 0,
+      descripcion: d.descripcion || '',
+      items: d.items || []
+    });
   });
   PROMOS = lista;
   COMBOS = lista;
   promosListos = true;
   combosListos = true;
   chequearListo();
-  if(document.getElementById('mainContent').style.display==='block') renderCombos();
+  renderCombos();
 }, function(err){
   console.error('Error cargando combos:', err);
   PROMOS = []; COMBOS = [];
@@ -549,7 +558,9 @@ function renderCombos(){
         (enCarrito ? '<div style="position:absolute;top:-7px;right:-7px;background:var(--green);color:#04231d;border-radius:50%;width:23px;height:23px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700">'+enCarrito+'</div>' : '')+
         '<div style="font-size:1.6rem;line-height:1">'+(cb.emoji||'🎁')+'</div>'+
         '<div style="font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:.5px;color:var(--white);margin-top:5px;text-transform:uppercase;line-height:1.25">'+cb.nombre+'</div>'+
-        (detalle ? '<div style="font-size:.62rem;color:var(--gray);margin-top:3px;line-height:1.3">'+detalle+'</div>' : '')+
+        (detalle
+          ? '<div style="font-size:.62rem;color:var(--gray);margin-top:3px;line-height:1.3">'+detalle+'</div>'
+          : (cb.descripcion ? '<div style="font-size:.62rem;color:var(--gray);margin-top:3px;line-height:1.3">'+cb.descripcion+'</div>' : ''))+
         '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;color:var(--green);margin-top:6px">'+fmt(cb.precio)+'</div>'+
       '</div>';
     }).join('')+
