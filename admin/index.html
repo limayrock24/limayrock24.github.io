@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788062866";
+  window.__LR_BUILD = "1788063328";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1767,6 +1767,23 @@
           esCombo: true
         }).catch(function(e){ console.error('No se pudo publicar el combo', cb.nombre, e); });
       });
+
+      // Limpieza: sacar del catálogo los combos que ya no existen o se
+      // desactivaron. Solo se tocan los que este mismo mecanismo publicó
+      // (llevan la marca esCombo), nunca una promo cargada por otra vía.
+      //
+      // Es la red de seguridad para que el cliente no pueda ver ni pedir algo
+      // que ya se dio de baja, aunque el borrado del momento haya fallado.
+      var nombresVigentes = {};
+      vigentes.forEach(function(cb){ nombresVigentes[cb.nombre] = true; });
+      window.__lrDB.collection('promos').get().then(function(snap){
+        snap.forEach(function(doc){
+          var d = doc.data() || {};
+          if(!d.esCombo) return;                    // no es copia de un combo
+          if(nombresVigentes[d.nombre]) return;     // sigue vigente
+          doc.ref.delete().catch(function(){});
+        });
+      }).catch(function(){});
     }catch(e){ console.error('Error publicando combos en el catálogo', e); }
   };
 
@@ -21181,7 +21198,19 @@ function eliminarComboModal() {
     saveCombos(COMBOS, [nombre]);
     closeComboModal();
     renderCombos();
-    showToast(nombre+' eliminado');
+
+    // Sacarlo TAMBIÉN del catálogo web. Sin esto el combo desaparecía del
+    // sistema pero el cliente lo seguía viendo y podía pedir algo que ya no
+    // existe. Se confirma en pantalla para no quedar en la duda.
+    if(window.__lrDB){
+      window.__lrDB.collection('promos').doc(idSeguro(nombre)).delete()
+        .then(function(){ showToast('🗑 '+nombre+' eliminado — también del catálogo web'); })
+        .catch(function(e){
+          showToast('⚠️ Se eliminó del sistema pero NO del catálogo web: '+(e && e.message ? e.message : 'error'), true);
+        });
+    } else {
+      showToast(nombre+' eliminado');
+    }
   });
 }
 
