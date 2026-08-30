@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788063328";
+  window.__LR_BUILD = "1788128013";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4284,17 +4284,22 @@ body.night-on{background:#080005}
           <option value="ingreso">Ingreso</option>
           <option value="venta">Venta</option>
           <option value="consumo">Consumo</option>
-          <option value="fiado">Fiado</option>
+          <option value="fiado">Fiado</option><option value="cobro-fiado">Cobro de fiado</option><option value="fiado-parcial">Fiado parcial</option>
           <option value="retiro">Retiro de caja</option>
           <option value="ingreso-caja">Ingreso de caja</option>
-          <option value="carga-virtual">Carga virtual</option>
+          <option value="carga-virtual">Carga virtual</option><option value="cambio-efectivo">Cambio de efectivo</option><option value="prestamo">Préstamo</option><option value="transfer-cuentas">Entre cuentas</option>
           <option value="egreso">Egreso</option>
           <option value="ajuste-stock">Corrección de stock</option>
           <option value="baja-stock">Baja de stock</option>
         </select>
         <input type="date" id="movFechaDesde" onchange="renderMovimientos()" title="Desde">
         <input type="date" id="movFechaHasta" onchange="renderMovimientos()" title="Hasta">
+        <button onclick="movFecha('hoy')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Hoy</button>
+        <button onclick="movFecha('ayer')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Ayer</button>
+        <button onclick="movFecha('semana')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">7 días</button>
+        <button onclick="movFecha('todo')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Todo</button>
       </div>
+      <div id="movResumen" style="font-size:.72rem;color:var(--gray);margin:6px 0 8px"></div>
       <div style="max-height:480px;overflow-y:auto" id="movCardsList"></div>
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn csv" onclick="exportarMovimientosCSV()">⬇ CSV</button>
@@ -14014,16 +14019,43 @@ function toggleMovDet(id) {
 }
 
 var MOV_ICONOS = {
-  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️'
+  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️',
+  'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱'
 };
 var MOV_COLORES = {
   ingreso: 'var(--green)', venta: 'var(--green)', consumo: 'var(--red)',
-  fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6', 'ajuste-stock': 'var(--gold)', 'baja-stock': 'var(--red)'
+  fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6', 'ajuste-stock': 'var(--gold)', 'baja-stock': 'var(--red)',
+  'cobro-fiado': 'var(--green)', 'fiado-parcial': '#E67E22', 'cambio-efectivo': '#16A085'
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
-  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)'
+  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)',
+  'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo'
 };
+
+// Atajos de fecha para el historial de movimientos. Poner la misma fecha en
+// "desde" y "hasta" es lo que hay que hacer para ver un solo día, y no era
+// evidente; estos botones lo resuelven de un toque.
+function movFecha(cual){
+  var hoy = new Date();
+  var d = new Date(hoy);
+  if(cual === 'ayer') d.setDate(d.getDate()-1);
+  var str = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+
+  var elD = document.getElementById('movFechaDesde');
+  var elH = document.getElementById('movFechaHasta');
+  if(cual === 'semana'){
+    var ini = new Date(hoy); ini.setDate(ini.getDate()-6);
+    elD.value = ini.getFullYear()+'-'+String(ini.getMonth()+1).padStart(2,'0')+'-'+String(ini.getDate()).padStart(2,'0');
+    elH.value = str;
+  } else if(cual === 'todo'){
+    elD.value = ''; elH.value = '';
+  } else {
+    // Un día puntual: misma fecha en desde y hasta
+    elD.value = str; elH.value = str;
+  }
+  renderMovimientos();
+}
 
 function renderMovimientos() {
   var movs    = getMovimientos();
@@ -14038,6 +14070,18 @@ function renderMovimientos() {
     return (!tipoFil || m.tipo === tipoFil) &&
            f >= desdeDate && f <= hastaDate;
   }).slice().reverse();
+
+  // Resumen de lo que se está viendo: cuántos movimientos y cuánto suman.
+  // Sirve para responder de un vistazo "cuánto se cobró de fiado el 26 de
+  // agosto" sin tener que sumar a mano.
+  var resEl = document.getElementById('movResumen');
+  if(resEl){
+    var totalFil = filtrados.reduce(function(s,m){ return s + (m.total||0); }, 0);
+    var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimientos';
+    resEl.textContent = filtrados.length
+      ? filtrados.length + ' ' + nombreTipo.toLowerCase() + (filtrados.length===1?'':'s') + ' · total ' + fmt(totalFil)
+      : '';
+  }
 
   var list = document.getElementById('movCardsList');
   if(!list) return;
@@ -15956,7 +16000,9 @@ function confirmarCobroFiado() {
   VENTAS.push(ventaFiado);
   saveVentas(VENTAS);
   autoSaveNow();
-  registrarOperacion('venta', itemsCobrados, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — fiado '+_cobroCliente);
+  // Tipo propio: antes se registraba como una venta más y no había forma de
+  // filtrar los cobros de fiado en el historial de movimientos.
+  registrarOperacion('cobro-fiado', itemsCobrados, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — '+_cobroCliente);
 
   closeCobroOverlay();
   renderFiados();
