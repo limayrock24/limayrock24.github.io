@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788128292";
+  window.__LR_BUILD = "1788129482";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -3555,12 +3555,23 @@ body.night-on{background:#080005}
       <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
       <button class="btn btn-admin" onclick="closeAdmin()" style="padding:6px 11px;font-size:.72rem">✕ Cerrar</button>
     </div>
+    <!-- Subbarra de la sección Productos. Aparece solo cuando se está en alguna
+         de sus pantallas, igual que la subbarra de Empleados. -->
+    <div id="subtabsProductos" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="ftbtn" id="sp-catalogo"    onclick="switchTab('catalogo')">📦 Catálogo</button>
+      <button class="ftbtn" id="sp-inventario"  onclick="switchTab('inventario')">📊 Stock</button>
+      <button class="ftbtn" id="sp-proveedores" onclick="switchTab('proveedores')">🚚 Proveedores</button>
+      <button class="ftbtn" id="sp-pedidos"     onclick="switchTab('pedidos')">🛒 Pedidos</button>
+      <button class="ftbtn" id="sp-combos"      onclick="switchTab('combos')">🎁 Combos</button>
+      <button class="ftbtn" id="sp-codigos"     onclick="switchTab('codigos')">📟 Códigos</button>
+      <button class="ftbtn" id="sp-logcat"      onclick="switchTab('logcat')">📝 Log</button>
+    </div>
+
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('dashboard')">🏠 Inicio</button>
       <button class="tab-btn" onclick="switchTab('ventas')">📊 Ventas</button>
       <button class="tab-btn" onclick="switchTab('empleados')">👥 Empleados</button>
-      <button class="tab-btn" onclick="switchTab('catalogo')">📦 Catálogo</button>
-      <button class="tab-btn" id="stockTabBtn" onclick="switchTab('inventario')">📦 Stock</button>
+      <button class="tab-btn" id="btnGrupoProductos" onclick="switchTab('catalogo')">📦 Productos</button>
       <button class="tab-btn" onclick="switchTab('cierres')">⏹ Cierres</button>
       <button class="tab-btn" onclick="switchTab('consumos')">🧾 Consumos</button>
       <button class="tab-btn" onclick="switchTab('egresos')">💸 Egresos</button>
@@ -3569,11 +3580,6 @@ body.night-on{background:#080005}
       <button class="tab-btn" onclick="switchTab('puntos')">🏆 Puntos</button>
       <button class="tab-btn" onclick="switchTab('sorteos')">🎁 Sorteos</button>
       <button class="tab-btn" onclick="switchTab('movimientos')">📋 Movimientos</button>
-      <button class="tab-btn" onclick="switchTab('pedidos')">🛒 Pedidos</button>
-      <button class="tab-btn" onclick="switchTab('logcat')">📝 Log Catálogo</button>
-      <button class="tab-btn" onclick="switchTab('proveedores')">🚚 Proveedores</button>
-      <button class="tab-btn" onclick="switchTab('combos')">🎁 Combos</button>
-      <button class="tab-btn" onclick="switchTab('codigos')">📟 Códigos</button>
       <button class="tab-btn" onclick="switchTab('delivery')">🛵 Delivery</button>
       <button class="tab-btn" onclick="switchTab('mensajes')">💬 Mensajes</button>
     </div>
@@ -7161,6 +7167,9 @@ function switchTab(tab) {
   var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
+    // El botón de la sección Productos se maneja aparte: tiene que quedar
+    // marcado en cualquiera de sus pantallas, no solo en la primera.
+    if(btn.id === 'btnGrupoProductos') return;
     var match = btn.getAttribute('onclick') && btn.getAttribute('onclick').match(/switchTab\('(\w+)'\)/);
     if(match) btn.classList.toggle('active', match[1]===tab);
   });
@@ -7168,6 +7177,25 @@ function switchTab(tab) {
     var pane=document.getElementById('pane-'+t);
     if(pane) pane.classList.toggle('active',t===tab);
   });
+
+  // Sección Productos: agrupa las pantallas que hacen a la mercadería —
+  // catálogo, stock, proveedores, pedidos a proveedores, combos, códigos y el
+  // registro de cambios. Antes cada una era un botón suelto en la barra de
+  // arriba, que ya tenía veinte y obligaba a deslizar para encontrar algo.
+  var pantallasProductos = ['catalogo','inventario','proveedores','pedidos','combos','codigos','logcat'];
+  var esProductos = pantallasProductos.indexOf(tab) !== -1;
+
+  var subP = document.getElementById('subtabsProductos');
+  if(subP) subP.style.display = esProductos ? 'flex' : 'none';
+
+  pantallasProductos.forEach(function(p){
+    var b = document.getElementById('sp-'+p);
+    if(b) b.classList.toggle('active', p===tab);
+  });
+
+  // El botón principal queda marcado mientras se esté en cualquiera de ellas
+  var btnGrupo = document.getElementById('btnGrupoProductos');
+  if(btnGrupo) btnGrupo.classList.toggle('active', esProductos);
   if(tab==='cierres') renderCierres();
   if(tab==='inventario'){
     renderInventario(); renderStockAlerts();
