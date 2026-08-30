@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788129482";
+  window.__LR_BUILD = "1788129857";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -3555,8 +3555,42 @@ body.night-on{background:#080005}
       <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
       <button class="btn btn-admin" onclick="closeAdmin()" style="padding:6px 11px;font-size:.72rem">✕ Cerrar</button>
     </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('dashboard')">🏠 Inicio</button>
+      <button class="tab-btn" id="btnGrupoDinero" onclick="switchTab('ventas')">💰 Dinero</button>
+      <button class="tab-btn" id="btnGrupoEquipo" onclick="switchTab('empleados')">👥 Equipo</button>
+      <button class="tab-btn" id="btnGrupoProductos" onclick="switchTab('catalogo')">📦 Productos</button>
+      <button class="tab-btn" id="btnGrupoClientes" onclick="switchTab('fiados')">🤝 Clientes</button>
+      <button class="tab-btn" onclick="switchTab('delivery')">🛵 Delivery</button>
+    </div>
+
     <!-- Subbarra de la sección Productos. Aparece solo cuando se está en alguna
          de sus pantallas, igual que la subbarra de Empleados. -->
+    <!-- Subbarra de Equipo: el personal y todo lo que lo involucra. -->
+    <div id="subtabsEquipo" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="ftbtn" id="se-empleados" onclick="switchTab('empleados')">👥 Empleados</button>
+      <button class="ftbtn" id="se-consumos"  onclick="switchTab('consumos')">🧾 Consumos</button>
+      <button class="ftbtn" id="se-mensajes"  onclick="switchTab('mensajes')">💬 Mensajes</button>
+    </div>
+
+    <!-- Subbarra de Dinero: todo lo que hace al control del efectivo y los
+         resultados del negocio. -->
+    <div id="subtabsDinero" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="ftbtn" id="sd-ventas"       onclick="switchTab('ventas')">📊 Ventas</button>
+      <button class="ftbtn" id="sd-cierres"      onclick="switchTab('cierres')">⏹ Cierres</button>
+      <button class="ftbtn" id="sd-egresos"      onclick="switchTab('egresos')">💸 Egresos</button>
+      <button class="ftbtn" id="sd-rentabilidad" onclick="switchTab('rentabilidad')">📈 Rentabilidad</button>
+      <button class="ftbtn" id="sd-movimientos"  onclick="switchTab('movimientos')">📋 Movimientos</button>
+    </div>
+
+    <!-- Subbarra de Clientes: todo lo que hace a la relación con el cliente
+         (lo que deben, los puntos que acumulan y los sorteos). -->
+    <div id="subtabsClientes" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="ftbtn" id="sc-fiados"  onclick="switchTab('fiados')">💳 Fiados</button>
+      <button class="ftbtn" id="sc-puntos"  onclick="switchTab('puntos')">🏆 Puntos</button>
+      <button class="ftbtn" id="sc-sorteos" onclick="switchTab('sorteos')">🎁 Sorteos</button>
+    </div>
+
     <div id="subtabsProductos" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
       <button class="ftbtn" id="sp-catalogo"    onclick="switchTab('catalogo')">📦 Catálogo</button>
       <button class="ftbtn" id="sp-inventario"  onclick="switchTab('inventario')">📊 Stock</button>
@@ -3567,22 +3601,6 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sp-logcat"      onclick="switchTab('logcat')">📝 Log</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('dashboard')">🏠 Inicio</button>
-      <button class="tab-btn" onclick="switchTab('ventas')">📊 Ventas</button>
-      <button class="tab-btn" onclick="switchTab('empleados')">👥 Empleados</button>
-      <button class="tab-btn" id="btnGrupoProductos" onclick="switchTab('catalogo')">📦 Productos</button>
-      <button class="tab-btn" onclick="switchTab('cierres')">⏹ Cierres</button>
-      <button class="tab-btn" onclick="switchTab('consumos')">🧾 Consumos</button>
-      <button class="tab-btn" onclick="switchTab('egresos')">💸 Egresos</button>
-      <button class="tab-btn" onclick="switchTab('rentabilidad')">📈 Rentabilidad</button>
-      <button class="tab-btn" onclick="switchTab('fiados')">💳 Fiados</button>
-      <button class="tab-btn" onclick="switchTab('puntos')">🏆 Puntos</button>
-      <button class="tab-btn" onclick="switchTab('sorteos')">🎁 Sorteos</button>
-      <button class="tab-btn" onclick="switchTab('movimientos')">📋 Movimientos</button>
-      <button class="tab-btn" onclick="switchTab('delivery')">🛵 Delivery</button>
-      <button class="tab-btn" onclick="switchTab('mensajes')">💬 Mensajes</button>
-    </div>
 
     <!-- DASHBOARD -->
     <div class="tab-pane active" id="pane-dashboard">
@@ -7169,7 +7187,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     // El botón de la sección Productos se maneja aparte: tiene que quedar
     // marcado en cualquiera de sus pantallas, no solo en la primera.
-    if(btn.id === 'btnGrupoProductos') return;
+    if(btn.id && btn.id.indexOf('btnGrupo') === 0) return;
     var match = btn.getAttribute('onclick') && btn.getAttribute('onclick').match(/switchTab\('(\w+)'\)/);
     if(match) btn.classList.toggle('active', match[1]===tab);
   });
@@ -7196,6 +7214,51 @@ function switchTab(tab) {
   // El botón principal queda marcado mientras se esté en cualquiera de ellas
   var btnGrupo = document.getElementById('btnGrupoProductos');
   if(btnGrupo) btnGrupo.classList.toggle('active', esProductos);
+
+  // Sección Clientes: lo que deben, los puntos que acumulan y los sorteos.
+  var pantallasClientes = ['fiados','puntos','sorteos'];
+  var esClientes = pantallasClientes.indexOf(tab) !== -1;
+
+  var subC = document.getElementById('subtabsClientes');
+  if(subC) subC.style.display = esClientes ? 'flex' : 'none';
+
+  pantallasClientes.forEach(function(p){
+    var b = document.getElementById('sc-'+p);
+    if(b) b.classList.toggle('active', p===tab);
+  });
+
+  var btnGrupoC = document.getElementById('btnGrupoClientes');
+  if(btnGrupoC) btnGrupoC.classList.toggle('active', esClientes);
+
+  // Sección Dinero: control del efectivo y resultados del negocio.
+  var pantallasDinero = ['ventas','cierres','egresos','rentabilidad','movimientos'];
+  var esDinero = pantallasDinero.indexOf(tab) !== -1;
+
+  var subD = document.getElementById('subtabsDinero');
+  if(subD) subD.style.display = esDinero ? 'flex' : 'none';
+
+  pantallasDinero.forEach(function(p){
+    var b = document.getElementById('sd-'+p);
+    if(b) b.classList.toggle('active', p===tab);
+  });
+
+  var btnGrupoD = document.getElementById('btnGrupoDinero');
+  if(btnGrupoD) btnGrupoD.classList.toggle('active', esDinero);
+
+  // Sección Equipo: el personal y lo que lo involucra.
+  var pantallasEquipo = ['empleados','consumos','mensajes'];
+  var esEquipo = pantallasEquipo.indexOf(tab) !== -1;
+
+  var subE = document.getElementById('subtabsEquipo');
+  if(subE) subE.style.display = esEquipo ? 'flex' : 'none';
+
+  pantallasEquipo.forEach(function(p){
+    var b = document.getElementById('se-'+p);
+    if(b) b.classList.toggle('active', p===tab);
+  });
+
+  var btnGrupoE = document.getElementById('btnGrupoEquipo');
+  if(btnGrupoE) btnGrupoE.classList.toggle('active', esEquipo);
   if(tab==='cierres') renderCierres();
   if(tab==='inventario'){
     renderInventario(); renderStockAlerts();
