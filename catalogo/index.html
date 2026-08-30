@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788062094";
+window.__LR_BUILD = "1788062312";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -19,7 +19,18 @@ window.__LR_BUILD = "1788062094";
           if(window.__LR_BUILD && window.__LR_BUILD !== data.v){
             if(sessionStorage.getItem('lr_cat_recarga') !== data.v){
               sessionStorage.setItem('lr_cat_recarga', data.v);
-              location.reload(true);
+              // Antes de recargar se borra lo que el navegador tenga guardado
+              // de este sitio: sin esto podía volver a servir la misma copia
+              // vieja y quedarse ahí indefinidamente.
+              if(window.caches && caches.keys){
+                caches.keys().then(function(ks){
+                  return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+                }).then(function(){ location.reload(true); })
+                  .catch(function(){ location.reload(true); });
+              } else {
+                location.reload(true);
+              }
+              return;
             }
           }
           return;
