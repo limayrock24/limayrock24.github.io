@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788128013";
+  window.__LR_BUILD = "1788128292";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4283,7 +4283,7 @@ body.night-on{background:#080005}
           <option value="ingreso">Ingreso</option>
           <option value="venta">Venta</option>
           <option value="consumo">Consumo</option>
-          <option value="fiado">Fiado</option><option value="cobro-fiado">Cobro de fiado</option><option value="fiado-parcial">Fiado parcial</option>
+          <option value="fiados">Fiados (todos)</option>
           <option value="retiro">Retiro de caja</option>
           <option value="ingreso-caja">Ingreso de caja</option>
           <option value="carga-virtual">Carga virtual</option><option value="cambio-efectivo">Cambio de efectivo</option><option value="prestamo">Préstamo</option><option value="transfer-cuentas">Entre cuentas</option>
@@ -4291,12 +4291,21 @@ body.night-on{background:#080005}
           <option value="ajuste-stock">Corrección de stock</option>
           <option value="baja-stock">Baja de stock</option>
         </select>
-        <input type="date" id="movFechaDesde" onchange="renderMovimientos()" title="Desde">
-        <input type="date" id="movFechaHasta" onchange="renderMovimientos()" title="Hasta">
-        <button onclick="movFecha('hoy')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Hoy</button>
-        <button onclick="movFecha('ayer')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Ayer</button>
-        <button onclick="movFecha('semana')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">7 días</button>
-        <button onclick="movFecha('todo')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1px;cursor:pointer">Todo</button>
+      </div>
+      <!-- Mismos períodos que Rentabilidad y el resto del sistema -->
+      <div class="rent-period" style="margin-top:8px">
+        <button class="rent-period-btn" id="mp-hoy" onclick="selPeriodoMov('hoy')">Hoy</button>
+        <button class="rent-period-btn" id="mp-semana" onclick="selPeriodoMov('semana')">Esta semana</button>
+        <button class="rent-period-btn" id="mp-mes" onclick="selPeriodoMov('mes')">Este mes</button>
+        <button class="rent-period-btn active" id="mp-todo" onclick="selPeriodoMov('todo')">Todo</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;flex-wrap:wrap">
+        <label style="font-size:.7rem;color:var(--gray);font-family:Oswald,sans-serif">Fecha puntual:</label>
+        <input type="date" id="movFechaPuntual" onchange="selFechaPuntualMov()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+        <label style="font-size:.7rem;color:var(--gray);font-family:Oswald,sans-serif;margin-left:8px">Período manual:</label>
+        <input type="date" id="movFechaDesde" onchange="selPeriodoCustomMov()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+        <span style="color:var(--gray)">→</span>
+        <input type="date" id="movFechaHasta" onchange="selPeriodoCustomMov()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
       </div>
       <div id="movResumen" style="font-size:.72rem;color:var(--gray);margin:6px 0 8px"></div>
       <div style="max-height:480px;overflow-y:auto" id="movCardsList"></div>
@@ -14032,27 +14041,43 @@ var MOV_LABELS = {
   'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo'
 };
 
-// Atajos de fecha para el historial de movimientos. Poner la misma fecha en
-// "desde" y "hasta" es lo que hay que hacer para ver un solo día, y no era
-// evidente; estos botones lo resuelven de un toque.
-function movFecha(cual){
-  var hoy = new Date();
-  var d = new Date(hoy);
-  if(cual === 'ayer') d.setDate(d.getDate()-1);
-  var str = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+// Períodos del historial de movimientos. Misma lógica y mismos nombres que
+// Rentabilidad y el resto del sistema, para no inventar una forma distinta de
+// hacer lo mismo en cada pantalla.
+var _periodoMov = 'todo';
 
-  var elD = document.getElementById('movFechaDesde');
-  var elH = document.getElementById('movFechaHasta');
-  if(cual === 'semana'){
-    var ini = new Date(hoy); ini.setDate(ini.getDate()-6);
-    elD.value = ini.getFullYear()+'-'+String(ini.getMonth()+1).padStart(2,'0')+'-'+String(ini.getDate()).padStart(2,'0');
-    elH.value = str;
-  } else if(cual === 'todo'){
-    elD.value = ''; elH.value = '';
-  } else {
-    // Un día puntual: misma fecha en desde y hasta
-    elD.value = str; elH.value = str;
-  }
+function selPeriodoMov(p){
+  _periodoMov = p;
+  ['hoy','semana','mes','todo'].forEach(function(k){
+    var btn = document.getElementById('mp-'+k);
+    if(btn) btn.classList.toggle('active', k===p);
+  });
+  // Al elegir un período se limpian las fechas manuales, y viceversa
+  var fp = document.getElementById('movFechaPuntual'); if(fp) fp.value='';
+  var fd = document.getElementById('movFechaDesde');   if(fd) fd.value='';
+  var fh = document.getElementById('movFechaHasta');   if(fh) fh.value='';
+  renderMovimientos();
+}
+
+// Una fecha exacta, igual que en Egresos
+function selFechaPuntualMov(){
+  _periodoMov = 'custom';
+  ['hoy','semana','mes','todo'].forEach(function(k){
+    var btn = document.getElementById('mp-'+k);
+    if(btn) btn.classList.remove('active');
+  });
+  var fd = document.getElementById('movFechaDesde'); if(fd) fd.value='';
+  var fh = document.getElementById('movFechaHasta'); if(fh) fh.value='';
+  renderMovimientos();
+}
+
+function selPeriodoCustomMov(){
+  _periodoMov = 'custom';
+  ['hoy','semana','mes','todo'].forEach(function(k){
+    var btn = document.getElementById('mp-'+k);
+    if(btn) btn.classList.remove('active');
+  });
+  var fp = document.getElementById('movFechaPuntual'); if(fp) fp.value='';
   renderMovimientos();
 }
 
@@ -14061,13 +14086,41 @@ function renderMovimientos() {
   var tipoFil = document.getElementById('movTipoSel')    ? document.getElementById('movTipoSel').value    : '';
   var desde   = document.getElementById('movFechaDesde') ? document.getElementById('movFechaDesde').value : '';
   var hasta   = document.getElementById('movFechaHasta') ? document.getElementById('movFechaHasta').value : '';
-  var desdeDate = desde ? new Date(desde+'T00:00:00') : new Date(2020,0,1);
-  var hastaDate = hasta ? new Date(hasta+'T23:59:59') : new Date(2099,0,1);
+  var puntual = document.getElementById('movFechaPuntual') ? document.getElementById('movFechaPuntual').value : '';
+
+  var desdeDate, hastaDate;
+  if(puntual){
+    // Un solo día
+    desdeDate = new Date(puntual+'T00:00:00');
+    hastaDate = new Date(puntual+'T23:59:59');
+  } else if(desde || hasta){
+    desdeDate = desde ? new Date(desde+'T00:00:00') : new Date(2020,0,1);
+    hastaDate = hasta ? new Date(hasta+'T23:59:59') : new Date(2099,0,1);
+  } else {
+    var ahora = new Date();
+    hastaDate = new Date(2099,0,1);
+    if(_periodoMov === 'hoy'){
+      desdeDate = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    } else if(_periodoMov === 'semana'){
+      desdeDate = new Date(ahora); desdeDate.setDate(desdeDate.getDate() - 6);
+      desdeDate.setHours(0,0,0,0);
+    } else if(_periodoMov === 'mes'){
+      desdeDate = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    } else {
+      desdeDate = new Date(2020,0,1);
+    }
+  }
 
   var filtrados = movs.filter(function(m){
     var f = new Date(m.fecha);
-    return (!tipoFil || m.tipo === tipoFil) &&
-           f >= desdeDate && f <= hastaDate;
+    // "Fiados" agrupa los tres tipos relacionados: el fiado que se anota, el
+    // cobro de ese fiado, y el fiado parcial. Es un mismo tema, no tres
+    // secciones distintas; adentro cada uno se distingue por su etiqueta.
+    var coincideTipo;
+    if(!tipoFil) coincideTipo = true;
+    else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
+    else coincideTipo = (m.tipo === tipoFil);
+    return coincideTipo && f >= desdeDate && f <= hastaDate;
   }).slice().reverse();
 
   // Resumen de lo que se está viendo: cuántos movimientos y cuánto suman.
@@ -14076,10 +14129,23 @@ function renderMovimientos() {
   var resEl = document.getElementById('movResumen');
   if(resEl){
     var totalFil = filtrados.reduce(function(s,m){ return s + (m.total||0); }, 0);
-    var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimientos';
-    resEl.textContent = filtrados.length
-      ? filtrados.length + ' ' + nombreTipo.toLowerCase() + (filtrados.length===1?'':'s') + ' · total ' + fmt(totalFil)
-      : '';
+    if(tipoFil === 'fiados'){
+      // Desglose del grupo: cuánto se fió y cuánto se cobró son cosas
+      // distintas y conviene verlas separadas.
+      var nFiado  = filtrados.filter(function(m){ return m.tipo==='fiado'; });
+      var nCobro  = filtrados.filter(function(m){ return m.tipo==='cobro-fiado'; });
+      var nParc   = filtrados.filter(function(m){ return m.tipo==='fiado-parcial'; });
+      var partes = [];
+      if(nFiado.length) partes.push(nFiado.length+' fiado'+(nFiado.length===1?'':'s')+' por '+fmt(nFiado.reduce(function(s,m){return s+(m.total||0);},0)));
+      if(nCobro.length) partes.push(nCobro.length+' cobro'+(nCobro.length===1?'':'s')+' por '+fmt(nCobro.reduce(function(s,m){return s+(m.total||0);},0)));
+      if(nParc.length)  partes.push(nParc.length+' parcial'+(nParc.length===1?'':'es')+' por '+fmt(nParc.reduce(function(s,m){return s+(m.total||0);},0)));
+      resEl.textContent = partes.join(' · ');
+    } else {
+      var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimientos';
+      resEl.textContent = filtrados.length
+        ? filtrados.length + ' ' + nombreTipo.toLowerCase() + (filtrados.length===1?'':'s') + ' · total ' + fmt(totalFil)
+        : '';
+    }
   }
 
   var list = document.getElementById('movCardsList');
