@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788062312";
+  window.__LR_BUILD = "1788062866";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -21690,10 +21690,7 @@ function renderDeliveryControl() {
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Costo de envío</div>'+
           '<input type="number" value="'+(window.__lrCostoEnvio||0)+'" min="0" onchange="cambiarCostoEnvio(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--gold);font-family:Oswald,sans-serif;font-size:1.1rem;outline:none;padding:2px 0">'+
         '</div>'+
-        '<div style="flex:1;min-width:120px;background:var(--dark);border-radius:6px;padding:9px 11px">'+
-          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Comisión por cambio</div>'+
-          '<input type="number" value="'+((window.__lrComisionCambio!=null)?window.__lrComisionCambio:500)+'" min="0" onchange="cambiarComisionCambio(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:#16A085;font-family:Oswald,sans-serif;font-size:1.1rem;outline:none;padding:2px 0">'+
-        '</div>'+
+
       '</div>'+
 
       '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Repartidores</div>'+
