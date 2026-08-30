@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788061477";
+window.__LR_BUILD = "1788062094";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -499,6 +499,7 @@ db.collection('combos').onSnapshot(function(snap){
     lista.push(normalizarCombo(d));
   });
   _combosDirecto = lista;
+  window.__lrComboSnapDirecto = snap.size;
   combosListos = true;
   chequearListo();
   unificarCombos();
@@ -523,6 +524,7 @@ db.collection('promos').onSnapshot(function(snap){
     lista.push(normalizarCombo(d));
   });
   _combosCopia = lista;
+  window.__lrComboSnapCopia = snap.size;
   promosListos = true;
   chequearListo();
   unificarCombos();
@@ -618,9 +620,22 @@ function renderCombos(){
   var cont = document.getElementById('combosContainer');
   if(!cont) return;
   if(!COMBOS.length){
-    cont.innerHTML = window.__lrErrorCombos
-      ? '<div style="background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#F4B400">No se pudieron cargar los combos ('+window.__lrErrorCombos+')</div>'
-      : '';
+    // Diagnóstico visible: sin esto, cuando no aparecen combos no hay forma de
+    // saber si es porque no hay ninguno, porque no llegaron o porque falló el
+    // permiso de lectura. El cartel dice exactamente en qué estado está.
+    var diag = '';
+    if(window.__lrErrorCombos){
+      diag = 'No se pudieron leer: ' + window.__lrErrorCombos;
+    } else if(!window.__lrComboSnapDirecto && !window.__lrComboSnapCopia){
+      diag = 'Todavía no llegó la respuesta de la base de datos.';
+    } else {
+      diag = 'La base respondió pero sin combos cargados. ' +
+             '(directo: ' + (window.__lrComboSnapDirecto||0) + ' · copia: ' + (window.__lrComboSnapCopia||0) + ')';
+    }
+    cont.innerHTML =
+      '<div style="background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:.72rem;color:#F4B400;line-height:1.5">'+
+        '<b>Combos no disponibles</b><br>'+diag+
+      '</div>';
     return;
   }
 
