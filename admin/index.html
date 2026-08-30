@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788045741";
+  window.__LR_BUILD = "1788061477";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1743,47 +1743,31 @@
   // escribe lo que realmente cambió, para no generar tráfico al pedo cada vez
   // que llega la lista.
   window.__lrUltimoEspejoCombos = null;
+  // Publica los combos donde el catálogo web puede leerlos.
+  //
+  // Se mantiene deliberadamente simple: publica todos, siempre, sin comparar ni
+  // borrar en lote. Son pocos documentos y el costo es despreciable. La versión
+  // anterior comparaba contra la última copia y borraba lo que faltaba, y eso
+  // llegó a vaciar los combos del catálogo cuando la lista tardaba en cargar.
+  // Un combo solo se saca del catálogo cuando se lo elimina explícitamente.
   window.sincronizarCombosConCatalogo = function(lista){
     try{
-      var vigentes = (lista||[]).filter(function(cb){ return cb.activo !== false && cb.precio > 0 && cb.nombre; });
-      var espejo = {};
-      vigentes.forEach(function(cb){
-        espejo[cb.nombre] = {
-          nombre: cb.nombre, emoji: cb.emoji || '🎁', precio: cb.precio,
-          items: cb.items || [], activo: true, esCombo: true
-        };
+      var vigentes = (lista||[]).filter(function(cb){
+        return cb && cb.nombre && cb.activo !== false && cb.precio > 0;
       });
-
-      // Si la lista llega vacía NO se toca nada. Puede pasar por una
-      // sincronización a medio cargar, y borrar todo por eso dejaría al
-      // catálogo del cliente sin combos sin que nadie lo haya pedido.
       if(!vigentes.length) return;
 
-      var anterior = window.__lrUltimoEspejoCombos;
-      var textoAhora = JSON.stringify(espejo);
-      if(anterior === textoAhora) return;   // no cambió nada
-
-      // Publicar los que cambiaron
-      Object.keys(espejo).forEach(function(nombre){
-        var previo = anterior ? (JSON.parse(anterior)[nombre]) : null;
-        if(previo && JSON.stringify(previo) === JSON.stringify(espejo[nombre])) return;
-        window.__lrDB.collection('promos').doc(idSeguro(nombre)).set(espejo[nombre]).catch(function(){});
+      vigentes.forEach(function(cb){
+        window.__lrDB.collection('promos').doc(idSeguro(cb.nombre)).set({
+          nombre: cb.nombre,
+          emoji: cb.emoji || '🎁',
+          precio: cb.precio,
+          items: cb.items || [],
+          activo: true,
+          esCombo: true
+        }).catch(function(e){ console.error('No se pudo publicar el combo', cb.nombre, e); });
       });
-
-      // Sacar del catálogo los combos que se eliminaron o desactivaron. Solo se
-      // borra lo que este mismo mecanismo había publicado antes: nunca se toca
-      // una promo cargada por otra vía.
-      if(anterior){
-        var antes = JSON.parse(anterior);
-        Object.keys(antes).forEach(function(nombre){
-          if(!espejo[nombre]){
-            window.__lrDB.collection('promos').doc(idSeguro(nombre)).delete().catch(function(){});
-          }
-        });
-      }
-
-      window.__lrUltimoEspejoCombos = textoAhora;
-    }catch(e){ console.error('No se pudo sincronizar los combos con el catálogo', e); }
+    }catch(e){ console.error('Error publicando combos en el catálogo', e); }
   };
 
   // Combos (lista curada, con borrado si se elimina uno)
@@ -7178,9 +7162,22 @@ function switchTab(tab) {
   // contra la última copia. Es la garantía de que lo que ve el dueño en esta
   // pantalla es exactamente lo que ve el cliente.
   if(tab==='combos'){
+    // Al abrir esta pestaña se publican los combos en el catálogo del cliente y
+    // se confirma en pantalla, para no quedar en la duda de si llegaron.
     try{
-      window.__lrUltimoEspejoCombos = null;
-      if(typeof sincronizarCombosConCatalogo==='function') sincronizarCombosConCatalogo(getCombos());
+      var _cbs = getCombos().filter(function(cb){ return cb && cb.nombre && cb.activo !== false && cb.precio > 0; });
+      if(_cbs.length && window.__lrDB){
+        Promise.all(_cbs.map(function(cb){
+          return window.__lrDB.collection('promos').doc(idSeguro(cb.nombre)).set({
+            nombre: cb.nombre, emoji: cb.emoji || '🎁', precio: cb.precio,
+            items: cb.items || [], activo: true, esCombo: true
+          });
+        })).then(function(){
+          showToast('✅ '+_cbs.length+' combos visibles en el catálogo web');
+        }).catch(function(e){
+          showToast('⚠️ No se pudieron publicar los combos: '+(e && e.message ? e.message : 'error'), true);
+        });
+      }
     }catch(e){}
   }
   if(tab==='dashboard') renderDashboard();
@@ -16081,72 +16078,13 @@ function renderDashboard() {
   var sesionesVivas = window.__lrSesionesActivasCache || {};
   var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){ return sesionesVivas[n] && sesionesVivas[n].turnoInicio; });
 
-  // Si el registro del turno no llegó a la nube pero HAY ventas recientes, se
-  // reconstruye el turno a partir de esas ventas: quién vende, desde cuándo y
-  // cuánto lleva. Es información real y sirve igual.
+  // NO se inventa un turno a partir de las ventas.
   //
-  // Antes acá salía un cartel de advertencia, pero avisar de un problema
-  // técnico no le sirve de nada a quien solo quiere ver cómo va el turno.
+  // Se intentó reconstruirlo cuando el estado del turno no llegaba a la nube,
+  // pero el resultado era información equivocada: tomaba ventas de turnos
+  // anteriores y mostraba horarios y totales que no correspondían. Es peor
+  // mostrar un dato falso que no mostrar nada, sobre todo tratándose de plata.
   var avisoTurnoFantasma = '';
-  if(!nombresConTurno.length){
-    var haceUnaHora = Date.now() - 3600000;
-    var ventasRecientes = VENTAS.filter(function(v){
-      return !v.anulada && new Date(v.fecha).getTime() > haceUnaHora;
-    });
-    if(ventasRecientes.length){
-      var ordenadas = ventasRecientes.slice().sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
-      var quien = ordenadas[ordenadas.length-1].empleado || '—';
-      // Todas las ventas de ese empleado en las últimas 16 horas, para estimar
-      // desde cuándo viene trabajando
-      var desdeMs = Date.now() - 16*3600000;
-      var suyas = VENTAS.filter(function(v){
-        return !v.anulada && v.empleado === quien && new Date(v.fecha).getTime() > desdeMs;
-      }).sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
-      var inicioEstimado = suyas.length ? new Date(suyas[0].fecha) : new Date(ordenadas[0].fecha);
-      var totalSuyas = suyas.reduce(function(s,v){ return s + (v.total - (v.recargo||0)); }, 0);
-      var mins = Math.floor((Date.now() - inicioEstimado.getTime())/60000);
-      var durTxt = Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m';
-
-      avisoTurnoFantasma =
-        '<div style="background:var(--card);border:1px solid rgba(46,204,113,.35);border-radius:8px;padding:13px 15px;margin-bottom:12px">'+
-          '<div style="font-size:.9rem;color:var(--light)">'+
-            '<span style="color:var(--green);font-weight:700">🟢 Turno en curso</span> — <b>'+quien+'</b>'+
-            ' · desde las '+inicioEstimado.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
-            ' · <span style="color:var(--gold);font-family:Oswald,sans-serif">'+durTxt+'</span>'+
-          '</div>'+
-          '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-top:9px">'+
-            '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
-            '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalSuyas)+' · '+suyas.length+' venta'+(suyas.length===1?'':'s')+'</span>'+
-          '</div>'+
-          // Movimientos reales del turno, reconstruidos igual que en el panel
-          // normal. Lo que faltaba era el aviso del turno, no los datos.
-          '<div style="margin-top:10px">'+
-            '<div style="font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:6px">Movimientos del turno</div>'+
-            (function(){
-              var desde = inicioEstimado.getTime();
-              var movs = (typeof getMovimientos==='function' ? getMovimientos() : []).filter(function(m){
-                return new Date(m.fecha).getTime() >= desde && m.tipo !== 'descuento-ingrediente';
-              }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,40);
-              if(!movs.length) return '<div style="font-size:.72rem;color:var(--gray)">Sin movimientos todavía</div>';
-              var iconos = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', 'cambio-efectivo':'💱'};
-              return '<div style="max-height:230px;overflow-y:auto">'+movs.map(function(m){
-                var h = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-                // El movimiento guarda el detalle en 'resumen' y el importe en
-                // 'total'; los items usan 'nombre', no 'name'.
-                var det = m.resumen || (m.items||[]).map(function(i){ return i.nombre+' ×'+i.qty; }).join(', ') || m.extra || '';
-                var imp = (m.total != null) ? m.total : m.monto;
-                return '<div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem;line-height:1.4">'+
-                  '<span style="color:var(--gray)">'+h+'</span> '+(iconos[m.tipo]||'•')+' '+
-                  '<span style="color:var(--light)">'+det+'</span>'+
-                  (m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>' : '')+
-                  (imp ? ' <b style="color:var(--gold)">'+fmt(imp)+'</b>' : '')+
-                '</div>';
-              }).join('')+'</div>';
-            })()+
-          '</div>'+
-        '</div>';
-    }
-  }
 
   var turnoVivoHtml;
 
