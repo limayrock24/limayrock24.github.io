@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788129857";
+  window.__LR_BUILD = "1788214522";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -8086,6 +8086,36 @@ function reintentarAltasPendientes(){
   });
 }
 
+// Cartelito fijo abajo a la derecha con el estado del último guardado.
+var _estadoGuardadoTimer = null;
+function mostrarEstadoGuardado(estado, texto){
+  var el = document.getElementById('lrEstadoGuardado');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'lrEstadoGuardado';
+    el.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:99995;font-family:Oswald,sans-serif;'+
+      'font-size:.72rem;letter-spacing:1px;padding:9px 15px;border-radius:20px;box-shadow:0 3px 12px rgba(0,0,0,.5);'+
+      'transition:.2s;pointer-events:none';
+    document.body.appendChild(el);
+  }
+  clearTimeout(_estadoGuardadoTimer);
+  el.style.display = 'block';
+
+  if(estado === 'guardando'){
+    el.style.background = '#1e90ff'; el.style.color = '#fff';
+    el.textContent = '⏳ Guardando...';
+  } else if(estado === 'ok'){
+    el.style.background = '#2ecc71'; el.style.color = '#04231d';
+    el.textContent = '✅ ' + (texto ? texto.replace(/^✅\s*/,'') : 'Guardado') + ' — confirmado en la nube';
+    // El verde se va solo; el problema es no saber, no verlo confirmado
+    _estadoGuardadoTimer = setTimeout(function(){ el.style.display = 'none'; }, 3500);
+  } else {
+    el.style.background = '#F4B400'; el.style.color = '#1a1a1a';
+    el.textContent = '⚠️ Sin subir — se reintenta solo';
+    // El aviso de problema NO se va solo: tiene que verse hasta que se resuelva
+  }
+}
+
 function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   // Red de seguridad: si quedaron dos productos con el mismo nombre, dejar uno
   // solo. En la nube cada producto se guarda bajo su nombre, así que dos con el
@@ -8106,15 +8136,19 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   // Antes decía "guardado" al instante pasara lo que pasara, así que si la
   // subida fallaba el producto figuraba guardado y nunca llegaba — que es lo
   // que hacía que un producto creado "desapareciera" después.
-  showToast('⏳ ' + (mensajeExito || 'Guardando') + '...');
+  // Indicador fijo del estado del guardado, siempre visible en pantalla.
+  //
+  // El aviso pasajero se va a los pocos segundos, y si en ese momento se estaba
+  // escribiendo otra cosa quedaba la duda de si el cambio anterior se guardó.
+  // Este cartel se queda hasta que la nube confirma.
+  mostrarEstadoGuardado('guardando');
   var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar, window.__lrProductosTocados);
   window.__lrProductosTocados = null;
 
-  // Confirmación real, sin frenar la pantalla
   promesa.then(function(){
-    showToast((mensajeExito || '✅ Guardado') + ' — confirmado');
+    mostrarEstadoGuardado('ok', mensajeExito);
   }).catch(function(){
-    showToast('⚠️ Guardado acá, todavía sin subir — se reintenta solo', true);
+    mostrarEstadoGuardado('error');
     if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
   });
   var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar); };
@@ -16554,6 +16588,17 @@ function renderCatalogo() {
   var _bodyReal = body;
   body = { appendChild: function(el){ _fragmento.appendChild(el); } };
 
+  // Se dibujan solo los primeros 150 productos.
+  //
+  // Con más de mil, armar todas las filas lleva varios segundos y es tiempo
+  // desperdiciado: nadie recorre mil filas a mano, se busca. Cada fila tiene
+  // seis columnas con campos editables, así que el costo real era de miles de
+  // elementos por cada guardado. Si hay más, se avisa y se sugiere buscar.
+  var LIMITE_FILAS = 150;
+  var hayMas = filtered.length > LIMITE_FILAS;
+  var _totalFiltrado = filtered.length;
+  if(hayMas) filtered = filtered.slice(0, LIMITE_FILAS);
+
   filtered.forEach(function(p){
     var idx=p._idx; var mrg=p.margin||MARGINS[p.cat]||50;
     var ss=inv[p.name]&&inv[p.name].stock===0;
@@ -16578,6 +16623,15 @@ function renderCatalogo() {
 
   // Una sola inserción: el navegador dibuja todo de una vez
   _bodyReal.appendChild(_fragmento);
+
+  if(hayMas){
+    var trAviso = document.createElement('tr');
+    trAviso.innerHTML = '<td colspan="6" style="padding:14px;text-align:center;color:var(--gray);font-size:.76rem">'+
+      'Mostrando '+LIMITE_FILAS+' de '+_totalFiltrado+' productos — usá el buscador o el filtro por categoría para encontrar el que necesitás'+
+      '</td>';
+    _bodyReal.appendChild(trAviso);
+  }
+
   actualizarBotonCartelitos();
 }
 
