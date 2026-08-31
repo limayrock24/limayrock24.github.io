@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788214522";
+window.__LR_BUILD = "1788214607";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -629,11 +629,11 @@ function renderList(){
   // dependen del mismo código que ya se sabe que funciona.
   var htmlCombos = '';
   try{
-    var combosVisibles = (typeof COMBOS !== 'undefined' && COMBOS.length)
-      ? COMBOS.filter(function(cb){
-          if(!term) return true;
-          return cb.nombre.toLowerCase().indexOf(term) !== -1;
-        })
+    // Los combos se muestran SOLO en la pantalla inicial: sin búsqueda escrita y
+    // sin filtro de categoría. Si el cliente está buscando algo puntual, los
+    // combos en el medio del resultado estorban en vez de ayudar.
+    var combosVisibles = (typeof COMBOS !== 'undefined' && COMBOS.length && !term)
+      ? COMBOS.slice()
       : [];
     if(combosVisibles.length && CATEGORIA_SEL === 'Todas'){
       htmlCombos = '<div class="cat-title">🎁 Combos y promos</div>' +
