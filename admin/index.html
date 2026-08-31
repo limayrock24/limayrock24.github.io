@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788214522";
+  window.__LR_BUILD = "1788214607";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1614,7 +1614,19 @@
       if(typeof esModoDelivery === 'function' && esModoDelivery()) return;
       if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
     }catch(e){}
-  }, 120000);
+  }, 30000);   // cada 30 segundos: el panel de admin tiene que enterarse rápido
+  // Publicar el turno también al volver a la pantalla del local. Si la netbook
+  // estuvo un rato en segundo plano, Windows le baja la prioridad y el reintento
+  // periódico puede haberse demorado; al volver conviene republicar enseguida.
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden) return;
+    try{
+      if(typeof currentEmp === 'undefined' || !currentEmp || !currentEmp.turnoInicio) return;
+      if(typeof esModoDelivery === 'function' && esModoDelivery()) return;
+      if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
+    }catch(e){}
+  });
+
   window.__lrBorrarSesionActiva = function(nombre){
     var quien = nombre || (typeof currentEmp!=='undefined' && currentEmp ? currentEmp.nombre : null);
     if(!quien) return;
@@ -16431,7 +16443,13 @@ function renderDashboard() {
 
     turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos;
   } else {
-    turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>';
+    // Mientras el dato del turno no haya llegado de la nube, se dice que se
+    // está consultando. Decir "no hay turno" cuando en realidad todavía no se
+    // sabe es información equivocada, y con el local vendiendo asusta al pedo.
+    var sesionCargada = window.__lrSync && window.__lrSync.sesionActivaListos;
+    turnoVivoHtml = sesionCargada
+      ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>'
+      : '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gold);font-size:.85rem">⏳ Consultando el estado del turno...</div>';
   }
 
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
