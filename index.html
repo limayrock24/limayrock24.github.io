@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788214607";
+  window.__LR_BUILD = "1788215658";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4767,15 +4767,14 @@ body.night-on{background:#080005}
         </div>
 
         <!-- Zona de trabajo: los productos elegidos se editan acá arriba -->
-        <div id="edMasZona" style="display:none;flex-shrink:0;max-height:46vh;overflow-y:auto;padding:12px 18px;background:rgba(52,152,219,.05);border-bottom:2px solid #3498DB">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <span id="edMasZonaTitulo" style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;color:#3498DB"></span>
-            <div style="display:flex;gap:8px">
-              <button onclick="edMasLimpiar()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:7px 13px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">Vaciar</button>
-              <button onclick="guardarEdMasiva()" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 20px;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;font-weight:700;cursor:pointer">💾 Guardar cambios</button>
-            </div>
+        <!-- Barra de acciones. La edición se hace directamente en la tabla de
+             abajo; acá solo queda el resumen y el botón de guardar. -->
+        <div id="edMasZona" style="display:none;flex-shrink:0;padding:10px 18px;background:rgba(52,152,219,.07);border-bottom:2px solid #3498DB;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span id="edMasZonaTitulo" style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;color:#3498DB"></span>
+          <div style="display:flex;gap:8px">
+            <button onclick="edMasLimpiar()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:7px 13px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">Vaciar</button>
+            <button onclick="guardarEdMasiva()" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:7px 20px;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;font-weight:700;cursor:pointer">💾 Guardar cambios</button>
           </div>
-          <div id="edMasFichas"></div>
         </div>
 
         <!-- Filtros -->
@@ -16870,7 +16869,39 @@ function edMasRecalcular(nombre, campoTocado){
   }
   if(campoTocado === 'pnoc') b.__nocManual = true;
 
-  renderFichasEdMasiva();
+  // Se refrescan los campos calculados de ESA fila, sin redibujar toda la
+  // tabla: redibujar haría perder el cursor mientras se escribe.
+  actualizarFilaEdMasiva(nombre);
+}
+
+// Actualiza en pantalla los valores recalculados de una fila (precio y
+// nocturno) sin tocar el campo en el que se está escribiendo.
+function actualizarFilaEdMasiva(nombre){
+  var b = window._edMasBorrador[nombre] || {};
+  var esc = nombre.replace(/"/g,'&quot;');
+  var campos = document.querySelectorAll('#edMasLista input[type=number]');
+  for(var i=0; i<campos.length; i++){
+    var oc = campos[i].getAttribute('oninput') || '';
+    if(oc.indexOf("'"+nombre.replace(/'/g,"\\'")+"'") === -1) continue;
+    var cual = oc.indexOf("'pventa'") !== -1 ? 'pventa'
+             : oc.indexOf("'pnoc'")   !== -1 ? 'pnoc' : null;
+    if(!cual) continue;
+    if(document.activeElement === campos[i]) continue;   // se está escribiendo ahí
+    if(b[cual] !== undefined){
+      campos[i].value = b[cual] === null ? '' : b[cual];
+      campos[i].style.borderColor = '#3498DB';
+      campos[i].style.color = '#3498DB';
+      campos[i].style.fontWeight = '700';
+    }
+  }
+  // Actualizar el contador de la barra
+  var tit = document.getElementById('edMasZonaTitulo');
+  if(tit){
+    var nSel = Object.keys(window._edMasSel).length;
+    var nCambios = Object.keys(window._edMasBorrador || {}).length;
+    tit.textContent = nSel + ' tildado' + (nSel===1?'':'s') +
+      (nCambios ? ' · ' + nCambios + ' con cambios sin guardar' : '');
+  }
 }
 
 function edMasEditarCampo(inp, nombre, campo){
@@ -16884,60 +16915,6 @@ function edMasEditarCampo(inp, nombre, campo){
 }
 
 // Fichas de los productos elegidos, con el mismo formato que la ficha individual
-function renderFichasEdMasiva(){
-  var zona = document.getElementById('edMasZona');
-  var cont = document.getElementById('edMasFichas');
-  var tit  = document.getElementById('edMasZonaTitulo');
-  if(!cont) return;
-
-  var nombres = Object.keys(window._edMasSel || {});
-  if(!nombres.length){ if(zona) zona.style.display = 'none'; return; }
-  if(zona) zona.style.display = 'block';
-  if(tit) tit.textContent = nombres.length + ' producto' + (nombres.length===1?'':'s') + ' en edición';
-
-  cont.innerHTML = nombres.map(function(nombre){
-    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
-    if(!p) return '';
-    var esc = nombre.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    var esAlc = (p.cat === 'Bebidas Alcohólicas');
-    var b = window._edMasBorrador[nombre] || {};
-    var cambio = Object.keys(b).filter(function(k){ return k.indexOf('__')!==0; }).length > 0;
-
-    var costo  = edMasVal(p,'costo');
-    var margen = edMasVal(p,'margin');
-    var pventa = edMasVal(p,'pventa');
-    var pnoc   = edMasVal(p,'pnoc');
-
-    function inp(cp, valor, color){
-      return '<input type="number" value="'+(valor==null?'':valor)+'" placeholder="—" '+
-        'oninput="edMasEditarCampo(this,\''+esc+'\',\''+cp+'\')" onfocus="this.select()" '+
-        'style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;'+
-        'padding:8px;color:'+color+';font-family:Oswald,sans-serif;font-size:1rem;text-align:center;outline:none">';
-    }
-
-    return '<div style="background:var(--card);border:1px solid '+(cambio?'#3498DB':'var(--border)')+';border-radius:8px;padding:11px 13px;margin-bottom:9px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:9px">'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.86rem;color:var(--light)">'+p.name+'</div>'+
-          '<div style="font-size:.63rem;color:var(--gray)">'+(p.cat||'Sin categoría')+(esAlc?' · 🌙 lleva nocturno':'')+'</div>'+
-        '</div>'+
-        '<button onclick="edMasQuitar(\''+esc+'\')" style="background:none;border:none;color:var(--gray);font-size:1rem;cursor:pointer;line-height:1" title="Sacar de la lista">✕</button>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
-        '<div><div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Costo</div>'+inp('costo',costo,'var(--white)')+'</div>'+
-        '<div><div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Margen (%)</div>'+inp('margin',margen,'var(--white)')+'</div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-        '<div><div style="font-size:.6rem;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">💚 Precio venta</div>'+inp('pventa',pventa,'var(--green)')+'</div>'+
-        '<div><div style="font-size:.6rem;color:'+(esAlc?'var(--gold)':'var(--gray)')+';text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">🌙 Nocturno</div>'+inp('pnoc',pnoc,'var(--gold)')+'</div>'+
-      '</div>'+
-      (cambio && p.pventa && pventa && p.pventa !== pventa
-        ? '<div style="font-size:.68rem;color:var(--gray);margin-top:7px">Antes: <span style="text-decoration:line-through">'+fmt(p.pventa)+'</span> → <b style="color:var(--green)">'+fmt(pventa)+'</b></div>'
-        : '')+
-    '</div>';
-  }).join('');
-}
-
 function edMasQuitar(nombre){
   delete window._edMasSel[nombre];
   delete window._edMasBorrador[nombre];
@@ -17013,36 +16990,74 @@ function renderEdMasiva() {
   if(!cont) return;
   var lista = edMasVisibles();
 
-  renderFichasEdMasiva();
+  // Los tildados van primero: son los que se están editando, así que tienen que
+  // quedar a la vista sin tener que buscarlos entre los demás.
+  lista = lista.slice().sort(function(a,b){
+    var sa = window._edMasSel[a.name] ? 0 : 1;
+    var sb = window._edMasSel[b.name] ? 0 : 1;
+    if(sa !== sb) return sa - sb;
+    return a.name.localeCompare(b.name, 'es');
+  });
+
+  // Barra de guardar: aparece cuando hay algo tildado
+  var nSel = Object.keys(window._edMasSel).length;
+  var zona = document.getElementById('edMasZona');
+  var tit  = document.getElementById('edMasZonaTitulo');
+  if(zona) zona.style.display = nSel ? 'flex' : 'none';
+  if(tit){
+    var nCambios = Object.keys(window._edMasBorrador || {}).length;
+    tit.textContent = nSel + ' tildado' + (nSel===1?'':'s') +
+      (nCambios ? ' · ' + nCambios + ' con cambios sin guardar' : '');
+  }
 
   if(!lista.length){
     cont.innerHTML = '<div style="padding:26px;text-align:center;color:var(--gray);font-size:.85rem">Ningún producto coincide con el filtro</div>';
     return;
   }
 
-  // Lista de abajo: solo para elegir. Toda la edición pasa arriba, en las
-  // fichas, que es donde se ven los cuatro valores juntos.
-  cont.innerHTML = lista.slice(0, 400).map(function(p){
+  // Un campo editable de la tabla. Solo se puede editar en las filas tildadas:
+  // evita cambiar sin querer un producto que solo se estaba mirando.
+  function campo(p, cp, color, editable){
+    var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    var b = (window._edMasBorrador||{})[p.name];
+    var pend = b && b[cp] !== undefined;
+    var val = pend ? (b[cp]===null?'':b[cp]) : (p[cp]==null?'':p[cp]);
+    if(!editable){
+      return '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.82rem;color:'+(p[cp]?color:'rgba(255,255,255,.2)')+'">'+
+        (p[cp] ? (cp==='margin' ? p[cp]+'%' : fmt(p[cp])) : '—')+'</span>';
+    }
+    return '<input type="number" value="'+val+'" placeholder="—" '+
+      'oninput="edMasEditarCampo(this,\''+esc+'\',\''+cp+'\')" onfocus="this.select()" '+
+      'style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid '+(pend?'#3498DB':'var(--border)')+';'+
+      'border-radius:4px;padding:6px 7px;text-align:right;font-family:Oswald,sans-serif;font-size:.84rem;'+
+      'color:'+(pend?'#3498DB':color)+';outline:none;'+(pend?'font-weight:700':'')+'">';
+  }
+
+  cont.innerHTML = lista.slice(0, 300).map(function(p){
     var elegido = !!window._edMasSel[p.name];
     var esc = p.name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    return '<label style="display:grid;grid-template-columns:34px 1fr 88px 78px 88px 88px;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer;'+
-      (elegido?'background:rgba(52,152,219,.10)':'')+'">'+
+    var esAlc = (p.cat === 'Bebidas Alcohólicas');
+    var tienePend = !!(window._edMasBorrador||{})[p.name];
+    return '<div style="display:grid;grid-template-columns:34px 1fr 96px 82px 96px 96px;gap:8px;align-items:center;padding:7px 4px;'+
+      'border-bottom:1px solid rgba(255,255,255,.05);'+
+      (tienePend ? 'border-left:3px solid #3498DB;' : 'border-left:3px solid transparent;')+
+      (elegido ? 'background:rgba(52,152,219,.08)' : '')+'">'+
       '<input type="checkbox" '+(elegido?'checked':'')+' onchange="edMasToggle(this,\''+esc+'\')" style="width:16px;height:16px;accent-color:#3498DB;cursor:pointer">'+
       '<span style="font-size:.82rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+
-        '<span style="display:block;font-size:.62rem;color:var(--gray)">'+(p.cat||'Sin categoría')+'</span></span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:'+(p.costo?'var(--gray)':'rgba(255,255,255,.2)')+'">'+(p.costo?fmt(p.costo):'—')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:var(--gray)">'+(p.margin?p.margin+'%':'—')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.86rem;color:var(--green)">'+(p.pventa?fmt(p.pventa):'—')+'</span>'+
-      '<span style="text-align:right;font-family:Oswald,sans-serif;font-size:.8rem;color:'+(p.pnoc?'var(--gold)':'rgba(255,255,255,.2)')+'">'+(p.pnoc?fmt(p.pnoc):'—')+'</span>'+
-    '</label>';
+        '<span style="display:block;font-size:.62rem;color:var(--gray)">'+(p.cat||'Sin categoría')+(esAlc?' · 🌙':'')+'</span></span>'+
+      campo(p,'costo','var(--white)',elegido)+
+      campo(p,'margin','var(--white)',elegido)+
+      campo(p,'pventa','var(--green)',elegido)+
+      campo(p,'pnoc','var(--gold)',elegido)+
+    '</div>';
   }).join('') +
-  (lista.length > 400 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando los primeros 400 de '+lista.length+' — afiná la búsqueda</div>' : '');
+  (lista.length > 300 ? '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.72rem">Mostrando 300 de '+lista.length+' — afiná la búsqueda</div>' : '');
 }
 
 function edMasToggle(chk, nombre){
   if(chk.checked) window._edMasSel[nombre] = true;
   else { delete window._edMasSel[nombre]; delete window._edMasBorrador[nombre]; }
-  renderFichasEdMasiva();
+  renderEdMasiva();   // se redibuja para que los tildados suban arriba
 }
 
 function edMasMarcarVisibles(marcar){
