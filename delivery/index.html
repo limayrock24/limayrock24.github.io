@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788561092";
+  window.__LR_BUILD = "1788565329";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4784,6 +4784,8 @@ body.night-on{background:#080005}
           <input type="text" id="edMasBuscar" placeholder="🔍 Buscar producto o código..." oninput="renderEdMasiva()" autocomplete="off"
             style="flex:2;min-width:180px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px 11px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;outline:none">
           <select id="edMasCategoria" onchange="renderEdMasiva()"
+            style="flex:1;min-width:150px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem"></select>
+          <select id="edMasProveedor" onchange="renderEdMasiva()"
             style="flex:1;min-width:150px;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem"></select>
           <button onclick="edMasMarcarVisibles(true)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:5px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">✓ Marcar visibles</button>
           <button onclick="edMasMarcarVisibles(false)" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">Desmarcar</button>
@@ -16855,6 +16857,17 @@ function abrirEdMasiva() {
       ALL_CATS.slice().sort(function(a,b){ return a.localeCompare(b,'es'); })
         .map(function(cat){ return '<option value="'+cat.replace(/"/g,'&quot;')+'">'+cat+' ('+(conteo[cat]||0)+')</option>'; }).join('');
   }
+
+  // Filtro por proveedor: aumentar todo lo de un mismo proveedor (ej: cuando
+  // sube Coca-Cola) sin tener que buscar producto por producto a mano.
+  var selProv = document.getElementById('edMasProveedor');
+  if(selProv){
+    var provs = getProveedores();
+    selProv.innerHTML = '<option value="">Todos los proveedores</option>'+
+      provs.slice().sort(function(a,b){ return (a.nombre||'').localeCompare(b.nombre||'','es'); })
+        .map(function(pr){ return '<option value="'+(pr.nombre||'').replace(/"/g,'&quot;')+'">'+pr.nombre+' ('+(pr.productos||[]).length+')</option>'; }).join('');
+  }
+
   renderEdMasiva();
   document.getElementById('edMasivaOverlay').classList.add('open');
 }
@@ -17013,8 +17026,16 @@ function guardarEdMasiva(){
 function edMasVisibles() {
   var term = (document.getElementById('edMasBuscar').value||'').toLowerCase().trim();
   var cat  = (document.getElementById('edMasCategoria').value||'');
+  var provSel = document.getElementById('edMasProveedor');
+  var prov = provSel ? (provSel.value||'') : '';
+  var productosDelProveedor = null;
+  if(prov){
+    var pr = getProveedores().find(function(p){ return p.nombre === prov; });
+    productosDelProveedor = pr ? pr.productos||[] : [];
+  }
   return PRODUCTS.filter(function(p){
     if(cat && (p.cat||'') !== cat) return false;
+    if(productosDelProveedor && productosDelProveedor.indexOf(p.name) === -1) return false;
     if(!term) return true;
     return p.name.toLowerCase().indexOf(term) !== -1 ||
            (p.codigo && String(p.codigo).toLowerCase().indexOf(term) !== -1);
@@ -21649,9 +21670,18 @@ function actualizarCmResumen() {
   if(!_cmProductos.length) { el.innerHTML = ''; return; }
   var precio = getMontoInputValue('cmPrecio');
   var sinCosto = [];
-  var hayGrupoVariable = false;
+  var gruposConCostoVariable = [];
   var costoTotal = _cmProductos.reduce(function(s, item) {
-    if(item.tipo === 'variable') { hayGrupoVariable = true; return s; }
+    if(item.tipo === 'variable') {
+      var costos = (item.opciones||[]).map(function(op){
+        var prod = PRODUCTS.find(function(p){ return p.name === op; });
+        return (prod && prod.costo) ? prod.costo : null;
+      }).filter(function(c){ return c !== null; });
+      if(!costos.length) { sinCosto.push(item.etiqueta); return s; }
+      var promedio = costos.reduce(function(a,b){ return a+b; }, 0) / costos.length;
+      if(costos.some(function(c){ return c !== costos[0]; })) gruposConCostoVariable.push(item.etiqueta);
+      return s + (promedio * (item.qty||1));
+    }
     var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
     if(!prod || !prod.costo) { sinCosto.push(item.nombre); return s; }
     return s + (prod.costo * item.qty);
@@ -21673,8 +21703,8 @@ function actualizarCmResumen() {
   if(sinCosto.length) {
     html += '<div style="margin-top:6px;font-size:.68rem;color:var(--gold)">⚠ Sin costo cargado: '+sinCosto.join(', ')+'</div>';
   }
-  if(hayGrupoVariable) {
-    html += '<div style="margin-top:6px;font-size:.68rem;color:var(--gray)">ℹ️ El costo no incluye los grupos variables (depende de qué opción se elija)</div>';
+  if(gruposConCostoVariable.length) {
+    html += '<div style="margin-top:6px;font-size:.68rem;color:var(--gray)">ℹ️ '+gruposConCostoVariable.join(', ')+': las opciones tienen costos distintos — se usó el promedio</div>';
   }
   html += '</div>';
   el.innerHTML = html;
