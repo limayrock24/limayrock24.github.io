@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788215658";
+  window.__LR_BUILD = "1788561092";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -2932,6 +2932,9 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .combo-fav .cf-icon{font-size:1.5rem}
 .combo-fav .cf-name{font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:.5px;color:var(--light);text-transform:uppercase;line-height:1.2}
 .combo-fav .cf-price{font-family:'Oswald',sans-serif;font-size:.82rem;color:var(--gold)}
+.combo-var-opt{background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:10px 14px;font-family:'Oswald',sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer;transition:.12s}
+.combo-var-opt.sel{border-color:var(--green);background:rgba(46,204,113,.12);color:var(--green)}
+.combo-var-opt.sin-stock{border-color:var(--red);color:var(--red)}
 .combos-section{padding:8px 12px 4px}
 .combos-title{font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:2px;text-transform:uppercase;color:var(--red);margin-bottom:6px}
 .combos-grid{display:flex;flex-wrap:wrap;gap:8px}
@@ -5077,12 +5080,46 @@ body.night-on{background:#080005}
       </div>
     </div>
     <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:220px;overflow-y:auto;margin-top:6px" id="cmProdList"></div>
+    <button type="button" style="width:100%;margin-top:8px;background:transparent;border:1.5px dashed var(--gold);color:var(--gold);border-radius:4px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer" onclick="abrirGrupoVarEditor(-1)">🔀 + Grupo variable (elegir sabor)</button>
+    <!-- Editor de grupo variable: un slot del combo con varias opciones intercambiables (ej: los 5 sabores de Sky), donde recién al vender/pedir se elige cuál se lleva -->
+    <div id="cmGrupoVarEditor" style="display:none;margin-top:10px;border:1px solid var(--gold);border-radius:6px;padding:10px;background:rgba(244,180,0,.06)">
+      <div class="field">
+        <label>Nombre del grupo (ej: Sky, Smirnoff)</label>
+        <input type="text" id="cmGvEtiqueta" placeholder="Ej: Sky (elegir sabor)">
+      </div>
+      <div class="field">
+        <label>Cantidad por combo</label>
+        <input type="text" inputmode="numeric" id="cmGvQty" value="1">
+      </div>
+      <div class="field">
+        <label>Opciones (los sabores/variantes que se pueden elegir)</label>
+        <div class="prov-add-search">
+          <input type="text" id="cmGvAddSearch" placeholder="Buscar producto del catálogo..." oninput="buscarProdParaGrupoVar()" autocomplete="off">
+          <div class="prov-add-results" id="cmGvAddResults" style="display:none"></div>
+        </div>
+      </div>
+      <div id="cmGvOpcionesList" style="margin-top:6px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button type="button" onclick="cancelarGrupoVarEditor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>
+        <button type="button" onclick="guardarGrupoVarEditor()" style="background:var(--gold);color:var(--black);border:none;border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer">✓ Guardar grupo</button>
+      </div>
+    </div>
     <div id="cmResumen" style="margin-top:10px;font-family:'Oswald',sans-serif;font-size:.8rem;color:var(--gray);min-height:20px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
       <button class="btn-del" id="comboModalDel" onclick="eliminarComboModal()" style="background:transparent;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">🗑 Eliminar</button>
       <button onclick="guardarComboModal()" style="background:var(--green);color:var(--black);border:none;border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-weight:700">✓ Guardar</button>
     </div>
     <button onclick="closeComboModal()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>
+  </div>
+</div>
+
+<!-- COMBO VARIANTE OVERLAY: elegir sabor de un combo con grupo variable antes de sumarlo al carrito -->
+<div class="prov-modal-overlay" id="comboVarOverlay">
+  <div class="prov-modal-box">
+    <h3 id="comboVarTitulo">🎁 Elegí las opciones</h3>
+    <div id="comboVarGrupos"></div>
+    <button class="btn-save" id="comboVarConfirmBtn" disabled style="width:100%;margin-top:12px;padding:10px" onclick="confirmarComboVar()">✓ Agregar al carrito</button>
+    <button onclick="closeComboVarOverlay()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>
   </div>
 </div>
 
@@ -17672,7 +17709,11 @@ function guardarProdModal() {
     var tocoCombo = false;
     cbs.forEach(function(cb){
       (cb.items||[]).forEach(function(it){
-        if(it.nombre === nombreViejo){ it.nombre = nombre; tocoCombo = true; }
+        if(it.tipo === 'variable'){
+          (it.opciones||[]).forEach(function(op, i){
+            if(op === nombreViejo){ it.opciones[i] = nombre; tocoCombo = true; }
+          });
+        } else if(it.nombre === nombreViejo){ it.nombre = nombre; tocoCombo = true; }
       });
     });
     if(tocoCombo) saveCombos(cbs);
@@ -21199,6 +21240,7 @@ function renderCombos() {
     card.className = 'combo-card';
     card.onclick = function() { abrirComboModal(i); };
     var prodNames = (combo.items||[]).map(function(item) {
+      if(item.tipo === 'variable') return '🔀 '+item.etiqueta;
       return item.qty > 1 ? item.qty+'× '+item.nombre : item.nombre;
     }).join(', ');
     card.innerHTML =
@@ -21270,9 +21312,20 @@ function addPromoToCart(promo) {
 }
 
 function addComboToCart(combo) {
+  var grupos = (combo.items||[]).filter(function(it){ return it.tipo === 'variable'; });
+  if(grupos.length) {
+    abrirComboVarOverlay(combo);
+    return;
+  }
+  agregarComboResueltoAlCarrito(combo, combo.items||[]);
+}
+
+// Suma al carrito un combo con sus ítems ya resueltos (sin grupos variables
+// pendientes — si tenía alguno, ya se reemplazó por el sabor elegido).
+function agregarComboResueltoAlCarrito(combo, itemsResueltos) {
   var inv = getStockInv();
   var warnings = [];
-  (combo.items||[]).forEach(function(item) {
+  (itemsResueltos||[]).forEach(function(item) {
     var stockActual = inv[item.nombre] ? inv[item.nombre].stock : undefined;
     if(stockActual !== undefined && stockActual < item.qty) {
       warnings.push(item.nombre+' (stock: '+stockActual+', necesita: '+item.qty+')');
@@ -21286,9 +21339,14 @@ function addComboToCart(combo) {
     subtotal: combo.precio||0,
     cat: 'Combo',
     esCombo: true,
-    comboItems: combo.items||[]
+    comboItems: itemsResueltos||[]
   };
-  var existing = cart.find(function(i){ return i.name === cartItem.name && i.esCombo; });
+  // Dos combos iguales pero con distinto sabor elegido NO se agrupan en la
+  // misma línea — si no, se perdería cuál sabor corresponde a cuál unidad.
+  var existing = cart.find(function(i){
+    return i.name === cartItem.name && i.esCombo &&
+      JSON.stringify(i.comboItems) === JSON.stringify(cartItem.comboItems);
+  });
   if(existing) {
     existing.qty++;
     existing.subtotal = existing.precio * existing.qty;
@@ -21298,6 +21356,66 @@ function addComboToCart(combo) {
   updateCart();
   syncConfirmarBtn();
   showToast('🎁 '+combo.nombre+' agregado');
+}
+
+// ── Selección de sabor/variante al cobrar un combo con grupo variable ───────
+var _comboVarPendiente = null;
+var _comboVarSelecciones = {};
+
+function abrirComboVarOverlay(combo) {
+  _comboVarPendiente = combo;
+  _comboVarSelecciones = {};
+  var inv = getStockInv();
+  var tit = document.getElementById('comboVarTitulo');
+  if(tit) tit.textContent = (combo.emoji||'🎁')+' '+combo.nombre;
+  var html = '';
+  (combo.items||[]).forEach(function(it, i) {
+    if(it.tipo !== 'variable') return;
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--gold);text-transform:uppercase;margin-bottom:8px">'+(it.etiqueta||'Elegir')+'</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px" id="comboVarOpts'+i+'">';
+    (it.opciones||[]).forEach(function(op) {
+      var stockOp = inv[op] ? inv[op].stock : undefined;
+      var sinStock = stockOp !== undefined && stockOp < (it.qty||1);
+      html += '<button type="button" class="combo-var-opt'+(sinStock?' sin-stock':'')+'" data-op="'+op.replace(/"/g,'&quot;')+'" onclick="elegirComboVarOpcion('+i+',this)">'+op+(sinStock?' ⚠':'')+'</button>';
+    });
+    html += '</div></div>';
+  });
+  document.getElementById('comboVarGrupos').innerHTML = html;
+  document.getElementById('comboVarConfirmBtn').disabled = true;
+  document.getElementById('comboVarOverlay').classList.add('open');
+}
+
+function elegirComboVarOpcion(grupoIdx, btnEl) {
+  _comboVarSelecciones[grupoIdx] = btnEl.getAttribute('data-op');
+  var cont = document.getElementById('comboVarOpts'+grupoIdx);
+  if(cont) Array.prototype.forEach.call(cont.querySelectorAll('.combo-var-opt'), function(b){ b.classList.remove('sel'); });
+  btnEl.classList.add('sel');
+  var totalGrupos = (_comboVarPendiente.items||[]).filter(function(it){ return it.tipo === 'variable'; }).length;
+  document.getElementById('comboVarConfirmBtn').disabled = Object.keys(_comboVarSelecciones).length < totalGrupos;
+}
+
+function closeComboVarOverlay() {
+  document.getElementById('comboVarOverlay').classList.remove('open');
+  _comboVarPendiente = null;
+  _comboVarSelecciones = {};
+}
+
+function confirmarComboVar() {
+  if(!_comboVarPendiente) return;
+  var combo = _comboVarPendiente;
+  var itemsResueltos = [];
+  (combo.items||[]).forEach(function(it, i) {
+    if(it.tipo === 'variable') {
+      var elegido = _comboVarSelecciones[i];
+      if(!elegido) return;
+      itemsResueltos.push({ nombre: elegido, qty: it.qty||1 });
+    } else {
+      itemsResueltos.push(it);
+    }
+  });
+  closeComboVarOverlay();
+  agregarComboResueltoAlCarrito(combo, itemsResueltos);
 }
 
 function descontarStockCombos(items) {
@@ -21362,25 +21480,126 @@ function renderCmProdList() {
   if(count) count.textContent = _cmProductos.length;
   if(!el) return;
   if(!_cmProductos.length) {
-    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.74rem">Buscá productos del catálogo arriba para agregarlos</div>';
+    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.74rem">Buscá productos del catálogo arriba para agregarlos, o armá un grupo variable</div>';
     return;
   }
   el.innerHTML = '';
   _cmProductos.forEach(function(item, i) {
-    var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
     var row = document.createElement('div');
     row.className = 'prov-prod-row';
-    row.innerHTML =
-      '<div>'+
-        '<div class="ppn">'+item.nombre+'</div>'+
-        '<div class="ppc">'+(prod ? prod.cat : 'no encontrado')+'</div>'+
-      '</div>'+
-      '<div style="display:flex;align-items:center;gap:6px">'+
-        '<input type="number" value="'+item.qty+'" min="1" style="width:48px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:3px;padding:3px 6px;text-align:center;font-size:.8rem" onchange="cambiarCantComboItem('+i+',this.value)">'+
-        '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
-      '</div>';
+    if(item.tipo === 'variable') {
+      row.style.background = 'rgba(244,180,0,.08)';
+      row.innerHTML =
+        '<div>'+
+          '<div class="ppn">🔀 '+item.etiqueta+' <span style="color:var(--gray);font-weight:400">×'+(item.qty||1)+'</span></div>'+
+          '<div class="ppc">'+(item.opciones||[]).join(' / ')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+          '<button class="prov-prod-del" style="border-color:var(--gold);color:var(--gold)" onclick="abrirGrupoVarEditor('+i+')">✎</button>'+
+          '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
+        '</div>';
+    } else {
+      var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
+      row.innerHTML =
+        '<div>'+
+          '<div class="ppn">'+item.nombre+'</div>'+
+          '<div class="ppc">'+(prod ? prod.cat : 'no encontrado')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+          '<input type="number" value="'+item.qty+'" min="1" style="width:48px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:3px;padding:3px 6px;text-align:center;font-size:.8rem" onchange="cambiarCantComboItem('+i+',this.value)">'+
+          '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
+        '</div>';
+    }
     el.appendChild(row);
   });
+}
+
+// ── GRUPO VARIABLE del combo (ej: "Sky, elegir sabor") ──────────────────────
+var _cmGvEditIdx = -1;   // -1 = grupo nuevo; si es >=0, índice en _cmProductos que se está editando
+var _cmGvOpciones = [];
+
+function abrirGrupoVarEditor(idx) {
+  _cmGvEditIdx = idx;
+  if(idx >= 0 && _cmProductos[idx] && _cmProductos[idx].tipo === 'variable') {
+    var g = _cmProductos[idx];
+    document.getElementById('cmGvEtiqueta').value = g.etiqueta || '';
+    document.getElementById('cmGvQty').value = g.qty || 1;
+    _cmGvOpciones = (g.opciones || []).slice();
+  } else {
+    document.getElementById('cmGvEtiqueta').value = '';
+    document.getElementById('cmGvQty').value = '1';
+    _cmGvOpciones = [];
+  }
+  document.getElementById('cmGvAddSearch').value = '';
+  document.getElementById('cmGvAddResults').style.display = 'none';
+  renderCmGvOpcionesList();
+  document.getElementById('cmGrupoVarEditor').style.display = 'block';
+}
+
+function cancelarGrupoVarEditor() {
+  document.getElementById('cmGrupoVarEditor').style.display = 'none';
+  _cmGvEditIdx = -1;
+  _cmGvOpciones = [];
+}
+
+function buscarProdParaGrupoVar() {
+  var term = document.getElementById('cmGvAddSearch').value.toLowerCase().trim();
+  var results = document.getElementById('cmGvAddResults');
+  if(!term) { results.style.display = 'none'; return; }
+  var matches = PRODUCTS.filter(function(p) {
+    return (p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term))) && _cmGvOpciones.indexOf(p.name) === -1;
+  }).slice(0, 8);
+  if(!matches.length) {
+    results.innerHTML = '<div class="prov-add-result-item" style="color:var(--gray)">Sin resultados</div>';
+  } else {
+    results.innerHTML = matches.map(function(p) {
+      return '<div class="prov-add-result-item" onclick="agregarOpcionGrupoVar(\''+p.name.replace(/'/g,"\\'")+'\')">'
+        +p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
+    }).join('');
+  }
+  results.style.display = 'block';
+}
+
+function agregarOpcionGrupoVar(nombre) {
+  if(_cmGvOpciones.indexOf(nombre) === -1) _cmGvOpciones.push(nombre);
+  document.getElementById('cmGvAddSearch').value = '';
+  document.getElementById('cmGvAddResults').style.display = 'none';
+  renderCmGvOpcionesList();
+}
+
+function quitarOpcionGrupoVar(i) {
+  _cmGvOpciones.splice(i, 1);
+  renderCmGvOpcionesList();
+}
+
+function renderCmGvOpcionesList() {
+  var el = document.getElementById('cmGvOpcionesList');
+  if(!el) return;
+  if(!_cmGvOpciones.length) {
+    el.innerHTML = '<div style="font-size:.7rem;color:var(--gray)">Todavía no agregaste sabores/opciones</div>';
+    return;
+  }
+  el.innerHTML = _cmGvOpciones.map(function(op, i) {
+    return '<div class="prov-prod-row"><div class="ppn">'+op+'</div><button class="prov-prod-del" onclick="quitarOpcionGrupoVar('+i+')">✕</button></div>';
+  }).join('');
+}
+
+function guardarGrupoVarEditor() {
+  var etiqueta = document.getElementById('cmGvEtiqueta').value.trim();
+  var qty = parseInt(document.getElementById('cmGvQty').value) || 1;
+  if(!etiqueta) { showToast('Ingresá un nombre para el grupo', true); return; }
+  if(_cmGvOpciones.length < 2) { showToast('Agregá al menos 2 opciones al grupo', true); return; }
+  var grupo = { tipo: 'variable', etiqueta: etiqueta, qty: qty, opciones: _cmGvOpciones.slice() };
+  if(_cmGvEditIdx >= 0 && _cmProductos[_cmGvEditIdx]) {
+    _cmProductos[_cmGvEditIdx] = grupo;
+  } else {
+    _cmProductos.push(grupo);
+  }
+  document.getElementById('cmGrupoVarEditor').style.display = 'none';
+  _cmGvEditIdx = -1;
+  _cmGvOpciones = [];
+  renderCmProdList();
+  actualizarCmResumen();
 }
 
 function cambiarCantComboItem(i, val) {
@@ -21430,7 +21649,9 @@ function actualizarCmResumen() {
   if(!_cmProductos.length) { el.innerHTML = ''; return; }
   var precio = getMontoInputValue('cmPrecio');
   var sinCosto = [];
+  var hayGrupoVariable = false;
   var costoTotal = _cmProductos.reduce(function(s, item) {
+    if(item.tipo === 'variable') { hayGrupoVariable = true; return s; }
     var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
     if(!prod || !prod.costo) { sinCosto.push(item.nombre); return s; }
     return s + (prod.costo * item.qty);
@@ -21451,6 +21672,9 @@ function actualizarCmResumen() {
   html += '</div>';
   if(sinCosto.length) {
     html += '<div style="margin-top:6px;font-size:.68rem;color:var(--gold)">⚠ Sin costo cargado: '+sinCosto.join(', ')+'</div>';
+  }
+  if(hayGrupoVariable) {
+    html += '<div style="margin-top:6px;font-size:.68rem;color:var(--gray)">ℹ️ El costo no incluye los grupos variables (depende de qué opción se elija)</div>';
   }
   html += '</div>';
   el.innerHTML = html;
