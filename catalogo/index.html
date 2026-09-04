@@ -82,6 +82,9 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .promo-card .prod-name{color:var(--gold);font-weight:600}
 
 .cat-title{font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:20px 0 8px;padding-left:2px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.cat-var-opt{background:var(--surface);border:1.5px solid var(--border);color:var(--white);border-radius:8px;padding:11px 14px;font-family:'Barlow',sans-serif;font-size:.85rem;cursor:pointer;transition:.12s}
+.cat-var-opt.sel{border-color:var(--green);background:rgba(46,204,113,.12);color:var(--green)}
+#catVarConfirmBtn:disabled{opacity:.4;cursor:not-allowed}
 
 /* Barra deslizadora VISIBLE en las categorías: sin ella no se notaba que la
    lista seguía hacia el costado y quedaban categorías sin descubrir. */
@@ -146,6 +149,15 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 </style>
 </head>
 <body>
+<!-- Selector de sabor/variante para combos con grupo variable (ej: elegir el sabor de Sky) -->
+<div id="catVarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:flex-end;justify-content:center">
+  <div style="background:var(--card);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 18px 24px;max-height:80vh;overflow-y:auto">
+    <h3 id="catVarTitulo" style="margin:0 0 14px;font-family:'Oswald',sans-serif;color:var(--white)"></h3>
+    <div id="catVarGrupos"></div>
+    <button type="button" onclick="confirmarComboVarCatalogo()" id="catVarConfirmBtn" disabled style="width:100%;margin-top:16px;background:var(--green);color:#04231d;border:none;border-radius:8px;padding:13px;font-family:'Oswald',sans-serif;font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Agregar al carrito</button>
+    <button type="button" onclick="cerrarComboVarSelector()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:11px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cancelar</button>
+  </div>
+</div>
 
 <div id="loadingScreen" class="status-screen show">
   <div class="spinner"></div>
@@ -639,8 +651,9 @@ function renderList(){
       htmlCombos = '<div class="cat-title">🎁 Combos y promos</div>' +
         combosVisibles.map(function(cb){
           var i = COMBOS.indexOf(cb);
-          var enCarrito = (typeof CARRITO_COMBOS !== 'undefined' && CARRITO_COMBOS[cb.nombre]) || 0;
+          var enCarrito = comboCantEnCarrito(cb.nombre);
           var detalle = (cb.items||[]).map(function(it){
+            if(it.tipo === 'variable') return it.etiqueta || 'elegís sabor';
             var n = it.qty || it.cant || 1;
             return it.nombre + (n>1 ? ' \u00d7'+n : '');
           }).join(' + ') || cb.descripcion || '';
@@ -694,10 +707,11 @@ function renderCombos(){
     '<div class="cat-title" style="margin-top:4px">🎁 Combos y promos</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-bottom:18px">'+
     COMBOS.map(function(cb, i){
-      var enCarrito = CARRITO_COMBOS[cb.nombre] || 0;
+      var enCarrito = comboCantEnCarrito(cb.nombre);
       // El panel de admin guarda la cantidad en 'qty'. Se contempla 'cant'
       // también, por si algún combo viejo quedó con ese nombre.
       var detalle = (cb.items||[]).map(function(it){
+        if(it.tipo === 'variable') return it.etiqueta || 'elegís sabor';
         var n = it.qty || it.cant || 1;
         return it.nombre + (n>1 ? ' ×'+n : '');
       }).join(' + ');
@@ -728,15 +742,126 @@ function agregarComboPorIndice(i){
 function agregarCombo(nombre){
   var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
   if(!cb) return;
+  var tieneVariable = (cb.items||[]).some(function(it){ return it.tipo === 'variable'; });
+  if(tieneVariable){
+    abrirComboVarSelector(cb);
+    return;
+  }
   CARRITO_COMBOS[nombre] = (CARRITO_COMBOS[nombre]||0) + 1;
   renderList();
   actualizarCartBar();
 }
 
 function quitarCombo(nombre){
-  if(!CARRITO_COMBOS[nombre]) return;
-  CARRITO_COMBOS[nombre]--;
-  if(CARRITO_COMBOS[nombre] <= 0) delete CARRITO_COMBOS[nombre];
+  var v = CARRITO_COMBOS[nombre];
+  if(!v) return;
+  if(Array.isArray(v)){
+    v.pop();
+    if(!v.length) delete CARRITO_COMBOS[nombre];
+  } else {
+    CARRITO_COMBOS[nombre]--;
+    if(CARRITO_COMBOS[nombre] <= 0) delete CARRITO_COMBOS[nombre];
+  }
+  renderList();
+  actualizarCartBar();
+}
+
+// CARRITO_COMBOS[nombre] puede ser un número (combo simple, como siempre) o
+// un array de unidades con su sabor elegido (combo con grupo variable) —
+// esta función devuelve la cantidad total en cualquiera de los dos casos.
+function comboCantEnCarrito(nombre){
+  var v = CARRITO_COMBOS[nombre];
+  if(!v) return 0;
+  return Array.isArray(v) ? v.length : v;
+}
+
+// Reemplaza los grupos variables de un combo por el sabor efectivamente
+// elegido, dejando una lista de ítems fijos lista para mostrar o guardar.
+function resolverItemsCombo(cb, seleccion){
+  seleccion = seleccion || {};
+  return (cb.items||[]).map(function(it, i){
+    if(it.tipo === 'variable'){
+      var elegido = seleccion[i];
+      return { nombre: elegido || (it.etiqueta+' (sin elegir)'), qty: it.qty||1 };
+    }
+    return it;
+  });
+}
+
+// Une los combos simples (número) y los combos con variante (array de
+// selecciones) en una sola lista, agrupando por sabor elegido, para que el
+// resto del código (subtotal, cantidad, carrito, mensaje de WhatsApp) no
+// tenga que preocuparse por la diferencia.
+function entradasCombosCarrito(){
+  var out = [];
+  Object.keys(CARRITO_COMBOS).forEach(function(nombre){
+    var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
+    if(!cb) return;
+    var v = CARRITO_COMBOS[nombre];
+    if(Array.isArray(v)){
+      var grupos = {};
+      var orden = [];
+      v.forEach(function(unidad){
+        var key = JSON.stringify(unidad.selecciones||{});
+        if(!grupos[key]) { grupos[key] = { seleccion: unidad.selecciones||{}, cantidad: 0 }; orden.push(key); }
+        grupos[key].cantidad++;
+      });
+      orden.forEach(function(key){
+        var g = grupos[key];
+        out.push({ nombre: nombre, cb: cb, cantidad: g.cantidad, items: resolverItemsCombo(cb, g.seleccion) });
+      });
+    } else {
+      out.push({ nombre: nombre, cb: cb, cantidad: v, items: (cb.items||[]).slice() });
+    }
+  });
+  return out;
+}
+
+// ── Selector de sabor/variante para combos pedidos desde el catálogo web ───
+var _catVarCombo = null;
+var _catVarSelecciones = {};
+
+function abrirComboVarSelector(cb){
+  _catVarCombo = cb;
+  _catVarSelecciones = {};
+  document.getElementById('catVarTitulo').textContent = (cb.emoji||'🎁')+' '+cb.nombre;
+  var html = '';
+  (cb.items||[]).forEach(function(it, i){
+    if(it.tipo !== 'variable') return;
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-weight:600;color:var(--gold);margin-bottom:8px;text-transform:uppercase;font-size:.78rem;letter-spacing:1px">'+(it.etiqueta||'Elegí una opción')+'</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px" id="catVarOpts'+i+'">';
+    (it.opciones||[]).forEach(function(op){
+      html += '<button type="button" class="cat-var-opt" onclick="elegirCatVarOpcion('+i+',this,\''+op.replace(/'/g,"\\'")+'\')">'+op+'</button>';
+    });
+    html += '</div></div>';
+  });
+  document.getElementById('catVarGrupos').innerHTML = html;
+  document.getElementById('catVarConfirmBtn').disabled = true;
+  document.getElementById('catVarOverlay').style.display = 'flex';
+}
+
+function elegirCatVarOpcion(grupoIdx, btnEl, opcion){
+  _catVarSelecciones[grupoIdx] = opcion;
+  var cont = document.getElementById('catVarOpts'+grupoIdx);
+  if(cont) Array.prototype.forEach.call(cont.querySelectorAll('.cat-var-opt'), function(b){ b.classList.remove('sel'); });
+  btnEl.classList.add('sel');
+  var totalGrupos = (_catVarCombo.items||[]).filter(function(it){ return it.tipo === 'variable'; }).length;
+  document.getElementById('catVarConfirmBtn').disabled = Object.keys(_catVarSelecciones).length < totalGrupos;
+}
+
+function cerrarComboVarSelector(){
+  document.getElementById('catVarOverlay').style.display = 'none';
+  _catVarCombo = null;
+  _catVarSelecciones = {};
+}
+
+function confirmarComboVarCatalogo(){
+  if(!_catVarCombo) return;
+  var nombre = _catVarCombo.nombre;
+  if(!Array.isArray(CARRITO_COMBOS[nombre])) CARRITO_COMBOS[nombre] = [];
+  CARRITO_COMBOS[nombre].push({ selecciones: Object.assign({}, _catVarSelecciones) });
+  cerrarComboVarSelector();
   renderList();
   actualizarCartBar();
 }
@@ -874,10 +999,7 @@ function subtotalCarrito(){
     if(CARRITO_MANUAL[k].precio) total += CARRITO_MANUAL[k].precio;
   });
   // Combos: cada uno suma su precio de combo, no la suma de sus productos
-  Object.keys(CARRITO_COMBOS).forEach(function(nombre){
-    var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
-    if(cb) total += cb.precio * CARRITO_COMBOS[nombre];
-  });
+  entradasCombosCarrito().forEach(function(e){ total += e.cb.precio * e.cantidad; });
   return total;
 }
 function totalConEnvio(){ return subtotalCarrito() + (cantidadCarrito()>0 ? COSTO_ENVIO : 0); }
@@ -887,7 +1009,7 @@ function cantidadCarrito(){
   Object.keys(CARRITO_MANUAL).forEach(function(k){
     if(CARRITO_MANUAL[k].precio) cant += 1;
   });
-  Object.keys(CARRITO_COMBOS).forEach(function(k){ cant += CARRITO_COMBOS[k]; });
+  entradasCombosCarrito().forEach(function(e){ cant += e.cantidad; });
   return cant;
 }
 
@@ -915,18 +1037,15 @@ function armarListaItemsHtml(){
 
 // Los combos se listan aparte, con lo que incluye cada uno
 function armarListaCombosHtml(){
-  var nombres = Object.keys(CARRITO_COMBOS);
-  if(!nombres.length) return '';
-  return nombres.map(function(nombre){
-    var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
-    if(!cb) return '';
-    var cant = CARRITO_COMBOS[nombre];
-    var incluye = (cb.items||[]).map(function(it){ var n=it.qty||it.cant||1; return it.nombre + (n>1?' ×'+n:''); }).join(' + ');
+  var entradas = entradasCombosCarrito();
+  if(!entradas.length) return '';
+  return entradas.map(function(e){
+    var incluye = (e.items||[]).map(function(it){ var n=it.qty||it.cant||1; return it.nombre + (n>1?' ×'+n:''); }).join(' + ');
     return '<div class="cart-item">'+
-      '<span>'+(cb.emoji||'🎁')+' '+cb.nombre+' ×'+cant+
+      '<span>'+(e.cb.emoji||'🎁')+' '+e.nombre+' ×'+e.cantidad+
         (incluye ? '<div style="font-size:.66rem;color:var(--gray)">'+incluye+'</div>' : '')+
       '</span>'+
-      '<span>'+fmt(cb.precio*cant)+'</span>'+
+      '<span>'+fmt(e.cb.precio*e.cantidad)+'</span>'+
     '</div>';
   }).join('');
 }
@@ -1090,14 +1209,13 @@ function confirmarPedido(){
     // Combos pedidos, con el detalle de lo que trae cada uno. Al cargarlo en el
     // panel de venta se descuenta el stock de cada producto por separado, pero
     // se cobra el precio del combo.
-    combos: Object.keys(CARRITO_COMBOS).map(function(nombre){
-      var cb = COMBOS.find(function(x){ return x.nombre === nombre; }) || {};
+    combos: entradasCombosCarrito().map(function(e){
       return {
-        nombre: nombre,
-        emoji: cb.emoji || '🎁',
-        cantidad: CARRITO_COMBOS[nombre],
-        precio: cb.precio || 0,
-        items: (cb.items || []).slice()
+        nombre: e.nombre,
+        emoji: e.cb.emoji || '🎁',
+        cantidad: e.cantidad,
+        precio: e.cb.precio || 0,
+        items: e.items
       };
     }),
     notasManuales: notasManuales,
@@ -1120,12 +1238,9 @@ function confirmarPedido(){
   msg += '📋 *PEDIDO*\n';
   // Los combos primero, con el detalle de lo que traen, para que el local sepa
   // exactamente qué preparar
-  Object.keys(CARRITO_COMBOS).forEach(function(nombre){
-    var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
-    if(!cb) return;
-    var cant = CARRITO_COMBOS[nombre];
-    msg += '• '+(cb.emoji||'')+' '+cb.nombre+' ×'+cant+' — '+fmt(cb.precio*cant)+'\n';
-    (cb.items||[]).forEach(function(it){
+  entradasCombosCarrito().forEach(function(e){
+    msg += '• '+(e.cb.emoji||'')+' '+e.nombre+' ×'+e.cantidad+' — '+fmt(e.cb.precio*e.cantidad)+'\n';
+    (e.items||[]).forEach(function(it){
       var n = it.qty || it.cant || 1;
       msg += '    - '+it.nombre+(n>1?' ×'+n:'')+'\n';
     });
