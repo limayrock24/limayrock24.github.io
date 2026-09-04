@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788565329";
+  window.__LR_BUILD = "1788566244";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -5074,6 +5074,10 @@ body.night-on{background:#080005}
     <div class="field">
       <label>Precio del combo ($)</label>
       <input type="text" inputmode="numeric" id="cmPrecio" placeholder="0" oninput="formatMontoInput(this);actualizarCmResumen()">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px 12px;margin-bottom:10px">
+      <label for="cmActivo" style="font-size:.78rem;color:var(--light);cursor:pointer">Combo activo (aparece en venta y en el catálogo web)</label>
+      <input type="checkbox" id="cmActivo" checked style="width:20px;height:20px;accent-color:var(--green);cursor:pointer">
     </div>
     <div class="field">
       <label>Productos incluidos (<span id="cmProdCount">0</span>)</label>
@@ -21260,21 +21264,36 @@ function renderCombos() {
   COMBOS.forEach(function(combo, i) {
     var card = document.createElement('div');
     card.className = 'combo-card';
+    if(combo.activo === false) card.style.opacity = '.5';
     card.onclick = function() { abrirComboModal(i); };
     var prodNames = (combo.items||[]).map(function(item) {
       if(item.tipo === 'variable') return '🔀 '+item.etiqueta;
       return item.qty > 1 ? item.qty+'× '+item.nombre : item.nombre;
     }).join(', ');
+    var pausado = (combo.activo === false);
     card.innerHTML =
       '<div class="cc-icon">'+(combo.emoji||'🎁')+'</div>'+
       '<div class="cc-body">'+
-        '<div class="cc-name">'+combo.nombre+'</div>'+
+        '<div class="cc-name">'+combo.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+'</div>'+
         '<div class="cc-prods">'+(prodNames||'Sin productos')+'</div>'+
       '</div>'+
-      '<div class="cc-price">'+fmt(combo.precio||0)+'</div>';
+      '<div class="cc-price">'+fmt(combo.precio||0)+'</div>'+
+      '<button onclick="event.stopPropagation();toggleComboActivo('+i+')" style="background:transparent;border:1px solid '+(pausado?'var(--green)':'var(--gray)')+';color:'+(pausado?'var(--green)':'var(--gray)')+';border-radius:4px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:.5px;white-space:nowrap;cursor:pointer;flex-shrink:0">'+(pausado?'▶ Activar':'⏸ Pausar')+'</button>';
     el.appendChild(card);
   });
   buildCombosGrid();
+}
+
+// Pausa/activa un combo sin borrarlo: desaparece de la venta y del catálogo
+// web (sincronizarCombosConCatalogo ya filtra por activo), pero queda
+// guardado tal cual para reactivarlo cuando haga falta.
+function toggleComboActivo(idx) {
+  var combo = COMBOS[idx];
+  if(!combo) return;
+  combo.activo = (combo.activo === false) ? true : false;
+  saveCombos(COMBOS);
+  renderCombos();
+  showToast(combo.activo === false ? '⏸ '+combo.nombre+' pausado' : '▶ '+combo.nombre+' activado');
 }
 
 function buildCombosGrid() {
@@ -21473,6 +21492,7 @@ function abrirComboModal(idx) {
     document.getElementById('cmEmoji').value = combo.emoji||'🎁';
     var precioEl = document.getElementById('cmPrecio');
     if(precioEl) { precioEl.value = (combo.precio||0).toLocaleString('es-AR'); }
+    document.getElementById('cmActivo').checked = (combo.activo !== false);
     _cmProductos = (combo.items||[]).slice();
     if(tit) tit.textContent = 'Editar — '+combo.nombre;
     if(del) del.style.display = 'block';
@@ -21481,6 +21501,7 @@ function abrirComboModal(idx) {
     document.getElementById('cmEmoji').value = '🎁';
     var precioEl2 = document.getElementById('cmPrecio');
     if(precioEl2) precioEl2.value = '';
+    document.getElementById('cmActivo').checked = true;
     _cmProductos = [];
     if(tit) tit.textContent = '🎁 Nuevo combo';
     if(del) del.style.display = 'none';
@@ -21719,7 +21740,7 @@ function guardarComboModal() {
   if(!nombre) { showToast('Ingresá el nombre del combo', true); return; }
   if(!precio || precio <= 0) { showToast('Ingresá el precio del combo', true); return; }
   if(!_cmProductos.length) { showToast('Agregá al menos un producto al combo', true); return; }
-  var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: true };
+  var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: document.getElementById('cmActivo').checked };
 
   if(idx >= 0 && COMBOS[idx]) {
     COMBOS[idx] = data;
