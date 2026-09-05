@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788631420";
+  window.__LR_BUILD = "1788636545";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -14015,27 +14015,24 @@ function renderFiados() {
 // fiado, para descargar y mandarle por WhatsApp — mismo mecanismo que ya
 // se usa para exportar las horas trabajadas.
 function exportarFiadoClientePDF(nombre) {
-  var fiados = getFiados().filter(function(f){ return f.cliente === nombre; });
-  if(!fiados.length) return;
-  var ordenados = fiados.slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
-  var totalPend = ordenados.filter(function(f){ return !f.pagado; }).reduce(function(s,f){ return s+(f.total||0); }, 0);
+  var pendientes = getFiados().filter(function(f){ return f.cliente === nombre && !f.pagado; });
+  if(!pendientes.length){ showToast(nombre+' no tiene deuda pendiente', true); return; }
+  var ordenados = pendientes.slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+  var totalPend = ordenados.reduce(function(s,f){ return s+(f.total||0); }, 0);
 
   var rows = ordenados.map(function(f){
     var fecha = new Date(f.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
     var prods = (f.items && f.items.length) ? f.items.map(function(i){ return (i.name||'?')+' ×'+(i.qty||1); }).join(', ') : '—';
-    var estado = f.pagado
-      ? '✓ Cobrado'+(f.fechaPago?' ('+new Date(f.fechaPago).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+')':'')
-      : '⏳ Pendiente';
-    return '<tr><td>'+fecha+'</td><td>'+prods+'</td><td>'+fmt(f.total||0)+'</td><td>'+estado+'</td></tr>';
+    return '<tr><td>'+fecha+'</td><td>'+prods+'</td><td>'+fmt(f.total||0)+'</td></tr>';
   }).join('');
 
   var kpis = '<div class="kpis">'+
-    '<div class="kpi"><div class="l">Compras registradas</div><div class="v">'+ordenados.length+'</div></div>'+
-    '<div class="kpi"><div class="l">Total pendiente</div><div class="v">'+fmt(totalPend)+'</div></div>'+
+    '<div class="kpi"><div class="l">Fiados pendientes</div><div class="v">'+ordenados.length+'</div></div>'+
+    '<div class="kpi"><div class="l">Total a pagar</div><div class="v">'+fmt(totalPend)+'</div></div>'+
   '</div>';
 
-  abrirVentanaPDF('Cuenta corriente — '+nombre,
-    kpis+'<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th><th>Estado</th></tr></thead><tbody>'+rows+'</tbody></table>');
+  abrirVentanaPDF('Deuda pendiente — '+nombre,
+    kpis+'<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th></tr></thead><tbody>'+rows+'</tbody></table>');
 }
 
 function eliminarClienteFiado(nombre) {
