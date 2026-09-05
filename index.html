@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788566244";
+  window.__LR_BUILD = "1788576608";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4655,6 +4655,7 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">📈 Aumento masivo</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
         <button class="btn-save" id="btnCartelitos" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
+        <button class="btn-save" id="btnListaPrecios" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="descargarListaPreciosPDF()" disabled>📋 Lista (0)</button>
       </div>
       <div class="cat-stats" id="catStats"></div>
       <div class="cat-table-wrap">
@@ -18634,6 +18635,11 @@ function actualizarBotonCartelitos() {
     btn.textContent = '🏷️ Cartelitos ('+n+')';
     btn.disabled = n===0;
   }
+  var btnLista = document.getElementById('btnListaPrecios');
+  if(btnLista){
+    btnLista.textContent = '📋 Lista ('+n+')';
+    btnLista.disabled = n===0;
+  }
   // Botón de borrado múltiple: aparece solo cuando hay algo tildado
   var btnDel = document.getElementById('btnBorrarSel');
   if(btnDel){
@@ -18908,6 +18914,86 @@ function descargarCartelitosPDF() {
     });
 
     doc.save('Cartelitos_Gondola_LimayRock.pdf');
+    btn.textContent = textoOriginal;
+    btn.disabled = false;
+  }).catch(function(e){
+    btn.textContent = textoOriginal;
+    btn.disabled = false;
+    alert('⚠️ No se pudo generar el PDF: '+(e && e.message==='sin-internet' ? 'necesita conexión a internet para cargar el generador la primera vez.' : (e && e.message ? e.message : 'error desconocido')));
+  });
+}
+
+// Lista compacta de precios para pegar cerca de la balanza (fiambrería, todo
+// lo que se vende por peso y no tiene sentido como cartelito individual).
+// Tiras de 7cm de ancho, un renglón por producto de ~8mm de alto, varias
+// tiras una al lado de la otra en la misma hoja A4 para recortar.
+function descargarListaPreciosPDF() {
+  var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
+  if(!seleccionados.length) return;
+
+  var btn = document.getElementById('btnListaPrecios');
+  var textoOriginal = btn.textContent;
+  btn.textContent = '⏳ Generando...';
+  btn.disabled = true;
+
+  cargarJsPDF().then(function(){
+    var jsPDFClass = window.jspdf.jsPDF;
+    var doc = new jsPDFClass({ unit:'mm', format:'a4' });
+    var margin = 10;
+    var pageWidth  = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+
+    var colW = 70;       // ancho pedido: 7cm
+    var colGap = 6;
+    var rowH = 8;         // alto pedido: 8mm por renglón
+    var headerH = 6;      // franja de título arriba de cada hoja
+    var cols = Math.max(1, Math.floor((pageWidth - 2*margin + colGap) / (colW + colGap)));
+    var rowsPorCol = Math.floor((pageHeight - 2*margin - headerH) / rowH);
+
+    var fecha = new Date().toLocaleDateString('es-AR');
+    function dibujarEncabezado(){
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20,20,20);
+      doc.text('LISTA DE PRECIOS — Limay Rock', margin, margin);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(140,140,140);
+      doc.text(fecha, pageWidth - margin, margin, {align:'right'});
+    }
+
+    var col = 0, row = 0;
+    dibujarEncabezado();
+
+    seleccionados.forEach(function(p){
+      if(row >= rowsPorCol){ row = 0; col++; }
+      if(col >= cols){ doc.addPage(); dibujarEncabezado(); col = 0; row = 0; }
+
+      var x = margin + col*(colW+colGap);
+      var y = margin + headerH + row*rowH;
+
+      // Línea divisoria del renglón (guía para cortar/leer)
+      doc.setDrawColor(220,220,220);
+      doc.line(x, y+rowH, x+colW, y+rowH);
+
+      var mostrarNoc = p.pnoc && p.pnoc>0 && p.pnoc!==p.pventa;
+
+      // Nombre: una sola línea, se trunca si no entra — así el renglón
+      // siempre mide 8mm, no se estira ni desalinea la tira.
+      doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(20,20,20);
+      var anchoNombre = mostrarNoc ? colW*0.52 : colW*0.62;
+      var lineaNombre = doc.splitTextToSize(p.name, anchoNombre)[0];
+      doc.text(lineaNombre, x+1, y+rowH*0.42);
+
+      // Precio de venta, alineado a la derecha del renglón
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(204,0,0);
+      doc.text(fmt(p.pventa||0), x+colW-1, y+rowH*0.42, {align:'right'});
+
+      if(mostrarNoc){
+        doc.setFont('helvetica','normal'); doc.setFontSize(5.8); doc.setTextColor(120,120,120);
+        doc.text('Noc: '+fmt(p.pnoc), x+colW-1, y+rowH*0.82, {align:'right'});
+      }
+
+      row++;
+    });
+
+    doc.save('Lista_Precios_LimayRock.pdf');
     btn.textContent = textoOriginal;
     btn.disabled = false;
   }).catch(function(e){
