@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788636545";
+  window.__LR_BUILD = "1788638685";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -3979,6 +3979,26 @@ body.night-on{background:#080005}
           🚚 Resumen por proveedor <span id="resProvArrow">▾</span>
         </div>
         <div id="resumenProveedores" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
+      </div>
+
+      <!-- RESUMEN SUELDOS / SERVICIOS / OTROS (mismo mecanismo que proveedores, por categoría) -->
+      <div style="margin-top:0">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#3498DB;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('sueldo')">
+          👤 Resumen de sueldos <span id="resCatArrow_sueldo">▾</span>
+        </div>
+        <div id="resumenCat_sueldo" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
+      </div>
+      <div style="margin-top:0">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#E67E22;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('servicio')">
+          💡 Resumen de servicios <span id="resCatArrow_servicio">▾</span>
+        </div>
+        <div id="resumenCat_servicio" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
+      </div>
+      <div style="margin-top:0">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gray);margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('otro')">
+          📋 Resumen de otros <span id="resCatArrow_otro">▾</span>
+        </div>
+        <div id="resumenCat_otro" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
       </div>
     </div>
 
@@ -11205,6 +11225,148 @@ function renderResumenProveedores() {
   el.innerHTML = tabsHtml +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'+
       '<span style="font-size:.72rem;color:var(--gray)">Total pagado a proveedores</span>'+
+      '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalGeneral)+'</span>'+
+    '</div>'+rowsHtml;
+}
+
+// ── RESUMEN POR CATEGORÍA (sueldos / servicios / otros) ─────────────────────
+// Mismo mecanismo que el resumen de proveedores (agrupa por el nombre
+// repetido, con hoy/semana/mes + rango, y clic para desplegar fecha/monto de
+// cada pago), pero filtrado a una sola categoría por vez.
+var _resCatState = {
+  sueldo:   {periodo:'mes', fecha:'', desde:'', hasta:''},
+  servicio: {periodo:'mes', fecha:'', desde:'', hasta:''},
+  otro:     {periodo:'mes', fecha:'', desde:'', hasta:''}
+};
+var _resCatLabels = { sueldo:'sueldos', servicio:'servicios', otro:'otros' };
+
+function toggleResumenCatBox(categoria) {
+  var box = document.getElementById('resumenCat_'+categoria);
+  var arrow = document.getElementById('resCatArrow_'+categoria);
+  if(!box) return;
+  var open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : 'block';
+  if(arrow) arrow.textContent = open ? '▾' : '▴';
+  if(!open) renderResumenCategoria(categoria);
+}
+
+function selResumenCatPeriodo(categoria, p) {
+  var st = _resCatState[categoria];
+  st.periodo = p; st.fecha=''; st.desde=''; st.hasta='';
+  var fechaInput = document.getElementById('resumenCatFecha_'+categoria); if(fechaInput) fechaInput.value='';
+  var dEl = document.getElementById('resumenCatDesde_'+categoria); if(dEl) dEl.value='';
+  var hEl = document.getElementById('resumenCatHasta_'+categoria); if(hEl) hEl.value='';
+  renderResumenCategoria(categoria);
+}
+
+function selResumenCatFecha(categoria) {
+  var st = _resCatState[categoria];
+  var fechaInput = document.getElementById('resumenCatFecha_'+categoria);
+  st.fecha = fechaInput ? fechaInput.value : '';
+  st.desde=''; st.hasta='';
+  var dEl = document.getElementById('resumenCatDesde_'+categoria); if(dEl) dEl.value='';
+  var hEl = document.getElementById('resumenCatHasta_'+categoria); if(hEl) hEl.value='';
+  renderResumenCategoria(categoria);
+}
+
+function selResumenCatRango(categoria) {
+  var st = _resCatState[categoria];
+  var dEl = document.getElementById('resumenCatDesde_'+categoria);
+  var hEl = document.getElementById('resumenCatHasta_'+categoria);
+  st.desde = dEl ? dEl.value : ''; st.hasta = hEl ? hEl.value : '';
+  if(!st.desde || !st.hasta) return;
+  st.fecha = '';
+  var fechaInput = document.getElementById('resumenCatFecha_'+categoria); if(fechaInput) fechaInput.value='';
+  renderResumenCategoria(categoria);
+}
+
+function toggleResumenCatGrupo(categoria, idx) {
+  var el = document.getElementById('rcat_'+categoria+'_drop'+idx);
+  var arrow = document.getElementById('rcat_'+categoria+'_arrow'+idx);
+  if(el) el.classList.toggle('open');
+  if(arrow) arrow.classList.toggle('open');
+}
+
+function renderResumenCategoria(categoria) {
+  var el = document.getElementById('resumenCat_'+categoria);
+  if(!el) return;
+  var st = _resCatState[categoria];
+
+  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === categoria; });
+  var desde, hasta;
+  if(st.desde && st.hasta){
+    desde = new Date(st.desde+'T00:00:00'); hasta = new Date(st.hasta+'T23:59:59');
+  } else if(st.fecha){
+    desde = new Date(st.fecha+'T00:00:00'); hasta = new Date(st.fecha+'T23:59:59');
+  } else {
+    var rango = getFechasRango(st.periodo==='dia'?'hoy':st.periodo);
+    desde = rango.desde; hasta = rango.hasta;
+  }
+
+  var filtrados = egresos.filter(function(e){
+    var fechaE = new Date(e.fecha+'T12:00:00');
+    return fechaE >= desde && fechaE <= hasta;
+  });
+
+  var porNombre = {};
+  filtrados.forEach(function(e){
+    var key = e.proveedor || e.prov || '—';
+    if(!porNombre[key]) porNombre[key] = {total:0, count:0, pagos:[]};
+    porNombre[key].total += e.monto;
+    porNombre[key].count++;
+    porNombre[key].pagos.push(e);
+  });
+
+  var nombres = Object.keys(porNombre).sort(function(a,b){ return porNombre[b].total - porNombre[a].total; });
+  var totalGeneral = filtrados.reduce(function(s,e){ return s+e.monto; },0);
+  var etiqueta = _resCatLabels[categoria] || categoria;
+
+  var sinFechaPuntual = !st.fecha && !(st.desde && st.hasta);
+  var tabsHtml =
+    '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'+
+      '<button class="period-btn'+(sinFechaPuntual&&st.periodo==='dia'?' active':'')+'" onclick="selResumenCatPeriodo(\''+categoria+'\',\'dia\')">Hoy</button>'+
+      '<button class="period-btn'+(sinFechaPuntual&&st.periodo==='semana'?' active':'')+'" onclick="selResumenCatPeriodo(\''+categoria+'\',\'semana\')">Semana</button>'+
+      '<button class="period-btn'+(sinFechaPuntual&&st.periodo==='mes'?' active':'')+'" onclick="selResumenCatPeriodo(\''+categoria+'\',\'mes\')">Mes</button>'+
+      '<input type="date" id="resumenCatFecha_'+categoria+'" value="'+st.fecha+'" onchange="selResumenCatFecha(\''+categoria+'\')" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Oswald,sans-serif;font-size:.7rem;margin-left:auto" title="Fecha puntual">'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'+
+      '<label style="font-size:.68rem;color:var(--gray);font-family:Oswald,sans-serif">Rango:</label>'+
+      '<input type="date" id="resumenCatDesde_'+categoria+'" value="'+st.desde+'" onchange="selResumenCatRango(\''+categoria+'\')" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Oswald,sans-serif;font-size:.7rem">'+
+      '<span style="color:var(--gray)">→</span>'+
+      '<input type="date" id="resumenCatHasta_'+categoria+'" value="'+st.hasta+'" onchange="selResumenCatRango(\''+categoria+'\')" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Oswald,sans-serif;font-size:.7rem">'+
+    '</div>';
+
+  if(!nombres.length){
+    el.innerHTML = tabsHtml + '<div style="color:var(--gray);font-size:.78rem;padding:8px 0">Sin '+etiqueta+' registrados en este período</div>';
+    return;
+  }
+
+  var rowsHtml = nombres.map(function(n, idx){
+    var d = porNombre[n];
+    var pct = totalGeneral>0 ? Math.round(d.total/totalGeneral*100) : 0;
+    var pagosHtml = d.pagos.slice().sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).map(function(p){
+      var fechaStr = new Date(p.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
+        '<div><span style="color:var(--gray)">'+fechaStr+'</span>'+(p.nota?' · <span style="color:var(--light)">'+p.nota+'</span>':'')+'</div>'+
+        '<div style="display:flex;align-items:center;gap:6px"><span style="color:var(--gray);font-size:.66rem">'+(p.medio||'')+'</span><span style="color:var(--red);font-family:Oswald,sans-serif">'+fmt(p.monto)+'</span></div>'+
+      '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:10px;border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+      '<div style="cursor:pointer" onclick="toggleResumenCatGrupo(\''+categoria+'\','+idx+')">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:5px">'+
+          '<span style="color:var(--white);font-family:Oswald,sans-serif">'+n+'</span>'+
+          '<span style="display:flex;align-items:center;gap:6px"><span style="color:var(--gray);font-size:.66rem">'+d.count+' pago'+(d.count!==1?'s':'')+'</span> · <span style="color:var(--red);font-family:Oswald,sans-serif">'+fmt(d.total)+'</span> <span class="drop-arrow" id="rcat_'+categoria+'_arrow'+idx+'">▾</span></span>'+
+        '</div>'+
+        '<div style="background:var(--surface);border-radius:3px;height:5px;overflow:hidden"><div style="background:var(--red);height:100%;width:'+pct+'%"></div></div>'+
+      '</div>'+
+      '<div class="consumo-dropdown" id="rcat_'+categoria+'_drop'+idx+'">'+pagosHtml+'</div>'+
+    '</div>';
+  }).join('');
+
+  el.innerHTML = tabsHtml +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'+
+      '<span style="font-size:.72rem;color:var(--gray)">Total '+etiqueta+'</span>'+
       '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalGeneral)+'</span>'+
     '</div>'+rowsHtml;
 }
