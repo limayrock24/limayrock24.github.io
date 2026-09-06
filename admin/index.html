@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788639247";
+  window.__LR_BUILD = "1788730996";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4562,6 +4562,14 @@ body.night-on{background:#080005}
 
     <!-- INVENTARIO -->
     <div class="tab-pane" id="pane-inventario">
+      <!-- CARGAR STOCK (corrección a número exacto, mismo mecanismo que en el panel de venta) -->
+      <div style="background:rgba(0,204,68,.06);border:1px solid rgba(0,204,68,.25);border-radius:6px;padding:12px;margin-bottom:16px">
+        <div style="font-family:'Oswald',sans-serif;font-size:.8rem;color:var(--green);font-weight:700;letter-spacing:1px;margin-bottom:4px">📋 CARGAR STOCK</div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Para cuando hacés un conteo físico: buscás el producto y cargás la cantidad real que contaste — reemplaza el número, no lo suma.</div>
+        <button class="btn-save" style="width:100%;padding:10px;background:var(--green);color:var(--black);border:none" onclick="abrirCargaStock()">📋 Abrir Cargar Stock</button>
+      </div>
+      <hr style="border-color:var(--border);margin-bottom:16px">
+
       <!-- INGRESAR MERCADERÍA -->
       <div class="stock-ingreso-form">
         <h4>📥 Ingresar mercadería</h4>
