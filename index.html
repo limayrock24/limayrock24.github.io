@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788730996";
+  window.__LR_BUILD = "1788731879";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -20560,7 +20560,8 @@ function anularYRehacer(id){
 }
 
 function abrirCargaStock() {
-  if(!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin')) return;
+  var enAdminSinTurno = !!window.__lrAdminSinTurno;
+  if(!enAdminSinTurno && (!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin'))) return;
   document.getElementById('cargaStockOverlay').classList.add('open');
   document.getElementById('cargaStockBuscar').value = '';
   document.getElementById('cargaStockEditor').style.display = 'none';
@@ -20650,14 +20651,14 @@ function guardarCargaStock() {
     tipo: 'correccion', stockAntes: stockAntes, stockDespues: stockDespues,
     diferencia: stockDespues - stockAntes,
     nota: 'Corrección de conteo físico (Cargar Stock)',
-    responsable: currentEmp ? currentEmp.nombre : 'Empleado'
+    responsable: currentEmp ? currentEmp.nombre : (window.__lrAdminSinTurno ? 'Admin' : 'Empleado')
   });
   if(movs.length > 500) movs = movs.slice(-500);
   saveStockMovs(movs);
 
   // También queda visible en Movimientos (Admin), para que se pueda auditar
   // desde la misma pantalla que el resto de los movimientos del negocio.
-  registrarMovimiento('ajuste-stock', _cargaStockProdSel, stockDespues - stockAntes, stockAntes, stockDespues, currentEmp ? currentEmp.nombre : 'Empleado');
+  registrarMovimiento('ajuste-stock', _cargaStockProdSel, stockDespues - stockAntes, stockAntes, stockDespues, currentEmp ? currentEmp.nombre : (window.__lrAdminSinTurno ? 'Admin' : 'Empleado'));
 
   showToast('✓ '+_cargaStockProdSel+': '+stockAntes+' → '+stockDespues);
   autoSaveNow();
