@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788819728";
+  window.__LR_BUILD = "1788821764";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4235,6 +4235,10 @@ body.night-on{background:#080005}
         <button class="rent-period-btn" id="hp-semana" onclick="selPeriodoHoras('semana')">Esta semana</button>
         <button class="rent-period-btn" id="hp-todo" onclick="selPeriodoHoras('todo')">Todo</button>
       </div>
+      <label style="display:flex;align-items:center;gap:7px;margin-bottom:12px;cursor:pointer;font-size:.76rem;color:var(--light)">
+        <input type="checkbox" id="horasSoloPendientes" onchange="toggleHorasSoloPendientes()" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer">
+        Ver solo turnos pendientes de pago
+      </label>
       <div id="horasGrid"></div>
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn pdf" onclick="exportarHorasPDF()">📄 Exportar PDF</button>
@@ -11972,6 +11976,27 @@ function selPeriodoHoras(p) {
   renderHoras();
 }
 
+// Marcar turnos como pagados — para empleados a los que se les paga por
+// fuera del sueldo mensual (ej: fines de semana, cada 15 días). Es un
+// checklist ("ya le pagué esto"), no calcula montos — eso se sigue
+// cargando aparte en Egresos como pago de sueldo.
+var _horasSoloPendientes = false;
+
+function toggleHorasSoloPendientes() {
+  var chk = document.getElementById('horasSoloPendientes');
+  _horasSoloPendientes = !!(chk && chk.checked);
+  renderHoras();
+}
+
+function toggleTurnoPagado(empleado, fechaISO) {
+  var cierres = getCierres();
+  var c = cierres.find(function(x){ return x.empleado===empleado && x.fecha===fechaISO; });
+  if(!c) return;
+  c.pagado = !c.pagado;
+  saveCierres(cierres);
+  renderHoras();
+}
+
 function renderHoras() {
   var rango;
   if(_horasDesde && _horasHasta) {
@@ -11991,8 +12016,10 @@ function renderHoras() {
   // Agrupar por empleado
   var empData = {};
   enPeriodo.forEach(function(c){
-    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0, turnos:[]};
+    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0, pagadoMin:0, pendienteMin:0, turnos:[]};
     empData[c.empleado].totalMin += c.durMinutos || 0;
+    if(c.pagado) empData[c.empleado].pagadoMin += c.durMinutos || 0;
+    else empData[c.empleado].pendienteMin += c.durMinutos || 0;
     empData[c.empleado].turnos.push(c);
   });
 
@@ -12001,26 +12028,36 @@ function renderHoras() {
     return;
   }
 
+  function fmtMin(min){
+    var h = Math.floor(min/60), m = min%60;
+    return h+'h '+(m>0?m+'m':'');
+  }
+
   grid.innerHTML='';
   Object.keys(empData).sort().forEach(function(nombre){
     var d    = empData[nombre];
-    var horas= Math.floor(d.totalMin/60);
-    var mins = d.totalMin % 60;
-    var horasStr = horas+'h '+(mins>0?mins+'m':'');
+    var horasStr = fmtMin(d.totalMin);
+
+    var turnosParaMostrar = _horasSoloPendientes ? d.turnos.filter(function(c){ return !c.pagado; }) : d.turnos;
+    if(_horasSoloPendientes && !turnosParaMostrar.length) return; // este empleado no tiene nada pendiente, no mostrar la tarjeta
 
     var card = document.createElement('div');
     card.className = 'horas-emp-card';
-    var turnosRows = d.turnos.slice().reverse().map(function(c){
+    var turnosRows = turnosParaMostrar.slice().reverse().map(function(c){
       var fi   = c.horaInicio ? new Date(c.horaInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
       var ff   = c.horaFin   ? new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
       var fecha= new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
       var dur  = c.durMinutos ? Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':'') : '—';
-      return '<div class="turno-row">'+
+      return '<div class="turno-row" style="'+(c.pagado?'opacity:.5':'')+'">'+
         '<span class="turno-fecha">'+fecha+'</span>'+
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
         '<span class="turno-duracion">'+dur+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+'</span>'+
         '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
+        '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;justify-self:end" title="Marcar como pagado">'+
+          '<input type="checkbox" '+(c.pagado?'checked':'')+' onchange="toggleTurnoPagado(\''+nombre.replace(/'/g,"\\'")+'\',\''+c.fecha+'\')" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer">'+
+          '<span style="font-size:.62rem;color:'+(c.pagado?'var(--green)':'var(--gray)')+'">'+(c.pagado?'✓ Pagado':'Pagar')+'</span>'+
+        '</label>'+
       '</div>';
     }).join('');
 
@@ -12032,17 +12069,24 @@ function renderHoras() {
         '</div>'+
         '<div style="text-align:right">'+
           '<div class="horas-emp-total">'+horasStr+'</div>'+
-          '<div class="horas-emp-sub">'+d.totalMin+' minutos totales</div>'+
+          '<div class="horas-emp-sub" style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+
+            '<span style="color:var(--green)">✓ '+fmtMin(d.pagadoMin)+' pagado</span>'+
+            '<span style="color:var(--gold)">⏳ '+fmtMin(d.pendienteMin)+' pendiente</span>'+
+          '</div>'+
         '</div>'+
       '</div>'+
       '<div class="turnos-list">'+
-        '<div style="display:grid;grid-template-columns:80px 70px 70px 1fr auto;gap:6px;padding:3px 0 5px;font-size:.6rem;font-family:Oswald,sans-serif;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">'+
-          '<span>Fecha</span><span>Horario</span><span>Duración</span><span>Ventas</span><span>Turno</span>'+
+        '<div style="display:grid;grid-template-columns:80px 70px 70px 1fr auto auto;gap:6px;padding:3px 0 5px;font-size:.6rem;font-family:Oswald,sans-serif;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">'+
+          '<span>Fecha</span><span>Horario</span><span>Duración</span><span>Ventas</span><span>Turno</span><span>Pago</span>'+
         '</div>'+
         turnosRows+
       '</div>';
     grid.appendChild(card);
   });
+
+  if(_horasSoloPendientes && !grid.children.length){
+    grid.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">No hay turnos pendientes de pago en este período 🎉</div>';
+  }
 }
 
 function exportarHorasPDF() {
