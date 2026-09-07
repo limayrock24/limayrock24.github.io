@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788744507";
+  window.__LR_BUILD = "1788744761";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -14847,6 +14847,51 @@ function generarPDFPedido() {
   document.getElementById('armarPedidoOverlay').classList.remove('open');
 }
 
+// Filtro por categoría dentro de cada tarjeta desplegable de Pedidos (para
+// verlo directo en pantalla grande, sin tener que abrir "Armar pedido").
+// Se guarda por proveedor y sobrevive a los re-render de todo el grid.
+var _pedidosCatFiltro = {};
+var _pedidosDatosCache = {};
+
+function cambiarCategoriaPedido(nombreProv, idSafe) {
+  var sel = document.getElementById('pedCatSel_'+idSafe);
+  _pedidosCatFiltro[nombreProv] = sel ? sel.value : '';
+  renderPedidoFilas(nombreProv, idSafe);
+}
+
+function renderPedidoFilas(nombreProv, idSafe) {
+  var cont = document.getElementById('pedRows_'+idSafe);
+  if(!cont) return;
+  var prodsVisibles = _pedidosDatosCache[nombreProv] || [];
+  var catFiltro = _pedidosCatFiltro[nombreProv] || '';
+  var filtrados = catFiltro ? prodsVisibles.filter(function(p){
+    var prod = PRODUCTS.find(function(pr){ return pr.name===p.nombre; });
+    return prod && prod.cat === catFiltro;
+  }) : prodsVisibles;
+
+  if(!filtrados.length){
+    cont.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.76rem">Sin productos en esta categoría</div>';
+    return;
+  }
+
+  cont.innerHTML = filtrados.map(function(p){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-top:1px solid rgba(255,255,255,.05);gap:8px">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
+        '<div style="font-size:.66rem;color:var(--gray)">'+
+          (p.promedioSemanal>0?'~'+p.promedioSemanal+' u./sem':'sin ventas recientes')+
+          (p.dias<999?' · '+p.dias+' días de stock':'')+
+        '</div>'+
+      '</div>'+
+      '<div style="text-align:right;white-space:nowrap">'+
+        '<div style="font-size:.68rem;color:var(--gray)">Tenés: <b style="color:'+(p.critico?'var(--red)':p.bajo?'var(--gold)':'var(--light)')+'">'+p.stock+'</b></div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.85rem;color:'+(p.sugerido>0?'var(--green)':'var(--gray)')+'">'+
+          (p.sugerido>0?'📦 Pedir '+p.sugerido:'✓ OK')+
+        '</div>'+
+      '</div>';
+  }).join('');
+}
+
 function renderPedidos() {
   var inv = getStockInv();
   var grid = document.getElementById('pedidosGrid');
@@ -14903,25 +14948,35 @@ function renderPedidos() {
     var body = document.createElement('div');
     body.style.display = 'none';
 
+    var idSafe = nombre.replace(/[^a-zA-Z0-9]/g,'_');
+    _pedidosDatosCache[nombre] = prodsVisibles;
+
+    // Categorías presentes en lo que se está mostrando ahora mismo (respeta
+    // el filtro Todos/Bajo/Crítico de arriba) — solo aparece si hay más de
+    // una, no tiene sentido un desplegable con una sola opción.
+    var catsPed = {};
     prodsVisibles.forEach(function(p){
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-top:1px solid rgba(255,255,255,.05);gap:8px';
-      row.innerHTML =
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
-          '<div style="font-size:.66rem;color:var(--gray)">'+
-            (p.promedioSemanal>0?'~'+p.promedioSemanal+' u./sem':'sin ventas recientes')+
-            (p.dias<999?' · '+p.dias+' días de stock':'')+
-          '</div>'+
-        '</div>'+
-        '<div style="text-align:right;white-space:nowrap">'+
-          '<div style="font-size:.68rem;color:var(--gray)">Tenés: <b style="color:'+(p.critico?'var(--red)':p.bajo?'var(--gold)':'var(--light)')+'">'+p.stock+'</b></div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:.85rem;color:'+(p.sugerido>0?'var(--green)':'var(--gray)')+'">'+
-            (p.sugerido>0?'📦 Pedir '+p.sugerido:'✓ OK')+
-          '</div>'+
-        '</div>';
-      body.appendChild(row);
+      var prod = PRODUCTS.find(function(pr){ return pr.name===p.nombre; });
+      if(prod && prod.cat) catsPed[prod.cat] = (catsPed[prod.cat]||0)+1;
     });
+    var catsPedOrdenadas = Object.keys(catsPed).sort(function(a,b){ return a.localeCompare(b,'es'); });
+    if(_pedidosCatFiltro[nombre] && catsPedOrdenadas.indexOf(_pedidosCatFiltro[nombre])===-1) _pedidosCatFiltro[nombre] = '';
+
+    if(catsPedOrdenadas.length > 1){
+      var catFiltroActual = _pedidosCatFiltro[nombre] || '';
+      var catBar = document.createElement('div');
+      catBar.style.cssText = 'padding:8px 14px;border-top:1px solid rgba(255,255,255,.05)';
+      catBar.innerHTML = '<select id="pedCatSel_'+idSafe+'" onchange="cambiarCategoriaPedido(\''+nombre.replace(/'/g,"\\'")+'\',\''+idSafe+'\')" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:4px;padding:7px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem">'+
+        '<option value=""'+(catFiltroActual===''?' selected':'')+'>Todas las categorías ('+prodsVisibles.length+')</option>'+
+        catsPedOrdenadas.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'"'+(catFiltroActual===c?' selected':'')+'>'+c+' ('+catsPed[c]+')</option>'; }).join('')+
+        '</select>';
+      body.appendChild(catBar);
+    }
+
+    var rowsCont = document.createElement('div');
+    rowsCont.id = 'pedRows_'+idSafe;
+    body.appendChild(rowsCont);
+    renderPedidoFilas(nombre, idSafe);
 
     var footerBtn = document.createElement('div');
     footerBtn.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)';
