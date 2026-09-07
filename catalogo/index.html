@@ -194,14 +194,13 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <img src="/logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
   </div>
-  <div class="delivery-banner">🛵 Delivery activo — hacé tu pedido</div>
+  <div class="delivery-banner" id="deliveryBanner">🛵 Delivery activo — hacé tu pedido</div>
 
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
-    <div id="promoContainer"></div>
+    <div id="combosContainer"></div>
     <div class="cat-pills" id="catPills"></div>
     <div id="listContainer"></div>
-    <div id="combosContainer"></div>
     <div id="itemsManualesContainer"></div>
   </div>
 </div>
@@ -444,15 +443,20 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
   // mostraba precios diurnos toda la madrugada.
   PRECIO_NOCTURNO = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
-  if(!activo && !sesionVencida){
-    document.getElementById('loadingScreen').classList.remove('show');
-    document.getElementById('mainContent').style.display = 'none';
-    document.getElementById('noDeliveryScreen').classList.add('show');
-    return;
+  DELIVERY_ACTIVO = activo;
+  var banner = document.getElementById('deliveryBanner');
+  if(banner){
+    if(activo){
+      banner.textContent = '🛵 Delivery activo — hacé tu pedido';
+      banner.style.background = 'rgba(46,204,113,.1)';
+      banner.style.color = '#2ECC71';
+    } else {
+      banner.textContent = '⏸ Delivery en pausa — podés ver el catálogo, el local sigue abierto';
+      banner.style.background = 'rgba(244,180,0,.12)';
+      banner.style.color = '#F4B400';
+    }
   }
-  if(activo){
-    document.getElementById('noDeliveryScreen').classList.remove('show');
-  }
+  document.getElementById('noDeliveryScreen').classList.remove('show');
   deliveryListo = true;
   chequearListo();
 });
@@ -490,6 +494,7 @@ db.collection('inventario').onSnapshot(function(snap){
 // copia, y si esa copia fallaba o quedaba desactualizada el cliente no veía
 // nada. Con las dos, alcanza con que una funcione.
 var _combosDirecto = [], _combosCopia = [];
+var DELIVERY_ACTIVO = true;
 
 function unificarCombos(){
   var porNombre = {};
@@ -1183,6 +1188,11 @@ function volverAlCarrito(){
 
 function confirmarPedido(){
   if(sesionVencida) return;
+  if(!DELIVERY_ACTIVO){
+    document.getElementById('mainContent').style.display = 'none';
+    document.getElementById('noDeliveryScreen').classList.add('show');
+    return;
+  }
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
   var direccion = document.getElementById('clienteDireccion').value.trim();
