@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788823847";
+  window.__LR_BUILD = "1788824963";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1298,6 +1298,7 @@
     if(window.__lrZonaCfg.radioKm == null) window.__lrZonaCfg.radioKm = 2;
     window.__lrPrecioNocturnoCatalogo = doc.exists ? !!doc.data().precioNocturno : false;
     window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
+    window.__lrDeliveryConfigListo = true;
     // Refrescar el panel de Delivery del admin también cuando cambia esta
     // configuración (no solo cuando cambian los empleados).
     if(typeof renderDeliveryControl==='function'){
@@ -20626,6 +20627,10 @@ function cambiarModoDelivery(modo){
 
 function sincronizarDeliveryConDisponibles(){
   if(!window.__lrSaveDeliveryActivo) return;
+  // No tocar nada hasta saber con certeza si había un modo forzado guardado —
+  // si esto corriera antes de terminar de leer la configuración, podía
+  // pisar un "forzar abierto/cerrado" real con el cálculo automático.
+  if(!window.__lrDeliveryConfigListo) return;
   // Si el admin lo forzó a mano, el automático no lo toca.
   if(_modoDeliveryActual() !== 'auto') return;
   var hay = repartidoresDisponibles().length > 0;
