@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788731879";
+  window.__LR_BUILD = "1788744507";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -5562,6 +5562,7 @@ body.night-on{background:#080005}
     <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
     <div class="sub">Escribí la cantidad que estás pidiendo de cada producto. Los que dejes en blanco no van a salir en el PDF.</div>
     <input type="text" id="armarPedidoBuscar" placeholder="Buscar producto..." oninput="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin:8px 0">
+    <select id="armarPedidoCategoria" onchange="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin-bottom:8px"></select>
     <div id="armarPedidoLista" style="max-height:360px;overflow-y:auto"></div>
     <button class="arqueo-confirm" onclick="generarPDFPedido()" style="margin-top:14px">📄 Generar PDF con lo cargado</button>
     <button onclick="document.getElementById('armarPedidoOverlay').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cerrar</button>
@@ -14709,18 +14710,53 @@ function calcularDatosPedido(nombre, inv, ventas4sem, diaPedido, diaEntrega, sem
 var _armarPedidoProv = null;
 var _armarPedidoCantidades = {};
 
-function abrirArmarPedidoModal(nombreProv) {
-  var proveedores = getProveedores();
-  var prov = proveedores.find(function(p){ return p.nombre===nombreProv; });
-  if(!prov){ showToast('No encontré ese proveedor',true); return; }
+function abrirArmarPedidoModal(nombreProv, productosOverride) {
+  var prov;
+  if(productosOverride) {
+    // Grupo "Sin proveedor asignado": no es un proveedor real de la lista,
+    // así que viene con su propia lista de productos ya calculada.
+    prov = { nombre: nombreProv, productos: productosOverride };
+  } else {
+    var proveedores = getProveedores();
+    prov = proveedores.find(function(p){ return p.nombre===nombreProv; });
+    if(!prov){ showToast('No encontré ese proveedor',true); return; }
+  }
 
   _armarPedidoProv = prov;
   _armarPedidoCantidades = {};
 
   document.getElementById('armarPedidoTitulo').textContent = '📝 Armar pedido — '+nombreProv;
   document.getElementById('armarPedidoBuscar').value = '';
+
+  // El filtro de categoría solo lista las categorías que realmente tiene
+  // este proveedor — no toda la lista de categorías del catálogo.
+  var selCat = document.getElementById('armarPedidoCategoria');
+  if(selCat){
+    var cats = {};
+    (prov.productos||[]).forEach(function(pn){
+      var p = PRODUCTS.find(function(pr){ return pr.name===pn; });
+      if(p && p.cat) cats[p.cat] = (cats[p.cat]||0)+1;
+    });
+    var catsOrdenadas = Object.keys(cats).sort(function(a,b){ return a.localeCompare(b,'es'); });
+    selCat.innerHTML = '<option value="">Todas las categorías ('+(prov.productos||[]).length+')</option>'+
+      catsOrdenadas.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'">'+c+' ('+cats[c]+')</option>'; }).join('');
+    selCat.value = '';
+  }
+
   renderArmarPedidoLista('');
   document.getElementById('armarPedidoOverlay').classList.add('open');
+}
+
+// Botón "Armar pedido" del grupo especial "Sin proveedor asignado" — no es
+// un proveedor de la lista, así que recalcula esa lista al vuelo (por si
+// cambió el stock/catálogo) en vez de depender de un array guardado antes.
+function abrirArmarPedidoSinProveedor() {
+  var proveedores = getProveedores();
+  var inv = getStockInv();
+  var nombresConProv = {};
+  proveedores.forEach(function(pv){ (pv.productos||[]).forEach(function(n){ nombresConProv[n]=true; }); });
+  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n]; });
+  abrirArmarPedidoModal('Sin proveedor asignado', sinProvNombres);
 }
 
 function filtrarArmarPedidoLista() {
@@ -14735,7 +14771,16 @@ function renderArmarPedidoLista(term) {
   var inv = getStockInv();
   var ventas4sem = getVentas4Semanas();
   var semanasColchon = getSemanasColchonPedido();
+  var selCat = document.getElementById('armarPedidoCategoria');
+  var catFiltro = selCat ? selCat.value : '';
+
   var productos = (_armarPedidoProv.productos||[]).filter(function(pn){ return existeEnCatalogo(pn); });
+  if(catFiltro){
+    productos = productos.filter(function(pn){
+      var p = PRODUCTS.find(function(pr){ return pr.name===pn; });
+      return p && p.cat === catFiltro;
+    });
+  }
   if(term){
     productos = productos.filter(function(pn){
       var prod = PRODUCTS.find(function(p){ return p.name===pn; });
@@ -14879,7 +14924,7 @@ function renderPedidos() {
 
     var footerBtn = document.createElement('div');
     footerBtn.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)';
-    footerBtn.innerHTML = '<button onclick="event.stopPropagation();abrirArmarPedidoModal(\''+nombre.replace(/'/g,"\\'")+'\')" style="width:100%;background:none;border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📝 Armar pedido y generar PDF</button>';
+    footerBtn.innerHTML = '<button onclick="event.stopPropagation();'+(esSinProv ? 'abrirArmarPedidoSinProveedor()' : ('abrirArmarPedidoModal(\''+nombre.replace(/'/g,"\\'")+'\')'))+'" style="width:100%;background:none;border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📝 Armar pedido y generar PDF</button>';
     body.appendChild(footerBtn);
 
     header.onclick = function(){
