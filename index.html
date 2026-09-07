@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788746033";
+  window.__LR_BUILD = "1788819728";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4124,6 +4124,23 @@ body.night-on{background:#080005}
         <div class="section-export-bar" style="margin-top:12px">
           <button class="sec-exp-btn pdf" onclick="exportarReportePDF()">📄 Exportar reporte completo</button>
         </div>
+      </div>
+
+      <!-- INFORME PARA ASESORÍA (consolidado, pensado para llevar a un consultor externo) -->
+      <hr style="border-color:var(--border);margin:20px 0 14px">
+      <div onclick="toggleInformeAsesoriaSection()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:10px">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">📊 Informe para asesoría</div>
+        <span class="drop-arrow" id="informeAsesoriaArrow">▾</span>
+      </div>
+      <div id="informeAsesoriaBody" class="consumo-dropdown">
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Un solo PDF con todo lo necesario para llevar a un asesor externo: resumen financiero, ventas por categoría, top productos, horarios pico, tendencia mensual y productos sin movimiento.</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <label style="font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif">Período a analizar:</label>
+          <input type="date" id="infAsesDesde" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+          <span style="color:var(--gray)">→</span>
+          <input type="date" id="infAsesHasta" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+        </div>
+        <button class="btn-save" style="width:100%;padding:10px;background:#3498DB;color:white;border:none" onclick="exportarInformeAsesoriaPDF()">📊 Generar informe para asesoría</button>
       </div>
     </div>
 
@@ -15137,6 +15154,196 @@ function toggleReportesSection() {
   var arrow = document.getElementById('reportesArrow');
   if(body) body.classList.toggle('open');
   if(arrow) arrow.classList.toggle('open');
+}
+
+function toggleInformeAsesoriaSection() {
+  var body = document.getElementById('informeAsesoriaBody');
+  var arrow = document.getElementById('informeAsesoriaArrow');
+  if(body) body.classList.toggle('open');
+  if(arrow) arrow.classList.toggle('open');
+}
+
+// Informe consolidado pensado para llevar a un asesor externo (no para uso
+// operativo diario): resumen financiero, ventas por categoría, top
+// productos, horarios pico, tendencia mensual y productos sin movimiento.
+// Reusa las mismas fórmulas que ya usan Rentabilidad y Reportes — no
+// inventa números nuevos.
+function exportarInformeAsesoriaPDF() {
+  var desdeStr = document.getElementById('infAsesDesde').value;
+  var hastaStr = document.getElementById('infAsesHasta').value;
+  var hoy = new Date();
+  var desde = desdeStr ? new Date(desdeStr+'T00:00:00') : new Date(hoy.getFullYear(), hoy.getMonth()-2, 1);
+  var hasta = hastaStr ? new Date(hastaStr+'T23:59:59') : hoy;
+
+  var ventas = VENTAS.filter(function(v){
+    if(v.anulada) return false;
+    var d = new Date(v.fecha);
+    return d>=desde && d<=hasta;
+  });
+
+  if(!ventas.length){
+    showToast('No hay ventas registradas en ese período', true);
+    return;
+  }
+
+  // ── 1) Resumen financiero (misma fórmula que Rentabilidad) ──
+  var egresos = getEgresos().filter(function(e){
+    var d = new Date(e.fecha+'T12:00:00');
+    return d>=desde && d<=hasta;
+  });
+  var totalEgresos = egresos.reduce(function(s,e){return s+e.monto;},0);
+
+  var medios={Efectivo:0,Transferencia:0,'Débito':0};
+  ventas.forEach(function(v){
+    if(v.medio==='Mixto' && v.mixto){
+      medios.Efectivo      += v.mixto.efectivo      || 0;
+      medios.Transferencia += v.mixto.transferencia || 0;
+      medios['Débito']     += v.mixto.debito        || 0;
+    } else {
+      medios[v.medio] = (medios[v.medio]||0) + v.total;
+    }
+  });
+  var netoDebito = medios['Débito'] / getDebitoFactor();
+  var cargasVirtuales = getCargasVirtuales().filter(function(c){
+    var d = new Date(c.fecha);
+    return d>=desde && d<=hasta;
+  });
+  var gananciaCargas = cargasVirtuales.reduce(function(s,c){ return s+c.ganancia; },0);
+  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas;
+  var neto = ingresosNetos - totalEgresos;
+
+  var ticketPromedio = ingresosNetos / ventas.length;
+
+  // ── 2) Ventas por categoría ──
+  var porCategoria = {};
+  ventas.forEach(function(v){
+    (v.items||[]).forEach(function(it){
+      var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
+      var cat = (prod && prod.cat) || 'Sin categoría';
+      if(!porCategoria[cat]) porCategoria[cat] = {qty:0, rev:0};
+      porCategoria[cat].qty += it.qty||0;
+      porCategoria[cat].rev += it.subtotal||0;
+    });
+  });
+  var catsOrdenadas = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev-porCategoria[a].rev; });
+  var revTotalCats = catsOrdenadas.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
+  var filasCategoria = catsOrdenadas.map(function(c){
+    var d = porCategoria[c];
+    var pct = revTotalCats>0 ? Math.round(d.rev/revTotalCats*100) : 0;
+    return '<tr><td>'+c+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td><td>'+pct+'%</td></tr>';
+  }).join('');
+
+  // ── 3) Top 15 productos ──
+  var porProducto = {};
+  ventas.forEach(function(v){
+    (v.items||[]).forEach(function(it){
+      if(!porProducto[it.name]) porProducto[it.name]={qty:0,rev:0};
+      porProducto[it.name].qty += it.qty||0;
+      porProducto[it.name].rev += it.subtotal||0;
+    });
+  });
+  var topProductos = Object.keys(porProducto).sort(function(a,b){ return porProducto[b].qty-porProducto[a].qty; }).slice(0,15);
+  var filasTop = topProductos.map(function(k,i){
+    var d = porProducto[k];
+    return '<tr><td>'+(i+1)+'</td><td>'+k+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
+  }).join('');
+
+  // ── 4) Ventas por franja horaria ──
+  var franjas = [
+    {label:'00–06 (madrugada)', desde:0, hasta:6},
+    {label:'06–10 (mañana temprano)', desde:6, hasta:10},
+    {label:'10–14 (mediodía)', desde:10, hasta:14},
+    {label:'14–18 (tarde)', desde:14, hasta:18},
+    {label:'18–22 (noche)', desde:18, hasta:22},
+    {label:'22–24 (cierre)', desde:22, hasta:24}
+  ];
+  var porFranja = franjas.map(function(f){ return {label:f.label, count:0, rev:0}; });
+  ventas.forEach(function(v){
+    var h = new Date(v.fecha).getHours();
+    var idx = franjas.findIndex(function(f){ return h>=f.desde && h<f.hasta; });
+    if(idx>=0){ porFranja[idx].count++; porFranja[idx].rev += v.total||0; }
+  });
+  var maxFranjaRev = Math.max.apply(null, porFranja.map(function(f){ return f.rev; }).concat([1]));
+  var filasFranja = porFranja.map(function(f){
+    var pct = Math.round(f.rev/maxFranjaRev*100);
+    return '<tr><td>'+f.label+'</td><td>'+f.count+' ventas</td><td>'+fmt(f.rev)+'</td>'+
+      '<td style="width:120px"><div style="background:#eee;border-radius:3px;height:10px;overflow:hidden"><div style="background:#3498DB;height:100%;width:'+pct+'%"></div></div></td></tr>';
+  }).join('');
+
+  // ── 5) Tendencia mensual (últimos 6 meses, más allá del período elegido arriba) ──
+  var mesesTendencia = [];
+  for(var m=5; m>=0; m--){
+    var refMes = new Date(hoy.getFullYear(), hoy.getMonth()-m, 1);
+    var finMes = new Date(hoy.getFullYear(), hoy.getMonth()-m+1, 0, 23,59,59);
+    var ventasMes = VENTAS.filter(function(v){
+      if(v.anulada) return false;
+      var d = new Date(v.fecha);
+      return d>=refMes && d<=finMes;
+    });
+    var revMes = ventasMes.reduce(function(s,v){ return s+(v.total||0); },0);
+    mesesTendencia.push({label: refMes.toLocaleDateString('es-AR',{month:'short',year:'2-digit'}), rev: revMes, count: ventasMes.length});
+  }
+  var maxMesRev = Math.max.apply(null, mesesTendencia.map(function(x){ return x.rev; }).concat([1]));
+  var filasTendencia = mesesTendencia.map(function(x){
+    var pct = Math.round(x.rev/maxMesRev*100);
+    return '<tr><td>'+x.label+'</td><td>'+x.count+' ventas</td><td>'+fmt(x.rev)+'</td>'+
+      '<td style="width:120px"><div style="background:#eee;border-radius:3px;height:10px;overflow:hidden"><div style="background:#2ECC71;height:100%;width:'+pct+'%"></div></div></td></tr>';
+  }).join('');
+
+  // ── 6) Productos con stock inmovilizado (no vendieron nada en el período) ──
+  var inv = getStockInv();
+  var vendidosEnPeriodo = {};
+  ventas.forEach(function(v){ (v.items||[]).forEach(function(it){ vendidosEnPeriodo[it.name]=true; }); });
+  var sinMovimiento = PRODUCTS.filter(function(p){
+    var st = inv[p.name] ? inv[p.name].stock : 0;
+    return st>0 && !vendidosEnPeriodo[p.name];
+  }).map(function(p){
+    var st = inv[p.name].stock;
+    var valorInmovilizado = st * (p.costo||0);
+    return {nombre:p.name, stock:st, valor:valorInmovilizado};
+  }).sort(function(a,b){ return b.valor-a.valor; }).slice(0,20);
+  var totalInmovilizado = sinMovimiento.reduce(function(s,p){ return s+p.valor; },0);
+  var filasInmovilizado = sinMovimiento.map(function(p){
+    return '<tr><td>'+p.nombre+'</td><td>'+p.stock+'</td><td>'+(p.valor>0?fmt(p.valor):'—')+'</td></tr>';
+  }).join('');
+
+  // ── Armado del documento ──
+  var desdeFmt = desde.toLocaleDateString('es-AR');
+  var hastaFmt = hasta.toLocaleDateString('es-AR');
+
+  var html =
+    '<div style="background:#f5f5f5;border-radius:6px;padding:12px 16px;margin-bottom:18px;font-family:Arial,sans-serif;font-size:12px;color:#333">'+
+      '<b>Limay Rock</b> — drugstore de venta 24hs, ubicado en Senillosa, Neuquén, Argentina.<br>'+
+      'Período analizado: '+desdeFmt+' al '+hastaFmt+'.'+
+    '</div>'+
+
+    '<div class="kpis">'+
+      '<div class="kpi"><div class="l">Ingresos netos</div><div class="v">'+fmt(ingresosNetos)+'</div></div>'+
+      '<div class="kpi"><div class="l">Egresos</div><div class="v">'+fmt(totalEgresos)+'</div></div>'+
+      '<div class="kpi"><div class="l">Resultado neto</div><div class="v">'+fmt(neto)+'</div></div>'+
+      '<div class="kpi"><div class="l">Ventas totales</div><div class="v">'+ventas.length+'</div></div>'+
+      '<div class="kpi"><div class="l">Ticket promedio</div><div class="v">'+fmt(ticketPromedio)+'</div></div>'+
+    '</div>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Ventas por categoría</h3>'+
+    '<table><thead><tr><th>Categoría</th><th>Unidades</th><th>Facturación</th><th>% del total</th></tr></thead><tbody>'+filasCategoria+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Top 15 productos más vendidos</h3>'+
+    '<table><thead><tr><th>#</th><th>Producto</th><th>Unidades</th><th>Facturación</th></tr></thead><tbody>'+filasTop+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Ventas por franja horaria</h3>'+
+    '<table><thead><tr><th>Franja</th><th>Ventas</th><th>Facturación</th><th></th></tr></thead><tbody>'+filasFranja+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Tendencia — últimos 6 meses</h3>'+
+    '<table><thead><tr><th>Mes</th><th>Ventas</th><th>Facturación</th><th></th></tr></thead><tbody>'+filasTendencia+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Productos sin movimiento en el período (top 20 por plata inmovilizada)</h3>'+
+    (sinMovimiento.length
+      ? '<div style="font-size:11px;color:#666;margin-bottom:6px">Total estimado inmovilizado en estos productos: <b>'+fmt(totalInmovilizado)+'</b></div>'+
+        '<table><thead><tr><th>Producto</th><th>Stock actual</th><th>Valor inmovilizado (costo)</th></tr></thead><tbody>'+filasInmovilizado+'</tbody></table>'
+      : '<div style="font-size:11px;color:#666">Todos los productos con stock tuvieron al menos una venta en este período.</div>');
+
+  abrirVentanaPDF('Informe para asesoría — Limay Rock', html);
 }
 
 function renderReportes() {
