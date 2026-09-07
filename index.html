@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788744761";
+  window.__LR_BUILD = "1788746033";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -14888,7 +14888,8 @@ function renderPedidoFilas(nombreProv, idSafe) {
         '<div style="font-family:Oswald,sans-serif;font-size:.85rem;color:'+(p.sugerido>0?'var(--green)':'var(--gray)')+'">'+
           (p.sugerido>0?'📦 Pedir '+p.sugerido:'✓ OK')+
         '</div>'+
-      '</div>';
+      '</div>'+
+    '</div>';
   }).join('');
 }
 
@@ -14976,7 +14977,6 @@ function renderPedidos() {
     var rowsCont = document.createElement('div');
     rowsCont.id = 'pedRows_'+idSafe;
     body.appendChild(rowsCont);
-    renderPedidoFilas(nombre, idSafe);
 
     var footerBtn = document.createElement('div');
     footerBtn.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)';
@@ -14992,6 +14992,11 @@ function renderPedidos() {
     card.appendChild(header);
     card.appendChild(body);
     grid.appendChild(card);
+
+    // Recién ahora la tarjeta ya está insertada de verdad en la página —
+    // antes de esto, pedRows_<id> no existía todavía en el documento y
+    // pintar la lista no hacía nada.
+    renderPedidoFilas(nombre, idSafe);
   }
 
   proveedores.slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); }).forEach(function(prov){
