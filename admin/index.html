@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788821764";
+  window.__LR_BUILD = "1788823847";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -12052,11 +12052,13 @@ function renderHoras() {
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
         '<span class="turno-duracion">'+dur+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+'</span>'+
-        '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
-        '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;justify-self:end" title="Marcar como pagado">'+
-          '<input type="checkbox" '+(c.pagado?'checked':'')+' onchange="toggleTurnoPagado(\''+nombre.replace(/'/g,"\\'")+'\',\''+c.fecha+'\')" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer">'+
-          '<span style="font-size:.62rem;color:'+(c.pagado?'var(--green)':'var(--gray)')+'">'+(c.pagado?'✓ Pagado':'Pagar')+'</span>'+
-        '</label>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
+          '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
+          '<label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Marcar como pagado">'+
+            '<input type="checkbox" '+(c.pagado?'checked':'')+' onchange="toggleTurnoPagado(\''+nombre.replace(/'/g,"\\'")+'\',\''+c.fecha+'\')" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer">'+
+            '<span style="font-size:.62rem;color:'+(c.pagado?'var(--green)':'var(--gray)')+'">'+(c.pagado?'✓ Pagado':'Pagar')+'</span>'+
+          '</label>'+
+        '</div>'+
       '</div>';
     }).join('');
 
@@ -12075,8 +12077,8 @@ function renderHoras() {
         '</div>'+
       '</div>'+
       '<div class="turnos-list">'+
-        '<div style="display:grid;grid-template-columns:80px 70px 70px 1fr auto auto;gap:6px;padding:3px 0 5px;font-size:.6rem;font-family:Oswald,sans-serif;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">'+
-          '<span>Fecha</span><span>Horario</span><span>Duración</span><span>Ventas</span><span>Turno</span><span>Pago</span>'+
+        '<div style="display:grid;grid-template-columns:80px 70px 70px 1fr auto;gap:6px;padding:3px 0 5px;font-size:.6rem;font-family:Oswald,sans-serif;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">'+
+          '<span>Fecha</span><span>Horario</span><span>Duración</span><span>Ventas</span><span>Turno</span>'+
         '</div>'+
         turnosRows+
       '</div>';
