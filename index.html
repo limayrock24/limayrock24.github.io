@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788826475";
+  window.__LR_BUILD = "1788826809";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -8152,11 +8152,19 @@ function delProd(idx) {
         promesaBorrado.then(function(){
           delete window.__lrBorradosPendientes[nombre];
           showToast('OK - "'+nombre+'" eliminado');
+        }).catch(function(){
+          if(window.registrarBajaPendiente) window.registrarBajaPendiente([nombre]);
+          if(typeof iniciarReintentoAutomaticoProductos==='function') iniciarReintentoAutomaticoProductos();
+          if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+          showToast('No se pudo borrar "'+nombre+'" - reintentando solo', true);
         });
         return;
       }
       window.__lrConTimeoutAviso(promesaBorrado, 15000, intentarBorrado).then(function(r){
         if(r.pendiente){
+          if(window.registrarBajaPendiente) window.registrarBajaPendiente([nombre]);
+          if(typeof iniciarReintentoAutomaticoProductos==='function') iniciarReintentoAutomaticoProductos();
+          if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
           showToast('Guardado: "'+nombre+'" se confirmara cuando haya senal');
         } else {
           delete window.__lrBorradosPendientes[nombre];
@@ -8164,6 +8172,9 @@ function delProd(idx) {
           showToast('OK - "'+nombre+'" eliminado y confirmado');
         }
       }).catch(function(e){
+        if(window.registrarBajaPendiente) window.registrarBajaPendiente([nombre]);
+        if(typeof iniciarReintentoAutomaticoProductos==='function') iniciarReintentoAutomaticoProductos();
+        if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
         showToast('No se pudo borrar "'+nombre+'" - reintentando solo', true);
         if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(intentarBorrado);
       });
@@ -8348,6 +8359,7 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
     if(r.pendiente){
       var cuantas = window.leerAltasPendientes ? Object.keys(window.leerAltasPendientes()).length : 0;
+      if(nombresABorrar && nombresABorrar.length && window.registrarBajaPendiente) window.registrarBajaPendiente(nombresABorrar);
       showToast(cuantas
         ? '💾 Guardado acá — ' + cuantas + ' producto' + (cuantas===1?'':'s') + ' esperando subir. Podés seguir cargando.'
         : '💾 Guardado localmente — se subirá solo cuando haya señal');
@@ -8369,6 +8381,7 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
       if(window.__lrOcultarReintentar) window.__lrOcultarReintentar();
     }
   }).catch(function(){
+    if(nombresABorrar && nombresABorrar.length && window.registrarBajaPendiente) window.registrarBajaPendiente(nombresABorrar);
     showToast('❌ Falló el intento, pero quedó guardado acá — reintentando solo', true);
     iniciarReintentoAutomaticoProductos();
     if(window.__lrMostrarReintentar) window.__lrMostrarReintentar(retry);
@@ -18451,7 +18464,10 @@ function eliminarProdModal() {
         delete window.__lrBorradosPendientes[nombre];
         showToast('✅ "'+nombre+'" eliminado y confirmado');
       }).catch(function(){
-        showToast('💾 Eliminación guardada — se confirmará cuando haya señal', true);
+        if(window.registrarBajaPendiente) window.registrarBajaPendiente([nombre]);
+        if(typeof iniciarReintentoAutomaticoProductos==='function') iniciarReintentoAutomaticoProductos();
+        if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+        showToast('💾 Eliminación guardada — se confirmará solo cuando haya señal (mirá el cartelito abajo a la izquierda)', true);
       });
     } else {
       showToast('Producto eliminado (local)');
