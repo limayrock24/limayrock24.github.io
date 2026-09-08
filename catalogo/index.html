@@ -194,11 +194,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <img src="/logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
   </div>
-  <div class="delivery-banner" id="deliveryBanner">🛵 Delivery activo — hacé tu pedido</div>
+  <div class="delivery-banner">🛵 Delivery activo — hacé tu pedido</div>
 
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
-    <div id="combosContainer"></div>
     <div class="cat-pills" id="catPills"></div>
     <div id="listContainer"></div>
     <div id="itemsManualesContainer"></div>
@@ -443,20 +442,15 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
   // mostraba precios diurnos toda la madrugada.
   PRECIO_NOCTURNO = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
-  DELIVERY_ACTIVO = activo;
-  var banner = document.getElementById('deliveryBanner');
-  if(banner){
-    if(activo){
-      banner.textContent = '🛵 Delivery activo — hacé tu pedido';
-      banner.style.background = 'rgba(46,204,113,.1)';
-      banner.style.color = '#2ECC71';
-    } else {
-      banner.textContent = '⏸ Delivery en pausa — podés ver el catálogo, el local sigue abierto';
-      banner.style.background = 'rgba(244,180,0,.12)';
-      banner.style.color = '#F4B400';
-    }
+  if(!activo && !sesionVencida){
+    document.getElementById('loadingScreen').classList.remove('show');
+    document.getElementById('mainContent').style.display = 'none';
+    document.getElementById('noDeliveryScreen').classList.add('show');
+    return;
   }
-  document.getElementById('noDeliveryScreen').classList.remove('show');
+  if(activo){
+    document.getElementById('noDeliveryScreen').classList.remove('show');
+  }
   deliveryListo = true;
   chequearListo();
 });
@@ -494,7 +488,6 @@ db.collection('inventario').onSnapshot(function(snap){
 // copia, y si esa copia fallaba o quedaba desactualizada el cliente no veía
 // nada. Con las dos, alcanza con que una funcione.
 var _combosDirecto = [], _combosCopia = [];
-var DELIVERY_ACTIVO = true;
 
 function unificarCombos(){
   var porNombre = {};
@@ -683,55 +676,12 @@ function renderList(){
   cont.innerHTML = htmlCombos + html;
 }
 
-// Combos: se ven como tarjetas, igual que en el panel de venta. Al tocarlos se
-// suman al carrito como un ítem propio, con su precio de combo.
+// DEPRECADA: esta versión dibujaba los combos como tarjetas en un contenedor
+// aparte (#combosContainer, ya sacado del HTML). Se reemplazó por la que está
+// integrada en renderList() (arriba), que es la que realmente se ve — esta
+// quedaba visible al mismo tiempo y duplicaba los combos en pantalla.
 function renderCombos(){
-  var cont = document.getElementById('combosContainer');
-  if(!cont) return;
-  if(!COMBOS.length){
-    // Diagnóstico visible: sin esto, cuando no aparecen combos no hay forma de
-    // saber si es porque no hay ninguno, porque no llegaron o porque falló el
-    // permiso de lectura. El cartel dice exactamente en qué estado está.
-    var diag = '';
-    if(window.__lrErrorCombos){
-      diag = 'No se pudieron leer: ' + window.__lrErrorCombos;
-    } else if(!window.__lrComboSnapDirecto && !window.__lrComboSnapCopia){
-      diag = 'Todavía no llegó la respuesta de la base de datos.';
-    } else {
-      diag = 'La base respondió pero sin combos cargados. ' +
-             '(directo: ' + (window.__lrComboSnapDirecto||0) + ' · copia: ' + (window.__lrComboSnapCopia||0) + ')';
-    }
-    cont.innerHTML =
-      '<div style="background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.4);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:.72rem;color:#F4B400;line-height:1.5">'+
-        '<b>Combos no disponibles</b><br>'+diag+
-      '</div>';
-    return;
-  }
-
-  cont.innerHTML =
-    '<div class="cat-title" style="margin-top:4px">🎁 Combos y promos</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-bottom:18px">'+
-    COMBOS.map(function(cb, i){
-      var enCarrito = comboCantEnCarrito(cb.nombre);
-      // El panel de admin guarda la cantidad en 'qty'. Se contempla 'cant'
-      // también, por si algún combo viejo quedó con ese nombre.
-      var detalle = (cb.items||[]).map(function(it){
-        if(it.tipo === 'variable') return it.etiqueta || 'elegís sabor';
-        var n = it.qty || it.cant || 1;
-        return it.nombre + (n>1 ? ' ×'+n : '');
-      }).join(' + ');
-      return '<div onclick="agregarComboPorIndice('+i+')" '+
-        'style="background:var(--card);border:1.5px solid '+(enCarrito?'var(--green)':'rgba(210,32,31,.45)')+';border-radius:9px;padding:11px 10px;cursor:pointer;text-align:center;position:relative;transition:.12s">'+
-        (enCarrito ? '<div style="position:absolute;top:-7px;right:-7px;background:var(--green);color:#04231d;border-radius:50%;width:23px;height:23px;display:flex;align-items:center;justify-content:center;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700">'+enCarrito+'</div>' : '')+
-        '<div style="font-size:1.6rem;line-height:1">'+(cb.emoji||'🎁')+'</div>'+
-        '<div style="font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:.5px;color:var(--white);margin-top:5px;text-transform:uppercase;line-height:1.25">'+cb.nombre+'</div>'+
-        (detalle
-          ? '<div style="font-size:.62rem;color:var(--gray);margin-top:3px;line-height:1.3">'+detalle+'</div>'
-          : (cb.descripcion ? '<div style="font-size:.62rem;color:var(--gray);margin-top:3px;line-height:1.3">'+cb.descripcion+'</div>' : ''))+
-        '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;color:var(--green);margin-top:6px">'+fmt(cb.precio)+'</div>'+
-      '</div>';
-    }).join('')+
-    '</div>';
+  return;
 }
 
 function quitarComboPorIndice(i){
@@ -1188,11 +1138,6 @@ function volverAlCarrito(){
 
 function confirmarPedido(){
   if(sesionVencida) return;
-  if(!DELIVERY_ACTIVO){
-    document.getElementById('mainContent').style.display = 'none';
-    document.getElementById('noDeliveryScreen').classList.add('show');
-    return;
-  }
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
   var direccion = document.getElementById('clienteDireccion').value.trim();
