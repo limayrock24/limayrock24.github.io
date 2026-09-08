@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788824963";
+  window.__LR_BUILD = "1788826475";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -396,6 +396,16 @@
     window.__lrSetEstadoConexion(true);
     refrescarPantallaVentaSiExiste();
     ocultarCargaSiListo();
+    // Si quedaron altas o bajas sin confirmar de una sesión anterior (se
+    // cerró la app antes de que terminaran de subir), reanudar el reintento
+    // automático y mostrar el cartelito — así no queda un cambio "perdido"
+    // en silencio hasta que alguien note que algo no está como debería.
+    var hayAltasPend = window.leerAltasPendientes && Object.keys(window.leerAltasPendientes()).length > 0;
+    var hayBajasPend = window.leerBajasPendientes && Object.keys(window.leerBajasPendientes()).length > 0;
+    if(hayAltasPend || hayBajasPend){
+      if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+      if(typeof iniciarReintentoAutomaticoProductos==='function') iniciarReintentoAutomaticoProductos();
+    }
   }, function(err){
     console.error('Error sincronizando productos:', err);
     window.__lrSync.productosListos = true; // no bloquear el sistema por un error de red
@@ -597,6 +607,48 @@
   window.confirmarAltaPendiente = function(nombre){
     var pend = window.leerAltasPendientes();
     if(pend[nombre]){ delete pend[nombre]; window.guardarAltasPendientes(pend); }
+  };
+
+  // Igual que las altas pendientes, pero para productos ELIMINADOS cuya baja
+  // no se pudo confirmar en la nube. Sin esto, un borrado que fallaba por
+  // conexión desaparecía de la pantalla pero seguía existiendo en Firestore
+  // — y volvía a aparecer solo con recargar, sin ningún aviso de que nunca
+  // se había confirmado de verdad.
+  var SK_BAJAS_PEND = 'lr_bajas_pendientes';
+
+  window.leerBajasPendientes = function(){
+    try{
+      var raw = localStorage.getItem(SK_BAJAS_PEND);
+      if(!raw) return {};
+      var obj = JSON.parse(raw);
+      var ahora = Date.now();
+      Object.keys(obj).forEach(function(n){
+        if(!obj[n] || ahora - obj[n] > 172800000) delete obj[n];
+      });
+      return obj;
+    }catch(e){ return {}; }
+  };
+
+  window.guardarBajasPendientes = function(obj){
+    try{ localStorage.setItem(SK_BAJAS_PEND, JSON.stringify(obj||{})); }catch(e){}
+  };
+
+  window.registrarBajaPendiente = function(nombres){
+    var pend = window.leerBajasPendientes();
+    (nombres||[]).forEach(function(n){ pend[n] = Date.now(); });
+    window.guardarBajasPendientes(pend);
+  };
+
+  window.reintentarBajasPendientes = function(){
+    var pend = window.leerBajasPendientes();
+    var nombres = Object.keys(pend);
+    if(!nombres.length || !window.__lrSaveProductos) return Promise.resolve(null);
+    return window.__lrSaveProductos([], nombres).then(function(){
+      nombres.forEach(function(n){ delete pend[n]; });
+      window.guardarBajasPendientes(pend);
+      if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
+      return nombres;
+    });
   };
 
   window.__lrSaveProductos = function(lista, nombresABorrar){
@@ -8144,7 +8196,22 @@ function iniciarReintentoAutomaticoProductos() {
   if(_lrReintentoProductosId) return; // ya está corriendo, no duplicar
   _lrReintentoProductosId = setInterval(function(){
     var raw; try { raw = localStorage.getItem(SK_PENDING_PRODUCTOS); } catch(e){ raw=null; }
-    if(!raw || !window.__lrSaveProductos){ clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null; return; }
+    var pendBajas = window.leerBajasPendientes ? window.leerBajasPendientes() : {};
+    var hayBajasPend = Object.keys(pendBajas).length > 0;
+
+    if(!raw && !hayBajasPend){ clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null; return; }
+    if(!window.__lrSaveProductos){ clearInterval(_lrReintentoProductosId); _lrReintentoProductosId=null; return; }
+
+    if(hayBajasPend && window.reintentarBajasPendientes){
+      window.reintentarBajasPendientes().then(function(nombres){
+        if(nombres && nombres.length && typeof showToast==='function'){
+          showToast('✅ '+nombres.length+' producto'+(nombres.length===1?'':'s')+' eliminado'+(nombres.length===1?'':'s')+' — confirmado en la nube');
+        }
+      }).catch(function(){ /* se reintenta en el próximo ciclo */ });
+    }
+
+    if(!raw) return; // no hay ediciones pendientes, con las bajas de arriba alcanza por ahora
+
     window.__lrSaveProductos(PRODUCTS).then(function(){
       limpiarPendienteLocalProductos();
       if(window.leerAltasPendientes && window.guardarAltasPendientes){
@@ -8163,7 +8230,8 @@ function iniciarReintentoAutomaticoProductos() {
 }
 window.addEventListener('online', function(){
   var raw; try { raw = localStorage.getItem(SK_PENDING_PRODUCTOS); } catch(e){ raw=null; }
-  if(raw) iniciarReintentoAutomaticoProductos();
+  var hayBajasPend = window.leerBajasPendientes && Object.keys(window.leerBajasPendientes()).length > 0;
+  if(raw || hayBajasPend) iniciarReintentoAutomaticoProductos();
 });
 
 // Igual que saveLocal, pero además borra registros viejos (se usa al renombrar
@@ -8171,8 +8239,11 @@ window.addEventListener('online', function(){
 // Muestra un cartelito fijo con cuántos productos están esperando subir, para
 // que se vea de un vistazo que hay cosas sin confirmar y no se pierda de vista.
 function mostrarBadgePendientes(){
-  var pend = window.leerAltasPendientes ? window.leerAltasPendientes() : {};
-  var n = Object.keys(pend).length;
+  var pendAltas = window.leerAltasPendientes ? window.leerAltasPendientes() : {};
+  var pendBajas = window.leerBajasPendientes ? window.leerBajasPendientes() : {};
+  var nAltas = Object.keys(pendAltas).length;
+  var nBajas = Object.keys(pendBajas).length;
+  var n = nAltas + nBajas;
   var el = document.getElementById('badgeAltasPendientes');
   if(!el){
     if(!n) return;
@@ -8184,12 +8255,16 @@ function mostrarBadgePendientes(){
   }
   if(!n){ el.style.display='none'; return; }
   el.style.display = 'block';
-  el.textContent = '⏳ ' + n + ' producto' + (n===1?'':'s') + ' sin subir — tocá para reintentar';
+  var partes = [];
+  if(nAltas) partes.push(nAltas+' nuevo'+(nAltas===1?'':'s')+' sin subir');
+  if(nBajas) partes.push(nBajas+' baja'+(nBajas===1?'':'s')+' sin confirmar');
+  el.textContent = '⏳ ' + partes.join(' · ') + ' — tocá para reintentar';
 }
 
 function reintentarAltasPendientes(){
   if(!window.__lrSaveProductos){ showToast('Sin conexión al sistema', true); return; }
   showToast('⏳ Reintentando subir...');
+  if(window.reintentarBajasPendientes) window.reintentarBajasPendientes().catch(function(){});
   window.__lrSaveProductos(PRODUCTS).then(function(){
     var pend = window.leerAltasPendientes();
     Object.keys(pend).forEach(function(n){
@@ -19339,7 +19414,9 @@ function borrarSeleccionados() {
       nombres.forEach(function(n){ delete window.__lrBorradosPendientes[n]; });
       showToast('✅ '+nombres.length+' productos eliminados');
     }).catch(function(){
-      showToast('💾 Eliminados acá — se confirmarán cuando haya señal', true);
+      if(window.registrarBajaPendiente) window.registrarBajaPendiente(nombres);
+      iniciarReintentoAutomaticoProductos();
+      showToast('💾 Eliminados acá — se confirmarán solos cuando haya señal (mirá el cartelito abajo a la izquierda)', true);
     });
   });
 }
