@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789008537";
+  window.__LR_BUILD = "1789040771";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -23786,7 +23786,7 @@ function exportarReporteGeneral() {
 
 // ── INVENTARIO / STOCK ─────────────────────────────────────────────────────
 var SK_STOCK_INV = 'lr_stock_inv';
-var _stockSelIdx = null;
+var _stockSelNombre = null;
 
 // Chequeo robusto de existencia en catálogo: ignora mayúsculas/minúsculas, espacios de más,
 // y variantes de acentuación — para que una diferencia mínima de tipeo no marque un producto
@@ -23810,7 +23810,7 @@ function saveStockInv(s, nombresABorrar) {
 function seleccionarProdStockPorIdx(idx) {
   var p = PRODUCTS[idx];
   if(!p) return;
-  _stockSelIdx = idx;
+  _stockSelNombre = p.name;
   document.getElementById('stockSelName').textContent = p.name;
   document.getElementById('stockSearchProd').value = p.name;
   document.getElementById('stockIngCosto').value = p.costo || '';
@@ -23825,7 +23825,7 @@ function stockSearchProds() {
   var term = document.getElementById('stockSearchProd').value.toLowerCase().trim();
   var sugg = document.getElementById('stockProdSuggestions');
   document.getElementById('stockSelectedProd').style.display='none';
-  _stockSelIdx=null;
+  _stockSelNombre=null;
   if(!term){ sugg.style.display='none'; return; }
   var matches = [];
   for(var i=0;i<PRODUCTS.length;i++){
@@ -23846,19 +23846,23 @@ function stockSearchProds() {
 }
 
 function calcStockPrecio() {
-  if(_stockSelIdx===null) return;
+  if(_stockSelNombre===null) return;
+  var prod = PRODUCTS.find(function(p){ return p.name === _stockSelNombre; });
+  if(!prod) return;
   var costo=parseFloat(document.getElementById('stockIngCosto').value)||0;
   if(costo<=0) return;
-  var margen=PRODUCTS[_stockSelIdx].margin||MARGINS[PRODUCTS[_stockSelIdx].cat]||50;
+  var margen=prod.margin||MARGINS[prod.cat]||50;
   var precio=Math.ceil(costo*(1+margen/100)/100)*100;
   document.getElementById('stockIngPrecio').value=precio;
   // Update product price
-  PRODUCTS[_stockSelIdx].costo=costo;
-  PRODUCTS[_stockSelIdx].pventa=precio;
+  prod.costo=costo;
+  prod.pventa=precio;
 }
 
 function ingresarStock() {
-  if(_stockSelIdx===null){ showToast('Seleccioná un producto',true); return; }
+  if(_stockSelNombre===null){ showToast('Seleccioná un producto',true); return; }
+  var prod = PRODUCTS.find(function(p){ return p.name === _stockSelNombre; });
+  if(!prod){ showToast('Ese producto ya no está en el catálogo — buscalo de nuevo', true); _stockSelNombre=null; document.getElementById('stockSelectedProd').style.display='none'; return; }
   var cant=parseInt(document.getElementById('stockIngCant').value)||0;
   var costo=parseFloat(document.getElementById('stockIngCosto').value)||0;
   var precio=parseInt(document.getElementById('stockIngPrecio').value)||0;
@@ -23866,7 +23870,7 @@ function ingresarStock() {
   if(cant<=0){ showToast('Ingresá la cantidad',true); return; }
 
   var inv=getStockInv();
-  var key=PRODUCTS[_stockSelIdx].name;
+  var key=prod.name;
   if(!inv[key]) inv[key]={stock:0,minimo:5,historial:[]};
   inv[key].stock+=cant;
   inv[key].minimo=minimo;
@@ -23880,8 +23884,8 @@ function ingresarStock() {
   saveStockInv(inv);
 
   // Actualizar precio en PRODUCTS
-  if(costo>0) PRODUCTS[_stockSelIdx].costo=costo;
-  if(precio>0) PRODUCTS[_stockSelIdx].pventa=precio;
+  if(costo>0) prod.costo=costo;
+  if(precio>0) prod.pventa=precio;
 
   // Reset form
   document.getElementById('stockSearchProd').value='';
@@ -23890,7 +23894,7 @@ function ingresarStock() {
   document.getElementById('stockIngPrecio').value='';
   document.getElementById('stockIngMin').value='5';
   document.getElementById('stockSelectedProd').style.display='none';
-  _stockSelIdx=null;
+  _stockSelNombre=null;
 
   renderInventario();
   showToast('✅ Stock actualizado: +'+cant+' unidades de '+key);
