@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789006022";
+  window.__LR_BUILD = "1789007208";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -17417,6 +17417,14 @@ function cerrarTodosLosOverlays() {
   });
   var moverCat = document.getElementById('moverCatOverlay');
   if(moverCat) moverCat.style.display = 'none';
+
+  // A veces el navegador tarda en "borrar" el dibujo de un panel grande
+  // (miles de filas de productos) aunque ya esté oculto de verdad — esto lo
+  // fuerza a repintar toda la pantalla de una, en vez de esperar a que lo
+  // haga solo.
+  document.body.style.transform = 'translateZ(0)';
+  void document.body.offsetHeight;
+  document.body.style.transform = '';
 }
 // Nombre anterior, usado en las funciones de abrir del catálogo — se deja
 // como alias para no tener que tocarlas todas de nuevo.
