@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789076632";
+  window.__LR_BUILD = "1789077222";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15378,8 +15378,9 @@ function exportarInformeAsesoriaPDF() {
 
   var ticketPromedio = ingresosNetos / ventas.length;
 
-  // ── 2) Ventas por categoría ──
+  // ── 2) Ventas por categoría (y, adentro de cada una, sus productos) ──
   var porCategoria = {};
+  var porCategoriaProducto = {}; // porCategoriaProducto[cat][nombreProducto] = {qty, rev}
   ventas.forEach(function(v){
     (v.items||[]).forEach(function(it){
       var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
@@ -15387,6 +15388,11 @@ function exportarInformeAsesoriaPDF() {
       if(!porCategoria[cat]) porCategoria[cat] = {qty:0, rev:0};
       porCategoria[cat].qty += it.qty||0;
       porCategoria[cat].rev += it.subtotal||0;
+
+      if(!porCategoriaProducto[cat]) porCategoriaProducto[cat] = {};
+      if(!porCategoriaProducto[cat][it.name]) porCategoriaProducto[cat][it.name] = {qty:0, rev:0};
+      porCategoriaProducto[cat][it.name].qty += it.qty||0;
+      porCategoriaProducto[cat][it.name].rev += it.subtotal||0;
     });
   });
   var catsOrdenadas = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev-porCategoria[a].rev; });
@@ -15395,6 +15401,20 @@ function exportarInformeAsesoriaPDF() {
     var d = porCategoria[c];
     var pct = revTotalCats>0 ? Math.round(d.rev/revTotalCats*100) : 0;
     return '<tr><td>'+c+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td><td>'+pct+'%</td></tr>';
+  }).join('');
+
+  // Top 8 productos DENTRO de cada categoría — para saber, cuando una
+  // categoría factura fuerte, cuáles son los productos puntuales que la
+  // explican (ej: dentro de "Bebidas Alcohólicas", cuánto es Andes vs.
+  // Quilmes vs. Corona vs. vino).
+  var filasTopPorCategoria = catsOrdenadas.map(function(cat){
+    var productosCat = porCategoriaProducto[cat] || {};
+    var nombresOrdenados = Object.keys(productosCat).sort(function(a,b){ return productosCat[b].rev-productosCat[a].rev; }).slice(0,8);
+    var filasProd = nombresOrdenados.map(function(nombre){
+      var d = productosCat[nombre];
+      return '<tr><td style="padding-left:16px;color:#555">'+nombre+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
+    }).join('');
+    return '<tr><td colspan="3" style="background:#f5f5f5;font-weight:bold">'+cat+' — '+fmt(porCategoria[cat].rev)+'</td></tr>'+filasProd;
   }).join('');
 
   // ── 3) Top 15 productos ──
@@ -15450,9 +15470,12 @@ function exportarInformeAsesoriaPDF() {
     (v.items||[]).forEach(function(it){
       var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
       var cat = (prod && prod.cat) || 'Sin categoría';
-      if(!porFranjaCategoria[idx][cat]) porFranjaCategoria[idx][cat] = {rev:0, qty:0};
+      if(!porFranjaCategoria[idx][cat]) porFranjaCategoria[idx][cat] = {rev:0, qty:0, productos:{}};
       porFranjaCategoria[idx][cat].rev += it.subtotal||0;
       porFranjaCategoria[idx][cat].qty += it.qty||0;
+      if(!porFranjaCategoria[idx][cat].productos[it.name]) porFranjaCategoria[idx][cat].productos[it.name] = {qty:0, rev:0};
+      porFranjaCategoria[idx][cat].productos[it.name].qty += it.qty||0;
+      porFranjaCategoria[idx][cat].productos[it.name].rev += it.subtotal||0;
     });
   });
 
@@ -15475,12 +15498,24 @@ function exportarInformeAsesoriaPDF() {
   }).join('');
   var encabezadoDias = DIAS_SEMANA.map(function(d){ return '<th>'+d.slice(0,3)+'</th>'; }).join('');
 
-  // Top 3 categorías por franja
+  // Top 3 categorías por franja, y adentro de cada una, sus top 3 productos —
+  // para saber por ejemplo si de madrugada se vende más Andes y de noche más
+  // Quilmes dentro de "Bebidas Alcohólicas".
   var filasCategoriaFranja = franjas.map(function(f, i){
     var cats = porFranjaCategoria[i];
     var ordenadas = Object.keys(cats).sort(function(a,b){ return cats[b].rev-cats[a].rev; }).slice(0,3);
-    var texto = ordenadas.map(function(c){ return c+' ('+fmt(cats[c].rev)+')'; }).join(', ') || '—';
-    return '<tr><td>'+f.label+'</td><td>'+texto+'</td></tr>';
+    if(!ordenadas.length) return '<tr><td>'+f.label+'</td><td colspan="2">Sin ventas en esta franja</td></tr>';
+    return ordenadas.map(function(c, j){
+      var d = cats[c];
+      var productosCat = d.productos || {};
+      var topProd = Object.keys(productosCat).sort(function(a,b){ return productosCat[b].rev-productosCat[a].rev; }).slice(0,3);
+      var detalleProd = topProd.map(function(nombre){ return nombre+' ('+fmt(productosCat[nombre].rev)+')'; }).join(', ') || '—';
+      return '<tr>'+
+        (j===0 ? '<td rowspan="'+ordenadas.length+'">'+f.label+'</td>' : '')+
+        '<td>'+c+' — '+fmt(d.rev)+'</td>'+
+        '<td style="font-size:10px;color:#555">'+detalleProd+'</td>'+
+      '</tr>';
+    }).join('');
   }).join('');
 
   // ── 5) Tendencia mensual (últimos 6 meses, más allá del período elegido arriba) ──
@@ -15541,6 +15576,10 @@ function exportarInformeAsesoriaPDF() {
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Ventas por categoría</h3>'+
     '<table><thead><tr><th>Categoría</th><th>Unidades</th><th>Facturación</th><th>% del total</th></tr></thead><tbody>'+filasCategoria+'</tbody></table>'+
 
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Top productos dentro de cada categoría</h3>'+
+    '<div style="font-size:10px;color:#666;margin-bottom:6px">Hasta 8 productos por categoría, para saber qué productos puntuales explican la facturación de cada rubro.</div>'+
+    '<table><thead><tr><th>Categoría / producto</th><th>Unidades</th><th>Facturación</th></tr></thead><tbody>'+filasTopPorCategoria+'</tbody></table>'+
+
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Top 15 productos más vendidos</h3>'+
     '<table><thead><tr><th>#</th><th>Producto</th><th>Unidades</th><th>Facturación</th></tr></thead><tbody>'+filasTop+'</tbody></table>'+
 
@@ -15551,8 +15590,8 @@ function exportarInformeAsesoriaPDF() {
     '<div style="font-size:10px;color:#666;margin-bottom:6px">Entre paréntesis, cantidad de ventas de esa franja en ese día, en todo el período.</div>'+
     '<table style="font-size:10px"><thead><tr><th>Franja</th>'+encabezadoDias+'</tr></thead><tbody>'+filasFranjaDia+'</tbody></table>'+
 
-    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Categorías más vendidas por franja horaria</h3>'+
-    '<table><thead><tr><th>Franja</th><th>Top 3 categorías (facturación)</th></tr></thead><tbody>'+filasCategoriaFranja+'</tbody></table>'+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Categorías y sus productos top, por franja horaria</h3>'+
+    '<table><thead><tr><th>Franja</th><th>Categoría</th><th>Top productos de esa categoría en esa franja</th></tr></thead><tbody>'+filasCategoriaFranja+'</tbody></table>'+
 
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Tendencia — últimos 6 meses</h3>'+
     '<table><thead><tr><th>Mes</th><th>Ventas</th><th>Facturación</th><th></th></tr></thead><tbody>'+filasTendencia+'</tbody></table>'+
