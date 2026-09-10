@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789077222";
+  window.__LR_BUILD = "1789077706";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15332,6 +15332,20 @@ function toggleInformeAsesoriaSection() {
 // productos, horarios pico, tendencia mensual y productos sin movimiento.
 // Reusa las mismas fórmulas que ya usan Rentabilidad y Reportes — no
 // inventa números nuevos.
+// Categoría real de un ítem de venta: si es un ítem manual/suelto (fiambre,
+// pan, milanesa, etc.), usa su categoría rápida (la que ya se le asigna al
+// cargarlo) en vez de buscarlo en PRODUCTS — donde nunca va a estar, porque
+// no es un producto de catálogo con stock. Antes esto los mandaba a todos
+// mezclados a "Sin categoría" junto con productos reales sin categorizar.
+function categoriaDeItem(it){
+  if(it.manual){
+    var presetsValidos = getManualPresets();
+    return (presetsValidos.indexOf(it.cat)!==-1) ? '🧀 '+it.cat+' (suelto)' : 'Sueltos sin categoría asignada';
+  }
+  var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
+  return (prod && prod.cat) || 'Sin categoría';
+}
+
 function exportarInformeAsesoriaPDF() {
   var desdeStr = document.getElementById('infAsesDesde').value;
   var hastaStr = document.getElementById('infAsesHasta').value;
@@ -15383,8 +15397,7 @@ function exportarInformeAsesoriaPDF() {
   var porCategoriaProducto = {}; // porCategoriaProducto[cat][nombreProducto] = {qty, rev}
   ventas.forEach(function(v){
     (v.items||[]).forEach(function(it){
-      var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
-      var cat = (prod && prod.cat) || 'Sin categoría';
+      var cat = categoriaDeItem(it);
       if(!porCategoria[cat]) porCategoria[cat] = {qty:0, rev:0};
       porCategoria[cat].qty += it.qty||0;
       porCategoria[cat].rev += it.subtotal||0;
@@ -15421,7 +15434,7 @@ function exportarInformeAsesoriaPDF() {
   var porProducto = {};
   ventas.forEach(function(v){
     (v.items||[]).forEach(function(it){
-      if(!porProducto[it.name]) porProducto[it.name]={qty:0,rev:0};
+      if(!porProducto[it.name]) porProducto[it.name]={qty:0,rev:0,manual:!!it.manual};
       porProducto[it.name].qty += it.qty||0;
       porProducto[it.name].rev += it.subtotal||0;
     });
@@ -15429,7 +15442,7 @@ function exportarInformeAsesoriaPDF() {
   var topProductos = Object.keys(porProducto).sort(function(a,b){ return porProducto[b].qty-porProducto[a].qty; }).slice(0,15);
   var filasTop = topProductos.map(function(k,i){
     var d = porProducto[k];
-    return '<tr><td>'+(i+1)+'</td><td>'+k+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
+    return '<tr><td>'+(i+1)+'</td><td>'+k+(d.manual?' <span style="color:#999;font-size:10px">(suelto)</span>':'')+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
   }).join('');
 
   // ── 4) Ventas por franja horaria — ahora también cruzado por día de la
@@ -15468,8 +15481,7 @@ function exportarInformeAsesoriaPDF() {
     porFranjaDia[idx][dia].count++;
 
     (v.items||[]).forEach(function(it){
-      var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
-      var cat = (prod && prod.cat) || 'Sin categoría';
+      var cat = categoriaDeItem(it);
       if(!porFranjaCategoria[idx][cat]) porFranjaCategoria[idx][cat] = {rev:0, qty:0, productos:{}};
       porFranjaCategoria[idx][cat].rev += it.subtotal||0;
       porFranjaCategoria[idx][cat].qty += it.qty||0;
