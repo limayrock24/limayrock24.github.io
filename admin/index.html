@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789005171";
+  window.__LR_BUILD = "1789006022";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7319,6 +7319,7 @@ function updateAdminDots() { for(var i=0;i<4;i++) document.getElementById('ad'+i
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────
 function openAdmin() {
+  cerrarTodosLosOverlays();
   document.getElementById('adminOverlay').classList.add('open');
   try { updateFSAStatus("sin-arch"); } catch(e) { console.error('updateFSAStatus falló:', e); }
   try { actualizarStorageStatus(); } catch(e) { console.error('actualizarStorageStatus falló:', e); }
@@ -7361,6 +7362,7 @@ function abrirAdminSinTurno() {
   openAdmin();
 }
 function switchTab(tab) {
+  cerrarTodosLosOverlays();
   var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
@@ -17387,14 +17389,27 @@ function abrirProdModalPorNombre(nombre) {
   abrirProdModal(idx);
 }
 
-// Todos estos paneles del catálogo son independientes de qué pestaña esté
-// activa (Inicio/Dinero/Equipo/Productos) — si uno queda abierto sin cerrarse
-// con su propio botón y después abrís otro, los dos quedaban superpuestos en
-// pantalla (cada uno con fondo semitransparente, por eso se veían "pisados"
-// uno encima del otro). Cerrar todos los demás al abrir uno nuevo evita eso.
-function cerrarOverlaysDeCatalogo() {
-  ['catModalOverlay','manualPresetsOverlay','edMasivaOverlay','prodModalOverlay',
-   'comboModalOverlay','comboVarOverlay','cartelitosOverlay','listaPreciosPreviewOverlay'
+// Todos estos paneles/ventanas son independientes de qué pestaña esté
+// activa — si uno queda abierto sin cerrarse con su propio botón (X o
+// Cancelar) y después cambiás de pantalla o abrís otro, quedaban
+// superpuestos (cada uno con fondo semitransparente, por eso se veían
+// todos "pisados" unos con otros, o el contenido real empujado a una
+// columna angosta). Cerrar TODOS los overlays conocidos cada vez que se
+// cambia de pestaña, o se abre cualquiera de los del catálogo, evita esto
+// pase lo que pase con el que quedó mal cerrado.
+function cerrarTodosLosOverlays() {
+  [
+    'adminPinOverlay','adminSelOverlay','ajusteStockModal','archivarOverlay',
+    'armarPedidoOverlay','arqueoModal','aumentoMasivoOverlay','cambioEfectivoModal',
+    'campanaModalOverlay','cargaStockOverlay','cargaVirtualModal','cartelitosOverlay',
+    'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
+    'comboModalOverlay','comboVarOverlay','deliveryPendModal','devolucionPrestamoModal',
+    'devolucionRecibidaModal','edMasivaOverlay','editCatOverlay','efecIniModal',
+    'empMensajeOverlay','empModalOverlay','historialMensajesOverlay','ingresoModal',
+    'limpiezaPreviewModal','liquidezConfigModal','listaPreciosPreviewOverlay',
+    'manualPresetsOverlay','mensajeProgOverlay','prestamoDadoModal','prestamoModal',
+    'prodModalOverlay','provModalOverlay','repartidorOverlay','retiroModal',
+    'retiroVencidoModal','storageDetalleOverlay','topeConsumoModal','transferCuentasModal'
   ].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.classList.remove('open');
@@ -17402,6 +17417,9 @@ function cerrarOverlaysDeCatalogo() {
   var moverCat = document.getElementById('moverCatOverlay');
   if(moverCat) moverCat.style.display = 'none';
 }
+// Nombre anterior, usado en las funciones de abrir del catálogo — se deja
+// como alias para no tener que tocarlas todas de nuevo.
+function cerrarOverlaysDeCatalogo() { cerrarTodosLosOverlays(); }
 
 function abrirProdModal(idx) {
   cerrarOverlaysDeCatalogo();
