@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1788826809";
+  window.__LR_BUILD = "1789003404";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4703,6 +4703,7 @@ body.night-on{background:#080005}
         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:.85rem;color:var(--gray)">🔍</span>
         <input type="text" id="stockVentasBuscarProd" placeholder="Buscar un producto puntual..." oninput="renderStockVentasDia()" style="width:100%;box-sizing:border-box;background:var(--card);border:1.5px solid var(--border);border-radius:4px;padding:8px 10px 8px 32px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none">
       </div>
+      <select id="stockVentasCategoria" onchange="renderStockVentasDia()" style="width:100%;box-sizing:border-box;background:var(--card);border:1.5px solid var(--border);border-radius:4px;padding:8px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none;margin-bottom:10px"></select>
       <div id="stockVentasDiaResumen"></div>
       <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:320px;overflow-y:auto;margin-bottom:8px" id="stockVentasDiaList"></div>
       <hr style="border-color:var(--border);margin-bottom:16px">
@@ -23900,6 +23901,14 @@ function renderStockVentasDia() {
   var listEl     = document.getElementById('stockVentasDiaList');
   if(!listEl) return;
 
+  var catSel = document.getElementById('stockVentasCategoria');
+  if(catSel && !catSel.options.length){
+    var catsTodas = ALL_CATS.slice().sort(function(a,b){ return a.localeCompare(b,'es'); });
+    catSel.innerHTML = '<option value="">Todas las categorías</option>'+
+      catsTodas.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>'; }).join('');
+  }
+  var catFiltro = catSel ? catSel.value : '';
+
   var rango = getRangoStockVentas();
 
   // Ventas del período + fiados (no anuladas)
@@ -23937,6 +23946,15 @@ function renderStockVentasDia() {
   });
 
   var nombres = Object.keys(porProducto).sort(function(a,b){ return porProducto[b].qty - porProducto[a].qty; });
+  if(catFiltro){
+    // Los ítems manuales agrupados por preset (Pan, Fiambre, etc.) no tienen
+    // una categoría real de producto para comparar — se excluyen cuando hay
+    // un filtro de categoría puntual activo.
+    nombres = nombres.filter(function(n){
+      var prod = PRODUCTS.find(function(p){ return p.name === n; });
+      return prod && prod.cat === catFiltro;
+    });
+  }
   var totalUnidades = nombres.reduce(function(s,n){ return s+porProducto[n].qty; },0);
 
   var buscarInp = document.getElementById('stockVentasBuscarProd');
@@ -23945,7 +23963,11 @@ function renderStockVentasDia() {
   if(termBusca){
     // Búsqueda puntual: se busca en TODO el catálogo, no solo en lo vendido —
     // así un producto que no se vendió ese día aparece igual, con 0 unidades.
-    nombres = PRODUCTS.filter(function(p){ return p.name.toLowerCase().includes(termBusca) || (p.codigo && p.codigo.toLowerCase().includes(termBusca)); })
+    nombres = PRODUCTS.filter(function(p){
+      var coincideTexto = p.name.toLowerCase().includes(termBusca) || (p.codigo && p.codigo.toLowerCase().includes(termBusca));
+      var coincideCat = !catFiltro || p.cat === catFiltro;
+      return coincideTexto && coincideCat;
+    })
       .map(function(p){ return p.name; })
       .sort(function(a,b){ return (porProducto[b]?porProducto[b].qty:0) - (porProducto[a]?porProducto[a].qty:0); });
 
