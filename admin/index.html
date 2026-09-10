@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789077706";
+  window.__LR_BUILD = "1789078238";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15340,7 +15340,7 @@ function toggleInformeAsesoriaSection() {
 function categoriaDeItem(it){
   if(it.manual){
     var presetsValidos = getManualPresets();
-    return (presetsValidos.indexOf(it.cat)!==-1) ? '🧀 '+it.cat+' (suelto)' : 'Sueltos sin categoría asignada';
+    return (presetsValidos.indexOf(it.cat)!==-1) ? it.cat : 'Sueltos sin categoría asignada';
   }
   var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
   return (prod && prod.cat) || 'Sin categoría';
@@ -15442,7 +15442,7 @@ function exportarInformeAsesoriaPDF() {
   var topProductos = Object.keys(porProducto).sort(function(a,b){ return porProducto[b].qty-porProducto[a].qty; }).slice(0,15);
   var filasTop = topProductos.map(function(k,i){
     var d = porProducto[k];
-    return '<tr><td>'+(i+1)+'</td><td>'+k+(d.manual?' <span style="color:#999;font-size:10px">(suelto)</span>':'')+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
+    return '<tr><td>'+(i+1)+'</td><td>'+k+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
   }).join('');
 
   // ── 4) Ventas por franja horaria — ahora también cruzado por día de la
