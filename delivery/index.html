@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789056682";
+  window.__LR_BUILD = "1789076632";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -15412,7 +15412,9 @@ function exportarInformeAsesoriaPDF() {
     return '<tr><td>'+(i+1)+'</td><td>'+k+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
   }).join('');
 
-  // ── 4) Ventas por franja horaria ──
+  // ── 4) Ventas por franja horaria — ahora también cruzado por día de la
+  // semana, por categoría, ítems por ticket y % delivery vs. mostrador ──
+  var DIAS_SEMANA = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   var franjas = [
     {label:'00–06 (madrugada)', desde:0, hasta:6},
     {label:'06–10 (mañana temprano)', desde:6, hasta:10},
@@ -15421,17 +15423,64 @@ function exportarInformeAsesoriaPDF() {
     {label:'18–22 (noche)', desde:18, hasta:22},
     {label:'22–24 (cierre)', desde:22, hasta:24}
   ];
-  var porFranja = franjas.map(function(f){ return {label:f.label, count:0, rev:0}; });
+  function franjaIdxDeHora(h){
+    for(var i=0;i<franjas.length;i++){ if(h>=franjas[i].desde && h<franjas[i].hasta) return i; }
+    return -1;
+  }
+
+  var porFranja = franjas.map(function(f){ return {label:f.label, count:0, rev:0, items:0, deliveryRev:0}; });
+  var porFranjaDia = franjas.map(function(){ return DIAS_SEMANA.map(function(){ return {rev:0, count:0}; }); });
+  var porFranjaCategoria = franjas.map(function(){ return {}; });
+
   ventas.forEach(function(v){
-    var h = new Date(v.fecha).getHours();
-    var idx = franjas.findIndex(function(f){ return h>=f.desde && h<f.hasta; });
-    if(idx>=0){ porFranja[idx].count++; porFranja[idx].rev += v.total||0; }
+    var fecha = new Date(v.fecha);
+    var h = fecha.getHours();
+    var dia = fecha.getDay();
+    var idx = franjaIdxDeHora(h);
+    if(idx<0) return;
+
+    porFranja[idx].count++;
+    porFranja[idx].rev += v.total||0;
+    porFranja[idx].items += (v.items||[]).reduce(function(s,it){ return s+(it.qty||0); }, 0);
+    if(v.delivery) porFranja[idx].deliveryRev += v.total||0;
+
+    porFranjaDia[idx][dia].rev += v.total||0;
+    porFranjaDia[idx][dia].count++;
+
+    (v.items||[]).forEach(function(it){
+      var prod = PRODUCTS.find(function(p){ return p.name===it.name; });
+      var cat = (prod && prod.cat) || 'Sin categoría';
+      if(!porFranjaCategoria[idx][cat]) porFranjaCategoria[idx][cat] = {rev:0, qty:0};
+      porFranjaCategoria[idx][cat].rev += it.subtotal||0;
+      porFranjaCategoria[idx][cat].qty += it.qty||0;
+    });
   });
+
   var maxFranjaRev = Math.max.apply(null, porFranja.map(function(f){ return f.rev; }).concat([1]));
   var filasFranja = porFranja.map(function(f){
     var pct = Math.round(f.rev/maxFranjaRev*100);
-    return '<tr><td>'+f.label+'</td><td>'+f.count+' ventas</td><td>'+fmt(f.rev)+'</td>'+
-      '<td style="width:120px"><div style="background:#eee;border-radius:3px;height:10px;overflow:hidden"><div style="background:#3498DB;height:100%;width:'+pct+'%"></div></div></td></tr>';
+    var itemsPorTicket = f.count>0 ? (f.items/f.count).toFixed(1) : '—';
+    var pctDelivery = f.rev>0 ? Math.round(f.deliveryRev/f.rev*100) : 0;
+    return '<tr><td>'+f.label+'</td><td>'+f.count+'</td><td>'+fmt(f.rev)+'</td><td>'+itemsPorTicket+'</td><td>'+pctDelivery+'% delivery</td>'+
+      '<td style="width:90px"><div style="background:#eee;border-radius:3px;height:10px;overflow:hidden"><div style="background:#3498DB;height:100%;width:'+pct+'%"></div></div></td></tr>';
+  }).join('');
+
+  // Matriz franja × día de la semana (facturación, cantidad de ventas entre paréntesis)
+  var filasFranjaDia = franjas.map(function(f, i){
+    var celdas = DIAS_SEMANA.map(function(d, di){
+      var c = porFranjaDia[i][di];
+      return '<td>'+(c.rev>0?fmt(c.rev):'—')+(c.count>0?' <span style="color:#999;font-size:9px">('+c.count+')</span>':'')+'</td>';
+    }).join('');
+    return '<tr><td>'+f.label+'</td>'+celdas+'</tr>';
+  }).join('');
+  var encabezadoDias = DIAS_SEMANA.map(function(d){ return '<th>'+d.slice(0,3)+'</th>'; }).join('');
+
+  // Top 3 categorías por franja
+  var filasCategoriaFranja = franjas.map(function(f, i){
+    var cats = porFranjaCategoria[i];
+    var ordenadas = Object.keys(cats).sort(function(a,b){ return cats[b].rev-cats[a].rev; }).slice(0,3);
+    var texto = ordenadas.map(function(c){ return c+' ('+fmt(cats[c].rev)+')'; }).join(', ') || '—';
+    return '<tr><td>'+f.label+'</td><td>'+texto+'</td></tr>';
   }).join('');
 
   // ── 5) Tendencia mensual (últimos 6 meses, más allá del período elegido arriba) ──
@@ -15496,7 +15545,14 @@ function exportarInformeAsesoriaPDF() {
     '<table><thead><tr><th>#</th><th>Producto</th><th>Unidades</th><th>Facturación</th></tr></thead><tbody>'+filasTop+'</tbody></table>'+
 
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Ventas por franja horaria</h3>'+
-    '<table><thead><tr><th>Franja</th><th>Ventas</th><th>Facturación</th><th></th></tr></thead><tbody>'+filasFranja+'</tbody></table>'+
+    '<table><thead><tr><th>Franja</th><th>Ventas</th><th>Facturación</th><th>Ítems/ticket</th><th>% Delivery</th><th></th></tr></thead><tbody>'+filasFranja+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Facturación por franja y día de la semana</h3>'+
+    '<div style="font-size:10px;color:#666;margin-bottom:6px">Entre paréntesis, cantidad de ventas de esa franja en ese día, en todo el período.</div>'+
+    '<table style="font-size:10px"><thead><tr><th>Franja</th>'+encabezadoDias+'</tr></thead><tbody>'+filasFranjaDia+'</tbody></table>'+
+
+    '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Categorías más vendidas por franja horaria</h3>'+
+    '<table><thead><tr><th>Franja</th><th>Top 3 categorías (facturación)</th></tr></thead><tbody>'+filasCategoriaFranja+'</tbody></table>'+
 
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Tendencia — últimos 6 meses</h3>'+
     '<table><thead><tr><th>Mes</th><th>Ventas</th><th>Facturación</th><th></th></tr></thead><tbody>'+filasTendencia+'</tbody></table>'+
