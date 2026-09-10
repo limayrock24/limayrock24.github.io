@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789003404";
+  window.__LR_BUILD = "1789003763";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4705,6 +4705,12 @@ body.night-on{background:#080005}
       <select id="stockVentasCategoria" onchange="renderStockVentasDia()" style="width:100%;box-sizing:border-box;background:var(--card);border:1.5px solid var(--border);border-radius:4px;padding:8px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none;margin-bottom:10px"></select>
       <div id="stockVentasDiaResumen"></div>
       <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:320px;overflow-y:auto;margin-bottom:8px" id="stockVentasDiaList"></div>
+
+      <!-- VENTAS POR CATEGORÍA (mismo período elegido arriba) — para decisiones de
+           inversión: dónde conviene poner plata (heladera, góndola, etc.) según
+           lo que realmente factura cada rubro. -->
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">📊 Ventas por categoría</div>
+      <div id="stockVentasPorCategoria"></div>
       <hr style="border-color:var(--border);margin-bottom:16px">
 
       <!-- TABLA DE STOCK -->
@@ -23895,6 +23901,53 @@ function getRangoStockVentas() {
   return getFechasRango(_periodoStockVentas);
 }
 
+// Ranking de facturación por categoría en el mismo período elegido arriba
+// (hoy/semana/mes/rango) — pensado para decisiones de inversión: ver de un
+// vistazo qué rubro mueve más plata antes de invertir en una góndola,
+// heladera, etc.
+function renderVentasPorCategoria(porProducto) {
+  var el = document.getElementById('stockVentasPorCategoria');
+  if(!el) return;
+
+  var presetsValidos = getManualPresets();
+  var porCategoria = {};
+  Object.keys(porProducto).forEach(function(clave){
+    var d = porProducto[clave];
+    var cat;
+    if(presetsValidos.indexOf(clave) !== -1) {
+      cat = clave; // ítem manual agrupado por preset (Pan, Fiambre, etc.) — el preset ES la categoría
+    } else {
+      var prod = PRODUCTS.find(function(p){ return p.name === clave; });
+      cat = (prod && prod.cat) || 'Sin categoría';
+    }
+    if(!porCategoria[cat]) porCategoria[cat] = {rev:0, qty:0};
+    porCategoria[cat].rev += d.montoVenta;
+    porCategoria[cat].qty += d.qty;
+  });
+
+  var cats = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev - porCategoria[a].rev; });
+  if(!cats.length){
+    el.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Sin ventas en este período</div>';
+    return;
+  }
+
+  var totalRev = cats.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
+  var maxRev = Math.max.apply(null, cats.map(function(c){ return porCategoria[c].rev; }));
+
+  el.innerHTML = cats.map(function(c, i){
+    var d = porCategoria[c];
+    var pct = totalRev>0 ? Math.round(d.rev/totalRev*100) : 0;
+    var anchoBarra = maxRev>0 ? Math.round(d.rev/maxRev*100) : 0;
+    return '<div style="margin-bottom:9px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:.8rem;margin-bottom:3px">'+
+        '<span style="color:var(--white)">'+(i+1)+'. '+c+'</span>'+
+        '<span style="font-family:Oswald,sans-serif;color:var(--gold)">'+fmt(d.rev)+' <span style="color:var(--gray);font-size:.68rem">('+pct+'% · '+d.qty+' u.)</span></span>'+
+      '</div>'+
+      '<div style="background:var(--surface);border-radius:3px;height:7px;overflow:hidden"><div style="background:var(--gold);height:100%;width:'+anchoBarra+'%"></div></div>'+
+    '</div>';
+  }).join('');
+}
+
 function renderStockVentasDia() {
   var resumenEl  = document.getElementById('stockVentasDiaResumen');
   var listEl     = document.getElementById('stockVentasDiaList');
@@ -23943,6 +23996,8 @@ function renderStockVentasDia() {
       porProducto[clave].montoVenta += (i.subtotal||0);
     });
   });
+
+  renderVentasPorCategoria(porProducto);
 
   var nombres = Object.keys(porProducto).sort(function(a,b){ return porProducto[b].qty - porProducto[a].qty; });
   if(catFiltro){
