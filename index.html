@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789003763";
+  window.__LR_BUILD = "1789004112";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4710,8 +4710,11 @@ body.night-on{background:#080005}
       <!-- VENTAS POR CATEGORÍA (mismo período elegido arriba) — para decisiones de
            inversión: dónde conviene poner plata (heladera, góndola, etc.) según
            lo que realmente factura cada rubro. -->
-      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">📊 Ventas por categoría</div>
-      <div id="stockVentasPorCategoria"></div>
+      <div onclick="toggleVentasPorCategoriaBox()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">
+        <span>📊 Ventas por categoría</span>
+        <span id="ventasPorCategoriaArrow">▾</span>
+      </div>
+      <div id="stockVentasPorCategoria" style="display:none"></div>
       <hr style="border-color:var(--border);margin-bottom:16px">
 
       <!-- TABLA DE STOCK -->
@@ -23906,6 +23909,15 @@ function getRangoStockVentas() {
 // (hoy/semana/mes/rango) — pensado para decisiones de inversión: ver de un
 // vistazo qué rubro mueve más plata antes de invertir en una góndola,
 // heladera, etc.
+function toggleVentasPorCategoriaBox() {
+  var box = document.getElementById('stockVentasPorCategoria');
+  var arrow = document.getElementById('ventasPorCategoriaArrow');
+  if(!box) return;
+  var open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : 'block';
+  if(arrow) arrow.textContent = open ? '▾' : '▴';
+}
+
 function renderVentasPorCategoria(porProducto) {
   var el = document.getElementById('stockVentasPorCategoria');
   if(!el) return;
