@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789004435";
+  window.__LR_BUILD = "1789005171";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -17387,7 +17387,24 @@ function abrirProdModalPorNombre(nombre) {
   abrirProdModal(idx);
 }
 
+// Todos estos paneles del catálogo son independientes de qué pestaña esté
+// activa (Inicio/Dinero/Equipo/Productos) — si uno queda abierto sin cerrarse
+// con su propio botón y después abrís otro, los dos quedaban superpuestos en
+// pantalla (cada uno con fondo semitransparente, por eso se veían "pisados"
+// uno encima del otro). Cerrar todos los demás al abrir uno nuevo evita eso.
+function cerrarOverlaysDeCatalogo() {
+  ['catModalOverlay','manualPresetsOverlay','edMasivaOverlay','prodModalOverlay',
+   'comboModalOverlay','comboVarOverlay','cartelitosOverlay','listaPreciosPreviewOverlay'
+  ].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.classList.remove('open');
+  });
+  var moverCat = document.getElementById('moverCatOverlay');
+  if(moverCat) moverCat.style.display = 'none';
+}
+
 function abrirProdModal(idx) {
+  cerrarOverlaysDeCatalogo();
   var ov=document.getElementById('prodModalOverlay'); if(!ov) return;
   var catSel=document.getElementById('pmCat');
   if(catSel){
@@ -17508,6 +17525,7 @@ function closeProdModal() { document.getElementById('prodModalOverlay').classLis
 function initCatsFromStorage() {}
 
 function abrirCatModal() {
+  cerrarOverlaysDeCatalogo();
   renderCatModalList();
   document.getElementById('catModalOverlay').classList.add('open');
   setTimeout(function(){ var i=document.getElementById('catNuevaNombre'); if(i) i.focus(); },150);
@@ -17527,6 +17545,7 @@ function closeCatModal() {
 window._edMasSel = {};
 
 function abrirEdMasiva() {
+  cerrarOverlaysDeCatalogo();
   window._edMasSel = {};
   window._edMasBorrador = {};
   var b = document.getElementById('edMasBuscar');
@@ -17979,6 +17998,7 @@ function confirmarAumentoMasivo() {
 }
 
 function abrirManualPresetsModal() {
+  cerrarOverlaysDeCatalogo();
   renderManualPresetsModalList();
   document.getElementById('manualPresetsOverlay').classList.add('open');
   setTimeout(function(){ var i=document.getElementById('manualPresetNuevo'); if(i) i.focus(); },150);
@@ -19345,6 +19365,7 @@ function actualizarBotonCartelitos() {
 function abrirMoverCategoria() {
   var nombres = Object.keys(window._cartelitosSel);
   if(!nombres.length){ showToast('No hay productos tildados', true); return; }
+  cerrarOverlaysDeCatalogo();
 
   var ov = document.getElementById('moverCatOverlay');
   if(!ov){
@@ -19483,6 +19504,7 @@ function toggleCartelitoSelAll(checked) {
 }
 
 function abrirCartelitosPreview() {
+  cerrarOverlaysDeCatalogo();
   var nombres = Object.keys(window._cartelitosSel);
   if(!nombres.length) return;
   var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
@@ -19677,6 +19699,7 @@ function construirDocListaPrecios(seleccionados) {
 // Muestra la lista en un visor de PDF real (mismo archivo que se termina
 // descargando) antes de bajarla, para poder chequear que se vea bien.
 function mostrarListaPreciosPreview() {
+  cerrarOverlaysDeCatalogo();
   var seleccionados = PRODUCTS.filter(function(p){ return window._cartelitosSel[p.name]; });
   if(!seleccionados.length) return;
 
@@ -22276,6 +22299,7 @@ function descontarStockCombos(items) {
 var _cmProductos = [];
 
 function abrirComboModal(idx) {
+  cerrarOverlaysDeCatalogo();
   var idxEl = document.getElementById('comboModalIdx');
   var tit = document.getElementById('comboModalTitulo');
   var del = document.getElementById('comboModalDel');
