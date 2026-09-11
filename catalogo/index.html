@@ -1110,8 +1110,8 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  if(!UBICACION_GPS){
-    errEl.textContent = 'Tocá "Compartir mi ubicación" así el repartidor puede llegar a tu casa.';
+  if(!UBICACION_GPS && !direccion){
+    errEl.textContent = 'Tocá "Compartir mi ubicación" o, si no te deja, escribí tu dirección a mano.';
     errEl.style.display = 'block';
     return;
   }
