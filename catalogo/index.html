@@ -149,6 +149,13 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 </style>
 </head>
 <body>
+<!-- Imagen de producto ampliada, para ver bien de qué producto se trata -->
+<div id="imgAmpliadaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:10001;align-items:center;justify-content:center;padding:20px;flex-direction:column" onclick="cerrarImagenAmpliada()">
+  <img id="imgAmpliadaFoto" src="" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;object-fit:contain">
+  <div id="imgAmpliadaNombre" style="color:var(--white);font-family:'Oswald',sans-serif;font-size:1rem;margin-top:14px;text-align:center;padding:0 10px"></div>
+  <button type="button" onclick="cerrarImagenAmpliada()" style="margin-top:16px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:9px 22px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cerrar</button>
+</div>
+
 <!-- Selector de sabor/variante para combos con grupo variable (ej: elegir el sabor de Sky) -->
 <div id="catVarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:flex-end;justify-content:center">
   <div style="background:var(--card);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 18px 24px;max-height:80vh;overflow-y:auto">
@@ -633,7 +640,7 @@ function renderList(){
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
       var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
       var imgSrc = IMAGENES_PRODUCTOS[p.name];
-      var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="" style="'+(sinStock?'opacity:.35':'')+'">' : '';
+      var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">' : '';
       var ctrlHtml = sinStock
         ? '<span class="sin-stock-tag">Sin stock</span>'
         : '<div class="qty-ctrl">'+
@@ -1062,6 +1069,18 @@ function cerrarCarrito(){
 // ── UBICACIÓN Y MEDIO DE PAGO ───────────────────────────────────────────────
 var MEDIO_PAGO_SEL = '';
 var UBICACION_GPS = null;
+
+// Ampliar la foto de un producto al tocarla, para que se vea bien de qué
+// producto se trata antes de agregarlo al carrito.
+function ampliarImagen(src, nombre){
+  document.getElementById('imgAmpliadaFoto').src = src;
+  document.getElementById('imgAmpliadaNombre').textContent = nombre;
+  document.getElementById('imgAmpliadaOverlay').style.display = 'flex';
+}
+function cerrarImagenAmpliada(){
+  document.getElementById('imgAmpliadaOverlay').style.display = 'none';
+  document.getElementById('imgAmpliadaFoto').src = '';
+}
 
 function elegirMedioPago(medio){
   MEDIO_PAGO_SEL = medio;
