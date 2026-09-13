@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789337772";
+  window.__LR_BUILD = "1789339125";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7873,12 +7873,37 @@ function renderVentas() {
   }
 
   // Ventas por categoría, mismo filtro fecha/turno/rango de esta pantalla —
-  // para decisiones de inversión (qué rubro mueve más plata).
+  // para decisiones de inversión (qué rubro mueve más plata) y de compra
+  // (qué producto puntual conviene stockear).
   var porProductoVentas = {};
   filtradas.forEach(function(v){
     if(v.anulada || v.fiadoCarga) return;
     (v.items||[]).forEach(function(i){
       if(!i.name) return;
+
+      // Un combo (ej: "Fernet + Coca") no es un producto real — desglosarlo
+      // en sus componentes para que el Fernet de la promo sume junto con el
+      // Fernet que se vende suelto, dentro de su categoría real. Si no,
+      // quedaba todo tapado en 'Sin categoría' como un ítem aparte.
+      if(i.esCombo && i.comboItems && i.comboItems.length){
+        var pesos = i.comboItems.map(function(ci){
+          var prod = PRODUCTS.find(function(p){ return p.name===ci.nombre; });
+          return (prod && prod.pventa) ? prod.pventa * (ci.qty||1) : 0;
+        });
+        var sumaPesos = pesos.reduce(function(s,w){ return s+w; }, 0);
+        i.comboItems.forEach(function(ci, idx){
+          var cantidadReal = (ci.qty||1) * (i.qty||1);
+          // El precio del combo no está desglosado por producto — se reparte
+          // a prorrata según el precio individual de cada componente (o
+          // parejo si ninguno tiene precio cargado), como estimación.
+          var montoAsignado = sumaPesos>0 ? (i.subtotal||0)*(pesos[idx]/sumaPesos) : (i.subtotal||0)/i.comboItems.length;
+          if(!porProductoVentas[ci.nombre]) porProductoVentas[ci.nombre] = {qty:0, montoVenta:0};
+          porProductoVentas[ci.nombre].qty += cantidadReal;
+          porProductoVentas[ci.nombre].montoVenta += montoAsignado;
+        });
+        return;
+      }
+
       var clave = i.manual ? (presetsRep.indexOf(i.cat)!==-1 ? i.cat : null) : i.name;
       if(!clave) return;
       if(!porProductoVentas[clave]) porProductoVentas[clave] = {qty:0, montoVenta:0};
