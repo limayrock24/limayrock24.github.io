@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789078238";
+  window.__LR_BUILD = "1789260545";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4206,6 +4206,30 @@ body.night-on{background:#080005}
       </div>
     </div>
 
+
+<!-- MODAL CORREGIR CIERRE -->
+<div class="confirm-modal" id="corregirCierreModal">
+  <div class="confirm-modal-box" style="max-width:360px;border-color:var(--gold)">
+    <div style="font-family:'Oswald',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🛠 Corregir cierre</div>
+    <div id="corrCierreInfo" style="font-size:.72rem;color:var(--gray);margin-bottom:12px"></div>
+    <div class="field">
+      <label>¿Qué faltó cargar?</label>
+      <select id="corrTipo" onchange="cambiarTipoCorreccionCierre()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
+        <option value="ingreso">💵 Ingreso de efectivo fuera de caja</option>
+        <option value="egreso">🚚 Pago a proveedor no registrado</option>
+      </select>
+    </div>
+    <div class="field" id="corrProvField" style="display:none">
+      <label>Proveedor</label>
+      <select id="corrProv" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem"></select>
+    </div>
+    <div class="field"><label>Monto ($)</label><input type="text" inputmode="numeric" id="corrMonto" placeholder="0" oninput="formatMontoInput(this)"></div>
+    <div class="field"><label>Nota (qué pasó)</label><input type="text" id="corrNota" placeholder="Ej: lo sacó Jazmín para completar el pago"></div>
+    <div style="font-size:.65rem;color:var(--gray);margin-bottom:6px">Se registra con la fecha de este cierre — aparece en Egresos/Rentabilidad de ese día, y este cierre recalcula su diferencia. Queda anotado quién y cuándo hizo la corrección, sin borrar los datos originales.</div>
+    <button onclick="guardarCorreccionCierre()" style="width:100%;background:var(--gold);color:var(--black);border:none;border-radius:4px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700;margin-top:6px">✓ Aplicar corrección</button>
+    <button onclick="document.getElementById('corregirCierreModal').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:9px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;margin-top:6px">Cancelar</button>
+  </div>
+</div>
 
 <!-- MODAL CONFIG LIQUIDEZ -->
 <div class="confirm-modal" id="liquidezConfigModal">
@@ -9319,6 +9343,24 @@ function renderCierres() {
       return '<div class="cierre-detail-row"><span>'+m+'</span><span class="cdv">'+fmt(ventasPorMedio[m])+'</span></div>';
     }).join('');
 
+    var correccionesHtml = '';
+    if(c.correcciones && c.correcciones.length){
+      correccionesHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">'+
+        '<div style="font-size:.65rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:Oswald,sans-serif">🛠 Correcciones aplicadas</div>'+
+        c.correcciones.map(function(cor){
+          var etiqueta = cor.tipo==='ingreso' ? '+ Ingreso fuera de caja' : '− Egreso a '+(cor.proveedor||'proveedor')+' no registrado';
+          return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">'+etiqueta+': <b>'+fmt(cor.monto)+'</b>'+
+            (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+            '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+        }).join('')+
+      '</div>';
+    }
+
+    var botonCorregir = c.automatico ? '' :
+      '<div style="text-align:center;margin-top:8px">'+
+        '<button onclick="event.stopPropagation();abrirCorreccionCierre('+idx+')" style="background:none;border:1px solid rgba(244,180,0,.4);color:var(--gold);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">🛠 Corregir este cierre</button>'+
+      '</div>';
+
     return '<div class="cierre-card" onclick="toggleCierreDetail('+idx+')">'+
       '<div class="cierre-card-header">'+
         '<div>'+
@@ -9335,6 +9377,8 @@ function renderCierres() {
       '<div class="cierre-detail" id="cierreDetail'+idx+'">'+
         (mediosHtml ? '<div style="font-size:.65rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:Oswald,sans-serif">Ventas por medio</div>'+mediosHtml : '')+
         detalleArqueo+
+        correccionesHtml+
+        botonCorregir+
         '<div style="text-align:center;margin-top:10px">'+
           '<button onclick="event.stopPropagation();toggleVentasDetalleCierre('+idx+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
             '<span id="cierreVentasBtnTxt'+idx+'">▼ Ver ventas de este cierre</span>'+
@@ -9346,6 +9390,113 @@ function renderCierres() {
   }).join('');
 
   el.innerHTML = html;
+}
+
+// ── CORREGIR CIERRE ──────────────────────────────────────────────────────
+// Para cuando algo pasó en la vida real (un ingreso de efectivo desde
+// afuera, o un pago a proveedor) pero no se llegó a cargar antes de que el
+// turno ya se hubiera cerrado. El cierre queda "congelado" al cerrarse, así
+// que no alcanza con cargar el movimiento hoy — hay que recalcular ESE
+// cierre puntual con la fecha real de cuando pasó.
+var _corrCierreIdx = null;
+
+function abrirCorreccionCierre(idx) {
+  _corrCierreIdx = idx;
+  var c = (window.__lrCierresRenderCache||[])[idx];
+  if(!c){ showToast('No se encontró ese cierre', true); return; }
+
+  var fechaStr = new Date(c.fecha).toLocaleDateString('es-AR',{weekday:'long', day:'numeric', month:'long'});
+  document.getElementById('corrCierreInfo').textContent = c.empleado+' · '+c.turno+' · '+fechaStr;
+  document.getElementById('corrTipo').value = 'ingreso';
+  document.getElementById('corrMonto').value = '';
+  document.getElementById('corrNota').value = '';
+
+  var selProv = document.getElementById('corrProv');
+  var provs = getProveedores();
+  selProv.innerHTML = provs.map(function(p){ return '<option value="'+p.nombre.replace(/"/g,'&quot;')+'">'+p.nombre+'</option>'; }).join('');
+
+  cambiarTipoCorreccionCierre();
+  document.getElementById('corregirCierreModal').classList.add('open');
+}
+
+function cambiarTipoCorreccionCierre() {
+  var tipo = document.getElementById('corrTipo').value;
+  document.getElementById('corrProvField').style.display = (tipo==='egreso') ? 'block' : 'none';
+}
+
+function guardarCorreccionCierre() {
+  if(_corrCierreIdx === null) return;
+  var cierresVisibles = window.__lrCierresRenderCache || [];
+  var cVisible = cierresVisibles[_corrCierreIdx];
+  if(!cVisible){ showToast('No se encontró ese cierre', true); return; }
+
+  var tipo = document.getElementById('corrTipo').value;
+  var monto = getMontoInputValue('corrMonto');
+  var nota = document.getElementById('corrNota').value.trim();
+  if(!monto || monto<=0){ showToast('Ingresá un monto válido', true); return; }
+
+  // El cierre visible viene de una lista invertida/filtrada — hay que ubicar
+  // el MISMO objeto dentro de la lista real (getCierres()) para editarlo ahí.
+  var cierres = getCierres();
+  var real = cierres.find(function(x){ return x.fecha === cVisible.fecha && x.empleado === cVisible.empleado && x.horaFin === cVisible.horaFin; });
+  if(!real){ showToast('No se pudo ubicar el cierre para corregirlo', true); return; }
+
+  var fechaCierre = real.fecha; // ISO completo del cierre — se usa como referencia real del momento
+  var fechaSoloFecha = fechaCierre.slice(0,10); // YYYY-MM-DD, formato que usan los egresos
+
+  if(tipo === 'ingreso') {
+    var retiros = getRetirosCaja();
+    retiros.push({
+      id: Date.now(),
+      monto: monto,
+      tipo: 'ingreso',
+      nota: (nota || 'Ingreso de efectivo fuera de caja') + ' (corrección post-cierre)',
+      empleado: currentEmp ? currentEmp.nombre : 'Admin',
+      fecha: fechaCierre
+    });
+    saveRetirosCaja(retiros);
+
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+    real.arqueo.ingresosCaja = (real.arqueo.ingresosCaja||0) + monto;
+    real.arqueo.esperado = (real.arqueo.esperado||0) + monto;
+    real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+  } else {
+    var prov = document.getElementById('corrProv').value;
+    if(!prov){ showToast('Elegí un proveedor', true); return; }
+    var egresos = getEgresos();
+    egresos.push({
+      id: Date.now(),
+      prov: prov, proveedor: prov,
+      categoria: 'proveedor',
+      monto: monto,
+      fecha: fechaSoloFecha,
+      ts: fechaCierre,
+      medio: 'Efectivo',
+      nota: (nota || 'Pago a proveedor no registrado') + ' (corrección post-cierre)'
+    });
+    saveEgresos(egresos);
+
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+    real.arqueo.egresosEfectivo = (real.arqueo.egresosEfectivo||0) + monto;
+    real.arqueo.esperado = (real.arqueo.esperado||0) - monto;
+    real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+  }
+
+  if(!real.correcciones) real.correcciones = [];
+  real.correcciones.push({
+    tipo: tipo,
+    monto: monto,
+    nota: nota,
+    proveedor: tipo==='egreso' ? document.getElementById('corrProv').value : null,
+    fecha: new Date().toISOString(),
+    autor: currentEmp ? currentEmp.nombre : 'Admin'
+  });
+
+  saveCierres(cierres);
+  document.getElementById('corregirCierreModal').classList.remove('open');
+  _corrCierreIdx = null;
+  renderCierres();
+  showToast('✅ Corrección aplicada');
 }
 
 function toggleCierreDetail(idx) {
@@ -17511,7 +17662,7 @@ function cerrarTodosLosOverlays() {
     'armarPedidoOverlay','arqueoModal','aumentoMasivoOverlay','cambioEfectivoModal',
     'campanaModalOverlay','cargaStockOverlay','cargaVirtualModal','cartelitosOverlay',
     'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
-    'comboModalOverlay','comboVarOverlay','deliveryPendModal','devolucionPrestamoModal',
+    'comboModalOverlay','comboVarOverlay','corregirCierreModal','deliveryPendModal','devolucionPrestamoModal',
     'devolucionRecibidaModal','edMasivaOverlay','editCatOverlay','efecIniModal',
     'empMensajeOverlay','empModalOverlay','historialMensajesOverlay','ingresoModal',
     'limpiezaPreviewModal','liquidezConfigModal','listaPreciosPreviewOverlay',
