@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789268274";
+  window.__LR_BUILD = "1789337772";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -24313,7 +24313,9 @@ function renderVentasPorCategoria(porProducto) {
     porCategoria[cat].productos[clave].qty += d.qty;
   });
 
-  var cats = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev - porCategoria[a].rev; });
+  var cats = Object.keys(porCategoria).sort(function(a,b){
+    return _ventaCatOrdenPor==='qty' ? (porCategoria[b].qty - porCategoria[a].qty) : (porCategoria[b].rev - porCategoria[a].rev);
+  });
   if(!cats.length){
     el.innerHTML = '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Sin ventas en este período</div>';
     return;
@@ -24322,11 +24324,10 @@ function renderVentasPorCategoria(porProducto) {
   var totalRev = cats.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
   var maxRev = Math.max.apply(null, cats.map(function(c){ return porCategoria[c].rev; }));
 
-  var botonesOrden = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:.68rem;font-family:Oswald,sans-serif">'+
-    '<span style="color:var(--gray)">Ordenar por</span>'+
-    '<span onclick="cambiarOrdenVentaCatProd(\'rev\')" style="cursor:pointer;color:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--gray)')+';text-decoration:'+(_ventaCatOrdenPor==='rev'?'underline':'none')+'">monto</span>'+
-    '<span style="color:var(--border)">·</span>'+
-    '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+';text-decoration:'+(_ventaCatOrdenPor==='qty'?'underline':'none')+'">unidades</span>'+
+  var botonesOrden = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
+    '<span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif">Ordenar por</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'rev\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--gray)')+'">Monto</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+'">Unidades</span>'+
   '</div>';
 
   var filasCats = cats.map(function(c, i){
