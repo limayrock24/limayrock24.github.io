@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789266698";
+  window.__LR_BUILD = "1789268079";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -24273,6 +24273,14 @@ function toggleVentasPorCategoriaBox() {
   if(arrow) arrow.textContent = open ? '▾' : '▴';
 }
 
+var _ventaCatOrdenPor = 'rev'; // 'rev' (monto) o 'qty' (unidades) — cómo se ordenan los productos DENTRO de cada categoría
+var _ultimoPorProductoVentas = null;
+
+function cambiarOrdenVentaCatProd(criterio) {
+  _ventaCatOrdenPor = criterio;
+  renderVentasPorCategoria(_ultimoPorProductoVentas || {});
+}
+
 function toggleVentaCatProd(idx) {
   var el = document.getElementById('ventaCatProd'+idx);
   var arrow = document.getElementById('ventaCatArrow'+idx);
@@ -24281,6 +24289,7 @@ function toggleVentaCatProd(idx) {
 }
 
 function renderVentasPorCategoria(porProducto) {
+  _ultimoPorProductoVentas = porProducto;
   var el = document.getElementById('stockVentasPorCategoria');
   if(!el) return;
 
@@ -24312,11 +24321,19 @@ function renderVentasPorCategoria(porProducto) {
   var totalRev = cats.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
   var maxRev = Math.max.apply(null, cats.map(function(c){ return porCategoria[c].rev; }));
 
-  el.innerHTML = cats.map(function(c, i){
+  var botonesOrden = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
+    '<span style="font-size:.65rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">Ordenar productos por:</span>'+
+    '<button onclick="event.stopPropagation();cambiarOrdenVentaCatProd(\'rev\')" style="background:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'transparent')+';color:'+(_ventaCatOrdenPor==='rev'?'var(--black)':'var(--gray)')+';border:1px solid var(--gold);border-radius:4px;padding:4px 10px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">💰 Monto</button>'+
+    '<button onclick="event.stopPropagation();cambiarOrdenVentaCatProd(\'qty\')" style="background:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'transparent')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--black)':'var(--gray)')+';border:1px solid var(--gold);border-radius:4px;padding:4px 10px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">📦 Unidades</button>'+
+  '</div>';
+
+  var filasCats = cats.map(function(c, i){
     var d = porCategoria[c];
     var pct = totalRev>0 ? Math.round(d.rev/totalRev*100) : 0;
     var anchoBarra = maxRev>0 ? Math.round(d.rev/maxRev*100) : 0;
-    var nombresProd = Object.keys(d.productos).sort(function(a,b){ return d.productos[b].rev - d.productos[a].rev; });
+    var nombresProd = Object.keys(d.productos).sort(function(a,b){
+      return _ventaCatOrdenPor==='qty' ? (d.productos[b].qty - d.productos[a].qty) : (d.productos[b].rev - d.productos[a].rev);
+    });
     var filasProd = nombresProd.map(function(nombre){
       var dp = d.productos[nombre];
       return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
@@ -24333,6 +24350,8 @@ function renderVentasPorCategoria(porProducto) {
       '<div class="consumo-dropdown" id="ventaCatProd'+i+'">'+filasProd+'</div>'+
     '</div>';
   }).join('');
+
+  el.innerHTML = botonesOrden + filasCats;
 }
 
 function renderStockVentasDia() {
