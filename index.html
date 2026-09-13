@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789260545";
+  window.__LR_BUILD = "1789261066";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -9461,6 +9461,11 @@ function guardarCorreccionCierre() {
     real.arqueo.ingresosCaja = (real.arqueo.ingresosCaja||0) + monto;
     real.arqueo.esperado = (real.arqueo.esperado||0) + monto;
     real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+
+    registrarOperacion('ingreso-caja',
+      [{name: nota || 'Ingreso de efectivo fuera de caja', qty:1, precio:monto, subtotal:monto}],
+      monto, currentEmp ? currentEmp.nombre : 'Admin',
+      'Corrección del cierre de '+real.empleado+' ('+new Date(fechaCierre).toLocaleDateString('es-AR')+')');
   } else {
     var prov = document.getElementById('corrProv').value;
     if(!prov){ showToast('Elegí un proveedor', true); return; }
@@ -9481,6 +9486,16 @@ function guardarCorreccionCierre() {
     real.arqueo.egresosEfectivo = (real.arqueo.egresosEfectivo||0) + monto;
     real.arqueo.esperado = (real.arqueo.esperado||0) - monto;
     real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+
+    var movsEg = getMovimientos();
+    movsEg.push({
+      id: egresos[egresos.length-1].id, fecha: new Date().toISOString(), tipo:'egreso',
+      resumen: prov+(nota?' — '+nota:'')+' (corrección del cierre de '+real.empleado+', '+new Date(fechaCierre).toLocaleDateString('es-AR')+')',
+      total: monto, responsable: currentEmp ? currentEmp.nombre : 'Admin', extra: 'Efectivo',
+      items:[{nombre:prov,qty:1,precio:monto,subtotal:monto,stock:null}]
+    });
+    if(movsEg.length>2000) movsEg = movsEg.slice(-2000);
+    saveMovimientos(movsEg);
   }
 
   if(!real.correcciones) real.correcciones = [];
