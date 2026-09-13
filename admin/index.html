@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789261066";
+  window.__LR_BUILD = "1789262848";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7277,7 +7277,7 @@ function doConfirmarVenta2() {
   }
 
   autoSaveNow();
-  registrarOperacion('venta', cart2, totalVenta, currentEmp?currentEmp.nombre:'—', 'Carrito 2 · '+medioFinal+(delivery>0?' + Delivery '+fmt(delivery):''), recargo);
+  registrarOperacion('venta', cart2, totalVenta, currentEmp?currentEmp.nombre:'—', 'Carrito 2 · '+medioFinal+(delivery>0?' + Delivery '+fmt(delivery):''), recargo, venta.id);
   updateProdCount(cart2);
   descontarStock(cart2, 'venta');
 
@@ -8792,7 +8792,7 @@ function doConfirmarVenta() {
   }
 
   autoSaveNow();
-  registrarOperacion('venta', cart, totalVenta, currentEmp?currentEmp.nombre:'—', venta.medio+(delivery>0?' + Delivery '+fmt(delivery):''), recargo);
+  registrarOperacion('venta', cart, totalVenta, currentEmp?currentEmp.nombre:'—', venta.medio+(delivery>0?' + Delivery '+fmt(delivery):''), recargo, venta.id);
   updateProdCount(cart);
   descontarStock(cart, 'venta');
 
@@ -14731,7 +14731,7 @@ function initMovimientos() {
 
 
 // ── UN MOVIMIENTO POR OPERACIÓN ────────────────────────────────────────────
-function registrarOperacion(tipo, items, total, responsable, extra, recargo) {
+function registrarOperacion(tipo, items, total, responsable, extra, recargo, refId) {
   var movs    = getMovimientos();
   var resumen = items.map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
 
@@ -14744,6 +14744,7 @@ function registrarOperacion(tipo, items, total, responsable, extra, recargo) {
     recargo:     recargo || 0,  // parte del total que es recargo de débito (no es plata "propia")
     responsable: responsable,
     extra:       extra || '',   // medio de pago / nombre cliente / proveedor
+    refId:       refId || null, // id real de la venta, para poder detectar después si se anuló
     // Solo lo que realmente se muestra en el detalle expandible (nombre, cantidad, subtotal) —
     // precio y stock no se usaban en pantalla y duplicaban info ya guardada en Ventas/Consumos.
     items:       items.map(function(i){
@@ -14916,19 +14917,21 @@ function renderMovimientos() {
     }
 
     var detId = 'md'+mi;
+    var ventaAnulada = m.tipo==='venta' && m.refId && VENTAS.some(function(v){ return v.id===m.refId && v.anulada; });
     var card = document.createElement('div');
-    card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:8px;'+(detHtml?'cursor:pointer':'');
+    card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:8px;'+(detHtml?'cursor:pointer':'')+(ventaAnulada?'opacity:.5':'');
     if(detHtml) card.onclick = (function(id){ return function(){ toggleMovDet(id); }; })(detId);
 
     var montoNeto = (m.tipo==='venta') ? (Number(m.total||0) - Number(m.recargo||0)) : Number(m.total||0);
     var extraConRecargo = m.extra + (m.tipo==='venta' && m.recargo>0 ? ' <span style="color:var(--gray)">(+'+fmt(m.recargo)+' recargo)</span>' : '');
 
     card.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px'+(ventaAnulada?';text-decoration:line-through':'')+'">'+
         '<div style="flex:1;min-width:0">'+
           '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">'+
             '<span style="font-size:.95rem">'+icono+'</span>'+
             '<span style="font-family:Oswald,sans-serif;font-size:.78rem;color:var(--white);letter-spacing:.3px">'+label+'</span>'+
+            (ventaAnulada?'<span style="text-decoration:none;color:var(--red);font-weight:700;font-size:.68rem">❌ ANULADA</span>':'')+
             (detHtml?'<span class="drop-arrow" style="margin-left:2px">▾</span>':'')+
           '</div>'+
           '<div style="font-size:.76rem;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(m.resumen||m.producto||'—').slice(0,60)+(esIngresoMercaderia && m.stockAntes!=null && m.stockDespues!=null ? ' <span style="color:var(--gold)">('+m.stockAntes+' → '+m.stockDespues+')</span>' : '')+'</div>'+
@@ -17140,7 +17143,7 @@ function confirmarCobroFiado() {
     VENTAS.push(ventaCefhas);
     saveVentas(VENTAS);
     autoSaveNow();
-    registrarOperacion('venta', ventaCefhas.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — CEFHAS');
+    registrarOperacion('venta', ventaCefhas.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — CEFHAS', 0, ventaCefhas.id);
 
     closeCobroOverlay();
     renderConsumos();
@@ -17406,9 +17409,16 @@ function renderDashboard() {
         ? detalleTurno.map(function(m){
             var hora = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
             var icono = iconosTipo[m.tipo] || '•';
+            var ventaAnulada = m.tipo==='venta' && m.refId && VENTAS.some(function(v){ return v.id===m.refId && v.anulada; });
             var montoNeto = (m.tipo==='venta') ? (m.total - m.recargo) : m.total;
             var recargoTxt = (m.tipo==='venta' && m.recargo>0) ? ' <span style="color:var(--gray)">(+'+fmt(m.recargo)+' recargo)</span>' : '';
             var medioTxt = m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>'+recargoTxt : recargoTxt;
+            if(ventaAnulada){
+              return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem;opacity:.5;text-decoration:line-through">'+
+                '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+' <span style="text-decoration:none;color:var(--red);font-weight:700">❌ ANULADA</span></span>'+
+                '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>'+
+              '</div>';
+            }
             return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
               '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+'</span>'+
               '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>'+
