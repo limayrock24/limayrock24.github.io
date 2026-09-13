@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789268079";
+  window.__LR_BUILD = "1789268274";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -24275,6 +24275,7 @@ function toggleVentasPorCategoriaBox() {
 
 var _ventaCatOrdenPor = 'rev'; // 'rev' (monto) o 'qty' (unidades) — cómo se ordenan los productos DENTRO de cada categoría
 var _ultimoPorProductoVentas = null;
+var _ventaCatAbiertas = {}; // idx -> true, para que no se cierren al cambiar el orden
 
 function cambiarOrdenVentaCatProd(criterio) {
   _ventaCatOrdenPor = criterio;
@@ -24282,10 +24283,11 @@ function cambiarOrdenVentaCatProd(criterio) {
 }
 
 function toggleVentaCatProd(idx) {
+  _ventaCatAbiertas[idx] = !_ventaCatAbiertas[idx];
   var el = document.getElementById('ventaCatProd'+idx);
   var arrow = document.getElementById('ventaCatArrow'+idx);
-  if(el) el.classList.toggle('open');
-  if(arrow) arrow.classList.toggle('open');
+  if(el) el.classList.toggle('open', _ventaCatAbiertas[idx]);
+  if(arrow) arrow.classList.toggle('open', _ventaCatAbiertas[idx]);
 }
 
 function renderVentasPorCategoria(porProducto) {
@@ -24321,16 +24323,18 @@ function renderVentasPorCategoria(porProducto) {
   var totalRev = cats.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
   var maxRev = Math.max.apply(null, cats.map(function(c){ return porCategoria[c].rev; }));
 
-  var botonesOrden = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
-    '<span style="font-size:.65rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:Oswald,sans-serif">Ordenar productos por:</span>'+
-    '<button onclick="event.stopPropagation();cambiarOrdenVentaCatProd(\'rev\')" style="background:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'transparent')+';color:'+(_ventaCatOrdenPor==='rev'?'var(--black)':'var(--gray)')+';border:1px solid var(--gold);border-radius:4px;padding:4px 10px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">💰 Monto</button>'+
-    '<button onclick="event.stopPropagation();cambiarOrdenVentaCatProd(\'qty\')" style="background:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'transparent')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--black)':'var(--gray)')+';border:1px solid var(--gold);border-radius:4px;padding:4px 10px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">📦 Unidades</button>'+
+  var botonesOrden = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:.68rem;font-family:Oswald,sans-serif">'+
+    '<span style="color:var(--gray)">Ordenar por</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'rev\')" style="cursor:pointer;color:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--gray)')+';text-decoration:'+(_ventaCatOrdenPor==='rev'?'underline':'none')+'">monto</span>'+
+    '<span style="color:var(--border)">·</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+';text-decoration:'+(_ventaCatOrdenPor==='qty'?'underline':'none')+'">unidades</span>'+
   '</div>';
 
   var filasCats = cats.map(function(c, i){
     var d = porCategoria[c];
     var pct = totalRev>0 ? Math.round(d.rev/totalRev*100) : 0;
     var anchoBarra = maxRev>0 ? Math.round(d.rev/maxRev*100) : 0;
+    var abierta = !!_ventaCatAbiertas[i];
     var nombresProd = Object.keys(d.productos).sort(function(a,b){
       return _ventaCatOrdenPor==='qty' ? (d.productos[b].qty - d.productos[a].qty) : (d.productos[b].rev - d.productos[a].rev);
     });
@@ -24343,11 +24347,11 @@ function renderVentasPorCategoria(porProducto) {
     }).join('');
     return '<div style="margin-bottom:9px">'+
       '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:.8rem;margin-bottom:3px;cursor:pointer" onclick="toggleVentaCatProd('+i+')">'+
-        '<span style="color:var(--white)">'+(i+1)+'. '+c+' <span class="drop-arrow" id="ventaCatArrow'+i+'">▾</span></span>'+
+        '<span style="color:var(--white)">'+(i+1)+'. '+c+' <span class="drop-arrow'+(abierta?' open':'')+'" id="ventaCatArrow'+i+'">▾</span></span>'+
         '<span style="font-family:Oswald,sans-serif;color:var(--gold)">'+fmt(d.rev)+' <span style="color:var(--gray);font-size:.68rem">('+pct+'% · '+d.qty+' u.)</span></span>'+
       '</div>'+
       '<div style="background:var(--surface);border-radius:3px;height:7px;overflow:hidden;cursor:pointer" onclick="toggleVentaCatProd('+i+')"><div style="background:var(--gold);height:100%;width:'+anchoBarra+'%"></div></div>'+
-      '<div class="consumo-dropdown" id="ventaCatProd'+i+'">'+filasProd+'</div>'+
+      '<div class="consumo-dropdown'+(abierta?' open':'')+'" id="ventaCatProd'+i+'">'+filasProd+'</div>'+
     '</div>';
   }).join('');
 
