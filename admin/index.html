@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789262848";
+  window.__LR_BUILD = "1789266698";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -24272,6 +24272,13 @@ function toggleVentasPorCategoriaBox() {
   if(arrow) arrow.textContent = open ? '▾' : '▴';
 }
 
+function toggleVentaCatProd(idx) {
+  var el = document.getElementById('ventaCatProd'+idx);
+  var arrow = document.getElementById('ventaCatArrow'+idx);
+  if(el) el.classList.toggle('open');
+  if(arrow) arrow.classList.toggle('open');
+}
+
 function renderVentasPorCategoria(porProducto) {
   var el = document.getElementById('stockVentasPorCategoria');
   if(!el) return;
@@ -24287,9 +24294,12 @@ function renderVentasPorCategoria(porProducto) {
       var prod = PRODUCTS.find(function(p){ return p.name === clave; });
       cat = (prod && prod.cat) || 'Sin categoría';
     }
-    if(!porCategoria[cat]) porCategoria[cat] = {rev:0, qty:0};
+    if(!porCategoria[cat]) porCategoria[cat] = {rev:0, qty:0, productos:{}};
     porCategoria[cat].rev += d.montoVenta;
     porCategoria[cat].qty += d.qty;
+    if(!porCategoria[cat].productos[clave]) porCategoria[cat].productos[clave] = {rev:0, qty:0};
+    porCategoria[cat].productos[clave].rev += d.montoVenta;
+    porCategoria[cat].productos[clave].qty += d.qty;
   });
 
   var cats = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev - porCategoria[a].rev; });
@@ -24305,12 +24315,21 @@ function renderVentasPorCategoria(porProducto) {
     var d = porCategoria[c];
     var pct = totalRev>0 ? Math.round(d.rev/totalRev*100) : 0;
     var anchoBarra = maxRev>0 ? Math.round(d.rev/maxRev*100) : 0;
+    var nombresProd = Object.keys(d.productos).sort(function(a,b){ return d.productos[b].rev - d.productos[a].rev; });
+    var filasProd = nombresProd.map(function(nombre){
+      var dp = d.productos[nombre];
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
+        '<span style="color:var(--light)">'+nombre+'</span>'+
+        '<span style="color:var(--gray);white-space:nowrap">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span></span>'+
+      '</div>';
+    }).join('');
     return '<div style="margin-bottom:9px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:.8rem;margin-bottom:3px">'+
-        '<span style="color:var(--white)">'+(i+1)+'. '+c+'</span>'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:.8rem;margin-bottom:3px;cursor:pointer" onclick="toggleVentaCatProd('+i+')">'+
+        '<span style="color:var(--white)">'+(i+1)+'. '+c+' <span class="drop-arrow" id="ventaCatArrow'+i+'">▾</span></span>'+
         '<span style="font-family:Oswald,sans-serif;color:var(--gold)">'+fmt(d.rev)+' <span style="color:var(--gray);font-size:.68rem">('+pct+'% · '+d.qty+' u.)</span></span>'+
       '</div>'+
-      '<div style="background:var(--surface);border-radius:3px;height:7px;overflow:hidden"><div style="background:var(--gold);height:100%;width:'+anchoBarra+'%"></div></div>'+
+      '<div style="background:var(--surface);border-radius:3px;height:7px;overflow:hidden;cursor:pointer" onclick="toggleVentaCatProd('+i+')"><div style="background:var(--gold);height:100%;width:'+anchoBarra+'%"></div></div>'+
+      '<div class="consumo-dropdown" id="ventaCatProd'+i+'">'+filasProd+'</div>'+
     '</div>';
   }).join('');
 }
