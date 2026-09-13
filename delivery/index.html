@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789339125";
+  window.__LR_BUILD = "1789339738";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -7897,9 +7897,16 @@ function renderVentas() {
           // a prorrata según el precio individual de cada componente (o
           // parejo si ninguno tiene precio cargado), como estimación.
           var montoAsignado = sumaPesos>0 ? (i.subtotal||0)*(pesos[idx]/sumaPesos) : (i.subtotal||0)/i.comboItems.length;
-          if(!porProductoVentas[ci.nombre]) porProductoVentas[ci.nombre] = {qty:0, montoVenta:0};
+          if(!porProductoVentas[ci.nombre]) porProductoVentas[ci.nombre] = {qty:0, montoVenta:0, promos:{}};
           porProductoVentas[ci.nombre].qty += cantidadReal;
           porProductoVentas[ci.nombre].montoVenta += montoAsignado;
+          // Solo se anota la promo si sigue activa hoy — una promo que ya se
+          // dio de baja no tiene sentido mostrarla como opción vigente.
+          var comboVigente = COMBOS.some(function(c){ return ((c.emoji||'🎁')+' '+c.nombre)===i.name && c.activo!==false; });
+          if(comboVigente){
+            if(!porProductoVentas[ci.nombre].promos) porProductoVentas[ci.nombre].promos = {};
+            porProductoVentas[ci.nombre].promos[i.name] = (porProductoVentas[ci.nombre].promos[i.name]||0) + cantidadReal;
+          }
         });
         return;
       }
@@ -24306,6 +24313,11 @@ function cambiarOrdenVentaCatProd(criterio) {
   renderVentasPorCategoria(_ultimoPorProductoVentas || {});
 }
 
+function toggleVentaProdPromo(id) {
+  var el = document.getElementById('ventaProdPromo'+id);
+  if(el) el.classList.toggle('open');
+}
+
 function toggleVentaCatProd(idx) {
   _ventaCatAbiertas[idx] = !_ventaCatAbiertas[idx];
   var el = document.getElementById('ventaCatProd'+idx);
@@ -24333,9 +24345,14 @@ function renderVentasPorCategoria(porProducto) {
     if(!porCategoria[cat]) porCategoria[cat] = {rev:0, qty:0, productos:{}};
     porCategoria[cat].rev += d.montoVenta;
     porCategoria[cat].qty += d.qty;
-    if(!porCategoria[cat].productos[clave]) porCategoria[cat].productos[clave] = {rev:0, qty:0};
+    if(!porCategoria[cat].productos[clave]) porCategoria[cat].productos[clave] = {rev:0, qty:0, promos:{}};
     porCategoria[cat].productos[clave].rev += d.montoVenta;
     porCategoria[cat].productos[clave].qty += d.qty;
+    if(d.promos){
+      Object.keys(d.promos).forEach(function(nombrePromo){
+        porCategoria[cat].productos[clave].promos[nombrePromo] = (porCategoria[cat].productos[clave].promos[nombrePromo]||0) + d.promos[nombrePromo];
+      });
+    }
   });
 
   var cats = Object.keys(porCategoria).sort(function(a,b){
@@ -24363,11 +24380,29 @@ function renderVentasPorCategoria(porProducto) {
     var nombresProd = Object.keys(d.productos).sort(function(a,b){
       return _ventaCatOrdenPor==='qty' ? (d.productos[b].qty - d.productos[a].qty) : (d.productos[b].rev - d.productos[a].rev);
     });
-    var filasProd = nombresProd.map(function(nombre){
+    var filasProd = nombresProd.map(function(nombre, pIdx){
       var dp = d.productos[nombre];
-      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
-        '<span style="color:var(--light)">'+nombre+'</span>'+
-        '<span style="color:var(--gray);white-space:nowrap">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span></span>'+
+      var idProd = i+'_'+pIdx;
+      var nombresPromo = dp.promos ? Object.keys(dp.promos) : [];
+      var asterisco = nombresPromo.length
+        ? ' <span onclick="event.stopPropagation();toggleVentaProdPromo(\''+idProd+'\')" style="color:var(--gold);cursor:pointer" title="Parte de estas unidades vino de una promo">*</span>'
+        : '';
+      var detallePromo = '';
+      if(nombresPromo.length){
+        var totalDePromos = nombresPromo.reduce(function(s,n){ return s+dp.promos[n]; },0);
+        detallePromo = '<div class="consumo-dropdown" id="ventaProdPromo'+idProd+'" style="margin-top:2px;margin-bottom:4px">'+
+          nombresPromo.map(function(nombrePromo){
+            return '<div style="font-size:.68rem;color:var(--gray);padding:2px 0 2px 10px">'+dp.promos[nombrePromo]+' u. vinieron de <span style="color:var(--light)">'+nombrePromo+'</span></div>';
+          }).join('')+
+          (totalDePromos < dp.qty ? '<div style="font-size:.68rem;color:var(--gray);padding:2px 0 2px 10px">'+(dp.qty-totalDePromos)+' u. se vendieron sueltas (sin promo)</div>' : '')+
+        '</div>';
+      }
+      return '<div>'+
+        '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
+          '<span style="color:var(--light)">'+nombre+asterisco+'</span>'+
+          '<span style="color:var(--gray);white-space:nowrap">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span></span>'+
+        '</div>'+
+        detallePromo+
       '</div>';
     }).join('');
     return '<div style="margin-bottom:9px">'+
