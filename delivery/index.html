@@ -31,7 +31,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1789340235";
+  window.__LR_BUILD = "1789422425";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1543,6 +1543,16 @@
     refrescarPantallaVentaSiExiste();
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando presets manuales:', err); window.__lrSync.manualPresetsListos = true; ocultarCargaSiListo(); });
+
+  // Qué dispositivos tienen las notificaciones activas — para poder ver desde
+  // el admin, por repartidor, si le van a llegar los avisos de pedido o no,
+  // en vez de enterarse recién cuando ya se le pasó por alto una entrega.
+  window.__lrDB.collection('fcmTokens').onSnapshot(function(snap){
+    var lista = [];
+    snap.forEach(function(doc){ lista.push(doc.data()); });
+    window.__lrFcmTokensCache = lista;
+    if(typeof renderEmpAdmin==='function'){ try{ renderEmpAdmin(); }catch(e){} }
+  }, function(err){ console.error('Error sincronizando fcmTokens:', err); });
 
   window.__lrSaveManualPresets = function(arr){
     window.__lrDB.collection(window.__lrCOL.config).doc('manualPresets').set({lista: arr}).catch(function(e){
@@ -12971,6 +12981,8 @@ function toggleManualForm() {
 
 // ── ÍTEMS MANUALES PREDETERMINADOS (pan, fiambre, etc.) ─────────────────────
 var SK_MANUAL_PRESETS = 'lr_manual_presets';
+function getFcmTokens() { return Array.isArray(window.__lrFcmTokensCache) ? window.__lrFcmTokensCache : []; }
+
 function getManualPresets() {
   return (window.__lrSync && window.__lrSync.manualPresetsListos && Array.isArray(window.__lrManualPresetsCache)) ? window.__lrManualPresetsCache : ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras'];
 }
@@ -19178,6 +19190,19 @@ function renderEmpAdmin() {
     var esDelivery = (emp.rol === 'repartidor') || (!!emp.accesoDelivery && emp.rol !== 'admin');
     var dispDeliv  = esDelivery && !!emp.disponibleDelivery;
 
+    // ¿Tiene las notificaciones de pedido realmente activas hoy? Se fija si
+    // hay algún dispositivo registrado a su nombre en los últimos 30 días —
+    // pasado ese tiempo se considera que puede haberse desactivado solo
+    // (cambio de celular, permiso revocado, etc.) y conviene que lo revise.
+    var campanitaHtml = '';
+    if(esDelivery){
+      var haceUnMes = Date.now() - 30*24*60*60*1000;
+      var tieneNotifs = getFcmTokens().some(function(t){
+        return t.quien===emp.nombre && t.destino==='repartidor' && new Date(t.fecha).getTime() > haceUnMes;
+      });
+      campanitaHtml = '<span title="'+(tieneNotifs?'Tiene los avisos de pedido activados':'NO tiene los avisos de pedido activados')+'" style="font-size:.85rem;margin-left:6px">'+(tieneNotifs?'🔔':'🔕')+'</span>';
+    }
+
     var card = document.createElement('div');
     card.className = 'emp-card';
     // Los repartidores se distinguen con borde y fondo verde, para poder
@@ -19196,7 +19221,8 @@ function renderEmpAdmin() {
       '<div class="emp-avatar '+claseRol+'"'+(esDelivery?' style="background:#22c55e;color:#052e16"':'')+'>'+emp.nombre[0].toUpperCase()+'</div>'+
       '<div class="emp-info">'+
         '<div class="en">'+emp.nombre+
-          (dispDeliv?' <span style="font-size:.62rem;color:#22c55e;vertical-align:middle">● en línea</span>':'')+'</div>'+
+          (dispDeliv?' <span style="font-size:.62rem;color:#22c55e;vertical-align:middle">● en línea</span>':'')+
+          campanitaHtml+'</div>'+
         '<div class="er '+claseRol+'"'+(esDelivery?' style="color:#22c55e"':'')+'>'+textoRol+(emp.funcion?' · '+emp.funcion:'')+'</div>'+
       '</div>'+
       '<div class="emp-stats">'+
