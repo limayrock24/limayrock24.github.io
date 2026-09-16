@@ -4121,7 +4121,10 @@ body.night-on{background:#080005}
       <hr style="border-color:var(--border);margin:20px 0 14px">
       <div onclick="toggleLiquidezSection()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:10px">
         <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">💰 Liquidez del local</div>
-        <span class="drop-arrow" id="liquidezArrow">▾</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span onclick="event.stopPropagation();diagnosticarLiquidez()" style="font-size:.65rem;color:var(--gray);text-decoration:underline;cursor:pointer">🔍 Buscar dato roto</span>
+          <span class="drop-arrow" id="liquidezArrow">▾</span>
+        </div>
       </div>
       <div id="liquidezSectionBody" class="consumo-dropdown">
         <div id="liquidezCards" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"></div>
@@ -10451,7 +10454,7 @@ function getRetirosCaja() { return (window.__lrSync && window.__lrSync.retirosCa
 function saveRetirosCaja(r) { window.__lrRetirosCajaCache = r; if(window.__lrSaveRetirosCaja) window.__lrSaveRetirosCaja(r); }
 // Un "ingreso de efectivo" se guarda en el mismo listado que los retiros, marcado con tipo:'ingreso',
 // y se computa en negativo — así todo lo que ya suma/resta retiros (arqueo, liquidez, cierres) lo contempla solo.
-function montoNetoRetiro(r) { return r.tipo==='ingreso' ? -r.monto : r.monto; }
+function montoNetoRetiro(r) { return r.tipo==='ingreso' ? -(r.monto||0) : (r.monto||0); }
 
 function registrarRetiroCaja() {
   var montoEl = document.getElementById('retiroMonto');
@@ -17383,12 +17386,12 @@ function renderDashboard() {
       medios.Efectivo+=(v.mixto.efectivo||0);
       medios.Transferencia+=(v.mixto.transferencia||0);
       medios['Débito']+=(v.mixto.debito||0);
-    } else { medios[v.medio]=(medios[v.medio]||0)+v.total; }
+    } else { medios[v.medio]=(medios[v.medio]||0)+(v.total||0); }
   });
   var debitoNeto   = Math.round(medios['Débito']/getDebitoFactor());
   var costoPostnet = medios['Débito'] - debitoNeto;
   var cargasHoy = getCargasVirtuales().filter(function(c){ return new Date(c.fecha) >= hoy && new Date(c.fecha) <= fin; });
-  var gananciaCargasHoy = cargasHoy.reduce(function(s,c){ return s+c.ganancia; },0);
+  var gananciaCargasHoy = cargasHoy.reduce(function(s,c){ return s+(c.ganancia||0); },0);
   var netoReal     = medios.Efectivo + medios.Transferencia + debitoNeto + gananciaCargasHoy;
   var ventasHoySinFiado = ventasHoy.filter(function(v){ return !v.fiadoCarga; });
   var totalHoyNeto = ventasHoySinFiado.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
@@ -17398,14 +17401,14 @@ function renderDashboard() {
 
   var hoyStr    = fechaLocalStr(hoy);
   var egresosHoy= getEgresos().filter(function(e){return e.fecha===hoyStr;});
-  var totalEgr  = egresosHoy.reduce(function(s,e){return s+e.monto;},0);
+  var totalEgr  = egresosHoy.reduce(function(s,e){return s+(e.monto||0);},0);
   var netoHoy   = netoReal - totalEgr;
 
   var alertasStock = getStockAlerts().filter(function(a){return !a.resuelta;});
   var sinStock     = alertasStock.filter(function(a){return a.tipo==='sin';});
   var pocoStock    = alertasStock.filter(function(a){return a.tipo==='poco';});
   var fiadosPend   = getFiados().filter(function(f){return !f.pagado;});
-  var totalFiado   = fiadosPend.reduce(function(s,f){return s+f.total;},0);
+  var totalFiado   = fiadosPend.reduce(function(s,f){return s+(f.total||0);},0);
 
   var conteo={};
   ventasHoy.forEach(function(v){ (v.items||[]).forEach(function(i){
@@ -17479,11 +17482,11 @@ function renderDashboard() {
     var resumenGlobalHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(liqVivo.efectivoCaja)+'</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0)+'</div>'+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Merc. Pago</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(liqVivo.mercadoPago)+'</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'+
         '</div>'+
       '</div>';
 
@@ -24828,6 +24831,12 @@ function getCierresMes() {
 function saveCierresMes(c) { window.__lrCierresMesCache = c; if(window.__lrSaveCierresMes) window.__lrSaveCierresMes(c); }
 
 // Calcula los saldos actuales de cada "bolsa"
+// Última red de seguridad: si por cualquier motivo (un registro viejo con un
+// campo incompleto, algo no previsto) el cálculo diera NaN, esto lo vuelve 0
+// en vez de mostrar "$NaN" en pantalla — un número en 0 es una señal de que
+// hay que revisar algo puntual; "$NaN" no dice nada y asusta sin necesidad.
+function numOK(n) { n = Number(n); return isNaN(n) ? 0 : n; }
+
 function calcularLiquidez() {
   var cfg = getLiquidezCfg();
   // Usar configTs si existe — filtra solo movimientos DESPUÉS de la última configuración manual
@@ -24883,18 +24892,18 @@ function calcularLiquidez() {
   // por turno, igual que Lemon Cash) y suman a Efectivo o Transferencia según cómo pagó el cliente.
   var cargasTodas = getCargasVirtuales();
   var cargasMontoMP = cargasTodas.filter(function(c){ return new Date(c.fecha) >= desdeTs; })
-    .reduce(function(s,c){ return s+c.montoMP; },0);
+    .reduce(function(s,c){ return s+(c.montoMP||0); },0);
   var cargasEfectivo = cargasTodas.filter(function(c){ return c.medio==='Efectivo' && new Date(c.fecha) >= desdeTsEfec; })
-    .reduce(function(s,c){ return s+c.montoCobrado; },0);
+    .reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
   var cargasTransferencia = cargasTodas.filter(function(c){ return c.medio==='Transferencia' && new Date(c.fecha) >= desdeTs; })
-    .reduce(function(s,c){ return s+c.montoCobrado; },0);
+    .reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
 
   // Préstamos recibidos/devueltos y prestados/cobrados: suman/restan a Efectivo o Transferencia
   // según cómo se movió la plata. Recibido y devolución-recibida SUMAN; devolución y préstamo-dado RESTAN.
   var prestamosTodos = getPrestamos();
   function sumaPrestamos(tipo, medio, desde) {
     return prestamosTodos.filter(function(p){ return p.tipo===tipo && p.medio===medio && new Date(p.fecha)>=desde; })
-      .reduce(function(s,p){ return s+p.monto; },0);
+      .reduce(function(s,p){ return s+(p.monto||0); },0);
   }
   var prestamosEfectivoNeto = sumaPrestamos('prestamo','Efectivo',desdeTsEfec) - sumaPrestamos('devolucion','Efectivo',desdeTsEfec)
     - sumaPrestamos('prestamo-dado','Efectivo',desdeTsEfec) + sumaPrestamos('devolucion-recibida','Efectivo',desdeTsEfec);
@@ -24904,9 +24913,9 @@ function calcularLiquidez() {
   var transfersTodas = getTransferCuentas();
   function netoTransferCuenta(cuenta, desde) {
     var entra = transfersTodas.filter(function(t){ return t.hacia===cuenta && new Date(t.fecha)>=desde; })
-      .reduce(function(s,t){ return s+t.monto; },0);
+      .reduce(function(s,t){ return s+(t.monto||0); },0);
     var sale  = transfersTodas.filter(function(t){ return t.desde===cuenta && new Date(t.fecha)>=desde; })
-      .reduce(function(s,t){ return s+t.monto; },0);
+      .reduce(function(s,t){ return s+(t.monto||0); },0);
     return entra - sale;
   }
   var transferEfectivoNeto = netoTransferCuenta('Efectivo', desdeTsEfec);
@@ -24915,14 +24924,14 @@ function calcularLiquidez() {
 
   var ventasEfec = 0;
   ventasEfecP.forEach(function(v){
-    if(v.medio==='Efectivo') ventasEfec += v.total;
+    if(v.medio==='Efectivo') ventasEfec += (v.total||0);
     else if(v.medio==='Mixto' && v.mixto) ventasEfec += (v.mixto.efectivo||0);
   });
   var ventasLC = 0, ventasMP = 0, ventasTransferAMP = 0;
   var extraTransferVaAMP = (cfg.destinoTransfer === 'MercadoPago');
   ventas.forEach(function(v){
-    if(v.medio==='Transferencia'){ if(extraTransferVaAMP) ventasTransferAMP += v.total; else ventasLC += v.total; }
-    else if(v.medio==='Débito') ventasMP += v.total;
+    if(v.medio==='Transferencia'){ if(extraTransferVaAMP) ventasTransferAMP += (v.total||0); else ventasLC += (v.total||0); }
+    else if(v.medio==='Débito') ventasMP += (v.total||0);
     else if(v.medio==='Mixto' && v.mixto){
       if(extraTransferVaAMP) ventasTransferAMP += (v.mixto.transferencia||0);
       else ventasLC += (v.mixto.transferencia||0);
@@ -24931,13 +24940,13 @@ function calcularLiquidez() {
 
   var egresosEfec = 0;
   egresosEfecP.forEach(function(e){
-    if(e.medio==='Efectivo') egresosEfec += e.monto;
+    if(e.medio==='Efectivo') egresosEfec += (e.monto||0);
     else if(e.medio==='Mixto' && e.mixto) egresosEfec += (e.mixto.efectivo||0);
   });
   var egresosLC = 0, egresosMP = 0;
   egresos.forEach(function(e){
-    if(e.medio==='Transferencia'){ if(extraTransferVaAMP) egresosMP += e.monto; else egresosLC += e.monto; }
-    else if(e.medio==='MercadoPago') egresosMP += e.monto;
+    if(e.medio==='Transferencia'){ if(extraTransferVaAMP) egresosMP += (e.monto||0); else egresosLC += (e.monto||0); }
+    else if(e.medio==='MercadoPago') egresosMP += (e.monto||0);
     else if(e.medio==='Mixto' && e.mixto){ if(extraTransferVaAMP) egresosMP += (e.mixto.transferencia||0); else egresosLC += (e.mixto.transferencia||0); }
   });
 
@@ -24956,10 +24965,10 @@ function calcularLiquidez() {
   var divisorMP = 1 + ((parseFloat(cfg.comisionMP)||10) / 100);
 
   return {
-    efectivoCaja:  efectivoBase + ventasEfec - egresosEfec - totalRetiros,
-    efectivoFuera: (cfg.saldoEfecFuera||0) + totalRetirosFuera,
-    lemonCash:     (cfg.saldoLC||0) + ventasLC - egresosLC,
-    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP - cargasMontoMP + transferMPNeto + ventasTransferAMP,
+    efectivoCaja:  numOK(efectivoBase + ventasEfec - egresosEfec - totalRetiros),
+    efectivoFuera: numOK((cfg.saldoEfecFuera||0) + totalRetirosFuera),
+    lemonCash:     numOK((cfg.saldoLC||0) + ventasLC - egresosLC),
+    mercadoPago:   numOK((cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP - cargasMontoMP + transferMPNeto + ventasTransferAMP),
     prestamosPendiente: getPrestamosPendiente(),
     prestamosPorCobrar: getPrestamosPorCobrar(),
     periodoDesde:  desdeTs.toISOString(),
@@ -24967,11 +24976,47 @@ function calcularLiquidez() {
   };
 }
 
+// Busca, en todo lo que alimenta a calcularLiquidez(), algún registro con un
+// monto que no sea un número válido — la causa típica de que Mercado Pago o
+// el Total del local se vean como "$NaN". Muestra cuál es y dónde está,
+// para poder corregirlo a mano en vez de tener que adivinar.
+function diagnosticarLiquidez() {
+  var problemas = [];
+  function chequear(lista, nombreLista, campos) {
+    (lista||[]).forEach(function(r, idx){
+      campos.forEach(function(campo){
+        var v = campo.split('.').reduce(function(o,k){ return o ? o[k] : undefined; }, r);
+        if(v !== undefined && v !== null && !isFinite(Number(v))){
+          problemas.push(nombreLista+' #'+idx+' ('+(r.id||r.fecha||'sin id')+'): campo "'+campo+'" = '+JSON.stringify(v));
+        }
+      });
+    });
+  }
+  chequear(getRetirosCaja(), 'Retiros/Ingresos de caja', ['monto']);
+  chequear(getEgresos(), 'Egresos', ['monto','mixto.efectivo','mixto.transferencia']);
+  chequear(VENTAS, 'Ventas', ['total','mixto.efectivo','mixto.transferencia']);
+  chequear(getCargasVirtuales(), 'Cargas virtuales', ['montoMP','montoCobrado']);
+  chequear(getPrestamos(), 'Préstamos', ['monto']);
+  chequear(getTransferCuentas(), 'Transferencias entre cuentas', ['monto']);
+  var cfg = getLiquidezCfg();
+  ['saldoEfecFuera','saldoLC','saldoMP','comisionMP'].forEach(function(campo){
+    if(cfg[campo] !== undefined && !isFinite(Number(cfg[campo]))){
+      problemas.push('Configuración de liquidez: campo "'+campo+'" = '+JSON.stringify(cfg[campo]));
+    }
+  });
+
+  if(!problemas.length){
+    alert('No se encontró ningún monto roto en los datos — el problema puede estar en otro lado. Avisale a Claude con esto.');
+    return;
+  }
+  alert('Encontrado — esto está rompiendo la cuenta:\n\n'+problemas.join('\n\n'));
+}
+
 function renderLiquidez() {
   var el = document.getElementById('liquidezCards');
   if(!el) return;
   var liq = calcularLiquidez();
-  var fmt = function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
+  var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };
 
   // Solo dos cuentas activas: Efectivo y Mercado Pago. Lemon Cash quedó fuera
   // de uso (cuenta dada de baja), así que ya no se muestra como tarjeta. El
@@ -25134,7 +25179,7 @@ function recalcularCierrePeriodo() {
 }
 
 function calcularYMostrarCierre(desde, hasta) {
-  var fmt = function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
+  var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };
   var ventas = VENTAS.filter(function(v){
     var f = fechaLocalStr(new Date(v.fecha));
     return !v.anulada && f>=desde && f<=hasta;
@@ -25177,9 +25222,9 @@ function calcularLiquidezPeriodo(desde, hasta) {
   var ventasEfec=0, ventasLC=0, ventasMP=0, ventasTransferAMP=0;
   var extraTransferVaAMPPeriodo = (cfg.destinoTransfer === 'MercadoPago');
   ventas.forEach(function(v){
-    if(v.medio==='Efectivo') ventasEfec+=v.total;
-    else if(v.medio==='Transferencia'){ if(extraTransferVaAMPPeriodo) ventasTransferAMP+=v.total; else ventasLC+=v.total; }
-    else if(v.medio==='Débito') ventasMP+=v.total;
+    if(v.medio==='Efectivo') ventasEfec+=(v.total||0);
+    else if(v.medio==='Transferencia'){ if(extraTransferVaAMPPeriodo) ventasTransferAMP+=(v.total||0); else ventasLC+=(v.total||0); }
+    else if(v.medio==='Débito') ventasMP+=(v.total||0);
     else if(v.medio==='Mixto'&&v.mixto){
       ventasEfec+=(v.mixto.efectivo||0);
       if(extraTransferVaAMPPeriodo) ventasTransferAMP+=(v.mixto.transferencia||0);
@@ -25188,19 +25233,19 @@ function calcularLiquidezPeriodo(desde, hasta) {
   });
   var egresosEfec=0, egresosLC=0, egresosMP=0;
   egresos.forEach(function(e){
-    if(e.medio==='Efectivo') egresosEfec+=e.monto;
-    else if(e.medio==='Transferencia') egresosLC+=e.monto;
-    else if(e.medio==='MercadoPago') egresosMP+=e.monto;
+    if(e.medio==='Efectivo') egresosEfec+=(e.monto||0);
+    else if(e.medio==='Transferencia') egresosLC+=(e.monto||0);
+    else if(e.medio==='MercadoPago') egresosMP+=(e.monto||0);
     else if(e.medio==='Mixto'&&e.mixto){ egresosEfec+=(e.mixto.efectivo||0); egresosLC+=(e.mixto.transferencia||0); }
   });
   var totalRetiros = retiros.reduce(function(s,r){ return s+montoNetoRetiro(r); },0);
   var divisorMP = 1 + ((parseFloat(cfg.comisionMP)||10) / 100);
 
   return {
-    efectivoCaja:  (cfg.saldoEfec||0) + ventasEfec - egresosEfec - totalRetiros,
-    efectivoFuera: (cfg.saldoEfecFuera||0) + totalRetiros,
-    lemonCash:     (cfg.saldoLC||0) + ventasLC - egresosLC,
-    mercadoPago:   (cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP + ventasTransferAMP,
+    efectivoCaja:  numOK((cfg.saldoEfec||0) + ventasEfec - egresosEfec - totalRetiros),
+    efectivoFuera: numOK((cfg.saldoEfecFuera||0) + totalRetiros),
+    lemonCash:     numOK((cfg.saldoLC||0) + ventasLC - egresosLC),
+    mercadoPago:   numOK((cfg.saldoMP||0) + (ventasMP / divisorMP) - egresosMP + ventasTransferAMP),
     comisionMP:    parseFloat(cfg.comisionMP)||10
   };
 }
@@ -25215,7 +25260,7 @@ function resumenRow(label, valor, color) {
 function descargarResumenMes() {
   var d = window._cierreMesDatos;
   if(!d) return;
-  var fmt = function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
+  var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };
   var efecReal = getMontoInputValue('cierreMesEfec');
   var lcReal   = getMontoInputValue('cierreMesLC');
   var mpReal   = getMontoInputValue('cierreMesMP');
@@ -25306,7 +25351,7 @@ function renderHistorialMes() {
     el.innerHTML = '<div style="padding:14px;color:var(--gray);font-size:.78rem;text-align:center">Sin cierres mensuales aún</div>';
     return;
   }
-  var fmt = function(n){ return '$'+Math.round(n).toLocaleString('es-AR'); };
+  var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };
   var html = '<table style="width:100%;border-collapse:collapse;font-size:.75rem">';
   html += '<tr style="background:var(--card)"><th style="padding:8px;text-align:left;color:var(--gray);font-family:Oswald,sans-serif;font-size:.65rem;letter-spacing:1px;font-weight:400">PERÍODO</th>'+
     '<th style="padding:8px;text-align:right;color:var(--gray);font-family:Oswald,sans-serif;font-size:.65rem;letter-spacing:1px;font-weight:400">VENTAS</th>'+
