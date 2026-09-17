@@ -5237,6 +5237,15 @@ body.night-on{background:#080005}
   <div class="prov-modal-box" style="max-height:90vh;overflow-y:auto">
     <h3 id="comboModalTitulo">🎁 Nuevo combo</h3>
     <input type="hidden" id="comboModalIdx" value="-1">
+    <div id="cmImagenBox" style="display:none;text-align:center;margin-bottom:6px">
+      <img id="cmImagenPreview" src="" style="max-width:130px;max-height:130px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+    </div>
+    <div id="cmSinImagenBox" style="display:none;text-align:center;margin-bottom:6px;color:var(--gray);font-size:.72rem">📷 Sin foto cargada todavía — una buena foto hace mucho más llamativa la promo</div>
+    <input type="file" id="cmImagenInput" accept="image/*" capture="environment" style="display:none" onchange="onSeleccionarImagenCombo(this)">
+    <div style="display:flex;justify-content:center;gap:8px;margin-bottom:12px">
+      <button type="button" onclick="document.getElementById('cmImagenInput').click()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">📷 Cambiar foto</button>
+      <button type="button" id="cmQuitarFotoBtn" onclick="quitarImagenCombo()" style="display:none;background:none;border:1px solid rgba(204,0,0,.4);color:var(--red);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">🗑 Quitar foto</button>
+    </div>
     <div class="field">
       <label>Nombre del combo</label>
       <input type="text" id="cmNombre" placeholder="Ej: Fernet del Campeón, Picada Premium">
@@ -22660,8 +22669,9 @@ function renderCombos() {
       return item.qty > 1 ? item.qty+'× '+item.nombre : item.nombre;
     }).join(', ');
     var pausado = (combo.activo === false);
+    var iconoGestion = combo.imgUrl ? '<img src="'+combo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : (combo.emoji||'🎁');
     card.innerHTML =
-      '<div class="cc-icon">'+(combo.emoji||'🎁')+'</div>'+
+      '<div class="cc-icon" style="'+(combo.imgUrl?'width:44px;height:44px':'')+'">'+iconoGestion+'</div>'+
       '<div class="cc-body">'+
         '<div class="cc-name">'+combo.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+'</div>'+
         '<div class="cc-prods">'+(prodNames||'Sin productos')+'</div>'+
@@ -22705,8 +22715,9 @@ function buildCombosGrid() {
   activePromos.forEach(function(promo) {
     var btn = document.createElement('div');
     btn.className = 'combo-fav';
+    var iconoPromo = promo.imgUrl ? '<img src="'+promo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : '🔥';
     btn.innerHTML =
-      '<div class="cf-icon">🔥</div>'+
+      '<div class="cf-icon" style="'+(promo.imgUrl?'width:38px;height:38px':'')+'">'+iconoPromo+'</div>'+
       '<div class="cf-name">'+promo.nombre+'</div>'+
       '<div class="cf-price">'+fmt(promo.precio||0)+'</div>';
     btn.onclick = function() { addPromoToCart(promo); };
@@ -22715,8 +22726,9 @@ function buildCombosGrid() {
   activeCombos.forEach(function(combo) {
     var btn = document.createElement('div');
     btn.className = 'combo-fav';
+    var iconoCombo = combo.imgUrl ? '<img src="'+combo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : (combo.emoji||'🎁');
     btn.innerHTML =
-      '<div class="cf-icon">'+(combo.emoji||'🎁')+'</div>'+
+      '<div class="cf-icon" style="'+(combo.imgUrl?'width:38px;height:38px':'')+'">'+iconoCombo+'</div>'+
       '<div class="cf-name">'+combo.nombre+'</div>'+
       '<div class="cf-price">'+fmt(combo.precio||0)+'</div>';
     btn.onclick = function() { addComboToCart(combo); };
@@ -22867,6 +22879,49 @@ function descontarStockCombos(items) {
 
 var _cmProductos = [];
 
+// Sube la foto de un COMBO (mismo mecanismo que subirImagenProducto, pero
+// en su propia carpeta dentro de Storage para no mezclarlas).
+function subirImagenCombo(file, nombreCombo) {
+  return comprimirImagenProd(file, 900, 0.82).then(function(blob){
+    var rutaLimpia = 'combos/' + Date.now() + '-' + nombreCombo.toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '.jpg';
+    var ref = window.__lrStorage.ref().child(rutaLimpia);
+    return ref.put(blob, {contentType:'image/jpeg'}).then(function(){ return ref.getDownloadURL(); });
+  });
+}
+
+// Se dispara al elegir un archivo en "Cambiar foto" dentro de editar combo.
+// A diferencia del producto, acá SÍ se puede subir aunque el combo sea
+// nuevo — el nombre alcanza para armar la ruta, no hace falta guardarlo
+// antes (el guardado del combo entero pasa recién al tocar "Guardar").
+function onSeleccionarImagenCombo(input) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  var nombre = document.getElementById('cmNombre').value.trim();
+  if(!nombre){ showToast('Poné primero el nombre del combo', true); return; }
+  showToast('⏳ Subiendo foto...');
+  subirImagenCombo(file, nombre).then(function(url){
+    window._cmImgUrlActual = url;
+    document.getElementById('cmImagenBox').style.display = 'block';
+    document.getElementById('cmSinImagenBox').style.display = 'none';
+    document.getElementById('cmQuitarFotoBtn').style.display = 'inline-block';
+    document.getElementById('cmImagenPreview').src = url;
+    showToast('✅ Foto lista — no te olvides de tocar Guardar');
+  }).catch(function(e){
+    console.error('Error subiendo imagen de combo:', e);
+    showToast('❌ No se pudo subir la foto — probá de nuevo', true);
+  });
+}
+
+function quitarImagenCombo() {
+  window._cmImgUrlActual = null;
+  document.getElementById('cmImagenBox').style.display = 'none';
+  document.getElementById('cmSinImagenBox').style.display = 'block';
+  document.getElementById('cmQuitarFotoBtn').style.display = 'none';
+}
+
 function abrirComboModal(idx) {
   cerrarOverlaysDeCatalogo();
   var idxEl = document.getElementById('comboModalIdx');
@@ -22886,6 +22941,11 @@ function abrirComboModal(idx) {
     _cmProductos = (combo.items||[]).slice();
     if(tit) tit.textContent = 'Editar — '+combo.nombre;
     if(del) del.style.display = 'block';
+    window._cmImgUrlActual = combo.imgUrl || null;
+    document.getElementById('cmImagenBox').style.display = combo.imgUrl ? 'block' : 'none';
+    document.getElementById('cmSinImagenBox').style.display = combo.imgUrl ? 'none' : 'block';
+    document.getElementById('cmQuitarFotoBtn').style.display = combo.imgUrl ? 'inline-block' : 'none';
+    if(combo.imgUrl) document.getElementById('cmImagenPreview').src = combo.imgUrl;
   } else {
     document.getElementById('cmNombre').value = '';
     document.getElementById('cmEmoji').value = '🎁';
@@ -22895,6 +22955,10 @@ function abrirComboModal(idx) {
     _cmProductos = [];
     if(tit) tit.textContent = '🎁 Nuevo combo';
     if(del) del.style.display = 'none';
+    window._cmImgUrlActual = null;
+    document.getElementById('cmImagenBox').style.display = 'none';
+    document.getElementById('cmSinImagenBox').style.display = 'none';
+    document.getElementById('cmQuitarFotoBtn').style.display = 'none';
   }
   if(idxEl) idxEl.value = idx !== null ? idx : -1;
   renderCmProdList();
@@ -23130,7 +23194,7 @@ function guardarComboModal() {
   if(!nombre) { showToast('Ingresá el nombre del combo', true); return; }
   if(!precio || precio <= 0) { showToast('Ingresá el precio del combo', true); return; }
   if(!_cmProductos.length) { showToast('Agregá al menos un producto al combo', true); return; }
-  var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: document.getElementById('cmActivo').checked };
+  var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: document.getElementById('cmActivo').checked, imgUrl: (window._cmImgUrlActual!==undefined ? window._cmImgUrlActual : null) };
 
   if(idx >= 0 && COMBOS[idx]) {
     COMBOS[idx] = data;
