@@ -477,7 +477,7 @@ db.collection('productos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
     var d = doc.data();
-    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, precioNoc:d.pnoc||d.pventa, cat:d.cat||'General'});
+    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, precioNoc:d.pnoc||d.pventa, cat:d.cat||'General', imgUrl:d.imgUrl});
   });
   lista.sort(function(a,b){ return a.name.localeCompare(b.name); });
   PRODUCTOS = lista;
@@ -635,7 +635,10 @@ function renderList(){
       var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
       var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
-      var imgSrc = IMAGENES_PRODUCTOS[p.name];
+      // Prioridad: foto propia del producto (imgUrl, subida desde el admin) >
+      // mapa viejo por nombre (imagenes-productos.js). Si imgUrl es
+      // explícitamente null, es que la sacaron a propósito — no volver al mapa viejo.
+      var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
       var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">' : '';
       var ctrlHtml = sinStock
         ? '<span class="sin-stock-tag">Sin stock</span>'
