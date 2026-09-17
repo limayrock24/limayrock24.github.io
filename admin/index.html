@@ -6298,7 +6298,7 @@ function onSeleccionarImagenProd(input) {
     document.getElementById('pmImagenPreview').src = url;
   }).catch(function(e){
     console.error('Error subiendo imagen de producto:', e);
-    showToast('❌ No se pudo subir la foto — probá de nuevo', true);
+    showToast('❌ No se pudo subir la foto: '+((e&&e.code)||(e&&e.message)||'error desconocido'), true);
   });
 }
 
@@ -22910,7 +22910,7 @@ function onSeleccionarImagenCombo(input) {
     showToast('✅ Foto lista — no te olvides de tocar Guardar');
   }).catch(function(e){
     console.error('Error subiendo imagen de combo:', e);
-    showToast('❌ No se pudo subir la foto — probá de nuevo', true);
+    showToast('❌ No se pudo subir la foto: '+((e&&e.code)||(e&&e.message)||'error desconocido'), true);
   });
 }
 
