@@ -3244,6 +3244,12 @@ body.night-on{background:#080005}
 </style>
 </head>
 <body class="night-on">
+<!-- Imagen de producto/combo ampliada, para verla bien antes de vender -->
+<div id="imgAmpliadaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99998;align-items:center;justify-content:center;padding:20px;flex-direction:column" onclick="cerrarImagenAmpliada()">
+  <img id="imgAmpliadaFoto" src="" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;object-fit:contain">
+  <div id="imgAmpliadaNombre" style="color:#fff;font-family:'Oswald',sans-serif;font-size:1rem;margin-top:14px;text-align:center;padding:0 10px"></div>
+  <button type="button" onclick="cerrarImagenAmpliada()" style="margin-top:16px;background:transparent;border:1px solid rgba(255,255,255,.3);color:#ccc;border-radius:8px;padding:9px 22px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cerrar</button>
+</div>
 <div id="lrSinConexionBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999999;background:#c0392b;color:#fff;text-align:center;padding:10px 14px;font-family:system-ui,sans-serif;font-weight:700;font-size:.85rem;box-shadow:0 2px 10px rgba(0,0,0,.5)">
   ⚠️ SIN CONEXIÓN A LA NUBE — los cambios que hagas ahora NO se van a guardar. Revisá tu internet y recargá la página.
 </div>
@@ -6227,6 +6233,20 @@ var loginEmp   = null;
 //    ~150 fotos ya cargadas por ese camino antes de tener esto.
 // Acepta tanto el objeto producto completo como (por compatibilidad) un
 // nombre suelto.
+function escJs(s){ return String(s).replace(/'/g, "\\'"); }
+
+// Ampliar la foto de un producto o combo al tocarla, para verla bien antes
+// de vender — mismo mecanismo que ya tiene el catálogo web.
+function ampliarImagen(src, nombre){
+  document.getElementById('imgAmpliadaFoto').src = src;
+  document.getElementById('imgAmpliadaNombre').textContent = nombre;
+  document.getElementById('imgAmpliadaOverlay').style.display = 'flex';
+}
+function cerrarImagenAmpliada(){
+  document.getElementById('imgAmpliadaOverlay').style.display = 'none';
+  document.getElementById('imgAmpliadaFoto').src = '';
+}
+
 function imgProducto(pOrNombre) {
   var p = (pOrNombre && typeof pOrNombre === 'object')
     ? pOrNombre
@@ -13241,7 +13261,7 @@ function renderList(list, term) {
       tr.onclick = function(){ addToCart(p); };
 
       var imgSrcVenta = imgProducto(p);
-      var imgHtmlVenta = imgSrcVenta ? '<img src="'+imgSrcVenta+'" loading="lazy" style="width:30px;height:30px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:8px;flex-shrink:0">' : '';
+      var imgHtmlVenta = imgSrcVenta ? '<img src="'+imgSrcVenta+'" loading="lazy" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrcVenta)+'\',\''+escJs(p.name)+'\')" style="width:30px;height:30px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:8px;flex-shrink:0;cursor:pointer">' : '';
       tr.innerHTML =
         '<td style="font-size:.85rem"><div style="display:flex;align-items:center">'+imgHtmlVenta+'<span>'+
           (term ? hl(p.name, term) : p.name) + stockBadge +
@@ -17875,7 +17895,7 @@ function renderCatalogo() {
     var tr=document.createElement('tr');
     var nombreEsc = p.name.replace(/'/g,"\\'");
     var imgSrcCat = imgProducto(p);
-    var imgHtmlCat = imgSrcCat ? '<img src="'+imgSrcCat+'" loading="lazy" style="width:28px;height:28px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:7px">' : '';
+    var imgHtmlCat = imgSrcCat ? '<img src="'+imgSrcCat+'" loading="lazy" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrcCat)+'\',\''+escJs(p.name)+'\')" style="width:28px;height:28px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:7px;cursor:pointer">' : '';
     tr.innerHTML=
       '<td onclick="event.stopPropagation()"><input type="checkbox" class="cart-sel-chk" '+(window._cartelitosSel[p.name]?'checked':'')+' onchange="toggleCartelitoSel(\''+nombreEsc+'\',this.checked)" style="width:16px;height:16px"></td>'+
       '<td class="td-nombre">'+imgHtmlCat+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
@@ -17946,6 +17966,8 @@ function cerrarTodosLosOverlays() {
   });
   var moverCat = document.getElementById('moverCatOverlay');
   if(moverCat) moverCat.style.display = 'none';
+  var imgAmpliada = document.getElementById('imgAmpliadaOverlay');
+  if(imgAmpliada) imgAmpliada.style.display = 'none';
 
   // A veces el navegador tarda en "borrar" el dibujo de un panel grande
   // (miles de filas de productos) aunque ya esté oculto de verdad — esto lo
@@ -22669,7 +22691,7 @@ function renderCombos() {
       return item.qty > 1 ? item.qty+'× '+item.nombre : item.nombre;
     }).join(', ');
     var pausado = (combo.activo === false);
-    var iconoGestion = combo.imgUrl ? '<img src="'+combo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : (combo.emoji||'🎁');
+    var iconoGestion = combo.imgUrl ? '<img src="'+combo.imgUrl+'" onclick="event.stopPropagation();ampliarImagen(\''+escJs(combo.imgUrl)+'\',\''+escJs(combo.nombre)+'\')" style="width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:pointer">' : (combo.emoji||'🎁');
     card.innerHTML =
       '<div class="cc-icon" style="'+(combo.imgUrl?'width:44px;height:44px':'')+'">'+iconoGestion+'</div>'+
       '<div class="cc-body">'+
@@ -22715,7 +22737,7 @@ function buildCombosGrid() {
   activePromos.forEach(function(promo) {
     var btn = document.createElement('div');
     btn.className = 'combo-fav';
-    var iconoPromo = promo.imgUrl ? '<img src="'+promo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : '🔥';
+    var iconoPromo = promo.imgUrl ? '<img src="'+promo.imgUrl+'" onclick="event.stopPropagation();ampliarImagen(\''+escJs(promo.imgUrl)+'\',\''+escJs(promo.nombre)+'\')" style="width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:pointer">' : '🔥';
     btn.innerHTML =
       '<div class="cf-icon" style="'+(promo.imgUrl?'width:38px;height:38px':'')+'">'+iconoPromo+'</div>'+
       '<div class="cf-name">'+promo.nombre+'</div>'+
@@ -22726,7 +22748,7 @@ function buildCombosGrid() {
   activeCombos.forEach(function(combo) {
     var btn = document.createElement('div');
     btn.className = 'combo-fav';
-    var iconoCombo = combo.imgUrl ? '<img src="'+combo.imgUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : (combo.emoji||'🎁');
+    var iconoCombo = combo.imgUrl ? '<img src="'+combo.imgUrl+'" onclick="event.stopPropagation();ampliarImagen(\''+escJs(combo.imgUrl)+'\',\''+escJs(combo.nombre)+'\')" style="width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:pointer">' : (combo.emoji||'🎁');
     btn.innerHTML =
       '<div class="cf-icon" style="'+(combo.imgUrl?'width:38px;height:38px':'')+'">'+iconoCombo+'</div>'+
       '<div class="cf-name">'+combo.nombre+'</div>'+
