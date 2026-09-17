@@ -3,6 +3,7 @@
 <script src="imagenes-productos.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <script>
 (function(){
@@ -176,6 +177,7 @@
     }catch(e){ console.warn('No se pudo escuchar notificaciones en vivo:', e); }
   };
   window.__lrDB = firebase.firestore();
+  window.__lrStorage = firebase.storage();
   // En redes de datos móviles (4G) con proxy/NAT de operador, el transporte
   // por defecto (tipo WebSocket) a veces traba el handshake inicial y deja
   // escrituras colgadas sin responder — esto fuerza a detectar y usar
@@ -5020,10 +5022,15 @@ body.night-on{background:#080005}
         <h3 id="prodModalTitulo">Editar producto</h3>
         <input type="hidden" id="prodModalIdx" value="-1">
         <input type="hidden" id="prodModalNombreOriginal" value="">
-        <div id="pmImagenBox" style="display:none;text-align:center;margin-bottom:10px">
+        <div id="pmImagenBox" style="display:none;text-align:center;margin-bottom:6px">
           <img id="pmImagenPreview" src="" style="max-width:130px;max-height:130px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
         </div>
-        <div id="pmSinImagenBox" style="display:none;text-align:center;margin-bottom:10px;color:var(--gray);font-size:.72rem">📷 Sin foto cargada todavía</div>
+        <div id="pmSinImagenBox" style="display:none;text-align:center;margin-bottom:6px;color:var(--gray);font-size:.72rem">📷 Sin foto cargada todavía</div>
+        <input type="file" id="pmImagenInput" accept="image/*" capture="environment" style="display:none" onchange="onSeleccionarImagenProd(this)">
+        <div style="display:flex;justify-content:center;gap:8px;margin-bottom:12px">
+          <button type="button" onclick="document.getElementById('pmImagenInput').click()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">📷 Cambiar foto</button>
+          <button type="button" id="pmQuitarFotoBtn" onclick="quitarImagenProd()" style="display:none;background:none;border:1px solid rgba(204,0,0,.4);color:var(--red);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">🗑 Quitar foto</button>
+        </div>
         <div class="field">
           <label>Nombre del producto</label>
           <input type="text" id="pmNombre" placeholder="Nombre completo">
@@ -6203,13 +6210,105 @@ var adminBuf   = '';
 var loginEmp   = null;
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
-// Ruta de la foto de un producto (o null si no tiene) — reusa el mismo mapa
-// que carga el catálogo web (imagenes-productos.js), anteponiendo 'catalogo/'
-// porque las rutas ahí están pensadas para vivir DENTRO de esa carpeta.
-function imgProducto(nombre) {
+// Ruta/URL de la foto de un producto (o null si no tiene). Prioridad:
+// 1) p.imgUrl — foto subida desde el admin, guardada directo en el producto
+//    (sobrevive a un renombre, porque viaja con el resto de sus datos).
+// 2) El mapa viejo por nombre (imagenes-productos.js) — para no perder las
+//    ~150 fotos ya cargadas por ese camino antes de tener esto.
+// Acepta tanto el objeto producto completo como (por compatibilidad) un
+// nombre suelto.
+function imgProducto(pOrNombre) {
+  var p = (pOrNombre && typeof pOrNombre === 'object')
+    ? pOrNombre
+    : PRODUCTS.find(function(x){ return x.name===pOrNombre; });
+  var nombre = p ? p.name : pOrNombre;
+  if(p && p.imgUrl) return p.imgUrl;
+  if(p && p.imgUrl === null) return null; // se sacó a propósito, no volver al mapa viejo
   var mapa = window.IMAGENES_PRODUCTOS;
   if(!mapa || !nombre || !mapa[nombre]) return null;
   return 'catalogo/' + mapa[nombre];
+}
+
+// Reduce el tamaño de la foto ANTES de subirla — clave subiendo desde el
+// celu con datos móviles: una foto de cámara pesa varios MB, esto la deja
+// en unos pocos cientos de KB sin perder calidad visible en una miniatura.
+function comprimirImagenProd(file, maxAncho, calidad) {
+  return new Promise(function(resolve, reject){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        var ratio = Math.min(1, maxAncho / img.width);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function(blob){
+          if(blob) resolve(blob); else reject(new Error('No se pudo procesar la imagen'));
+        }, 'image/jpeg', calidad || 0.82);
+      };
+      img.onerror = function(){ reject(new Error('No se pudo leer la imagen')); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(){ reject(new Error('No se pudo leer el archivo')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Sube la foto ya comprimida a Firebase Storage y devuelve la URL pública.
+function subirImagenProducto(file, nombreProducto) {
+  return comprimirImagenProd(file, 900, 0.82).then(function(blob){
+    var rutaLimpia = 'productos/' + Date.now() + '-' + nombreProducto.toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '.jpg';
+    var ref = window.__lrStorage.ref().child(rutaLimpia);
+    return ref.put(blob, {contentType:'image/jpeg'}).then(function(){ return ref.getDownloadURL(); });
+  });
+}
+
+// Se dispara al elegir un archivo en "Cambiar foto" dentro de editar producto.
+function onSeleccionarImagenProd(input) {
+  var file = input.files && input.files[0];
+  input.value = ''; // para poder elegir el mismo archivo de nuevo si hace falta
+  if(!file) return;
+  var idx = parseInt(document.getElementById('prodModalIdx').value);
+  if(!(idx>=0 && PRODUCTS[idx])){
+    showToast('Guardá el producto primero, así la foto queda ligada a él', true);
+    return;
+  }
+  var p = PRODUCTS[idx];
+  showToast('⏳ Subiendo foto...');
+  subirImagenProducto(file, p.name).then(function(url){
+    p.imgUrl = url;
+    window.__lrProductosTocados = [p.name];
+    saveLocalConBorrado('✅ Foto guardada');
+    document.getElementById('pmImagenBox').style.display = 'block';
+    document.getElementById('pmSinImagenBox').style.display = 'none';
+    document.getElementById('pmQuitarFotoBtn').style.display = 'inline-block';
+    document.getElementById('pmImagenPreview').src = url;
+  }).catch(function(e){
+    console.error('Error subiendo imagen de producto:', e);
+    showToast('❌ No se pudo subir la foto — probá de nuevo', true);
+  });
+}
+
+// Botón "Quitar foto" — solo saca la de ESTE producto (p.imgUrl); si la
+// venía mostrando por el mapa viejo (imagenes-productos.js), esa igual
+// desaparece porque imgProducto() ahora la ignora una vez que hay p.imgUrl
+// seteado explícitamente a null (se manda ese valor a propósito, no se
+// borra el campo, para que quede claro que fue una decisión y no que
+// nunca se cargó).
+function quitarImagenProd() {
+  var idx = parseInt(document.getElementById('prodModalIdx').value);
+  if(!(idx>=0 && PRODUCTS[idx])) return;
+  var p = PRODUCTS[idx];
+  p.imgUrl = null;
+  window.__lrProductosTocados = [p.name];
+  saveLocalConBorrado('✅ Foto quitada');
+  document.getElementById('pmImagenBox').style.display = 'none';
+  document.getElementById('pmSinImagenBox').style.display = 'block';
+  document.getElementById('pmQuitarFotoBtn').style.display = 'none';
 }
 
 function fmt(n) { return '$ ' + Number(n).toLocaleString('es-AR'); }
@@ -6771,7 +6870,7 @@ function renderList(list,term) {
       var tr=document.createElement('tr');
       tr.onclick=function(){ addToCart(p); };
       var pJson=JSON.stringify(p).replace(/"/g,'&quot;');
-      var imgSrc = imgProducto(p.name);
+      var imgSrc = imgProducto(p);
       var imgHtml = imgSrc ? '<img src="'+imgSrc+'" loading="lazy" style="width:30px;height:30px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:8px;flex-shrink:0">' : '';
       tr.innerHTML=
         '<td style="font-size:.92rem"><div style="display:flex;align-items:center">'+imgHtml+'<span>'+hl(p.name,term)+'</span></div>'+
@@ -13131,7 +13230,7 @@ function renderList(list, term) {
       if(agotado) tr.className = 'prod-row-agotado'; // solo estilo visual
       tr.onclick = function(){ addToCart(p); };
 
-      var imgSrcVenta = imgProducto(p.name);
+      var imgSrcVenta = imgProducto(p);
       var imgHtmlVenta = imgSrcVenta ? '<img src="'+imgSrcVenta+'" loading="lazy" style="width:30px;height:30px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:8px;flex-shrink:0">' : '';
       tr.innerHTML =
         '<td style="font-size:.85rem"><div style="display:flex;align-items:center">'+imgHtmlVenta+'<span>'+
@@ -17765,7 +17864,7 @@ function renderCatalogo() {
     var ss=inv[p.name]&&inv[p.name].stock===0;
     var tr=document.createElement('tr');
     var nombreEsc = p.name.replace(/'/g,"\\'");
-    var imgSrcCat = imgProducto(p.name);
+    var imgSrcCat = imgProducto(p);
     var imgHtmlCat = imgSrcCat ? '<img src="'+imgSrcCat+'" loading="lazy" style="width:28px;height:28px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:7px">' : '';
     tr.innerHTML=
       '<td onclick="event.stopPropagation()"><input type="checkbox" class="cart-sel-chk" '+(window._cartelitosSel[p.name]?'checked':'')+' onchange="toggleCartelitoSel(\''+nombreEsc+'\',this.checked)" style="width:16px;height:16px"></td>'+
@@ -17878,15 +17977,17 @@ function abrirProdModal(idx) {
     for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===p.cat){cs.selectedIndex=i;break;} }
     document.getElementById('pmPrecioCalc').textContent=p.pventa?fmt(p.pventa):'—';
     renderPmProveedoresLista(p.name);
-    var imgProd = imgProducto(p.name);
+    var imgProd = imgProducto(p);
     document.getElementById('pmImagenBox').style.display = imgProd ? 'block' : 'none';
     document.getElementById('pmSinImagenBox').style.display = imgProd ? 'none' : 'block';
+    document.getElementById('pmQuitarFotoBtn').style.display = imgProd ? 'inline-block' : 'none';
     if(imgProd) document.getElementById('pmImagenPreview').src = imgProd;
   } else {
     document.getElementById('prodModalTitulo').textContent='+ Nuevo producto';
     if(del) del.style.display='none';
     document.getElementById('pmImagenBox').style.display='none';
     document.getElementById('pmSinImagenBox').style.display='none';
+    document.getElementById('pmQuitarFotoBtn').style.display='none';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
