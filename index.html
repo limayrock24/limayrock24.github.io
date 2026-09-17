@@ -1,5 +1,6 @@
 <html lang="es"><head>
 <!-- ═══════════════ FIREBASE — Limay Rock ═══════════════ -->
+<script src="imagenes-productos.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
@@ -5020,6 +5021,10 @@ body.night-on{background:#080005}
         <h3 id="prodModalTitulo">Editar producto</h3>
         <input type="hidden" id="prodModalIdx" value="-1">
         <input type="hidden" id="prodModalNombreOriginal" value="">
+        <div id="pmImagenBox" style="display:none;text-align:center;margin-bottom:10px">
+          <img id="pmImagenPreview" src="" style="max-width:130px;max-height:130px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+        </div>
+        <div id="pmSinImagenBox" style="display:none;text-align:center;margin-bottom:10px;color:var(--gray);font-size:.72rem">📷 Sin foto cargada todavía</div>
         <div class="field">
           <label>Nombre del producto</label>
           <input type="text" id="pmNombre" placeholder="Nombre completo">
@@ -6199,6 +6204,15 @@ var adminBuf   = '';
 var loginEmp   = null;
 
 // ── UTILS ──────────────────────────────────────────────────────────────────
+// Ruta de la foto de un producto (o null si no tiene) — reusa el mismo mapa
+// que carga el catálogo web (imagenes-productos.js), anteponiendo 'catalogo/'
+// porque las rutas ahí están pensadas para vivir DENTRO de esa carpeta.
+function imgProducto(nombre) {
+  var mapa = window.IMAGENES_PRODUCTOS;
+  if(!mapa || !nombre || !mapa[nombre]) return null;
+  return 'catalogo/' + mapa[nombre];
+}
+
 function fmt(n) { return '$ ' + Number(n).toLocaleString('es-AR'); }
 
 // Formatea EN VIVO, dentro del propio campo, mientras se escribe (ej: 1000000 -> "1.000.000")
@@ -6758,8 +6772,10 @@ function renderList(list,term) {
       var tr=document.createElement('tr');
       tr.onclick=function(){ addToCart(p); };
       var pJson=JSON.stringify(p).replace(/"/g,'&quot;');
+      var imgSrc = imgProducto(p.name);
+      var imgHtml = imgSrc ? '<img src="'+imgSrc+'" loading="lazy" style="width:30px;height:30px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:8px;flex-shrink:0">' : '';
       tr.innerHTML=
-        '<td style="font-size:.92rem">'+hl(p.name,term)+
+        '<td style="font-size:.92rem"><div style="display:flex;align-items:center">'+imgHtml+'<span>'+hl(p.name,term)+'</span></div>'+
         '</td>'+
         '<td class="td-p" style="'+pc+'">'+fmt(precio)+'</td>'+
         '<td class="td-add"><button class="add-btn" onclick="event.stopPropagation();addToCart('+pJson+')">+</button></td>';
@@ -17748,9 +17764,11 @@ function renderCatalogo() {
     var ss=inv[p.name]&&inv[p.name].stock===0;
     var tr=document.createElement('tr');
     var nombreEsc = p.name.replace(/'/g,"\\'");
+    var imgSrcCat = imgProducto(p.name);
+    var imgHtmlCat = imgSrcCat ? '<img src="'+imgSrcCat+'" loading="lazy" style="width:28px;height:28px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:7px">' : '';
     tr.innerHTML=
       '<td onclick="event.stopPropagation()"><input type="checkbox" class="cart-sel-chk" '+(window._cartelitosSel[p.name]?'checked':'')+' onchange="toggleCartelitoSel(\''+nombreEsc+'\',this.checked)" style="width:16px;height:16px"></td>'+
-      '<td class="td-nombre">'+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
+      '<td class="td-nombre">'+imgHtmlCat+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
       '<td style="color:var(--gray);font-size:.74rem;text-align:center">'+mrg+'%</td>'+
       '<td class="td-precio">'+(p.pventa?fmt(p.pventa):'<span style="color:var(--red);font-size:.7rem">—</span>')+'</td>'+
       '<td class="td-noc">'+(p.pnoc?fmt(p.pnoc):'—')+'</td>'+
@@ -17859,9 +17877,15 @@ function abrirProdModal(idx) {
     for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===p.cat){cs.selectedIndex=i;break;} }
     document.getElementById('pmPrecioCalc').textContent=p.pventa?fmt(p.pventa):'—';
     renderPmProveedoresLista(p.name);
+    var imgProd = imgProducto(p.name);
+    document.getElementById('pmImagenBox').style.display = imgProd ? 'block' : 'none';
+    document.getElementById('pmSinImagenBox').style.display = imgProd ? 'none' : 'block';
+    if(imgProd) document.getElementById('pmImagenPreview').src = imgProd;
   } else {
     document.getElementById('prodModalTitulo').textContent='+ Nuevo producto';
     if(del) del.style.display='none';
+    document.getElementById('pmImagenBox').style.display='none';
+    document.getElementById('pmSinImagenBox').style.display='none';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
