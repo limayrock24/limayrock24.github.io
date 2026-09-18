@@ -1,6 +1,6 @@
 <html lang="es"><head>
 <!-- ═══════════════ FIREBASE — Limay Rock ═══════════════ -->
-<script>document.write('<script src="imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
+<script>document.write('<script src="../imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
@@ -6255,7 +6255,10 @@ function imgProducto(pOrNombre) {
   if(p && p.imgUrl === null) return null; // se sacó a propósito, no volver al mapa viejo
   var mapa = window.IMAGENES_PRODUCTOS;
   if(!mapa || !nombre || !mapa[nombre]) return null;
-  return 'catalogo/' + mapa[nombre];
+  // /admin/ y /delivery/ son una carpeta más adentro que la raíz — hay que
+  // subir un nivel antes de entrar a catalogo/, si no busca mal la ruta.
+  var estaEnSubcarpeta = location.pathname.indexOf('/admin/') !== -1 || location.pathname.indexOf('/delivery/') !== -1;
+  return (estaEnSubcarpeta ? '../catalogo/' : 'catalogo/') + mapa[nombre];
 }
 
 // Reduce el tamaño de la foto ANTES de subirla — clave subiendo desde el
