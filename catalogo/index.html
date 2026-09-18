@@ -107,6 +107,8 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .cat-pills::-webkit-scrollbar{display:none}
 .cat-pill{flex-shrink:0;background:var(--card);border:1.5px solid var(--border);color:var(--light);border-radius:20px;padding:8px 16px;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;white-space:nowrap}
 .cat-pill.active{background:var(--red);border-color:var(--red);color:var(--white);font-weight:700}
+.sub-pill{padding:5px 13px;font-size:.66rem;opacity:.9}
+.sub-pill.active{background:var(--gold);border-color:var(--gold);color:var(--black)}
 .prod-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px}
 .prod-thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;background:#fff;flex-shrink:0}
 .sin-stock-tag{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--red);border:1px solid rgba(210,32,31,.4);border-radius:5px;padding:5px 10px;white-space:nowrap;flex-shrink:0}
@@ -216,6 +218,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
     <div class="cat-pills" id="catPills"></div>
+    <div class="cat-pills" id="subcatPills" style="display:none;margin-top:-6px"></div>
     <div id="listContainer"></div>
     <div id="itemsManualesContainer"></div>
   </div>
@@ -392,6 +395,7 @@ function actualizarCartelZona(){
 let PRECIO_NOCTURNO = false;
 let sesionVencida = false;
 let CATEGORIA_SEL = 'Todas';
+let SUBCATEGORIA_SEL = 'Todas'; // solo tiene sentido cuando CATEGORIA_SEL es un grupo
 
 function renderCatPills(){
   var cats = [];
@@ -413,9 +417,32 @@ function renderCatPills(){
   cont.innerHTML = todas.map(function(c){
     return '<div class="cat-pill'+(c===CATEGORIA_SEL?' active':'')+'" onclick="seleccionarCategoria(\''+escJs(c)+'\')">'+c+'</div>';
   }).join('');
+
+  // Si lo elegido es un grupo, agregar una segunda fila para poder ir
+  // directo a una de las categorías reales que lo componen, sin tener que
+  // scrollear toda la lista larga hasta encontrarla.
+  var subcont = document.getElementById('subcatPills');
+  var catsDelGrupo = GRUPOS_CATEGORIAS[CATEGORIA_SEL];
+  if(catsDelGrupo && catsDelGrupo.length){
+    var presentes = catsDelGrupo.filter(function(c){ return cats.indexOf(c) !== -1; }).sort();
+    var subTodas = ['Todas'].concat(presentes);
+    subcont.innerHTML = subTodas.map(function(c){
+      return '<div class="cat-pill sub-pill'+(c===SUBCATEGORIA_SEL?' active':'')+'" onclick="event.stopPropagation();seleccionarSubcategoria(\''+escJs(c)+'\')">'+c+'</div>';
+    }).join('');
+    subcont.style.display = 'flex';
+  } else {
+    subcont.style.display = 'none';
+    subcont.innerHTML = '';
+  }
 }
 function seleccionarCategoria(cat){
   CATEGORIA_SEL = cat;
+  SUBCATEGORIA_SEL = 'Todas';
+  renderCatPills();
+  renderList();
+}
+function seleccionarSubcategoria(sub){
+  SUBCATEGORIA_SEL = sub;
   renderCatPills();
   renderList();
 }
@@ -629,14 +656,20 @@ function renderList(){
   var cont = document.getElementById('listContainer');
 
   // Si lo elegido es un GRUPO (ej: "Golosinas y Chocolates"), matchea
-  // cualquier producto cuya categoría real esté adentro de ese grupo.
+  // cualquier producto cuya categoría real esté adentro de ese grupo — salvo
+  // que además se haya elegido una subcategoría puntual, ahí filtra solo esa.
   var categoriasDelGrupoSel = GRUPOS_CATEGORIAS[CATEGORIA_SEL] || null;
-  var esVistaAgrupada = CATEGORIA_SEL==='Todas' || !!categoriasDelGrupoSel;
+  var esVistaAgrupada = CATEGORIA_SEL==='Todas' || (!!categoriasDelGrupoSel && SUBCATEGORIA_SEL==='Todas');
 
   var disponibles = PRODUCTOS.filter(function(p){
     var matchTexto = !term || p.name.toLowerCase().indexOf(term) !== -1;
     var cat = p.cat || 'General';
-    var matchCat = CATEGORIA_SEL==='Todas' || cat===CATEGORIA_SEL || (categoriasDelGrupoSel && categoriasDelGrupoSel.indexOf(cat)!==-1);
+    var matchCat;
+    if(categoriasDelGrupoSel && SUBCATEGORIA_SEL!=='Todas'){
+      matchCat = cat===SUBCATEGORIA_SEL;
+    } else {
+      matchCat = CATEGORIA_SEL==='Todas' || cat===CATEGORIA_SEL || (categoriasDelGrupoSel && categoriasDelGrupoSel.indexOf(cat)!==-1);
+    }
     return matchTexto && matchCat;
   });
 
