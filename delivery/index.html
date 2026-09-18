@@ -1294,6 +1294,21 @@
     });
   };
 
+  // Grupos de categorías — solo para agrupar la navegación del catálogo web
+  // (ej: "Golosinas y Chocolates" agrupa Alfajores/Chocolates/Gomitas/etc.).
+  // No toca la categoría real de ningún producto ni afecta reportes/márgenes.
+  window.__lrDB.collection(window.__lrCOL.config).doc('gruposCategorias').onSnapshot(function(doc){
+    window.GRUPOS_CATEGORIAS = (doc.exists && doc.data().grupos && typeof doc.data().grupos==='object') ? doc.data().grupos : {};
+    window.__lrSync.gruposCategoriasListos = true;
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando grupos de categorías:', err); window.__lrSync.gruposCategoriasListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveGruposCategorias = function(grupos){
+    window.__lrDB.collection(window.__lrCOL.config).doc('gruposCategorias').set(limpiarUndefined({ grupos: grupos })).catch(function(e){
+      console.error('Error guardando grupos de categorías', e);
+    });
+  };
+
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
@@ -4819,6 +4834,7 @@ body.night-on{background:#080005}
         <button id="btnMoverCat" onclick="abrirMoverCategoria()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--gold);color:var(--black);border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">📁 Mover a categoría (0)</button>
         <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
+        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirGruposCatModal()">🗂 Agrupar (catálogo web)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">📈 Aumento masivo</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
@@ -4857,6 +4873,39 @@ body.night-on{background:#080005}
           <input type="text" id="catNuevaNombre" placeholder="Nueva categoría..." style="flex:1;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.82rem;outline:none">
           <button onclick="agregarCategoria()" style="background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px 14px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px">+ Agregar</button>
         </div>
+      </div>
+    </div>
+
+    </div>
+
+    <!-- MODAL AGRUPAR CATEGORÍAS (solo afecta la navegación del catálogo web) -->
+    <div class="prod-modal-overlay" id="gruposCatOverlay" onclick="if(event.target===this)closeGruposCatModal()">
+      <div class="prod-modal-box" style="max-width:420px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">🗂 Agrupar categorías</span>
+          <button onclick="closeGruposCatModal()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+        </div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Solo agrupa la navegación del catálogo web (el cliente ve una sola pestaña en vez de varias sueltas). No cambia la categoría real de ningún producto ni afecta reportes o márgenes.</div>
+        <div id="gruposCatList" style="max-height:320px;overflow-y:auto;margin-bottom:12px"></div>
+        <button onclick="abrirEditorGrupoCat(null)" style="width:100%;background:#3498DB;color:#fff;border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px">+ Nuevo grupo</button>
+      </div>
+    </div>
+
+    <!-- MODAL EDITAR UN GRUPO DE CATEGORÍAS -->
+    <div class="prod-modal-overlay" id="editorGrupoCatOverlay" onclick="if(event.target===this)cerrarEditorGrupoCat()">
+      <div class="prod-modal-box" style="max-width:420px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span id="editorGrupoCatTitulo" style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">Nuevo grupo</span>
+          <button onclick="cerrarEditorGrupoCat()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+        </div>
+        <div class="field">
+          <label>Nombre del grupo (así lo va a ver el cliente)</label>
+          <input type="text" id="editorGrupoCatNombre" placeholder="Ej: Golosinas y Chocolates">
+        </div>
+        <div style="font-size:.7rem;color:var(--gray);margin:10px 0 6px">Elegí qué categorías reales van adentro de este grupo:</div>
+        <div id="editorGrupoCatCheckboxes" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:12px"></div>
+        <button onclick="guardarEditorGrupoCat()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px;margin-bottom:8px">✓ Guardar grupo</button>
+        <button id="editorGrupoCatBorrar" onclick="borrarEditorGrupoCat()" style="width:100%;background:none;border:1px solid rgba(204,0,0,.4);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;display:none">🗑 Eliminar este grupo</button>
       </div>
     </div>
 
@@ -13133,6 +13182,9 @@ function toggleManualForm() {
 var SK_MANUAL_PRESETS = 'lr_manual_presets';
 function getFcmTokens() { return Array.isArray(window.__lrFcmTokensCache) ? window.__lrFcmTokensCache : []; }
 
+function getGruposCategorias() { return (window.GRUPOS_CATEGORIAS && typeof window.GRUPOS_CATEGORIAS==='object') ? window.GRUPOS_CATEGORIAS : {}; }
+function saveGruposCategorias(grupos) { window.GRUPOS_CATEGORIAS = grupos; if(window.__lrSaveGruposCategorias) window.__lrSaveGruposCategorias(grupos); }
+
 function getManualPresets() {
   return (window.__lrSync && window.__lrSync.manualPresetsListos && Array.isArray(window.__lrManualPresetsCache)) ? window.__lrManualPresetsCache : ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras'];
 }
@@ -17957,7 +18009,7 @@ function cerrarTodosLosOverlays() {
     'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
     'comboModalOverlay','comboVarOverlay','corregirCierreModal','deliveryPendModal','devolucionPrestamoModal',
     'devolucionRecibidaModal','edMasivaOverlay','editCatOverlay','efecIniModal',
-    'empMensajeOverlay','empModalOverlay','historialMensajesOverlay','ingresoModal',
+    'empMensajeOverlay','empModalOverlay','editorGrupoCatOverlay','gruposCatOverlay','historialMensajesOverlay','ingresoModal',
     'limpiezaPreviewModal','liquidezConfigModal','listaPreciosPreviewOverlay',
     'manualPresetsOverlay','mensajeProgOverlay','prestamoDadoModal','prestamoModal',
     'prodModalOverlay','provModalOverlay','repartidorOverlay','retiroModal',
@@ -18121,6 +18173,104 @@ function abrirCatModal() {
 
 function closeCatModal() {
   document.getElementById('catModalOverlay').classList.remove('open');
+}
+
+// ── AGRUPAR CATEGORÍAS (solo navegación del catálogo web) ───────────────────
+function abrirGruposCatModal() {
+  cerrarOverlaysDeCatalogo();
+  renderGruposCatList();
+  document.getElementById('gruposCatOverlay').classList.add('open');
+}
+function closeGruposCatModal() {
+  document.getElementById('gruposCatOverlay').classList.remove('open');
+}
+
+function renderGruposCatList() {
+  var el = document.getElementById('gruposCatList');
+  var grupos = getGruposCategorias();
+  var nombres = Object.keys(grupos).sort();
+  if(!nombres.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);font-size:.78rem;padding:14px">Todavía no armaste ningún grupo — las categorías se ven todas sueltas en el catálogo.</div>';
+    return;
+  }
+  el.innerHTML = nombres.map(function(nombre){
+    var cats = grupos[nombre] || [];
+    return '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer" onclick="abrirEditorGrupoCat(\''+nombre.replace(/'/g,"\\'")+'\')">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-family:Oswald,sans-serif;color:var(--white);font-size:.85rem">'+nombre+'</span>'+
+        '<span style="color:var(--gray);font-size:.7rem">✏️ '+cats.length+' categoría'+(cats.length===1?'':'s')+'</span>'+
+      '</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-top:4px">'+(cats.join(', ')||'—')+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+var _editorGrupoCatOriginal = null; // nombre original, para saber si es edición o alta, y poder borrar el viejo si se renombra
+
+function abrirEditorGrupoCat(nombreGrupo) {
+  _editorGrupoCatOriginal = nombreGrupo;
+  var grupos = getGruposCategorias();
+  var catsDelGrupo = nombreGrupo ? (grupos[nombreGrupo]||[]) : [];
+
+  document.getElementById('editorGrupoCatTitulo').textContent = nombreGrupo ? 'Editar grupo' : 'Nuevo grupo';
+  document.getElementById('editorGrupoCatNombre').value = nombreGrupo || '';
+  document.getElementById('editorGrupoCatBorrar').style.display = nombreGrupo ? 'block' : 'none';
+
+  // Categorías ya usadas en OTRO grupo — no se pueden elegir de nuevo, para
+  // que la navegación del catálogo no quede ambigua.
+  var usadasEnOtro = {};
+  Object.keys(grupos).forEach(function(g){
+    if(g === nombreGrupo) return;
+    (grupos[g]||[]).forEach(function(c){ usadasEnOtro[c] = g; });
+  });
+
+  var cont = document.getElementById('editorGrupoCatCheckboxes');
+  cont.innerHTML = (ALL_CATS||[]).slice().sort().map(function(cat){
+    var tomada = usadasEnOtro[cat];
+    var marcada = catsDelGrupo.indexOf(cat) !== -1;
+    var idChk = 'egc_'+cat.replace(/[^a-zA-Z0-9]/g,'_');
+    return '<label for="'+idChk+'" style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:.8rem;'+(tomada?'color:var(--gray);opacity:.5':'color:var(--light);cursor:pointer')+'">'+
+      '<input type="checkbox" id="'+idChk+'" value="'+cat.replace(/"/g,'&quot;')+'" '+(marcada?'checked':'')+' '+(tomada?'disabled':'')+' style="width:16px;height:16px">'+
+      cat+(tomada?' <span style="font-size:.68rem">(ya está en "'+tomada+'")</span>':'')+
+    '</label>';
+  }).join('');
+
+  document.getElementById('editorGrupoCatOverlay').classList.add('open');
+}
+
+function cerrarEditorGrupoCat() {
+  document.getElementById('editorGrupoCatOverlay').classList.remove('open');
+}
+
+function guardarEditorGrupoCat() {
+  var nombre = document.getElementById('editorGrupoCatNombre').value.trim();
+  if(!nombre){ showToast('Poné un nombre para el grupo', true); return; }
+
+  var seleccionadas = Array.from(document.querySelectorAll('#editorGrupoCatCheckboxes input[type="checkbox"]:checked')).map(function(chk){ return chk.value; });
+  if(!seleccionadas.length){ showToast('Elegí al menos una categoría para el grupo', true); return; }
+
+  var grupos = getGruposCategorias();
+  // Si se renombró, sacar la entrada vieja
+  if(_editorGrupoCatOriginal && _editorGrupoCatOriginal !== nombre) delete grupos[_editorGrupoCatOriginal];
+  grupos[nombre] = seleccionadas;
+  saveGruposCategorias(grupos);
+
+  cerrarEditorGrupoCat();
+  renderGruposCatList();
+  showToast('✅ Grupo guardado');
+}
+
+function borrarEditorGrupoCat() {
+  if(!_editorGrupoCatOriginal) return;
+  askConfirm('¿Eliminar el grupo "'+_editorGrupoCatOriginal+'"? Las categorías vuelven a verse sueltas en el catálogo.').then(function(ok){
+    if(!ok) return;
+    var grupos = getGruposCategorias();
+    delete grupos[_editorGrupoCatOriginal];
+    saveGruposCategorias(grupos);
+    cerrarEditorGrupoCat();
+    renderGruposCatList();
+    showToast('✅ Grupo eliminado');
+  });
 }
 
 // ── EDICIÓN MASIVA DE PRECIOS ───────────────────────────────────────────────
