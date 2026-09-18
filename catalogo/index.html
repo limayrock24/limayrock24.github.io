@@ -320,6 +320,7 @@ let PRODUCTOS = [];
 let PROMOS = [];
 let ITEMS_MANUALES = [];
 let COMBOS = [];
+let GRUPOS_CATEGORIAS = {}; // { "Golosinas y Chocolates": ["Alfajores","Chocolates",...], ... } — solo agrupa navegación
 let CARRITO_COMBOS = {};   // { nombreCombo: cantidad }
 let STOCK = {};
 let CARRITO = {};
@@ -398,8 +399,16 @@ function renderCatPills(){
     var c = p.cat || 'General';
     if(cats.indexOf(c) === -1) cats.push(c);
   });
-  cats.sort();
-  var todas = ['Todas'].concat(cats);
+  // Cada categoría real que esté adentro de un grupo se muestra como el
+  // nombre del grupo (una sola pestaña), no como categorías sueltas.
+  var pillsFinales = [];
+  cats.forEach(function(c){
+    var grupo = Object.keys(GRUPOS_CATEGORIAS).find(function(g){ return (GRUPOS_CATEGORIAS[g]||[]).indexOf(c) !== -1; });
+    var etiqueta = grupo || c;
+    if(pillsFinales.indexOf(etiqueta) === -1) pillsFinales.push(etiqueta);
+  });
+  pillsFinales.sort();
+  var todas = ['Todas'].concat(pillsFinales);
   var cont = document.getElementById('catPills');
   cont.innerHTML = todas.map(function(c){
     return '<div class="cat-pill'+(c===CATEGORIA_SEL?' active':'')+'" onclick="seleccionarCategoria(\''+escJs(c)+'\')">'+c+'</div>';
@@ -424,11 +433,11 @@ setTimeout(function(){
   document.getElementById('expiredScreen').classList.add('show');
 }, DURACION_SESION_MIN * 60 * 1000);
 
-let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false, itemsManualesListos = false, combosListos = false;
+let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false, itemsManualesListos = false, combosListos = false, gruposListos = false;
 
 function chequearListo(){
   if(sesionVencida) return;
-  if(deliveryListo && productosListos && stockListos && promosListos && itemsManualesListos && combosListos){
+  if(deliveryListo && productosListos && stockListos && promosListos && itemsManualesListos && combosListos && gruposListos){
     document.getElementById('loadingScreen').classList.remove('show');
     document.getElementById('mainContent').style.display = 'block';
     renderPromos();
@@ -529,6 +538,15 @@ function normalizarCombo(d){
   };
 }
 
+// Grupos de categorías — solo agrupa la navegación (pestañas), no cambia
+// la categoría real de ningún producto.
+db.collection('config').doc('gruposCategorias').onSnapshot(function(doc){
+  GRUPOS_CATEGORIAS = (doc.exists && doc.data().grupos && typeof doc.data().grupos==='object') ? doc.data().grupos : {};
+  gruposListos = true;
+  chequearListo();
+  if(document.getElementById('mainContent').style.display==='block'){ renderCatPills(); renderList(); }
+}, function(err){ console.error('Error sincronizando grupos de categorías:', err); gruposListos = true; chequearListo(); });
+
 // Fuente 1: la colección real de combos
 db.collection('combos').onSnapshot(function(snap){
   var lista = [];
@@ -610,9 +628,15 @@ function renderList(){
   var term = (document.getElementById('searchInput').value || '').toLowerCase().trim();
   var cont = document.getElementById('listContainer');
 
+  // Si lo elegido es un GRUPO (ej: "Golosinas y Chocolates"), matchea
+  // cualquier producto cuya categoría real esté adentro de ese grupo.
+  var categoriasDelGrupoSel = GRUPOS_CATEGORIAS[CATEGORIA_SEL] || null;
+  var esVistaAgrupada = CATEGORIA_SEL==='Todas' || !!categoriasDelGrupoSel;
+
   var disponibles = PRODUCTOS.filter(function(p){
     var matchTexto = !term || p.name.toLowerCase().indexOf(term) !== -1;
-    var matchCat = CATEGORIA_SEL==='Todas' || (p.cat||'General')===CATEGORIA_SEL;
+    var cat = p.cat || 'General';
+    var matchCat = CATEGORIA_SEL==='Todas' || cat===CATEGORIA_SEL || (categoriasDelGrupoSel && categoriasDelGrupoSel.indexOf(cat)!==-1);
     return matchTexto && matchCat;
   });
 
@@ -631,7 +655,7 @@ function renderList(){
 
   var html = '';
   ordenCats.forEach(function(cat){
-    if(CATEGORIA_SEL==='Todas') html += '<div class="cat-title">'+cat+'</div>';
+    if(esVistaAgrupada) html += '<div class="cat-title">'+cat+'</div>';
     porCat[cat].forEach(function(p){
       var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
