@@ -43,22 +43,25 @@
       .then(function(data){
         if(!data || !data.v) return;
         if(!_lrMiVersion){
-          _lrMiVersion = data.v;
+          _lrMiVersion = String(data.v);
           // Si el archivo que se está ejecutando quedó viejo (el navegador lo
           // sirvió de una copia guardada), recargar una sola vez para tomar el
           // actual. Es lo que hacía que apareciera la tarjeta de Lemon Cash al
           // abrir la app y desapareciera al actualizar a mano.
-          if(window.__LR_BUILD && window.__LR_BUILD !== data.v){
+          // String() en ambos lados: si version.json publica "v" como número
+          // en vez de texto, la comparación sin normalizar nunca da igual y
+          // el archivo se recarga en bucle infinito.
+          if(window.__LR_BUILD && String(window.__LR_BUILD) !== String(data.v)){
             var yaRecargo = sessionStorage.getItem('lr_recarga_version');
-            if(yaRecargo !== data.v){
-              sessionStorage.setItem('lr_recarga_version', data.v);
+            if(yaRecargo !== String(data.v)){
+              sessionStorage.setItem('lr_recarga_version', String(data.v));
               location.reload(true);
               return;
             }
           }
           return;
         }
-        if(data.v !== _lrMiVersion){
+        if(String(data.v) !== String(_lrMiVersion)){
           var banner = document.getElementById('lrActualizacionBanner');
           if(banner) banner.style.display = 'flex';
         }
