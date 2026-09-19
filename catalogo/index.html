@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1788215658";
+window.__LR_BUILD = "1789803140";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -14,11 +14,11 @@ window.__LR_BUILD = "1788215658";
       .then(function(data){
         if(!data || !data.v) return;
         if(!miVersion){
-          miVersion = data.v;
+          miVersion = String(data.v);
           // Si el archivo que se está ejecutando quedó viejo, recargar una vez
-          if(window.__LR_BUILD && window.__LR_BUILD !== data.v){
-            if(sessionStorage.getItem('lr_cat_recarga') !== data.v){
-              sessionStorage.setItem('lr_cat_recarga', data.v);
+          if(window.__LR_BUILD && String(window.__LR_BUILD) !== String(data.v)){
+            if(sessionStorage.getItem('lr_cat_recarga') !== String(data.v)){
+              sessionStorage.setItem('lr_cat_recarga', String(data.v));
               // Antes de recargar se borra lo que el navegador tenga guardado
               // de este sitio: sin esto podía volver a servir la misma copia
               // vieja y quedarse ahí indefinidamente.
@@ -35,7 +35,7 @@ window.__LR_BUILD = "1788215658";
           }
           return;
         }
-        if(data.v !== miVersion) location.reload(true);
+        if(String(data.v) !== String(miVersion)) location.reload(true);
       }).catch(function(){});
   }
   chequear();
