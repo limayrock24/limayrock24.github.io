@@ -239,6 +239,7 @@
     consumos: 'consumos',
     egresos: 'egresos',
     fiados: 'fiados',
+    consignaciones: 'consignaciones',
     delivery: 'delivery',
     prestamos: 'prestamos',
     transferCuentas: 'transferCuentas',
@@ -267,6 +268,7 @@
     consumosListos: false,
     egresosListos: false,
     fiadosListos: false,
+    consignacionesListos: false,
     deliveryListos: false,
     prestamosListos: false,
     transferCuentasListos: false,
@@ -301,6 +303,7 @@
     ultimoConsumosSnapshot: {},
     ultimoEgresosSnapshot: {},
     ultimoFiadosSnapshot: {},
+    ultimoConsignacionesSnapshot: {},
     ultimoDeliverySnapshot: {},
     ultimoPrestamosSnapshot: {},
     ultimoTransferCuentasSnapshot: {},
@@ -312,7 +315,7 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
-    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos && s.stockMovsListos){
+    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.consignacionesListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos && s.stockMovsListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
     }
@@ -1035,6 +1038,39 @@
     Object.keys(prev).forEach(function(key){
       if(!vistos[key]){
         __promesas.push(window.__lrDB.collection(window.__lrCOL.fiados).doc(key).delete());
+      }
+    });
+      return Promise.all(__promesas);
+  };
+
+  // Consignaciones (mercadería entregada para vender/usar, se cobra a precio de costo)
+  window.__lrDB.collection(window.__lrCOL.consignaciones).onSnapshot(function(snap){
+    var lista = [], mapa = {};
+    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
+    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+    window.__lrConsignacionesCache = lista;
+    window.__lrSync.ultimoConsignacionesSnapshot = mapa;
+    window.__lrSync.consignacionesListos = true;
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando consignaciones:', err); window.__lrSync.consignacionesListos = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveConsignaciones = function(lista){
+    var __promesas = [];
+    var prev = window.__lrSync.ultimoConsignacionesSnapshot || {};
+    var vistos = {};
+    lista.forEach(function(c){
+      try{
+        var key = String(c.id);
+        vistos[key] = true;
+        var antes = prev[key];
+        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
+          __promesas.push(window.__lrDB.collection(window.__lrCOL.consignaciones).doc(key).set(limpiarUndefined(c)));
+        }
+      }catch(err){ console.error('Error preparando consignación', c && c.id, err); }
+    });
+    Object.keys(prev).forEach(function(key){
+      if(!vistos[key]){
+        __promesas.push(window.__lrDB.collection(window.__lrCOL.consignaciones).doc(key).delete());
       }
     });
       return Promise.all(__promesas);
@@ -3690,6 +3726,7 @@ body.night-on{background:#080005}
          (lo que deben, los puntos que acumulan y los sorteos). -->
     <div id="subtabsClientes" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
       <button class="ftbtn" id="sc-fiados"  onclick="switchTab('fiados')">💳 Fiados</button>
+      <button class="ftbtn" id="sc-consignacion" onclick="switchTab('consignacion')">📦 Consignación</button>
       <button class="ftbtn" id="sc-puntos"  onclick="switchTab('puntos')">🏆 Puntos</button>
       <button class="ftbtn" id="sc-sorteos" onclick="switchTab('sorteos')">🎁 Sorteos</button>
     </div>
@@ -3721,6 +3758,13 @@ body.night-on{background:#080005}
         <button class="ftbtn" id="ft-Diurno" onclick="selFiltroTurno('Diurno')">☀️ Diurno</button>
         <button class="ftbtn nocturno" id="ft-Nocturno" onclick="selFiltroTurno('Nocturno')">🌙 Nocturno</button>
       </div>
+      <!-- ATAJOS DE PERÍODO: mismo Hoy/Esta semana/Este mes que Egresos y
+           Rentabilidad, para no tener que armar el rango a mano cada vez. -->
+      <div class="rent-period" style="margin-top:4px">
+        <button class="rent-period-btn active" id="vp-hoy" onclick="selVentasPeriodo('hoy')">Hoy</button>
+        <button class="rent-period-btn" id="vp-semana" onclick="selVentasPeriodo('semana')">Esta semana</button>
+        <button class="rent-period-btn" id="vp-mes" onclick="selVentasPeriodo('mes')">Este mes</button>
+      </div>
       <!-- FILTRO RANGO VENTAS -->
       <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:2px">
         <label style="display:inline-flex;align-items:center;gap:5px;font-size:.7rem;color:var(--gray);cursor:pointer">
@@ -3729,9 +3773,9 @@ body.night-on{background:#080005}
       </div>
       <div id="ventasRangoBar" style="display:none;align-items:center;gap:6px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;flex-wrap:wrap">
         <span style="font-size:.7rem;color:var(--gray);font-family:Oswald,sans-serif">Desde:</span>
-        <input type="date" id="ventasDesde" onchange="renderVentas()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+        <input type="date" id="ventasDesde" onchange="onVentasRangoManualChange()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
         <span style="color:var(--gray)">→</span>
-        <input type="date" id="ventasHasta" onchange="renderVentas()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+        <input type="date" id="ventasHasta" onchange="onVentasRangoManualChange()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 8px;font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
         <button onclick="clearVentasRango()" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:4px 8px;font-size:.7rem;cursor:pointer">✕ Limpiar</button>
       </div>
 
@@ -4426,6 +4470,19 @@ body.night-on{background:#080005}
       </div>
     </div>
 
+    <!-- CONSIGNACIÓN: mercadería entregada a alguien que paga después, solo lo
+         que realmente usó, a precio de costo — y devuelve el resto. -->
+    <div class="tab-pane" id="pane-consignacion">
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:6px;text-transform:uppercase">📦 Consignación</div>
+      <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Mercadería que le diste a alguien para que use o venda: se descuenta del stock al entregarla, se cobra a precio de costo (no de venta), y lo que devuelva en buen estado vuelve al stock y baja lo que debe.</div>
+      <div class="cc-total-badge" id="consigTotalBadge">
+        <span class="cl">Total pendiente de cobro</span>
+        <span class="cv" id="consigTotalMonto">$ 0</span>
+      </div>
+      <button onclick="abrirConsignModal()" style="width:100%;background:var(--gold);color:var(--black);border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;cursor:pointer;letter-spacing:1px;margin-bottom:12px">+ Nueva consignación</button>
+      <div id="consigGrid"></div>
+    </div>
+
     <!-- CENTRO DE PUNTOS -->
     <div class="tab-pane" id="pane-puntos">
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:6px;text-transform:uppercase">🏆 Centro de Puntos — clientes fidelizados</div>
@@ -4498,6 +4555,7 @@ body.night-on{background:#080005}
           <option value="venta">Venta</option>
           <option value="consumo">Consumo</option>
           <option value="fiados">Fiados (todos)</option>
+          <option value="consignaciones">Consignación (todo)</option>
           <option value="retiro">Retiro de caja</option>
           <option value="ingreso-caja">Ingreso de caja</option>
           <option value="carga-virtual">Carga virtual</option><option value="cambio-efectivo">Cambio de efectivo</option><option value="prestamo">Préstamo</option><option value="transfer-cuentas">Entre cuentas</option>
@@ -5407,7 +5465,77 @@ body.night-on{background:#080005}
   </div>
 </div>
 
+<!-- NUEVA CONSIGNACIÓN: elegir cliente, motivo y los productos que se llevó -->
+<div class="prod-modal-overlay" id="consignModalOverlay" onclick="if(event.target===this)cerrarConsignModal()">
+  <div class="prod-modal-box" style="max-width:460px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">📦 Nueva consignación</span>
+      <button onclick="cerrarConsignModal()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+    </div>
+    <div class="field">
+      <label>Nombre (a quién se le da)</label>
+      <input type="text" id="consigCliente" placeholder="Ej: Gaspi">
+    </div>
+    <div class="field" style="margin-top:8px">
+      <label>Motivo (opcional)</label>
+      <input type="text" id="consigMotivo" placeholder="Ej: cumpleaños del hijo">
+    </div>
+    <div style="font-size:.7rem;color:var(--gray);margin:12px 0 6px">Buscar producto para agregar:</div>
+    <input type="text" id="consigBuscar" placeholder="Escribí el nombre del producto..." autocomplete="off" oninput="buscarProdConsign(this.value)" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px 12px;color:var(--white);font-size:.85rem;outline:none;box-sizing:border-box">
+    <div id="consigResultados" style="max-height:150px;overflow-y:auto;margin-top:4px"></div>
+    <div style="font-size:.7rem;color:var(--gray);margin:12px 0 6px">Productos seleccionados:</div>
+    <div id="consigSelList" style="border:1px solid var(--border);border-radius:5px;min-height:40px;margin-bottom:10px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-family:Oswald,sans-serif;font-size:.85rem;margin-bottom:12px">
+      <span style="color:var(--gray);letter-spacing:1px;text-transform:uppercase;font-size:.68rem">Total a costo</span>
+      <span id="consigTotalPreview" style="color:var(--gold)">$ 0</span>
+    </div>
+    <button onclick="guardarConsignacion()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;cursor:pointer;letter-spacing:1px">✓ Guardar consignación</button>
+  </div>
+</div>
 
+<!-- COBRAR CONSIGNACIÓN (mismo esquema que el cobro de fiados) -->
+<div class="cobro-overlay" id="consignCobroOverlay">
+  <div class="cobro-box">
+    <h3>Cobrar consignación</h3>
+    <div class="cobro-cliente" id="consignCobroClienteNombre"></div>
+    <div class="cobro-deuda" id="consignCobroDeudaBox"><div class="dl">Deuda total (a costo)</div><div class="dv" id="consignCobroDeudaTotal">$0</div></div>
+    <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--gray);margin-bottom:8px">¿Cuánto paga?</div>
+    <div class="cobro-tipo-btns">
+      <div class="cobro-tipo-btn active" id="consignCobro-total" onclick="selCobroTipoConsig('total')">✓ Pago total</div>
+      <div class="cobro-tipo-btn" id="consignCobro-parcial" onclick="selCobroTipoConsig('parcial')">Pago parcial</div>
+    </div>
+    <div class="cobro-monto-parcial" id="consignCobroMontoParcialDiv">
+      <label style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:6px">Monto que paga ($)</label>
+      <input type="text" inputmode="numeric" id="consignCobroMontoParcial" placeholder="0"
+        style="width:100%;background:var(--dark);border:1.5px solid var(--gold);border-radius:3px;padding:9px 12px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1.1rem;outline:none"
+        oninput="formatMontoInput(this);actualizarResumoCobroConsig()">
+    </div>
+    <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Medio de pago</div>
+    <div class="cobro-medio-btns">
+      <div class="cobro-medio-btn" id="consignCobrom-Efectivo" onclick="selCobroMedioConsig('Efectivo')">💵 Efectivo</div>
+      <div class="cobro-medio-btn" id="consignCobrom-Transferencia" onclick="selCobroMedioConsig('Transferencia')">📲 Transfer.</div>
+      <div class="cobro-medio-btn" id="consignCobrom-Débito" onclick="selCobroMedioConsig('Débito')">💳 Posnet</div>
+    </div>
+    <div class="cobro-resumen" id="consignCobroResumen">Seleccioná el medio de pago</div>
+    <div class="cobro-acciones">
+      <button class="cobro-cancel" onclick="closeConsignCobroOverlay()">Cancelar</button>
+      <button class="cobro-confirm" id="consignCobroConfirmBtn" onclick="confirmarCobroConsignacion()" disabled>✓ Confirmar cobro</button>
+    </div>
+  </div>
+</div>
+
+<!-- DEVOLUCIÓN DE CONSIGNACIÓN: qué volvió en buen estado -->
+<div class="prod-modal-overlay" id="consignDevolOverlay" onclick="if(event.target===this)cerrarDevolucionConsign()">
+  <div class="prod-modal-box" style="max-width:420px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">↩ Devolución</span>
+      <button onclick="cerrarDevolucionConsign()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Marcá cuánto volvió <b>en buen estado</b> de cada producto (vuelve al stock y se descuenta de lo que debe). Lo dañado o consumido no se marca acá — ya forma parte de lo que se le cobra.</div>
+    <div id="consignDevolItems"></div>
+    <button onclick="confirmarDevolucionConsign()" style="width:100%;background:#3498DB;color:#fff;border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px;margin-top:10px">✓ Confirmar devolución</button>
+  </div>
+</div>
 
 <!-- PIN RECEPCIÓN OVERLAY -->
 <div class="recep-pin-overlay" id="recepPinOverlay">
@@ -7605,7 +7733,7 @@ function abrirAdminSinTurno() {
 }
 function switchTab(tab) {
   cerrarTodosLosOverlays();
-  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','codigos','delivery','mensajes'];
+  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     // El botón de la sección Productos se maneja aparte: tiene que quedar
@@ -7639,7 +7767,7 @@ function switchTab(tab) {
   if(btnGrupo) btnGrupo.classList.toggle('active', esProductos);
 
   // Sección Clientes: lo que deben, los puntos que acumulan y los sorteos.
-  var pantallasClientes = ['fiados','puntos','sorteos'];
+  var pantallasClientes = ['fiados','consignacion','puntos','sorteos'];
   var esClientes = pantallasClientes.indexOf(tab) !== -1;
 
   var subC = document.getElementById('subtabsClientes');
@@ -7700,6 +7828,7 @@ function switchTab(tab) {
   if(tab==='consumos') renderConsumosEmp();
   if(tab==='auditoria') initAuditoria();
   if(tab==='fiados') renderFiados();
+  if(tab==='consignacion') renderConsignaciones();
   if(tab==='puntos') renderPuntos();
   if(tab==='sorteos') renderSorteos();
   if(tab==='movimientos') initMovimientos();
@@ -7753,6 +7882,39 @@ function selFiltroTurno(t) {
 }
 
 var _ventasRangoActivo = false;
+var _ventasPeriodoActivo = 'hoy'; // '' | 'hoy' | 'semana' | 'mes' — atajo de período elegido
+
+function marcarVentasPeriodoBtn(p) {
+  _ventasPeriodoActivo = p;
+  ['hoy','semana','mes'].forEach(function(k){
+    var b = document.getElementById('vp-'+k);
+    if(b) b.classList.toggle('active', k===p);
+  });
+}
+
+// Atajo Hoy / Esta semana / Este mes: arma el rango automáticamente, igual
+// que en Egresos y Rentabilidad, sin tener que tocar las fechas a mano.
+function selVentasPeriodo(p) {
+  var r = getFechasRango(p);
+  function fmt2(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+  _ventasRangoActivo = true;
+  var cb = document.getElementById('ventasRangoCheck'); if(cb) cb.checked = true;
+  var bar = document.getElementById('ventasRangoBar'); if(bar) bar.style.display = 'flex';
+  var d = document.getElementById('ventasDesde'); if(d) d.value = fmt2(r.desde);
+  var h = document.getElementById('ventasHasta'); if(h) h.value = fmt2(r.hasta);
+  var fechaSel = document.getElementById('fechaFiltro'); if(fechaSel) fechaSel.disabled = true;
+
+  marcarVentasPeriodoBtn(p);
+  renderVentas();
+}
+
+// Si el usuario toca las fechas del rango a mano, ya no es "Hoy/Semana/Mes"
+// sino un rango personalizado — se apaga el resaltado de los atajos.
+function onVentasRangoManualChange() {
+  marcarVentasPeriodoBtn('');
+  renderVentas();
+}
 
 function toggleVentasRango() {
   var cb = document.getElementById('ventasRangoCheck');
@@ -7761,6 +7923,13 @@ function toggleVentasRango() {
   if(bar) bar.style.display = _ventasRangoActivo ? 'flex' : 'none';
   var fechaSel = document.getElementById('fechaFiltro');
   if(fechaSel) fechaSel.disabled = _ventasRangoActivo;
+  if(_ventasRangoActivo) {
+    // Al tildar el checkbox a mano arranca vacío, para que el dueño arme su
+    // propio rango sin que quede pisado por un atajo anterior.
+    marcarVentasPeriodoBtn('');
+  } else {
+    marcarVentasPeriodoBtn('hoy');
+  }
   renderVentas();
 }
 
@@ -7770,6 +7939,11 @@ function onFechaFiltroChange() {
   if(cb) cb.checked = false;
   var bar = document.getElementById('ventasRangoBar');
   if(bar) bar.style.display = 'none';
+  // Si la fecha puntual elegida es la de hoy, el atajo "Hoy" sigue siendo
+  // válido visualmente; cualquier otra fecha apaga los tres atajos.
+  var fechaSel = document.getElementById('fechaFiltro');
+  var esHoy = !fechaSel || !fechaSel.value || fechaSel.value === fechaLocalStr(new Date());
+  marcarVentasPeriodoBtn(esHoy ? 'hoy' : '');
   renderVentas();
 }
 
@@ -7782,6 +7956,7 @@ function clearVentasRango() {
   var d = document.getElementById('ventasDesde'); if(d) d.value='';
   var h = document.getElementById('ventasHasta'); if(h) h.value='';
   var f = document.getElementById('fechaFiltro'); if(f){ f.disabled=false; f.value=''; }
+  marcarVentasPeriodoBtn('hoy');
   renderVentas();
 }
 
@@ -13490,6 +13665,14 @@ var SK_FIADOS = 'lr_fiados';
 function getFiados() { return (window.__lrSync && window.__lrSync.fiadosListos && Array.isArray(window.__lrFiadosCache)) ? window.__lrFiadosCache : []; }
 function saveFiados(f) { window.__lrFiadosCache = f; if(window.__lrSaveFiados) window.__lrSaveFiados(f); }
 
+function getConsignaciones() { return (window.__lrSync && window.__lrSync.consignacionesListos && Array.isArray(window.__lrConsignacionesCache)) ? window.__lrConsignacionesCache : []; }
+function saveConsignaciones(c) { window.__lrConsignacionesCache = c; if(window.__lrSaveConsignaciones) window.__lrSaveConsignaciones(c); }
+// Saldo pendiente de una consignación: lo que costó, menos lo ya cobrado y
+// menos lo devuelto en buen estado (eso último ya no se le puede cobrar).
+function saldoConsignacion(c){
+  return Math.max(0, (c.totalCosto||0) - (c.totalAbonado||0) - (c.totalDevuelto||0));
+}
+
 // ── CENTRO DE PUNTOS (fidelización por DNI) ─────────────────────────────────
 var SK_CLIENTES = 'lr_clientes';
 var PUNTOS_POR_PESO = 1000; // cada $1000 gastados = 1 punto
@@ -15082,17 +15265,20 @@ function toggleMovDet(id) {
 
 var MOV_ICONOS = {
   ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️',
-  'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱'
+  'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱',
+  'consignacion': '📦', 'cobro-consignacion': '✅', 'devolucion-consignacion': '↩'
 };
 var MOV_COLORES = {
   ingreso: 'var(--green)', venta: 'var(--green)', consumo: 'var(--red)',
   fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6', 'ajuste-stock': 'var(--gold)', 'baja-stock': 'var(--red)',
-  'cobro-fiado': 'var(--green)', 'fiado-parcial': '#E67E22', 'cambio-efectivo': '#16A085'
+  'cobro-fiado': 'var(--green)', 'fiado-parcial': '#E67E22', 'cambio-efectivo': '#16A085',
+  'consignacion': 'var(--gold)', 'cobro-consignacion': 'var(--green)', 'devolucion-consignacion': '#3498DB'
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
   fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)',
-  'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo'
+  'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo',
+  'consignacion': 'Consignación', 'cobro-consignacion': 'Cobro de consignación', 'devolucion-consignacion': 'Devolución de consignación'
 };
 
 // Períodos del historial de movimientos. Misma lógica y mismos nombres que
@@ -15173,6 +15359,7 @@ function renderMovimientos() {
     var coincideTipo;
     if(!tipoFil) coincideTipo = true;
     else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
+    else if(tipoFil === 'consignaciones') coincideTipo = (m.tipo==='consignacion' || m.tipo==='cobro-consignacion' || m.tipo==='devolucion-consignacion');
     else coincideTipo = (m.tipo === tipoFil);
     return coincideTipo && f >= desdeDate && f <= hastaDate;
   }).slice().reverse();
@@ -17534,6 +17721,377 @@ function confirmarCobroFiado() {
 }
 
 
+// ── CONSIGNACIÓN ─────────────────────────────────────────────────────────
+// Mercadería que se le da a alguien (no es una venta) para que use o venda:
+// se descuenta del stock al entregarla, se le cobra solo lo que consumió a
+// PRECIO DE COSTO (no de venta), y lo que devuelva en buen estado vuelve al
+// stock y baja lo que debe. Mismo mecanismo de pago parcial que los fiados,
+// pero en colección propia porque el precio y el flujo son distintos.
+
+function renderConsignaciones() {
+  var lista = getConsignaciones();
+  var grid  = document.getElementById('consigGrid');
+  var totalEl = document.getElementById('consigTotalMonto');
+  if(!grid) return;
+
+  var totalPend = lista.reduce(function(s,c){ return s + saldoConsignacion(c); }, 0);
+  if(totalEl) totalEl.textContent = fmt(totalPend);
+
+  if(!lista.length){
+    grid.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.82rem">Sin consignaciones registradas ✓</div>';
+    return;
+  }
+
+  var ordenadas = lista.slice().sort(function(a,b){ return (b.id||0)-(a.id||0); });
+  grid.innerHTML = ordenadas.map(function(c){
+    var saldo = saldoConsignacion(c);
+    var fecha = new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+    var prods = (c.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
+    var idDet = 'consigDet_'+c.id;
+    var abonosHtml = (c.abonos||[]).map(function(a){
+      return '<div class="cc-mov-row"><span class="cc-mov-fecha">'+new Date(a.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+'</span><span class="cc-mov-prods">Pago '+a.medio+'</span><span class="cc-mov-monto">'+fmt(a.monto)+'</span></div>';
+    }).join('');
+    var devolHtml = (c.devoluciones||[]).map(function(d){
+      var dp = (d.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
+      return '<div class="cc-mov-row"><span class="cc-mov-fecha">'+new Date(d.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+'</span><span class="cc-mov-prods">↩ Devolvió: '+dp+'</span><span class="cc-mov-monto">-'+fmt(d.monto)+'</span></div>';
+    }).join('');
+
+    return '<div class="cc-card">'+
+      '<div class="cc-header" onclick="toggleFiadoDetalle(\''+idDet+'\')" style="cursor:pointer">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div class="cc-nombre">📦 '+c.cliente+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray);margin-top:1px">'+fecha+(c.motivo?' · '+c.motivo:'')+'</div>'+
+        '</div>'+
+        '<div class="cc-deuda '+(saldo<=0?'saldada':'')+'">'+(saldo>0?fmt(saldo):'✓ Saldada')+'</div>'+
+        '<span id="'+idDet+'_flecha" style="color:var(--gray);font-size:.8rem;flex-shrink:0">▼</span>'+
+      '</div>'+
+      '<div id="'+idDet+'" style="display:none;padding:0 16px 14px">'+
+        '<div style="font-size:.72rem;color:var(--light);margin-bottom:8px"><b>Se llevó:</b> '+prods+' — total a costo '+fmt(c.totalCosto||0)+'</div>'+
+        (abonosHtml||devolHtml ? '<div class="cc-movs">'+abonosHtml+devolHtml+'</div>' : '')+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">'+
+          (saldo>0
+            ? '<button class="cc-saldar-btn" style="flex:1;margin:0;min-width:110px" onclick="event.stopPropagation();abrirCobroConsignacion('+c.id+')">💳 Cobrar</button>'
+            : '<div style="flex:1;font-size:.72rem;color:var(--green);text-align:center">✓ Sin saldo pendiente</div>')+
+          '<button onclick="event.stopPropagation();abrirDevolucionConsign('+c.id+')" style="background:none;border:1px solid #3498DB;color:#3498DB;border-radius:4px;padding:8px 11px;font-size:.64rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px;white-space:nowrap">↩ Devolución</button>'+
+          '<button onclick="event.stopPropagation();eliminarConsignacion('+c.id+')" style="background:none;border:1px solid rgba(204,0,0,.3);color:rgba(204,0,0,.6);border-radius:4px;padding:8px 11px;font-size:.64rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px;white-space:nowrap">🗑 Eliminar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+var _consigSel = []; // productos elegidos en el modal de nueva consignación: {name, qty, costo}
+
+function abrirConsignModal() {
+  _consigSel = [];
+  document.getElementById('consigCliente').value = '';
+  document.getElementById('consigMotivo').value = '';
+  document.getElementById('consigBuscar').value = '';
+  document.getElementById('consigResultados').innerHTML = '';
+  renderConsigSelList();
+  document.getElementById('consignModalOverlay').classList.add('open');
+}
+function cerrarConsignModal() {
+  document.getElementById('consignModalOverlay').classList.remove('open');
+}
+
+function buscarProdConsign(term) {
+  var box = document.getElementById('consigResultados');
+  term = (term||'').trim().toLowerCase();
+  if(!term){ box.innerHTML=''; return; }
+  var encontrados = PRODUCTS.filter(function(p){ return p.name.toLowerCase().indexOf(term)!==-1; }).slice(0,8);
+  if(!encontrados.length){ box.innerHTML = '<div style="padding:8px;color:var(--gray);font-size:.75rem">Sin resultados</div>'; return; }
+  box.innerHTML = encontrados.map(function(p){
+    var inv = getStockInv();
+    var stock = inv[p.name] ? inv[p.name].stock : 0;
+    return '<div onclick="agregarProdConsign(\''+escJs(p.name)+'\')" style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;font-size:.78rem">'+
+      '<span>'+p.name+'</span><span style="color:var(--gray)">stock '+stock+' · costo '+(p.costo?fmt(p.costo):'—')+'</span></div>';
+  }).join('');
+}
+
+function agregarProdConsign(nombre) {
+  var p = PRODUCTS.find(function(x){ return x.name===nombre; });
+  if(!p) return;
+  var existente = _consigSel.find(function(i){ return i.name===nombre; });
+  if(existente){ existente.qty++; }
+  else { _consigSel.push({ name: nombre, qty: 1, costo: p.costo||0 }); }
+  document.getElementById('consigBuscar').value = '';
+  document.getElementById('consigResultados').innerHTML = '';
+  renderConsigSelList();
+}
+
+function cambiarQtyConsignSel(idx, delta) {
+  if(!_consigSel[idx]) return;
+  _consigSel[idx].qty = Math.max(1, (_consigSel[idx].qty||1) + delta);
+  renderConsigSelList();
+}
+function quitarProdConsignSel(idx) {
+  _consigSel.splice(idx,1);
+  renderConsigSelList();
+}
+
+function renderConsigSelList() {
+  var box = document.getElementById('consigSelList');
+  var totalEl = document.getElementById('consigTotalPreview');
+  if(!_consigSel.length){
+    box.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.75rem">Todavía no agregaste productos</div>';
+    if(totalEl) totalEl.textContent = fmt(0);
+    return;
+  }
+  var total = 0;
+  box.innerHTML = _consigSel.map(function(i,idx){
+    var sub = (i.costo||0)*i.qty;
+    total += sub;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:.78rem">'+
+      '<span style="flex:1;min-width:0">'+i.name+(i.costo?'':' <span style="color:var(--red)">(sin costo cargado)</span>')+'</span>'+
+      '<button onclick="cambiarQtyConsignSel('+idx+',-1)" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:3px;width:24px;height:24px;cursor:pointer">-</button>'+
+      '<span style="min-width:18px;text-align:center">'+i.qty+'</span>'+
+      '<button onclick="cambiarQtyConsignSel('+idx+',1)" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:3px;width:24px;height:24px;cursor:pointer">+</button>'+
+      '<span style="min-width:60px;text-align:right;color:var(--gold)">'+fmt(sub)+'</span>'+
+      '<button onclick="quitarProdConsignSel('+idx+')" style="background:none;border:none;color:var(--red);font-size:1rem;cursor:pointer">✕</button>'+
+    '</div>';
+  }).join('');
+  if(totalEl) totalEl.textContent = fmt(total);
+}
+
+function guardarConsignacion() {
+  var cliente = document.getElementById('consigCliente').value.trim();
+  var motivo  = document.getElementById('consigMotivo').value.trim();
+  if(!cliente){ showToast('Escribí a quién se le da', true); return; }
+  if(!_consigSel.length){ showToast('Agregá al menos un producto', true); return; }
+
+  var itemsCopia = _consigSel.map(function(i){ return { name:i.name, qty:i.qty, costo:i.costo||0, subtotal:(i.costo||0)*i.qty }; });
+  var totalCosto = itemsCopia.reduce(function(s,i){ return s+i.subtotal; }, 0);
+
+  var consignaciones = getConsignaciones();
+  var nueva = {
+    id: Date.now(),
+    fecha: new Date().toISOString(),
+    cliente: cliente,
+    motivo: motivo,
+    empleado: currentEmp ? currentEmp.nombre : 'Admin',
+    turno: turnoActual(),
+    items: itemsCopia,
+    totalCosto: totalCosto,
+    totalAbonado: 0,
+    totalDevuelto: 0,
+    abonos: [],
+    devoluciones: [],
+    pagado: false,
+    fechaPago: null
+  };
+  consignaciones.push(nueva);
+  saveConsignaciones(consignaciones);
+
+  // El stock se descuenta apenas se entrega, igual que un fiado.
+  descontarStock(itemsCopia, 'consignacion');
+  updateProdCount(itemsCopia);
+  registrarOperacion('consignacion', itemsCopia, totalCosto, currentEmp?currentEmp.nombre:'Admin', 'Consignación a '+cliente+(motivo?' — '+motivo:''));
+
+  cerrarConsignModal();
+  renderConsignaciones();
+  showToast('✅ Consignación registrada — '+cliente+' se llevó '+fmt(totalCosto)+' a costo');
+}
+
+function eliminarConsignacion(id) {
+  var consignaciones = getConsignaciones();
+  var c = consignaciones.find(function(x){ return x.id===id; });
+  if(!c) return;
+  askConfirm('¿Eliminar esta consignación de "'+c.cliente+'"? Esta acción no se puede deshacer (no repone stock automáticamente).').then(function(ok){
+    if(!ok) return;
+    saveConsignaciones(consignaciones.filter(function(x){ return x.id!==id; }));
+    renderConsignaciones();
+    showToast('Consignación eliminada');
+  });
+}
+
+// ── Cobro de consignación (mismo esquema que cobro de fiado) ───────────────
+var _consignCobroId    = null;
+var _consignCobroTipo  = 'total';
+var _consignCobroMedio = null;
+
+function abrirCobroConsignacion(id) {
+  _consignCobroId   = id;
+  _consignCobroTipo = 'total';
+  _consignCobroMedio= null;
+  var c = getConsignaciones().find(function(x){ return x.id===id; });
+  if(!c) return;
+  var saldo = saldoConsignacion(c);
+
+  document.getElementById('consignCobroClienteNombre').textContent = 'Cliente: '+c.cliente;
+  document.getElementById('consignCobroDeudaTotal').textContent = fmt(saldo);
+
+  selCobroTipoConsig('total');
+  ['Efectivo','Transferencia','Débito'].forEach(function(m){
+    var btn=document.getElementById('consignCobrom-'+m);
+    if(btn) btn.classList.remove('active');
+  });
+  document.getElementById('consignCobroMontoParcial').value='';
+  document.getElementById('consignCobroResumen').textContent='Seleccioná el medio de pago';
+  document.getElementById('consignCobroConfirmBtn').disabled=true;
+
+  document.getElementById('consignCobroOverlay').classList.add('open');
+}
+function closeConsignCobroOverlay() {
+  document.getElementById('consignCobroOverlay').classList.remove('open');
+  _consignCobroId=null; _consignCobroTipo='total'; _consignCobroMedio=null;
+}
+function selCobroTipoConsig(tipo) {
+  _consignCobroTipo = tipo;
+  ['total','parcial'].forEach(function(t){
+    var btn=document.getElementById('consignCobro-'+t);
+    if(btn) btn.classList.toggle('active', t===tipo);
+  });
+  var parcialDiv = document.getElementById('consignCobroMontoParcialDiv');
+  if(parcialDiv) parcialDiv.classList.toggle('show', tipo==='parcial');
+  actualizarResumoCobroConsig();
+}
+function selCobroMedioConsig(medio) {
+  _consignCobroMedio = medio;
+  ['Efectivo','Transferencia','Débito'].forEach(function(m){
+    var btn=document.getElementById('consignCobrom-'+m);
+    if(btn) btn.classList.toggle('active', m===medio);
+  });
+  actualizarResumoCobroConsig();
+}
+function actualizarResumoCobroConsig() {
+  if(!_consignCobroId) return;
+  var c = getConsignaciones().find(function(x){ return x.id===_consignCobroId; });
+  if(!c) return;
+  var deuda = saldoConsignacion(c);
+  var monto = _consignCobroTipo==='total' ? deuda : getMontoInputValue('consignCobroMontoParcial');
+  var resumenEl = document.getElementById('consignCobroResumen');
+  var confirmEl = document.getElementById('consignCobroConfirmBtn');
+
+  if(!_consignCobroMedio){ resumenEl.textContent='Seleccioná el medio de pago'; confirmEl.disabled=true; return; }
+  if(_consignCobroTipo==='parcial' && monto<=0){ resumenEl.textContent='Ingresá el monto a cobrar'; confirmEl.disabled=true; return; }
+  if(_consignCobroTipo==='parcial' && monto>deuda){ resumenEl.innerHTML='<span style="color:var(--red)">El monto supera la deuda ('+fmt(deuda)+')</span>'; confirmEl.disabled=true; return; }
+
+  var recargo = _consignCobroMedio==='Débito' ? Math.round(monto*(getDebitoPct()/100)) : 0;
+  var total = monto + recargo;
+  resumenEl.innerHTML = 'Cobrás <span>'+fmt(monto)+'</span> en <span>'+_consignCobroMedio+'</span>'+
+    (recargo>0?' + posnet <span>'+fmt(recargo)+'</span> = total <span>'+fmt(total)+'</span>':'')+
+    (_consignCobroTipo==='parcial'?' · Queda pendiente <span>'+fmt(deuda-monto)+'</span>':'· Deuda saldada ✓');
+  confirmEl.disabled=false;
+}
+function confirmarCobroConsignacion() {
+  if(!_consignCobroId||!_consignCobroMedio) return;
+  var consignaciones = getConsignaciones();
+  var c = consignaciones.find(function(x){ return x.id===_consignCobroId; });
+  if(!c) return;
+  var deuda = saldoConsignacion(c);
+  var monto = _consignCobroTipo==='total' ? deuda : getMontoInputValue('consignCobroMontoParcial');
+  var recargo = _consignCobroMedio==='Débito' ? Math.round(monto*(getDebitoPct()/100)) : 0;
+  var totalCobrado = monto + recargo;
+
+  if(!c.abonos) c.abonos=[];
+  c.abonos.push({ fecha: new Date().toISOString(), monto: monto, medio: _consignCobroMedio });
+  c.totalAbonado = (c.totalAbonado||0) + monto;
+  if(saldoConsignacion(c) <= 0){ c.pagado=true; c.fechaPago=new Date().toISOString(); }
+  saveConsignaciones(consignaciones);
+
+  // Esto SÍ es plata que entra de verdad — se registra como venta normal
+  // para que entre en la caja/liquidez del día en que se cobra.
+  VENTAS = getVentas();
+  var ventaConsig = {
+    id: Date.now(),
+    fecha: new Date().toISOString(),
+    empleado: currentEmp?currentEmp.nombre:'Admin',
+    turno: turnoActual(),
+    medio: _consignCobroMedio,
+    subtotal: monto,
+    recargo: recargo,
+    total: totalCobrado,
+    items: c.items.map(function(i){ return { name:i.name, qty:i.qty, precio:i.costo, subtotal:i.subtotal }; }),
+    esConsignacion: true,
+    cliente: c.cliente,
+    nota: (_consignCobroTipo==='total'?'Cobro total':'Cobro parcial')+' de consignación — '+c.cliente,
+    anulada: false
+  };
+  VENTAS.push(ventaConsig);
+  saveVentas(VENTAS);
+  autoSaveNow();
+  registrarOperacion('cobro-consignacion', ventaConsig.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _consignCobroMedio+' — '+c.cliente);
+
+  closeConsignCobroOverlay();
+  renderConsignaciones();
+  if(typeof renderDashboard === 'function') renderDashboard();
+  showToast('✅ Cobrado '+fmt(totalCobrado)+' de '+c.cliente+' en '+_consignCobroMedio);
+}
+
+// ── Devolución de consignación ──────────────────────────────────────────
+var _consignDevolId = null;
+
+function abrirDevolucionConsign(id) {
+  _consignDevolId = id;
+  var c = getConsignaciones().find(function(x){ return x.id===id; });
+  if(!c) return;
+  var box = document.getElementById('consignDevolItems');
+
+  // Cuánto ya volvió de cada producto, para no dejar devolver de más.
+  var yaVuelto = {};
+  (c.devoluciones||[]).forEach(function(d){
+    (d.items||[]).forEach(function(i){ yaVuelto[i.name] = (yaVuelto[i.name]||0) + i.qty; });
+  });
+
+  box.innerHTML = c.items.map(function(i, idx){
+    var disponible = i.qty - (yaVuelto[i.name]||0);
+    if(disponible<=0) return '';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.8rem">'+
+      '<span style="flex:1">'+i.name+' <span style="color:var(--gray)">(se llevó '+i.qty+', disponible '+disponible+')</span></span>'+
+      '<input type="number" min="0" max="'+disponible+'" value="0" id="consignDevolQty_'+idx+'" data-name="'+escJs(i.name)+'" data-costo="'+(i.costo||0)+'" style="width:56px;background:var(--dark);border:1px solid var(--border);border-radius:3px;color:var(--white);padding:5px;text-align:center">'+
+    '</div>';
+  }).join('');
+
+  if(!box.innerHTML.trim()) box.innerHTML = '<div style="padding:10px;text-align:center;color:var(--gray);font-size:.75rem">No queda nada disponible para devolver</div>';
+
+  document.getElementById('consignDevolOverlay').classList.add('open');
+}
+function cerrarDevolucionConsign() {
+  document.getElementById('consignDevolOverlay').classList.remove('open');
+  _consignDevolId = null;
+}
+function confirmarDevolucionConsign() {
+  if(!_consignDevolId) return;
+  var consignaciones = getConsignaciones();
+  var c = consignaciones.find(function(x){ return x.id===_consignDevolId; });
+  if(!c) return;
+
+  var box = document.getElementById('consignDevolItems');
+  var inputs = box.querySelectorAll('input[type="number"]');
+  var itemsDevueltos = [];
+  var montoTotal = 0;
+  inputs.forEach(function(inp){
+    var qty = parseInt(inp.value)||0;
+    if(qty<=0) return;
+    var name  = inp.dataset.name;
+    var costo = parseFloat(inp.dataset.costo)||0;
+    itemsDevueltos.push({ name: name, qty: qty, costo: costo, subtotal: costo*qty });
+    montoTotal += costo*qty;
+  });
+  if(!itemsDevueltos.length){ showToast('Marcá alguna cantidad devuelta', true); return; }
+
+  if(!c.devoluciones) c.devoluciones=[];
+  c.devoluciones.push({ fecha: new Date().toISOString(), items: itemsDevueltos, monto: montoTotal });
+  c.totalDevuelto = (c.totalDevuelto||0) + montoTotal;
+  if(saldoConsignacion(c) <= 0){ c.pagado=true; c.fechaPago = c.fechaPago || new Date().toISOString(); }
+  saveConsignaciones(consignaciones);
+
+  // Lo devuelto en buen estado vuelve al stock real.
+  var inv = getStockInv();
+  itemsDevueltos.forEach(function(i){
+    if(inv[i.name]) inv[i.name].stock = (inv[i.name].stock||0) + i.qty;
+  });
+  saveStockInv(inv);
+
+  registrarOperacion('devolucion-consignacion', itemsDevueltos, montoTotal, currentEmp?currentEmp.nombre:'Admin', 'Devolución de '+c.cliente);
+
+  cerrarDevolucionConsign();
+  renderConsignaciones();
+  showToast('✅ Devolución registrada — '+fmt(montoTotal)+' menos de deuda');
+}
+
+
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
 
 function renderLogCatalogo() {
@@ -18007,6 +18565,7 @@ function cerrarTodosLosOverlays() {
     'armarPedidoOverlay','arqueoModal','aumentoMasivoOverlay','cambioEfectivoModal',
     'campanaModalOverlay','cargaStockOverlay','cargaVirtualModal','cartelitosOverlay',
     'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
+    'consignModalOverlay','consignCobroOverlay','consignDevolOverlay',
     'comboModalOverlay','comboVarOverlay','corregirCierreModal','deliveryPendModal','devolucionPrestamoModal',
     'devolucionRecibidaModal','edMasivaOverlay','editCatOverlay','efecIniModal',
     'empMensajeOverlay','empModalOverlay','editorGrupoCatOverlay','gruposCatOverlay','historialMensajesOverlay','ingresoModal',
