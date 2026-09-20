@@ -4629,6 +4629,33 @@ body.night-on{background:#080005}
 
       <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:6px 0 8px">🎁 Combos</div>
       <div id="comboCards"></div>
+
+      <!-- PRODUCTOS SUELTOS (fiambrería, frutas/verduras, pan, etc.) — el cliente
+           los pide por peso o por unidad en el catálogo web; esta lista y el
+           precio se cargan acá y se sincronizan solos con la web. -->
+      <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:26px 0 8px">🧀 Productos Sueltos (Fiambrería, Frutas/Verduras, Pan, etc.)</div>
+      <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Esto es lo que en el catálogo web el cliente puede pedir por peso o por unidad (ej: "300g de mortadela", "1kg de pan"). Cargá cada producto con su precio y el cliente va a poder elegir cuánto quiere — el precio se calcula solo.</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <input type="text" id="imCategoriaInput" list="imCategoriaOptions" placeholder="Categoría (ej: Fiambre)" style="flex:1;min-width:140px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem">
+          <datalist id="imCategoriaOptions">
+            <option value="Fiambre">
+            <option value="Condimentos">
+            <option value="Frutas y Verduras">
+            <option value="Pan">
+          </datalist>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <input type="text" id="imNombreInput" placeholder="Nombre del producto (ej: Mortadela Cañón)" style="flex:2;min-width:180px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem">
+          <input type="number" id="imPrecioKgInput" min="0" placeholder="Precio $" style="width:110px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px 10px;font-size:.82rem">
+          <select id="imUnidadInput" style="background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem">
+            <option value="kg">Por peso ($/kg)</option>
+            <option value="unidad">Por unidad ($ c/u)</option>
+          </select>
+          <button class="btn-save" style="padding:8px 16px" onclick="agregarItemManual()">+ Agregar</button>
+        </div>
+      </div>
+      <div id="itemsManualesCardsAdmin"></div>
     </div>
 
     <!-- CÓDIGOS DE BARRAS -->
