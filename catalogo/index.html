@@ -705,6 +705,11 @@ function renderList(){
   var html = '';
   ordenCats.forEach(function(cat){
     if(esVistaAgrupada) html += '<div class="cat-title">'+cat+'</div>';
+    // Los sueltos van primero dentro de su categoría — son los que necesitan
+    // que el cliente elija algo (peso o monto) antes de agregarlos, así que
+    // conviene que se vean apenas entra a la categoría, no después de
+    // desplazarse por todos los productos de precio fijo.
+    (porCatManual[cat]||[]).forEach(function(it){ html += renderManualRow(it); });
     (porCat[cat]||[]).forEach(function(p){
       var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
       var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
@@ -726,7 +731,6 @@ function renderList(){
         ctrlHtml+
       '</div>';
     });
-    (porCatManual[cat]||[]).forEach(function(it){ html += renderManualRow(it); });
   });
   // Los combos van ARRIBA de todo, dentro de la misma lista de productos.
   //
@@ -919,24 +923,35 @@ function confirmarComboVarCatalogo(){
   actualizarCartBar();
 }
 
+// Cada suelto define su propia base de precio: cada 100g (fiambre, típico
+// de fiambrería), por kilo entero (pan, milanesas — como se suelen cotizar)
+// o por unidad. Esta función traduce esa elección a "cuántos gramos
+// representa 1 unidad del precio cargado", para el cálculo de peso/monto.
+function baseGramosDe(it){ return it.unidad === 'pesokg' ? 1000 : 100; }
+function sufijoUnidadCatalogo(it){
+  return it.unidad === 'unidad' ? ' c/u' : (it.unidad === 'pesokg' ? ' /kg' : ' /100g');
+}
+
 // Fila de un producto "suelto" (fiambrería, frutas/verduras, pan, etc.) — se
 // dibuja dentro de renderList(), mezclada con los demás productos de su
-// categoría real, no en una sección aparte. El cliente elige si pide por
-// peso (gramaje) o directamente diciendo cuánta plata quiere gastar; en
-// ambos casos el precio (o el peso aproximado) se calcula solo a partir del
-// precio cargado cada 100g, que es la unidad mínima de compra.
+// categoría real (primero en la lista), no en una sección aparte. El
+// cliente elige si pide por peso (gramaje) o directamente diciendo cuánta
+// plata quiere gastar; en ambos casos el precio (o el peso aproximado) se
+// calcula solo a partir del precio cargado, sobre la base que se haya
+// elegido para ese producto (100g, kilo o unidad).
 function renderManualRow(it){
   var sel = CARRITO_MANUAL[it.id];
   var esPorPeso = (it.unidad !== 'unidad');
   var tienePrecio = it.precioKg > 0;
   var modo = _manualModo[it.id] || 'peso';
   var cat = it.categoria || 'General';
+  var baseGramos = baseGramosDe(it);
 
   var html = '<div class="prod-row" style="flex-direction:column;align-items:stretch;justify-content:flex-start;gap:6px;border-color:rgba(244,180,0,.35)">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
       '<span class="prod-name">🧀 '+it.nombre+'</span>'+
       (tienePrecio
-        ? '<span class="prod-price">'+fmt(it.precioKg)+(esPorPeso?' /100g':' c/u')+'</span>'
+        ? '<span class="prod-price">'+fmt(it.precioKg)+sufijoUnidadCatalogo(it)+'</span>'
         : '<span style="color:var(--gray);font-size:.7rem;white-space:nowrap">a confirmar</span>')+
     '</div>';
 
@@ -955,17 +970,17 @@ function renderManualRow(it){
       gramos.forEach(function(g){
         var activo = sel && sel.gramos === g;
         var etiqueta = g >= 1000 ? '1 kg' : g+'g';
-        html += '<button type="button" onclick="setGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+g+','+it.precioKg+')" '+
+        html += '<button type="button" onclick="setGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+g+','+it.precioKg+','+baseGramos+')" '+
           'style="flex:1;min-width:58px;padding:8px 4px;border-radius:6px;cursor:pointer;font-size:.76rem;'+
           (activo ? 'background:#D2201F;color:#fff;border:none;font-weight:600' : 'background:transparent;border:1px solid var(--gray);color:var(--gray)')+'">'+etiqueta+'</button>';
       });
-      html += '<button type="button" onclick="pedirGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+it.precioKg+')" '+
+      html += '<button type="button" onclick="pedirGramosManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+it.precioKg+','+baseGramos+')" '+
         'style="flex:1;min-width:58px;padding:8px 4px;border-radius:6px;cursor:pointer;font-size:.76rem;background:transparent;border:1px dashed var(--gray);color:var(--gray)">Otro</button>';
       html += '</div>';
     } else {
       html += '<div style="display:flex;gap:6px">'+
         '<input type="number" inputmode="numeric" id="montoManual'+it.id+'" placeholder="Monto en $" style="flex:1;background:var(--card);border:1px solid var(--gray);border-radius:6px;color:#fff;padding:8px 10px;font-size:.8rem">'+
-        '<button type="button" onclick="confirmarMontoManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+it.precioKg+')" style="padding:8px 14px;border-radius:6px;background:#D2201F;border:none;color:#fff;font-size:.78rem;cursor:pointer;white-space:nowrap">Agregar</button>'+
+        '<button type="button" onclick="confirmarMontoManual('+it.id+',\''+escJs(it.nombre)+'\',\''+escJs(cat)+'\','+it.precioKg+','+baseGramos+')" style="padding:8px 14px;border-radius:6px;background:#D2201F;border:none;color:#fff;font-size:.78rem;cursor:pointer;white-space:nowrap">Agregar</button>'+
       '</div>';
     }
 
@@ -1001,9 +1016,11 @@ function setManualModo(id, modo){
   renderList();
 }
 
-// Cantidad por peso: el precio se calcula sobre el precio cargado cada 100g.
-function setGramosManual(id, nombre, cat, gramos, precio100g){
-  var precio = Math.round(precio100g * gramos / 100);
+// Cantidad por peso: el precio se calcula sobre la base elegida para ese
+// producto (precioBase es lo cargado cada "baseGramos" gramos — 100 para
+// fiambre, 1000 para pan/milanesas por kilo).
+function setGramosManual(id, nombre, cat, gramos, precioBase, baseGramos){
+  var precio = Math.round(precioBase * gramos / baseGramos);
   CARRITO_MANUAL[id] = {
     nombre: nombre, categoria: cat, gramos: gramos, precio: precio,
     texto: (gramos>=1000 ? (gramos/1000)+' kg' : gramos+'g')
@@ -1012,21 +1029,21 @@ function setGramosManual(id, nombre, cat, gramos, precio100g){
   actualizarCartBar();
 }
 
-function pedirGramosManual(id, nombre, cat, precio100g){
+function pedirGramosManual(id, nombre, cat, precioBase, baseGramos){
   var txt = prompt('¿Cuántos gramos de '+nombre+'?\n\nEscribí solo el número (ej: 350)');
   if(txt === null) return;
   var g = parseInt(String(txt).replace(/\D/g,''), 10);
   if(!g || g <= 0){ alert('Poné un número de gramos válido'); return; }
-  setGramosManual(id, nombre, cat, g, precio100g);
+  setGramosManual(id, nombre, cat, g, precioBase, baseGramos);
 }
 
 // El cliente dice cuánta plata quiere gastar y se calcula el peso aproximado
 // que le corresponde — el precio final es exactamente el monto que puso, sin
 // ajuste posterior al pesar.
-function setMontoManual(id, nombre, cat, monto, precio100g){
+function setMontoManual(id, nombre, cat, monto, precioBase, baseGramos){
   monto = Math.round(monto);
   if(!monto || monto <= 0) return;
-  var gramos = Math.round((monto / precio100g) * 100);
+  var gramos = Math.round((monto / precioBase) * baseGramos);
   CARRITO_MANUAL[id] = {
     nombre: nombre, categoria: cat, gramos: gramos, precio: monto,
     texto: '≈ '+(gramos>=1000 ? (gramos/1000)+' kg' : gramos+'g')
@@ -1035,11 +1052,11 @@ function setMontoManual(id, nombre, cat, monto, precio100g){
   actualizarCartBar();
 }
 
-function confirmarMontoManual(id, nombre, cat, precio100g){
+function confirmarMontoManual(id, nombre, cat, precioBase, baseGramos){
   var inp = document.getElementById('montoManual'+id);
   var monto = parseInt(String((inp && inp.value) || '').replace(/\D/g,''), 10);
   if(!monto || monto <= 0){ alert('Poné un monto en pesos válido'); return; }
-  setMontoManual(id, nombre, cat, monto, precio100g);
+  setMontoManual(id, nombre, cat, monto, precioBase, baseGramos);
 }
 
 function setUnidadesManual(id, nombre, cat, cant, precioUnidad){

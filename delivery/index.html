@@ -4634,18 +4634,19 @@ body.night-on{background:#080005}
            los pide por peso o por unidad en el catálogo web; esta lista y el
            precio se cargan acá y se sincronizan solos con la web. -->
       <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:26px 0 8px">🧀 Productos Sueltos (Fiambrería, Frutas/Verduras, Pan, etc.)</div>
-      <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Elegí en qué categoría del catálogo querés que aparezca (se muestra junto a los demás productos de esa categoría, no aparte). El precio se carga por 100g, que es lo mínimo que se puede pedir — el cliente después elige si pide por peso o por monto en pesos, y el sistema calcula el resto solo.</div>
+      <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Elegí en qué categoría del catálogo querés que aparezca (se muestra primero, arriba de los demás productos de esa categoría, no aparte) y cómo está pensado el precio — por 100g, por kilo o por unidad. El cliente después elige si pide por peso o por monto en pesos, y el sistema calcula el resto solo.</div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
           <select id="imCategoriaInput" style="flex:1;min-width:140px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem"></select>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px">
           <input type="text" id="imNombreInput" placeholder="Nombre del producto (ej: Mortadela Cañón)" style="flex:2;min-width:180px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem">
-          <input type="number" id="imPrecioKgInput" min="0" placeholder="Precio x 100g $" style="width:130px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px 10px;font-size:.82rem">
           <select id="imUnidadInput" style="background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px 10px;font-size:.82rem">
-            <option value="kg">Por peso (precio c/100g)</option>
+            <option value="peso100">Por peso — precio cada 100g</option>
+            <option value="pesokg">Por peso — precio por kilo</option>
             <option value="unidad">Por unidad ($ c/u)</option>
           </select>
+          <input type="number" id="imPrecioKgInput" min="0" placeholder="Precio $" style="width:110px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px 10px;font-size:.82rem">
           <button class="btn-save" style="padding:8px 16px" onclick="agregarItemManual()">+ Agregar</button>
         </div>
       </div>
@@ -10850,19 +10851,26 @@ function togglePromoActiva(id) {
 function getItemsManuales() { return (window.__lrSync && window.__lrSync.itemsManualesListos && Array.isArray(window.__lrItemsManualesCache)) ? window.__lrItemsManualesCache : []; }
 function saveItemsManuales(l) { window.__lrItemsManualesCache = l; if(window.__lrSaveItemsManuales) window.__lrSaveItemsManuales(l); }
 
+// Sufijo legible según cómo está pensado el precio de un producto suelto:
+// cada 100g, por kilo entero, o por unidad (fiambre suele cargarse cada
+// 100g; pan y milanesas, por kilo — cada producto elige el que le sirva).
+function sufijoUnidadManual(unidad) {
+  return unidad==='unidad' ? ' c/u' : (unidad==='pesokg' ? ' /kg' : ' /100g');
+}
+
 function agregarItemManual() {
   var categoria = document.getElementById('imCategoriaInput').value;
   var nombre = document.getElementById('imNombreInput').value.trim();
   if(!nombre){ showToast('Escribí el nombre del producto'); return; }
   var precioKg = parseFloat((document.getElementById('imPrecioKgInput')||{}).value) || 0;
-  var unidad = ((document.getElementById('imUnidadInput')||{}).value) || 'kg';
+  var unidad = ((document.getElementById('imUnidadInput')||{}).value) || 'peso100';
   var items = getItemsManuales();
   items.push({id: Date.now(), categoria: categoria, nombre: nombre, activo: true,
               precioKg: precioKg, unidad: unidad});
   saveItemsManuales(items);
   document.getElementById('imNombreInput').value = '';
   if(document.getElementById('imPrecioKgInput')) document.getElementById('imPrecioKgInput').value = '';
-  showToast('📝 '+nombre+' agregado a '+categoria+(precioKg?' — '+fmt(precioKg)+(unidad==='kg'?' /100g':' c/u'):''));
+  showToast('📝 '+nombre+' agregado a '+categoria+(precioKg?' — '+fmt(precioKg)+sufijoUnidadManual(unidad):''));
   if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
 function cambiarPrecioItemManual(id, valor) {
@@ -10871,7 +10879,7 @@ function cambiarPrecioItemManual(id, valor) {
   if(!it) return;
   it.precioKg = parseFloat(valor) || 0;
   saveItemsManuales(items);
-  showToast(it.precioKg ? '💲 '+it.nombre+': '+fmt(it.precioKg)+(it.unidad==='unidad'?' c/u':' /100g') : 'Precio quitado de '+it.nombre);
+  showToast(it.precioKg ? '💲 '+it.nombre+': '+fmt(it.precioKg)+sufijoUnidadManual(it.unidad) : 'Precio quitado de '+it.nombre);
   if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
 
@@ -22995,6 +23003,29 @@ function cargarPedidoAlCarrito(id) {
     else { cart.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
   });
 
+  // Sueltos pedidos desde el catálogo web (fiambrería, pan, frutas/verduras,
+  // etc.) — antes se perdían: quedaban solo como texto en la ventana de
+  // Pedidos, no se sumaban al carrito ni al total a cobrar. Ahora se cargan
+  // como ítem manual, uno por cada suelto pedido, con la categoría real
+  // puesta en "cat" para que salgan bien clasificados en los reportes de
+  // ventas por categoría (igual que si el empleado los hubiera tipeado a
+  // mano en el mostrador).
+  var faltaConfirmarPrecio = 0;
+  (pedido.notasManuales||[]).forEach(function(n){
+    if(!n.precio){ faltaConfirmarPrecio++; }
+    cart.push({
+      name: n.nombre + (n.texto ? ' ('+n.texto+')' : ''),
+      precio: n.precio || 0,
+      qty: 1,
+      subtotal: n.precio || 0,
+      cat: n.categoria || 'Manual',
+      manual: true
+    });
+  });
+  if(faltaConfirmarPrecio > 0){
+    showToast('⚠️ '+faltaConfirmarPrecio+' producto(s) suelto(s) sin precio — cargalo a mano en el carrito antes de cobrar', true);
+  }
+
   // El costo de envío que ya se le cobró a este cliente en el catálogo.
   // Se usa el campo guardado directamente (más confiable que recalcularlo
   // restando total - productos, que puede dar mal si algún dato viejo no
@@ -23490,9 +23521,9 @@ function renderItemsManualesAdmin() {
       porCat[cat].map(function(it){
         return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px">'+
           '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+
-            (it.precioKg ? '<span style="color:var(--gold);font-size:.72rem"> · '+fmt(it.precioKg)+(it.unidad==='unidad'?' c/u':' /100g')+'</span>'
+            (it.precioKg ? '<span style="color:var(--gold);font-size:.72rem"> · '+fmt(it.precioKg)+sufijoUnidadManual(it.unidad)+'</span>'
                          : '<span style="color:var(--gray);font-size:.7rem"> · sin precio</span>')+'</span>'+
-          '<input type="number" value="'+(it.precioKg||'')+'" min="0" placeholder="$/100g" onchange="cambiarPrecioItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:90px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-size:.75rem;margin-left:auto;margin-right:8px">'+
+          '<input type="number" value="'+(it.precioKg||'')+'" min="0" placeholder="$" onchange="cambiarPrecioItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:90px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-size:.75rem;margin-left:auto;margin-right:8px">'+
           '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
         '</div>';
       }).join('');
