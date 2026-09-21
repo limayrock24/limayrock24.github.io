@@ -1680,6 +1680,32 @@
     var mapa = {};
     snap.forEach(function(doc){ mapa[doc.id] = doc.data(); });
     window.__lrSesionesActivasCache = mapa;
+
+    // Corrección de efectivo inicial hecha desde OTRO dispositivo (el admin
+    // corrigiendo remotamente el turno de un empleado que no es él mismo —
+    // ver guardarCorreccionEfectivoInicial). Esta netbook es la única que
+    // tiene el currentEmp real de ese turno, así que apenas ve que le llegó
+    // una corrección pendiente para su propia sesión, la aplica localmente
+    // (mismo efecto que si el empleado la hubiera cargado él mismo) y
+    // vuelve a publicar su sesión ya sin la marca pendiente.
+    try{
+      if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio){
+        var miDoc = mapa[idSeguro(currentEmp.nombre)];
+        if(miDoc && miDoc.correccionRemota){
+          var cr = miDoc.correccionRemota;
+          currentEmp.efectivoInicial = cr.montoNuevo;
+          if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
+          currentEmp._correccionesEfectivoInicial.push({
+            montoAnterior: cr.montoAnterior, montoNuevo: cr.montoNuevo,
+            nota: cr.nota, fecha: cr.fecha, autor: cr.autor
+          });
+          if(typeof guardarSesionActiva==='function') guardarSesionActiva(); // republica ya corregido, sin la marca pendiente
+          if(typeof showToast==='function') showToast('🖊 Tu efectivo inicial fue corregido a '+fmt(cr.montoNuevo)+' desde el panel admin ('+(cr.autor||'')+')');
+          if(typeof renderDashboard==='function') renderDashboard();
+        }
+      }
+    }catch(e){ console.error('Error aplicando corrección remota de efectivo inicial', e); }
+
     // Compatibilidad: si hay exactamente una sesión abierta, la dejamos
     // también en la variable vieja (la usan un par de funciones que
     // todavía esperan una sola).
@@ -10171,17 +10197,29 @@ function guardarCorreccionCierre() {
 
 // ── CORREGIR EFECTIVO INICIAL DEL TURNO ACTIVO ──────────────────────────────
 // Para cuando el turno se abrió con un monto inicial mal cargado (por ejemplo
-// porque arrastró el error de un cierre anterior). Corrige currentEmp.efectivoInicial
+// porque arrastró el error de un cierre anterior). Corrige el efectivoInicial
 // EN VIVO, mientras el turno sigue abierto, así el "esperado en caja" ya se
 // recalcula bien de acá en adelante y, cuando se cierre el turno, el cierre
-// se va a guardar directamente con el valor correcto (cerrarTurno lee este
-// mismo campo). Solo puede corregirse el turno propio de este dispositivo —
-// no el de otro empleado visto en remoto — porque es la única copia que
-// realmente se usa al cerrar.
-function abrirCorreccionEfectivoInicial() {
-  if(!currentEmp){ showToast('No hay un turno abierto en este dispositivo', true); return; }
-  var actual = currentEmp.efectivoInicial || 0;
-  document.getElementById('corrIniInfo').textContent = currentEmp.nombre+' · '+(typeof turnoActual==='function'?turnoActual():'')+' · arrancó con '+fmt(actual);
+// se va a guardar directamente con el valor correcto.
+//
+// Puede corregirse el turno de CUALQUIER empleado, no solo el propio de este
+// dispositivo: si es el turno propio, se corrige currentEmp al toque. Si es
+// el turno de otro empleado abierto en otra netbook, no hay forma de tocar
+// su currentEmp desde acá — se deja la corrección anotada en su sesión en la
+// nube (campo "correccionRemota"), y esa otra netbook la toma sola apenas
+// vuelve a sincronizar (ver el onSnapshot de sesionesActivas), la aplica a
+// su propio turno y la corrección desaparece de la nube.
+var _corrIniNombre = null;
+
+function abrirCorreccionEfectivoInicial(nombreEmp) {
+  var esMiPropioTurno = currentEmp && currentEmp.nombre === nombreEmp;
+  var sesion = esMiPropioTurno ? currentEmp
+    : (window.__lrSesionesActivasCache && window.__lrSesionesActivasCache[String(nombreEmp).replace(/\//g,'-')]);
+  if(!sesion){ showToast('No se encontró ese turno', true); return; }
+  _corrIniNombre = nombreEmp;
+  var actual = sesion.efectivoInicial || 0;
+  document.getElementById('corrIniInfo').textContent = nombreEmp+' · '+(sesion.turno||(typeof turnoActual==='function'?turnoActual():''))+' · arrancó con '+fmt(actual)+
+    (esMiPropioTurno ? '' : ' <span style="color:var(--gold)">(turno de otro dispositivo)</span>');
   document.getElementById('corrIniLabel').textContent = 'Efectivo inicial correcto ($) — hoy dice '+fmt(actual);
   document.getElementById('corrIniMonto').value = '';
   document.getElementById('corrIniNota').value = '';
@@ -10189,28 +10227,53 @@ function abrirCorreccionEfectivoInicial() {
 }
 
 function guardarCorreccionEfectivoInicial() {
-  if(!currentEmp) return;
+  if(!_corrIniNombre) return;
+  var nombreEmp = _corrIniNombre;
   var nuevo = getMontoInputValue('corrIniMonto');
   var nota = document.getElementById('corrIniNota').value.trim();
-  if(nuevo < 0){ showToast('Ingresá un monto válido', true); return; }
-  if(!document.getElementById('corrIniMonto').value.trim()){ showToast('Ingresá el monto correcto', true); return; }
+  if(!document.getElementById('corrIniMonto').value.trim() || nuevo < 0){ showToast('Ingresá un monto válido', true); return; }
 
-  var anterior = currentEmp.efectivoInicial || 0;
-  currentEmp.efectivoInicial = nuevo;
+  var esMiPropioTurno = currentEmp && currentEmp.nombre === nombreEmp;
 
-  if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
-  currentEmp._correccionesEfectivoInicial.push({
-    montoAnterior: anterior,
-    montoNuevo: nuevo,
-    nota: nota,
-    fecha: new Date().toISOString(),
-    autor: currentEmp.nombre
+  if(esMiPropioTurno){
+    var anterior = currentEmp.efectivoInicial || 0;
+    currentEmp.efectivoInicial = nuevo;
+    if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
+    currentEmp._correccionesEfectivoInicial.push({
+      montoAnterior: anterior,
+      montoNuevo: nuevo,
+      nota: nota,
+      fecha: new Date().toISOString(),
+      autor: currentEmp.nombre
+    });
+    guardarSesionActiva(); // republica el turno en vivo con el monto ya corregido
+    document.getElementById('corregirIniModal').classList.remove('open');
+    _corrIniNombre = null;
+    if(typeof renderDashboard==='function') renderDashboard();
+    showToast('✅ Efectivo inicial corregido: '+fmt(anterior)+' → '+fmt(nuevo));
+    return;
+  }
+
+  // Turno de otro empleado, abierto en otra netbook.
+  if(!window.__lrDB){ showToast('Sin conexión a la nube — no se puede corregir un turno de otro dispositivo ahora', true); return; }
+  var sesionRemota = window.__lrSesionesActivasCache && window.__lrSesionesActivasCache[String(nombreEmp).replace(/\//g,'-')];
+  var anteriorRemoto = sesionRemota ? (sesionRemota.efectivoInicial||0) : 0;
+  window.__lrDB.collection('sesionesActivas').doc(String(nombreEmp).replace(/\//g,'-')).update({
+    correccionRemota: {
+      montoAnterior: anteriorRemoto,
+      montoNuevo: nuevo,
+      nota: nota,
+      autor: currentEmp ? currentEmp.nombre : 'Admin',
+      fecha: new Date().toISOString()
+    }
+  }).then(function(){
+    document.getElementById('corregirIniModal').classList.remove('open');
+    showToast('✅ Corrección enviada — se aplica sola en el turno de '+nombreEmp+' apenas esa netbook vuelva a sincronizar (unos segundos)');
+  }).catch(function(e){
+    console.error('Error enviando corrección remota de efectivo inicial', e);
+    showToast('No se pudo enviar la corrección remota', true);
   });
-
-  guardarSesionActiva(); // republica el turno en vivo con el monto ya corregido
-  document.getElementById('corregirIniModal').classList.remove('open');
-  if(typeof renderDashboard==='function') renderDashboard();
-  showToast('✅ Efectivo inicial corregido: '+fmt(anterior)+' → '+fmt(nuevo));
+  _corrIniNombre = null;
 }
 
 function toggleCierreDetail(idx) {
@@ -18634,9 +18697,7 @@ function renderDashboard() {
           '<b style="color:var(--white)">'+sesionViva.nombre+'</b> · '+(sesionViva.turno||'')+
           ' · desde las '+new Date(sesionViva.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
           ' · abrió caja con '+fmt(sesionViva.efectivoInicial||0)+
-          (currentEmp && currentEmp.nombre===nombreEmp
-            ? ' <button onclick="event.stopPropagation();abrirCorreccionEfectivoInicial()" style="background:none;border:1px solid rgba(244,180,0,.4);color:var(--gold);border-radius:5px;padding:2px 8px;font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:.5px;cursor:pointer;margin-left:4px">🖊 Corregir</button>'
-            : '')+
+          ' <button onclick="event.stopPropagation();abrirCorreccionEfectivoInicial(\''+nombreEmp.replace(/'/g,"\\'")+'\')" style="background:none;border:1px solid rgba(244,180,0,.4);color:var(--gold);border-radius:5px;padding:2px 8px;font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:.5px;cursor:pointer;margin-left:4px">🖊 Corregir</button>'+
           '</div>'+
           '<div class="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
         '</div>'+
