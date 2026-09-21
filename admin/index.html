@@ -4318,17 +4318,31 @@ body.night-on{background:#080005}
       <select id="corrTipo" onchange="cambiarTipoCorreccionCierre()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
         <option value="ingreso">💵 Ingreso de efectivo fuera de caja</option>
         <option value="egreso">🚚 Pago a proveedor no registrado</option>
+        <option value="contado">🖊 Corregir el monto contado (error al cargar el cierre)</option>
       </select>
     </div>
     <div class="field" id="corrProvField" style="display:none">
       <label>Proveedor</label>
       <select id="corrProv" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem"></select>
     </div>
-    <div class="field"><label>Monto ($)</label><input type="text" inputmode="numeric" id="corrMonto" placeholder="0" oninput="formatMontoInput(this)"></div>
+    <div class="field"><label id="corrMontoLabel">Monto ($)</label><input type="text" inputmode="numeric" id="corrMonto" placeholder="0" oninput="formatMontoInput(this)"></div>
     <div class="field"><label>Nota (qué pasó)</label><input type="text" id="corrNota" placeholder="Ej: lo sacó Jazmín para completar el pago"></div>
-    <div style="font-size:.65rem;color:var(--gray);margin-bottom:6px">Se registra con la fecha de este cierre — aparece en Egresos/Rentabilidad de ese día, y este cierre recalcula su diferencia. Queda anotado quién y cuándo hizo la corrección, sin borrar los datos originales.</div>
+    <div style="font-size:.65rem;color:var(--gray);margin-bottom:6px" id="corrAyuda">Se registra con la fecha de este cierre — aparece en Egresos/Rentabilidad de ese día, y este cierre recalcula su diferencia. Queda anotado quién y cuándo hizo la corrección, sin borrar los datos originales.</div>
     <button onclick="guardarCorreccionCierre()" style="width:100%;background:var(--gold);color:var(--black);border:none;border-radius:4px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700;margin-top:6px">✓ Aplicar corrección</button>
     <button onclick="document.getElementById('corregirCierreModal').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:9px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;margin-top:6px">Cancelar</button>
+  </div>
+</div>
+
+<!-- MODAL CORREGIR EFECTIVO INICIAL DEL TURNO ACTIVO -->
+<div class="confirm-modal" id="corregirIniModal">
+  <div class="confirm-modal-box" style="max-width:360px;border-color:var(--gold)">
+    <div style="font-family:'Oswald',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🖊 Corregir efectivo inicial</div>
+    <div id="corrIniInfo" style="font-size:.72rem;color:var(--gray);margin-bottom:12px"></div>
+    <div class="field"><label id="corrIniLabel">Efectivo inicial correcto ($)</label><input type="text" inputmode="numeric" id="corrIniMonto" placeholder="0" oninput="formatMontoInput(this)"></div>
+    <div class="field"><label>Motivo</label><input type="text" id="corrIniNota" placeholder="Ej: me equivoqué al abrir el turno"></div>
+    <div style="font-size:.65rem;color:var(--gray);margin-bottom:6px">Corrige el efectivo con el que arrancó este turno, todavía abierto. El efectivo esperado en caja se recalcula al instante, y cuando cierres el turno el cierre va a quedar con este valor correcto. Queda anotado el valor anterior, el nuevo, el motivo y cuándo se corrigió.</div>
+    <button onclick="guardarCorreccionEfectivoInicial()" style="width:100%;background:var(--gold);color:var(--black);border:none;border-radius:4px;padding:11px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;font-weight:700;margin-top:6px">✓ Aplicar corrección</button>
+    <button onclick="document.getElementById('corregirIniModal').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:9px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;margin-top:6px">Cancelar</button>
   </div>
 </div>
 
@@ -9740,6 +9754,11 @@ function confirmarArqueoYCerrar() {
       contado: contado,
       diferencia: diferencia
     },
+    // Si el efectivo inicial de este turno se corrigió mientras seguía
+    // abierto (ver guardarCorreccionEfectivoInicial), el cierre ya nace con
+    // el valor correcto arriba — esto solo deja el rastro de que se corrigió,
+    // con el valor viejo, el nuevo, el motivo y cuándo.
+    correccionesInicial: (currentEmp._correccionesEfectivoInicial || []).slice(),
     ventas: ventasTurno.map(function(v){
       return {medio:v.medio, total:v.total};
     })
@@ -9926,10 +9945,22 @@ function renderCierres() {
     }).join('');
 
     var correccionesHtml = '';
-    if(c.correcciones && c.correcciones.length){
+    var hayCorrecciones = (c.correcciones && c.correcciones.length) || (c.correccionesInicial && c.correccionesInicial.length);
+    if(hayCorrecciones){
+      var correccionesIniHtml = (c.correccionesInicial||[]).map(function(cor){
+        return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🏦 Efectivo inicial corregido: '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
+          (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+          '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+      }).join('');
       correccionesHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">'+
         '<div style="font-size:.65rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:Oswald,sans-serif">🛠 Correcciones aplicadas</div>'+
-        c.correcciones.map(function(cor){
+        correccionesIniHtml+
+        (c.correcciones||[]).map(function(cor){
+          if(cor.tipo === 'contado'){
+            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🖊 Monto contado corregido: '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
+              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          }
           var etiqueta = cor.tipo==='ingreso' ? '+ Ingreso fuera de caja' : '− Egreso a '+(cor.proveedor||'proveedor')+' no registrado';
           return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">'+etiqueta+': <b>'+fmt(cor.monto)+'</b>'+
             (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
@@ -10004,6 +10035,17 @@ function abrirCorreccionCierre(idx) {
 function cambiarTipoCorreccionCierre() {
   var tipo = document.getElementById('corrTipo').value;
   document.getElementById('corrProvField').style.display = (tipo==='egreso') ? 'block' : 'none';
+  var lbl = document.getElementById('corrMontoLabel');
+  var ayuda = document.getElementById('corrAyuda');
+  if(tipo === 'contado'){
+    var c = (window.__lrCierresRenderCache||[])[_corrCierreIdx];
+    var actual = c && c.arqueo ? (c.arqueo.contado||0) : 0;
+    if(lbl) lbl.textContent = 'Monto contado correcto ($) — hoy dice '+fmt(actual);
+    if(ayuda) ayuda.textContent = 'Reemplaza el monto contado de este cierre por el correcto y recalcula la diferencia (sobrante/faltante) al instante. No toca ventas, egresos ni ningún otro dato — solo corrige el error de carga. Queda anotado el valor anterior, el nuevo, el motivo, quién y cuándo.';
+  } else {
+    if(lbl) lbl.textContent = 'Monto ($)';
+    if(ayuda) ayuda.textContent = 'Se registra con la fecha de este cierre — aparece en Egresos/Rentabilidad de ese día, y este cierre recalcula su diferencia. Queda anotado quién y cuándo hizo la corrección, sin borrar los datos originales.';
+  }
 }
 
 function guardarCorreccionCierre() {
@@ -10015,7 +10057,11 @@ function guardarCorreccionCierre() {
   var tipo = document.getElementById('corrTipo').value;
   var monto = getMontoInputValue('corrMonto');
   var nota = document.getElementById('corrNota').value.trim();
-  if(!monto || monto<=0){ showToast('Ingresá un monto válido', true); return; }
+  // Para "contado" el valor correcto puede ser $0 (caja quedó vacía) — solo
+  // los otros dos tipos son un movimiento que no tiene sentido cargar en $0.
+  if(tipo === 'contado'){
+    if(monto < 0){ showToast('Ingresá un monto válido', true); return; }
+  } else if(!monto || monto<=0){ showToast('Ingresá un monto válido', true); return; }
 
   // El cierre visible viene de una lista invertida/filtrada — hay que ubicar
   // el MISMO objeto dentro de la lista real (getCierres()) para editarlo ahí.
@@ -10025,6 +10071,33 @@ function guardarCorreccionCierre() {
 
   var fechaCierre = real.fecha; // ISO completo del cierre — se usa como referencia real del momento
   var fechaSoloFecha = fechaCierre.slice(0,10); // YYYY-MM-DD, formato que usan los egresos
+
+  if(tipo === 'contado') {
+    // Corrección pura de un error de carga: no es un movimiento de plata real,
+    // así que no toca egresos/retiros/movimientos — solo reemplaza el monto
+    // contado de ESTE cierre y recalcula su diferencia con lo ya guardado.
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+    var contadoAnterior = real.arqueo.contado || 0;
+    real.arqueo.contado = monto;
+    real.arqueo.diferencia = monto - (real.arqueo.esperado||0);
+
+    if(!real.correcciones) real.correcciones = [];
+    real.correcciones.push({
+      tipo: 'contado',
+      montoAnterior: contadoAnterior,
+      montoNuevo: monto,
+      nota: nota,
+      fecha: new Date().toISOString(),
+      autor: currentEmp ? currentEmp.nombre : 'Admin'
+    });
+
+    saveCierres(cierres);
+    document.getElementById('corregirCierreModal').classList.remove('open');
+    _corrCierreIdx = null;
+    renderCierres();
+    showToast('✅ Monto contado corregido');
+    return;
+  }
 
   if(tipo === 'ingreso') {
     var retiros = getRetirosCaja();
@@ -10094,6 +10167,50 @@ function guardarCorreccionCierre() {
   _corrCierreIdx = null;
   renderCierres();
   showToast('✅ Corrección aplicada');
+}
+
+// ── CORREGIR EFECTIVO INICIAL DEL TURNO ACTIVO ──────────────────────────────
+// Para cuando el turno se abrió con un monto inicial mal cargado (por ejemplo
+// porque arrastró el error de un cierre anterior). Corrige currentEmp.efectivoInicial
+// EN VIVO, mientras el turno sigue abierto, así el "esperado en caja" ya se
+// recalcula bien de acá en adelante y, cuando se cierre el turno, el cierre
+// se va a guardar directamente con el valor correcto (cerrarTurno lee este
+// mismo campo). Solo puede corregirse el turno propio de este dispositivo —
+// no el de otro empleado visto en remoto — porque es la única copia que
+// realmente se usa al cerrar.
+function abrirCorreccionEfectivoInicial() {
+  if(!currentEmp){ showToast('No hay un turno abierto en este dispositivo', true); return; }
+  var actual = currentEmp.efectivoInicial || 0;
+  document.getElementById('corrIniInfo').textContent = currentEmp.nombre+' · '+(typeof turnoActual==='function'?turnoActual():'')+' · arrancó con '+fmt(actual);
+  document.getElementById('corrIniLabel').textContent = 'Efectivo inicial correcto ($) — hoy dice '+fmt(actual);
+  document.getElementById('corrIniMonto').value = '';
+  document.getElementById('corrIniNota').value = '';
+  document.getElementById('corregirIniModal').classList.add('open');
+}
+
+function guardarCorreccionEfectivoInicial() {
+  if(!currentEmp) return;
+  var nuevo = getMontoInputValue('corrIniMonto');
+  var nota = document.getElementById('corrIniNota').value.trim();
+  if(nuevo < 0){ showToast('Ingresá un monto válido', true); return; }
+  if(!document.getElementById('corrIniMonto').value.trim()){ showToast('Ingresá el monto correcto', true); return; }
+
+  var anterior = currentEmp.efectivoInicial || 0;
+  currentEmp.efectivoInicial = nuevo;
+
+  if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
+  currentEmp._correccionesEfectivoInicial.push({
+    montoAnterior: anterior,
+    montoNuevo: nuevo,
+    nota: nota,
+    fecha: new Date().toISOString(),
+    autor: currentEmp.nombre
+  });
+
+  guardarSesionActiva(); // republica el turno en vivo con el monto ya corregido
+  document.getElementById('corregirIniModal').classList.remove('open');
+  if(typeof renderDashboard==='function') renderDashboard();
+  showToast('✅ Efectivo inicial corregido: '+fmt(anterior)+' → '+fmt(nuevo));
 }
 
 function toggleCierreDetail(idx) {
@@ -18517,6 +18634,9 @@ function renderDashboard() {
           '<b style="color:var(--white)">'+sesionViva.nombre+'</b> · '+(sesionViva.turno||'')+
           ' · desde las '+new Date(sesionViva.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
           ' · abrió caja con '+fmt(sesionViva.efectivoInicial||0)+
+          (currentEmp && currentEmp.nombre===nombreEmp
+            ? ' <button onclick="event.stopPropagation();abrirCorreccionEfectivoInicial()" style="background:none;border:1px solid rgba(244,180,0,.4);color:var(--gold);border-radius:5px;padding:2px 8px;font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:.5px;cursor:pointer;margin-left:4px">🖊 Corregir</button>'
+            : '')+
           '</div>'+
           '<div class="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
         '</div>'+
@@ -18777,7 +18897,7 @@ function cerrarTodosLosOverlays() {
     'campanaModalOverlay','cargaStockOverlay','cargaVirtualModal','cartelitosOverlay',
     'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
     'consignModalOverlay','consignCobroOverlay','consignDevolOverlay',
-    'comboModalOverlay','comboVarOverlay','corregirCierreModal','deliveryPendModal','devolucionPrestamoModal',
+    'comboModalOverlay','comboVarOverlay','corregirCierreModal','corregirIniModal','deliveryPendModal','devolucionPrestamoModal',
     'devolucionRecibidaModal','edMasivaOverlay','editCatOverlay','efecIniModal',
     'empMensajeOverlay','empModalOverlay','editorGrupoCatOverlay','gruposCatOverlay','historialMensajesOverlay','ingresoModal',
     'limpiezaPreviewModal','liquidezConfigModal','listaPreciosPreviewOverlay',
