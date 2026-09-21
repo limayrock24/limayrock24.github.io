@@ -3441,7 +3441,7 @@ body.night-on{background:#080005}
   <div class="manual-item-form" id="manualItemForm" style="display:none">
     <div id="manualPresetsRow" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
     <div class="manual-grid">
-      <input type="text" id="mNombre" placeholder="Ej: Fiambre 300g, Queso..." oninput="_manualPresetSel=null">
+      <input type="text" id="mNombre" placeholder="Ej: Fiambre 300g, Queso..." oninput="_manualPresetSel=null;_sueltoCategoriaSel=null">
       <input type="text" inputmode="numeric" id="mPrecio" placeholder="Precio $" oninput="formatMontoInput(this)">
       <input type="number" id="mCant" placeholder="Cant" min="1" value="1">
       <button class="manual-grid-btn" onclick="addManual()">+ Agregar</button>
@@ -13471,6 +13471,12 @@ function saveManualPresets(arr) { window.__lrManualPresetsCache = arr; if(window
 
 var _manualPresetSel = null;
 var _manualPresetSel2 = null;
+// Categoría real de un "producto suelto" (fiambrería, pan, frutas/verduras,
+// etc.) cuando el empleado lo carga al carrito desde el panel de venta con
+// "usarSueltoEnVenta". Se usa para que addManual() etiquete el ítem con su
+// categoría verdadera en vez de "Manual" (nombre y categoría no coinciden en
+// estos productos, por eso no alcanza con _manualPresetSel).
+var _sueltoCategoriaSel = null;
 
 function renderManualPresets(containerId, inputId) {
   var el = document.getElementById(containerId);
@@ -13497,7 +13503,7 @@ function addManual() {
   var cant   = parseInt(document.getElementById('mCant').value)||1;
   if(!nombre){ showToast('Escribí la descripción del producto',true); return; }
   if(precio<=0){ showToast('El precio debe ser mayor a 0',true); return; }
-  var catManual = (_manualPresetSel && _manualPresetSel===nombre) ? _manualPresetSel : 'Manual';
+  var catManual = _sueltoCategoriaSel ? _sueltoCategoriaSel : ((_manualPresetSel && _manualPresetSel===nombre) ? _manualPresetSel : 'Manual');
   cart.push({
     name:     nombre + (cant>1?' ×'+cant:''),
     precio:   precio,
@@ -13511,12 +13517,41 @@ function addManual() {
   document.getElementById('mPrecio').value  = '';
   document.getElementById('mCant').value    = '1';
   _manualPresetSel = null;
+  _sueltoCategoriaSel = null;
   // Colapsar el form
   var form = document.getElementById('manualItemForm');
   var btn  = document.getElementById('manualItemToggle');
   if(form) form.style.display = 'none';
   if(btn){ btn.classList.remove('expanded'); btn.textContent = '+ Ítem manual (peso / precio libre) ▾'; }
   showToast('⚡ '+nombre+' agregado al carrito');
+}
+
+// Carga un "producto suelto" (fiambrería, pan, frutas/verduras, etc.) visto
+// al navegar por su categoría en el panel de venta, dentro del formulario de
+// Ítem manual — con el nombre y el precio de base ya cargados — para que el
+// empleado solo tenga que ajustar el peso/monto real que pidió el cliente
+// antes de agregarlo al carrito. La categoría real queda guardada en
+// _sueltoCategoriaSel para que addManual() la use al armar el ítem.
+function usarSueltoEnVenta(it) {
+  var form = document.getElementById('manualItemForm');
+  var btn  = document.getElementById('manualItemToggle');
+  if(form && form.style.display==='none'){
+    form.style.display = 'block';
+    if(btn){ btn.classList.add('expanded'); btn.textContent = '▴ Ocultar ítem manual'; }
+    renderManualPresets('manualPresetsRow','mNombre');
+  }
+  var nombreInp = document.getElementById('mNombre');
+  var precioInp = document.getElementById('mPrecio');
+  var cantInp   = document.getElementById('mCant');
+  if(nombreInp) nombreInp.value = it.nombre;
+  if(precioInp){ precioInp.value = it.precioKg; formatMontoInput(precioInp); }
+  if(cantInp) cantInp.value = '1';
+  _manualPresetSel = null;
+  _sueltoCategoriaSel = it.categoria || 'Manual';
+  var sufijo = it.unidad==='unidad' ? 'por unidad' : (it.unidad==='pesokg' ? 'por kilo' : 'cada 100g');
+  showToast('📝 '+it.nombre+' — precio '+sufijo+'. Ajustá el peso o monto y agregá.');
+  if(form) form.scrollIntoView({behavior:'smooth', block:'nearest'});
+  if(precioInp) setTimeout(function(){ precioInp.focus(); precioInp.select(); }, 150);
 }
 
 // ── ALERTA DE STOCK AL AGREGAR ─────────────────────────────────────────────
@@ -13544,28 +13579,77 @@ function renderList(list, term) {
   var main  = document.getElementById('main');
   var empty = document.getElementById('empty');
   main.innerHTML = '';
-  if(!list.length){ empty.classList.add('show'); return; }
-  empty.classList.remove('show');
 
   var inv = getStockInv(); // para badges de stock
+
+  // Sueltos (fiambrería, pan, etc.) — se muestran junto a los productos de su
+  // categoría, con el precio que se cargó (cada 100g, por kilo o por
+  // unidad), para que el empleado lo tenga a mano si un cliente pregunta en
+  // el mostrador. Como el peso pedido varía, tocarlos no los suma solos al
+  // carrito: abren el "Ítem manual" con el nombre y el precio de base ya
+  // cargados, listos para ajustar antes de agregar.
+  var sueltos = (typeof getItemsManuales === 'function' ? getItemsManuales() : []).filter(function(it){
+    if(it.activo === false || !(it.precioKg > 0)) return false;
+    var matchTexto = !term || it.nombre.toLowerCase().indexOf(term) !== -1;
+    var matchCat = !activeCat || it.categoria === activeCat;
+    return matchTexto && matchCat;
+  });
+
+  if(!list.length && !sueltos.length){ empty.classList.add('show'); return; }
+  empty.classList.remove('show');
 
   var groups = {};
   list.forEach(function(p){ if(!groups[p.cat]) groups[p.cat]=[]; groups[p.cat].push(p); });
 
-  Object.keys(groups).sort().forEach(function(cat){
-    var items = groups[cat];
+  var gruposSueltos = {};
+  sueltos.forEach(function(it){
+    var cat = it.categoria || 'Sin categoría';
+    if(!gruposSueltos[cat]) gruposSueltos[cat] = [];
+    gruposSueltos[cat].push(it);
+  });
+
+  var todasCats = Object.keys(groups);
+  Object.keys(gruposSueltos).forEach(function(c){ if(todasCats.indexOf(c) === -1) todasCats.push(c); });
+
+  todasCats.sort().forEach(function(cat){
+    var items = groups[cat] || [];
+    var itemsSueltos = gruposSueltos[cat] || [];
     var sec = document.createElement('div');
     sec.className = 'cat-section';
 
     var hdr = document.createElement('div');
     hdr.className = 'cat-header';
-    hdr.innerHTML = '<h2>'+cat+'</h2><span class="cat-count">'+items.length+'</span>';
+    hdr.innerHTML = '<h2>'+cat+'</h2><span class="cat-count">'+(items.length+itemsSueltos.length)+'</span>';
     sec.appendChild(hdr);
 
     var tbl = document.createElement('table');
     tbl.className = 'prod-table';
     tbl.innerHTML = '<thead><tr><th>Producto</th><th class="c" style="width:110px">Precio</th><th class="c" style="width:40px"></th></tr></thead>';
     var tbody = document.createElement('tbody');
+
+    itemsSueltos.forEach(function(it){
+      var sufijo = it.unidad==='unidad' ? ' c/u' : (it.unidad==='pesokg' ? ' /kg' : ' /100g');
+      var tr = document.createElement('tr');
+      tr.style.background = 'rgba(244,180,0,.07)';
+      tr.onclick = function(){ usarSueltoEnVenta(it); };
+      var td1 = document.createElement('td');
+      td1.style.fontSize = '.85rem';
+      td1.innerHTML = '<span>🧀 '+(term ? hl(it.nombre, term) : it.nombre)+'</span>';
+      var td2 = document.createElement('td');
+      td2.className = 'td-p';
+      td2.style.color = 'var(--gold)';
+      td2.textContent = fmt(it.precioKg)+sufijo;
+      var td3 = document.createElement('td');
+      td3.className = 'td-add';
+      var btnSuelto = document.createElement('button');
+      btnSuelto.className = 'add-btn';
+      btnSuelto.textContent = '📝';
+      btnSuelto.title = 'Cargar en Ítem manual';
+      btnSuelto.onclick = function(e){ e.stopPropagation(); usarSueltoEnVenta(it); };
+      td3.appendChild(btnSuelto);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      tbody.appendChild(tr);
+    });
 
     items.forEach(function(p){
       var useNight = isNocturno() && p.pnoc;
@@ -22076,7 +22160,10 @@ function renderPanelRepartidor() {
 
   cont.innerHTML = lista.map(function(p){
     var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
+    var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; })
+      .concat((p.combos||[]).map(function(cb){ return (cb.emoji||'🎁')+' '+cb.nombre+(cb.cantidad>1?' ×'+cb.cantidad:''); }))
+      .concat((p.notasManuales||[]).map(function(n){ return n.nombre+(n.texto?' ('+n.texto+')':''); }))
+      .join(', ');
     var mio = p.repartidor === yo;
     var dir = p.direccion || p.domicilio || '';
     var telLimpio = (p.telefono||'').replace(/\D/g,'');
@@ -23046,6 +23133,15 @@ function cargarPedidoAlCarrito(id) {
 
   updateCart();
   if(typeof syncConfirmarBtn==='function') syncConfirmarBtn();
+
+  // Preseleccionar el medio de pago que el cliente ya eligió en el catálogo
+  // web, para que el empleado no tenga que volver a preguntarle o adivinar.
+  // Solo se aplica si hay un botón de pago con ese nombre exacto (por si
+  // algún pedido viejo tuviera guardado un valor distinto).
+  if(pedido.medioPago && document.getElementById('pago-'+pedido.medioPago)){
+    selPago(pedido.medioPago);
+  }
+
   pedido.estado = 'cargado';
   savePedidosWeb(pedidos);
   document.getElementById('deliveryPendModal').classList.remove('open');
