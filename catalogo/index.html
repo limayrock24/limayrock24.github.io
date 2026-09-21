@@ -1312,6 +1312,7 @@ function confirmarPedido(){
 
   var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
   var notasManuales = Object.keys(CARRITO_MANUAL).map(function(k){ return CARRITO_MANUAL[k]; });
+  var notasSinPrecio = notasManuales.filter(function(it){ return !it.precio; });
   var subtotal = subtotalCarrito();
   var envio = COSTO_ENVIO;
   var total = totalConEnvio();
@@ -1392,7 +1393,7 @@ function confirmarPedido(){
   msg += 'Subtotal: '+fmt(subtotal)+'\n';
   if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':'')+': '+fmt(envio)+'\n';
   msg += '*Total: '+fmt(total)+'*';
-  if(notasManuales.length) msg += ' _(sin lo que falta confirmar)_';
+  if(notasSinPrecio.length) msg += ' _(sin lo que falta confirmar)_';
   msg += '\n';
 
   msg += '\n💳 *PAGO:* ' + (MEDIO_PAGO_SEL || 'A confirmar') + '\n';
