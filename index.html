@@ -1688,24 +1688,13 @@
     // tiene el currentEmp real de ese turno, así que apenas ve que le llegó
     // una corrección pendiente para su propia sesión, la aplica localmente
     // (mismo efecto que si el empleado la hubiera cargado él mismo) y
-    // vuelve a publicar su sesión ya sin la marca pendiente.
-    try{
-      if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio){
-        var miDoc = mapa[idSeguro(currentEmp.nombre)];
-        if(miDoc && miDoc.correccionRemota){
-          var cr = miDoc.correccionRemota;
-          currentEmp.efectivoInicial = cr.montoNuevo;
-          if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
-          currentEmp._correccionesEfectivoInicial.push({
-            montoAnterior: cr.montoAnterior, montoNuevo: cr.montoNuevo,
-            nota: cr.nota, fecha: cr.fecha, autor: cr.autor
-          });
-          if(typeof guardarSesionActiva==='function') guardarSesionActiva(); // republica ya corregido, sin la marca pendiente
-          if(typeof showToast==='function') showToast('🖊 Tu efectivo inicial fue corregido a '+fmt(cr.montoNuevo)+' desde el panel admin ('+(cr.autor||'')+')');
-          if(typeof renderDashboard==='function') renderDashboard();
-        }
-      }
-    }catch(e){ console.error('Error aplicando corrección remota de efectivo inicial', e); }
+    // vuelve a publicar su sesión ya sin la marca pendiente. Esto cubre el
+    // caso de que la corrección llegue MIENTRAS la página ya está abierta —
+    // si en cambio la netbook está recién recuperando un turno interrumpido
+    // (recargó la página), esta misma revisión se repite desde
+    // retomarSesionInterrumpida() y confirmarEfectivoInicial(), porque
+    // currentEmp todavía no existe en el momento en que este listener arranca.
+    if(typeof aplicarCorreccionEfectivoInicialPendiente === 'function') aplicarCorreccionEfectivoInicialPendiente();
 
     // Compatibilidad: si hay exactamente una sesión abierta, la dejamos
     // también en la variable vieja (la usan un par de funciones que
@@ -7003,6 +6992,10 @@ function retomarSesionInterrumpida() {
     ? '↩️ Turno retomado — tenés '+cuantosMsj+' mensaje'+(cuantosMsj===1?'':'s')+' guardado'+(cuantosMsj===1?'':'s')
     : '↩️ Turno retomado — seguís donde lo dejaste');
   guardarSesionActiva();
+  // Por si mientras la página estaba recargando (o antes) llegó una
+  // corrección de efectivo inicial desde el panel admin en otra netbook —
+  // recién ahora existe currentEmp para poder aplicarla.
+  if(typeof aplicarCorreccionEfectivoInicialPendiente==='function') aplicarCorreccionEfectivoInicialPendiente();
 }
 
 function cerrarSesionInterrumpidaAhora() {
@@ -10211,6 +10204,34 @@ function guardarCorreccionCierre() {
 // vuelve a sincronizar (ver el onSnapshot de sesionesActivas), la aplica a
 // su propio turno y la corrección desaparece de la nube.
 var _corrIniNombre = null;
+
+// Revisa si el turno propio de este dispositivo tiene una corrección de
+// efectivo inicial pendiente (cargada desde el panel admin en OTRA netbook,
+// ver guardarCorreccionEfectivoInicial) y, si la hay, la aplica. Se llama
+// tanto desde el listener en vivo de sesionesActivas (por si la corrección
+// llega con la página ya abierta) como al recuperar un turno interrumpido o
+// al iniciar sesión (por si la corrección ya estaba esperando desde antes de
+// que currentEmp existiera, que es el caso más común: alguien recarga la
+// página para actualizar el sistema, y hasta que no retoma el turno no hay
+// currentEmp con el cual comparar).
+function aplicarCorreccionEfectivoInicialPendiente() {
+  try{
+    if(typeof currentEmp === 'undefined' || !currentEmp || !currentEmp.turnoInicio) return;
+    if(!window.__lrSesionesActivasCache) return;
+    var miDoc = window.__lrSesionesActivasCache[String(currentEmp.nombre).replace(/\//g,'-')];
+    if(!miDoc || !miDoc.correccionRemota) return;
+    var cr = miDoc.correccionRemota;
+    currentEmp.efectivoInicial = cr.montoNuevo;
+    if(!currentEmp._correccionesEfectivoInicial) currentEmp._correccionesEfectivoInicial = [];
+    currentEmp._correccionesEfectivoInicial.push({
+      montoAnterior: cr.montoAnterior, montoNuevo: cr.montoNuevo,
+      nota: cr.nota, fecha: cr.fecha, autor: cr.autor
+    });
+    if(typeof guardarSesionActiva==='function') guardarSesionActiva(); // republica ya corregido, sin la marca pendiente
+    if(typeof showToast==='function') showToast('🖊 Tu efectivo inicial fue corregido a '+fmt(cr.montoNuevo)+' desde el panel admin ('+(cr.autor||'')+')');
+    if(typeof renderDashboard==='function') renderDashboard();
+  }catch(e){ console.error('Error aplicando corrección remota de efectivo inicial', e); }
+}
 
 function abrirCorreccionEfectivoInicial(nombreEmp) {
   var esMiPropioTurno = currentEmp && currentEmp.nombre === nombreEmp;
