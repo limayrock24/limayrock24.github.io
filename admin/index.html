@@ -4200,6 +4200,7 @@ body.night-on{background:#080005}
         <input type="date" id="rentFechaHasta" onchange="selPeriodoCustom()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
       </div>
       <div class="rent-grid" id="rentGrid"></div>
+      <div class="rent-grid" id="margenGrid" style="margin-top:8px"></div>
       <div id="rentDetalleWrap" style="display:none;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span id="rentDetalleTitulo" style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--gold);text-transform:uppercase"></span>
@@ -4213,6 +4214,9 @@ body.night-on{background:#080005}
 
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">Top 5 egresos del período</div>
       <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden" id="topEgresosEl"></div>
+
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">📈 Margen bruto día por día</div>
+      <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden" id="margenDiaEl"></div>
 
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn pdf" onclick="exportarRentabilidadPDF()">📄 Exportar reporte</button>
@@ -12675,6 +12679,61 @@ function renderRentDetalle() {
   lista.innerHTML = html || '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.78rem">Sin datos para mostrar en este período</div>';
 }
 
+// Costo de mercadería y margen bruto de una lista de ventas — mismo criterio
+// de desglose de combos/manuales que Ventas por categoría (prorratea combos
+// por precio de venta de cada componente; los ítems sueltos/manuales no
+// tienen costo cargado así que van como "sin costo").
+function calcularMargenBrutoDeVentas(ventasList) {
+  var prodByName = {};
+  PRODUCTS.forEach(function(p){ prodByName[p.name] = p; });
+  var costoTotal = 0, revConCosto = 0, revSinCosto = 0;
+  (ventasList||[]).forEach(function(v){
+    if(v.anulada || v.fiadoCarga) return;
+    (v.items||[]).forEach(function(i){
+      if(!i.name) return;
+      if(i.esCombo && i.comboItems && i.comboItems.length){
+        var pesos = i.comboItems.map(function(ci){
+          var prod = prodByName[ci.nombre];
+          return (prod && prod.pventa) ? prod.pventa * (ci.qty||1) : 0;
+        });
+        var sumaPesos = pesos.reduce(function(s,w){ return s+w; }, 0);
+        i.comboItems.forEach(function(ci, idx){
+          var cantidadReal = (ci.qty||1) * (i.qty||1);
+          var montoAsignado = sumaPesos>0 ? (i.subtotal||0)*(pesos[idx]/sumaPesos) : (i.subtotal||0)/i.comboItems.length;
+          var prod = prodByName[ci.nombre];
+          if(prod && prod.costo){
+            costoTotal += prod.costo * cantidadReal;
+            revConCosto += montoAsignado;
+          } else {
+            revSinCosto += montoAsignado;
+          }
+        });
+        return;
+      }
+      if(i.manual){
+        revSinCosto += (i.subtotal||0);
+        return;
+      }
+      var prod = prodByName[i.name];
+      if(prod && prod.costo){
+        costoTotal += prod.costo * (i.qty||0);
+        revConCosto += (i.subtotal||0);
+      } else {
+        revSinCosto += (i.subtotal||0);
+      }
+    });
+  });
+  var revTotal = revConCosto + revSinCosto;
+  return {
+    costoTotal: costoTotal,
+    revConCosto: revConCosto,
+    revSinCosto: revSinCosto,
+    revTotal: revTotal,
+    margenBruto: revConCosto - costoTotal,
+    pctCobertura: revTotal>0 ? (revConCosto/revTotal*100) : 100
+  };
+}
+
 function renderRentabilidad() {
   var rango = getFechasRango(_periodoCurrent);
 
@@ -12759,11 +12818,69 @@ function renderRentabilidad() {
       (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — ya incluida en Ingresos netos</div>':'')+
     '</div>';
 
+  // Costo de mercadería y margen bruto — para saber cuánto de lo facturado
+  // es "reposición" del costo de la mercadería vendida y cuánto queda como
+  // margen real para cubrir sueldos, luz, servicios, etc.
+  var margen = calcularMargenBrutoDeVentas(ventas);
+  var margenGrid = document.getElementById('margenGrid');
+  if(margenGrid){
+    margenGrid.innerHTML =
+      '<div class="rent-box" style="border-color:rgba(245,194,0,.35)">'+
+        '<div class="rl">🏷 Costo de mercadería vendida</div>'+
+        '<div class="rv" style="color:var(--gold)">'+fmt(margen.costoTotal)+'</div>'+
+        '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Lo que se repone al proveedor</div>'+
+      '</div>'+
+      '<div class="rent-box" style="border-color:rgba(46,204,113,.4)">'+
+        '<div class="rl">📈 Margen bruto</div>'+
+        '<div class="rv" style="color:var(--green)">'+fmt(margen.margenBruto)+'</div>'+
+        '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Para cubrir sueldos, luz, servicios y otros gastos</div>'+
+      '</div>'+
+      (margen.pctCobertura<99.5?
+        '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.68rem;color:var(--gray)">'+
+          '⚠ Calculado sobre el '+margen.pctCobertura.toFixed(0)+'% de la facturación del período ('+fmt(margen.revConCosto)+' de '+fmt(margen.revTotal)+') — el resto son productos sin precio de costo cargado. '+
+          '<span style="color:var(--gold);text-decoration:underline;cursor:pointer" onclick="irACatalogoSinCosto()">Cargar costos faltantes →</span>'+
+        '</div>' : '')+
+    '';
+  }
+
   // Guardar los datos del período actual para el detalle clickeable
   _rentVentasActual   = ventas;
   _rentEgresosActual  = egresos;
   _rentConsumosActual = consumos;
   renderRentDetalle();
+
+  // Margen bruto día por día — mismo criterio que el total, agrupado por
+  // fecha, para ver de un vistazo qué días cubren los costos fijos y
+  // cuáles no. Se limita a 60 días para no colgar el render en "Todo".
+  var margenDiaEl = document.getElementById('margenDiaEl');
+  if(margenDiaEl){
+    var porDia = {};
+    ventas.forEach(function(v){
+      if(v.anulada || v.fiadoCarga) return;
+      var dia = (v.fecha||'').slice(0,10);
+      if(!dia) return;
+      if(!porDia[dia]) porDia[dia] = [];
+      porDia[dia].push(v);
+    });
+    var dias = Object.keys(porDia).sort().reverse();
+    var diasLimitados = dias.slice(0, 60);
+    if(!diasLimitados.length){
+      margenDiaEl.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.78rem">Sin ventas en este período</div>';
+    } else {
+      margenDiaEl.innerHTML =
+        (dias.length>60?'<div style="padding:6px 10px;font-size:.66rem;color:var(--gray)">Mostrando los últimos 60 días con ventas de '+dias.length+'</div>':'')+
+        diasLimitados.map(function(dia){
+          var m = calcularMargenBrutoDeVentas(porDia[dia]);
+          var fechaFmt = new Date(dia+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});
+          return '<div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);font-size:.76rem">'+
+            '<span style="color:var(--gray);font-size:.7rem;text-transform:capitalize">'+fechaFmt+'</span>'+
+            '<span style="color:var(--light);font-size:.7rem">Facturó '+fmt(m.revTotal)+(m.pctCobertura<99.5?' <span style="color:var(--gray)">('+m.pctCobertura.toFixed(0)+'% con costo)</span>':'')+'</span>'+
+            '<span style="color:var(--gold);font-family:Oswald,sans-serif">Costo '+fmt(m.costoTotal)+'</span>'+
+            '<span style="color:var(--green);font-family:Oswald,sans-serif;font-weight:600">Margen '+fmt(m.margenBruto)+'</span>'+
+          '</div>';
+        }).join('');
+    }
+  }
 
   // Cobros por medio
   var cobrosEl = document.getElementById('cobrosGrid');
@@ -18879,6 +18996,13 @@ function refrescarFiltroCategorias() {
   });
   sel.innerHTML = html;
   sel.value = seleccionActual;
+}
+
+// Atajo desde Rentabilidad: llevar directo al Catálogo para cargar los
+// costos faltantes que afectan el cálculo de margen bruto (el contador
+// "Sin precio" de ahí arriba ya muestra cuántos productos faltan).
+function irACatalogoSinCosto() {
+  switchTab('catalogo');
 }
 
 function renderCatalogo() {
