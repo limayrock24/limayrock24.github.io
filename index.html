@@ -12790,7 +12790,9 @@ function calcularResumenRentabilidad(rango) {
   var cobroFiados = medios['Cobro fiado'] || 0;
 
   // Ingresos netos = lo que realmente entró (Efectivo + Transferencia + Débito ya neteado + cargas virtuales + cobro de fiados)
-  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + cobroFiados;
+  // Redondeado acá: netoDebito viene de una división y arrastraba centavos
+  // hasta fmt(), que no los recorta — se veían decimales sueltos en pantalla.
+  var ingresosNetos = Math.round(medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + cobroFiados);
 
   // Resultado neto = Ingresos netos − Egresos (el consumo interno NO resta acá, es solo referencia)
   var neto = ingresosNetos - totalEgresos;
