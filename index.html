@@ -3812,7 +3812,7 @@ body.night-on{background:#080005}
         <span id="ventasPorCategoriaArrow">▾</span>
       </div>
       <div id="stockVentasPorCategoria" style="display:none;margin-bottom:12px">
-        <input type="text" id="ventaCatBuscador" placeholder="🔍 Buscar producto (para decidir pedidos)..." oninput="buscarVentaCatProd(this.value)" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem;margin-bottom:10px;box-sizing:border-box">
+        <input type="text" id="ventaCatBuscador" placeholder="🔍 Buscar producto o categoría (para decidir pedidos)..." oninput="buscarVentaCatProd(this.value)" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem;margin-bottom:10px;box-sizing:border-box">
         <div id="ventaCatResultados"></div>
       </div>
 
@@ -25877,22 +25877,51 @@ function renderVentasPorCategoria(porProducto) {
 
   // Buscador: si hay término escrito, se deja de lado el agrupado por
   // categoría y se muestra una lista plana de los productos que coinciden
-  // (con su categoría al lado), para encontrar uno puntual sin tener que
-  // desplegar categoría por categoría — pensado para decidir pedidos rápido.
+  // — por nombre de producto O por nombre de categoría completa — con su
+  // categoría al lado, para encontrar uno puntual (o todo un rubro) sin
+  // tener que desplegar categoría por categoría. Pensado para decidir
+  // pedidos rápido: además de las ventas y el margen, se calcula en qué
+  // puesto está ese producto dentro de su categoría y dentro de TODO el
+  // local, sobre el mismo período que ya está filtrado arriba — así se ve
+  // de una si es un producto importante o uno marginal antes de comprarlo.
   if(_ventaCatBusqueda){
     var termino = _ventaCatBusqueda.toLowerCase();
-    var encontrados = [];
+    var criterioVal = function(dp){ return _ventaCatOrdenPor==='qty' ? dp.qty : dp.rev; };
+
+    // Ranking global (todos los productos de todas las categorías) y
+    // ranking dentro de cada categoría, ambos sobre este mismo período.
+    var todosProductos = [];
     Object.keys(porCategoria).forEach(function(cat){
       var prodsCat = porCategoria[cat].productos;
       Object.keys(prodsCat).forEach(function(nombre){
-        if(nombre.toLowerCase().indexOf(termino) !== -1){
+        todosProductos.push({nombre: nombre, cat: cat, dp: prodsCat[nombre]});
+      });
+    });
+    todosProductos.sort(function(a,b){ return criterioVal(b.dp) - criterioVal(a.dp); });
+    var totalGlobal = todosProductos.length;
+    var rankGlobal = {};
+    todosProductos.forEach(function(item, idx){ rankGlobal[item.cat+'||'+item.nombre] = idx+1; });
+
+    var rankCategoria = {};
+    var totalPorCategoria = {};
+    Object.keys(porCategoria).forEach(function(cat){
+      var prodsCat = porCategoria[cat].productos;
+      var nombresCat = Object.keys(prodsCat).sort(function(a,b){ return criterioVal(prodsCat[b]) - criterioVal(prodsCat[a]); });
+      totalPorCategoria[cat] = nombresCat.length;
+      nombresCat.forEach(function(nombre, idx){ rankCategoria[cat+'||'+nombre] = idx+1; });
+    });
+
+    var encontrados = [];
+    Object.keys(porCategoria).forEach(function(cat){
+      var prodsCat = porCategoria[cat].productos;
+      var matchCat = cat.toLowerCase().indexOf(termino) !== -1;
+      Object.keys(prodsCat).forEach(function(nombre){
+        if(matchCat || nombre.toLowerCase().indexOf(termino) !== -1){
           encontrados.push({nombre: nombre, cat: cat, dp: prodsCat[nombre]});
         }
       });
     });
-    encontrados.sort(function(a,b){
-      return _ventaCatOrdenPor==='qty' ? (b.dp.qty - a.dp.qty) : (b.dp.rev - a.dp.rev);
-    });
+    encontrados.sort(function(a,b){ return criterioVal(b.dp) - criterioVal(a.dp); });
 
     if(!encontrados.length){
       el.innerHTML = botonesOrden + '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Ningún producto vendido en este período coincide con "'+_ventaCatBusqueda+'"</div>';
@@ -25901,12 +25930,17 @@ function renderVentasPorCategoria(porProducto) {
 
     var filasBusqueda = encontrados.map(function(f){
       var dp = f.dp;
+      var clave = f.cat+'||'+f.nombre;
       var margenTxt = (dp.costo!=null && dp.rev>0)
         ? ' <span style="color:var(--gray)">· margen '+fmt(dp.rev-dp.costo)+' ('+Math.round((dp.rev-dp.costo)/dp.rev*100)+'%)</span>'
         : '';
-      return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.78rem">'+
-        '<span style="color:var(--white)">'+f.nombre+' <span style="color:var(--gray);font-size:.68rem">('+f.cat+')</span></span>'+
-        '<span style="color:var(--gray);white-space:nowrap;text-align:right">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span>'+margenTxt+'</span>'+
+      var rankTxt = '<div style="font-size:.66rem;color:var(--gold);margin-top:2px">#'+rankCategoria[clave]+' de '+totalPorCategoria[f.cat]+' en '+f.cat+' · #'+rankGlobal[clave]+' de '+totalGlobal+' en todo el local</div>';
+      return '<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.78rem">'+
+        '<div style="display:flex;justify-content:space-between">'+
+          '<span style="color:var(--white)">'+f.nombre+' <span style="color:var(--gray);font-size:.68rem">('+f.cat+')</span></span>'+
+          '<span style="color:var(--gray);white-space:nowrap;text-align:right">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span>'+margenTxt+'</span>'+
+        '</div>'+
+        rankTxt+
       '</div>';
     }).join('');
 
