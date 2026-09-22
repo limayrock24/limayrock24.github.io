@@ -3811,7 +3811,10 @@ body.night-on{background:#080005}
         <span>📊 Ventas por categoría</span>
         <span id="ventasPorCategoriaArrow">▾</span>
       </div>
-      <div id="stockVentasPorCategoria" style="display:none;margin-bottom:12px"></div>
+      <div id="stockVentasPorCategoria" style="display:none;margin-bottom:12px">
+        <input type="text" id="ventaCatBuscador" placeholder="🔍 Buscar producto (para decidir pedidos)..." oninput="buscarVentaCatProd(this.value)" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem;margin-bottom:10px;box-sizing:border-box">
+        <div id="ventaCatResultados"></div>
+      </div>
 
       <!-- RANKING DE PROMOS (mismo filtro de fecha/turno/rango de acá arriba)
            — para juzgar si una promo conviene mantenerla o no. -->
@@ -25795,9 +25798,19 @@ function toggleVentasPorCategoriaBox() {
 var _ventaCatOrdenPor = 'rev'; // 'rev' (monto) o 'qty' (unidades) — cómo se ordenan los productos DENTRO de cada categoría
 var _ultimoPorProductoVentas = null;
 var _ventaCatAbiertas = {}; // idx -> true, para que no se cierren al cambiar el orden
+// Buscador de producto dentro de Ventas por categoría — para decidir pedidos
+// rápido: escribís el nombre y ves de una cuánto se movió (unidades, monto y
+// margen) en el período elegido, sin tener que ir abriendo categoría por
+// categoría a buscarlo a ojo.
+var _ventaCatBusqueda = '';
 
 function cambiarOrdenVentaCatProd(criterio) {
   _ventaCatOrdenPor = criterio;
+  renderVentasPorCategoria(_ultimoPorProductoVentas || {});
+}
+
+function buscarVentaCatProd(valor) {
+  _ventaCatBusqueda = (valor||'').trim();
   renderVentasPorCategoria(_ultimoPorProductoVentas || {});
 }
 
@@ -25816,7 +25829,7 @@ function toggleVentaCatProd(idx) {
 
 function renderVentasPorCategoria(porProducto) {
   _ultimoPorProductoVentas = porProducto;
-  var el = document.getElementById('stockVentasPorCategoria');
+  var el = document.getElementById('ventaCatResultados');
   if(!el) return;
 
   var presetsValidos = getManualPresets();
@@ -25856,6 +25869,53 @@ function renderVentasPorCategoria(porProducto) {
     }
   });
 
+  var botonesOrden = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
+    '<span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif">Ordenar por</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'rev\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--gray)')+'">Monto</span>'+
+    '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+'">Unidades</span>'+
+  '</div>';
+
+  // Buscador: si hay término escrito, se deja de lado el agrupado por
+  // categoría y se muestra una lista plana de los productos que coinciden
+  // (con su categoría al lado), para encontrar uno puntual sin tener que
+  // desplegar categoría por categoría — pensado para decidir pedidos rápido.
+  if(_ventaCatBusqueda){
+    var termino = _ventaCatBusqueda.toLowerCase();
+    var encontrados = [];
+    Object.keys(porCategoria).forEach(function(cat){
+      var prodsCat = porCategoria[cat].productos;
+      Object.keys(prodsCat).forEach(function(nombre){
+        if(nombre.toLowerCase().indexOf(termino) !== -1){
+          encontrados.push({nombre: nombre, cat: cat, dp: prodsCat[nombre]});
+        }
+      });
+    });
+    encontrados.sort(function(a,b){
+      return _ventaCatOrdenPor==='qty' ? (b.dp.qty - a.dp.qty) : (b.dp.rev - a.dp.rev);
+    });
+
+    if(!encontrados.length){
+      el.innerHTML = botonesOrden + '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Ningún producto vendido en este período coincide con "'+_ventaCatBusqueda+'"</div>';
+      return;
+    }
+
+    var filasBusqueda = encontrados.map(function(f){
+      var dp = f.dp;
+      var margenTxt = (dp.costo!=null && dp.rev>0)
+        ? ' <span style="color:var(--gray)">· margen '+fmt(dp.rev-dp.costo)+' ('+Math.round((dp.rev-dp.costo)/dp.rev*100)+'%)</span>'
+        : '';
+      return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.78rem">'+
+        '<span style="color:var(--white)">'+f.nombre+' <span style="color:var(--gray);font-size:.68rem">('+f.cat+')</span></span>'+
+        '<span style="color:var(--gray);white-space:nowrap;text-align:right">'+dp.qty+' u. · <span style="color:var(--gold)">'+fmt(dp.rev)+'</span>'+margenTxt+'</span>'+
+      '</div>';
+    }).join('');
+
+    el.innerHTML = botonesOrden +
+      '<div style="font-size:.66rem;color:var(--gray);margin-bottom:6px">'+encontrados.length+' producto'+(encontrados.length===1?'':'s')+' encontrado'+(encontrados.length===1?'':'s')+'</div>'+
+      filasBusqueda;
+    return;
+  }
+
   var cats = Object.keys(porCategoria).sort(function(a,b){
     return _ventaCatOrdenPor==='qty' ? (porCategoria[b].qty - porCategoria[a].qty) : (porCategoria[b].rev - porCategoria[a].rev);
   });
@@ -25866,12 +25926,6 @@ function renderVentasPorCategoria(porProducto) {
 
   var totalRev = cats.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
   var maxRev = Math.max.apply(null, cats.map(function(c){ return porCategoria[c].rev; }));
-
-  var botonesOrden = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'+
-    '<span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif">Ordenar por</span>'+
-    '<span onclick="cambiarOrdenVentaCatProd(\'rev\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='rev'?'var(--gold)':'var(--gray)')+'">Monto</span>'+
-    '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+'">Unidades</span>'+
-  '</div>';
 
   var filasCats = cats.map(function(c, i){
     var d = porCategoria[c];
