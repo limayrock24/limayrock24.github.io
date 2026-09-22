@@ -12777,22 +12777,36 @@ function calcularResumenRentabilidad(rango) {
   var netoDebito = medios['Débito'] / getDebitoFactor();
   var costoPostnet = medios['Débito'] - netoDebito;
 
-  // Cargas virtuales del período — la ganancia (cobrado − descontado de MP) suma como ingreso real
+  // Cargas virtuales del período (recarga de celular/DirecTV con el Posnet
+  // de Mercado Pago) — no es una "ganancia" que aparece de la nada: entra
+  // lo que le cobrás al cliente (en Efectivo o Transferencia, lo que haya
+  // elegido) y sale de Mercado Pago lo que se le carga. Eso se descuenta
+  // de Transferencia porque ahí es donde vive la plata de Mercado Pago.
+  // Ej: recarga de $10.000, se le cobra $10.500 en efectivo → +$10.500 a
+  // Efectivo, −$10.000 a Transferencia, ganancia neta $500 — ya reflejada
+  // sola en esos dos casilleros, sin necesidad de una caja aparte.
   var cargasVirtuales = getCargasVirtuales().filter(function(c){
     var d = new Date(c.fecha);
     return d>=rango.desde && d<=rango.hasta;
   });
   var gananciaCargas = cargasVirtuales.reduce(function(s,c){ return s+c.ganancia; },0);
+  cargasVirtuales.forEach(function(c){
+    // El medio de una carga virtual es siempre Efectivo o Transferencia
+    // (nunca Débito), así que esto no afecta netoDebito/costoPostnet.
+    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
+    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+  });
 
   // Cobro de fiados viejos (saldarFiado) — es plata real que entró hoy, aunque
   // la mercadería haya salido otro día. No se muestra por separado, se
   // suma directo a Ingresos netos porque es plata real en la cuenta.
   var cobroFiados = medios['Cobro fiado'] || 0;
 
-  // Ingresos netos = lo que realmente entró (Efectivo + Transferencia + Débito ya neteado + cargas virtuales + cobro de fiados)
+  // Ingresos netos = lo que realmente entró (Efectivo + Transferencia ya con
+  // las cargas virtuales aplicadas + Débito ya neteado + cobro de fiados)
   // Redondeado acá: netoDebito viene de una división y arrastraba centavos
   // hasta fmt(), que no los recorta — se veían decimales sueltos en pantalla.
-  var ingresosNetos = Math.round(medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + cobroFiados);
+  var ingresosNetos = Math.round(medios.Efectivo + medios.Transferencia + netoDebito + cobroFiados);
 
   // Resultado neto = Ingresos netos − Egresos (el consumo interno NO resta acá, es solo referencia)
   var neto = ingresosNetos - totalEgresos;
@@ -12846,7 +12860,7 @@ function renderRentabilidad() {
     '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.7rem;color:var(--gray);margin-top:2px">'+
       '💳 Costo posnet sobre $'+Number(Math.round(medios["Débito"])).toLocaleString("es-AR")+' en débito: <b style="color:var(--red)">'+fmt(Math.round(costoPostnet))+'</b>'+
       '<span style="display:block;font-size:.64rem;margin-top:2px">Diferencia entre lo que pagó el cliente con tarjeta y lo que realmente te acredita Mercado Pago</span>'+
-      (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — desglosado abajo en "Cargas virtuales"</div>':'')+
+      (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — ya repartida entre Efectivo y Transferencia abajo</div>':'')+
     '</div>';
 
   // Costo de mercadería y margen bruto — para saber cuánto de lo facturado
@@ -12917,9 +12931,11 @@ function renderRentabilidad() {
   // no da la sensación de que algo no cierra. Antes cargas virtuales y el
   // cobro de fiados quedaban afuera de esta grilla (solo se mencionaban
   // aparte) y la suma de las 3 cajas de siempre no daba igual a Ingresos
-  // netos — ahora se agregan como cajas propias solo cuando hay algo que
-  // mostrar, para que Efectivo + Transferencia + Posnet + estas dos cierre
-  // siempre contra el total de arriba.
+  // netos — ahora Efectivo y Transferencia ya incluyen el movimiento real de
+  // las cargas virtuales (entra lo cobrado, sale lo que se descuenta de
+  // Mercado Pago), así que no hace falta una caja aparte para que sumen
+  // igual que el total. El cobro de fiados sí queda como caja propia,
+  // porque no tiene un medio "de origen" del cual descontarse.
   var cobrosEl = document.getElementById('cobrosGrid');
   if(cobrosEl){
     cobrosEl.innerHTML=
@@ -12938,12 +12954,6 @@ function renderRentabilidad() {
         '<div class="cv">'+fmt(Math.round(netoDebito))+'</div>'+
         '<div class="cn">Neto después del posnet</div>'+
       '</div>'+
-      (gananciaCargas>0?
-        '<div class="cobro-box">'+
-          '<div class="cl">📱 Cargas virtuales</div>'+
-          '<div class="cv" style="color:var(--green)">'+fmt(gananciaCargas)+'</div>'+
-          '<div class="cn">Ganancia de recargas</div>'+
-        '</div>' : '')+
       (cobroFiados>0?
         '<div class="cobro-box">'+
           '<div class="cl">🤝 Cobro de fiados</div>'+
@@ -13032,8 +13042,8 @@ function exportarRentabilidadPDF() {
       '<tr><td>📲 Transferencia</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td></tr>'+
       '<tr><td>💳 Débito</td><td>$'+Number(medios['Débito']).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(medios['Débito']/getDebitoFactor())).toLocaleString('es-AR')+'</td></tr>'+
       (r.cobroFiados>0?'<tr><td>🤝 Cobro de fiados</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td></tr>':'')+
-      (r.gananciaCargas>0?'<tr><td>📱 Cargas virtuales (ganancia)</td><td>$'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+'</td></tr>':'')+
     '</tbody></table>'+
+    (r.gananciaCargas>0?'<p style="font-size:11px;color:#999;margin:4px 0 0">📱 Incluye '+r.cargasVirtuales.length+' carga(s) virtual(es) por $'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+' de ganancia, ya repartida arriba entre Efectivo y Transferencia.</p>':'')+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Egresos del período</h3>'+
     '<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Monto</th></tr></thead><tbody>'+
     egresos.map(function(e){
