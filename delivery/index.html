@@ -3811,7 +3811,10 @@ body.night-on{background:#080005}
         <span id="ventasPorCategoriaArrow">▾</span>
       </div>
       <div id="stockVentasPorCategoria" style="display:none;margin-bottom:12px">
-        <input type="text" id="ventaCatBuscador" placeholder="🔍 Buscar producto o categoría (para decidir pedidos)..." oninput="buscarVentaCatProd(this.value)" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem;margin-bottom:10px;box-sizing:border-box">
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <input type="text" id="ventaCatBuscador" placeholder="🔍 Buscar producto (para decidir pedidos)..." oninput="buscarVentaCatProd(this.value)" style="flex:1;min-width:160px;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem;box-sizing:border-box">
+          <select id="ventaCatFiltroCategoria" onchange="filtrarVentaCatPorCategoria(this.value)" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:8px 10px;font-family:Barlow,sans-serif;font-size:.82rem"></select>
+        </div>
         <div id="ventaCatResultados"></div>
       </div>
 
@@ -25800,8 +25803,11 @@ var _ventaCatAbiertas = {}; // idx -> true, para que no se cierren al cambiar el
 // Buscador de producto dentro de Ventas por categoría — para decidir pedidos
 // rápido: escribís el nombre y ves de una cuánto se movió (unidades, monto y
 // margen) en el período elegido, sin tener que ir abriendo categoría por
-// categoría a buscarlo a ojo.
+// categoría a buscarlo a ojo. En paralelo, un desplegable con las categorías
+// reales ("Todas las categorías", Bebidas alcohólicas, Snacks, etc.) para
+// filtrar por categoría exacta — los dos filtros se pueden combinar.
 var _ventaCatBusqueda = '';
+var _ventaCatFiltroCategoria = '';
 
 function cambiarOrdenVentaCatProd(criterio) {
   _ventaCatOrdenPor = criterio;
@@ -25810,6 +25816,11 @@ function cambiarOrdenVentaCatProd(criterio) {
 
 function buscarVentaCatProd(valor) {
   _ventaCatBusqueda = (valor||'').trim();
+  renderVentasPorCategoria(_ultimoPorProductoVentas || {});
+}
+
+function filtrarVentaCatPorCategoria(valor) {
+  _ventaCatFiltroCategoria = valor || '';
   renderVentasPorCategoria(_ultimoPorProductoVentas || {});
 }
 
@@ -25830,6 +25841,13 @@ function renderVentasPorCategoria(porProducto) {
   _ultimoPorProductoVentas = porProducto;
   var el = document.getElementById('ventaCatResultados');
   if(!el) return;
+
+  var selCatBuscador = document.getElementById('ventaCatFiltroCategoria');
+  if(selCatBuscador && !selCatBuscador.options.length){
+    var catsTodasSel = (window.ALL_CATS||ALL_CATS||[]).slice().sort(function(a,b){ return a.localeCompare(b,'es'); });
+    selCatBuscador.innerHTML = '<option value="">Todas las categorías</option>'+
+      catsTodasSel.map(function(c){ return '<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>'; }).join('');
+  }
 
   var presetsValidos = getManualPresets();
   var porCategoria = {};
@@ -25874,16 +25892,17 @@ function renderVentasPorCategoria(porProducto) {
     '<span onclick="cambiarOrdenVentaCatProd(\'qty\')" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.68rem;padding:3px 10px;border-radius:10px;border:1px solid '+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--border)')+';color:'+(_ventaCatOrdenPor==='qty'?'var(--gold)':'var(--gray)')+'">Unidades</span>'+
   '</div>';
 
-  // Buscador: si hay término escrito, se deja de lado el agrupado por
-  // categoría y se muestra una lista plana de los productos que coinciden
-  // — por nombre de producto O por nombre de categoría completa — con su
-  // categoría al lado, para encontrar uno puntual (o todo un rubro) sin
-  // tener que desplegar categoría por categoría. Pensado para decidir
-  // pedidos rápido: además de las ventas y el margen, se calcula en qué
-  // puesto está ese producto dentro de su categoría y dentro de TODO el
-  // local, sobre el mismo período que ya está filtrado arriba — así se ve
-  // de una si es un producto importante o uno marginal antes de comprarlo.
-  if(_ventaCatBusqueda){
+  // Buscador de producto (texto libre) + desplegable de categoría exacta —
+  // se pueden usar juntos o por separado. En cuanto cualquiera de los dos
+  // está activo, se deja de lado el agrupado por categoría y se muestra una
+  // lista plana de los productos que coinciden, para encontrar uno puntual
+  // (o navegar un rubro entero elegido del desplegable) sin tener que
+  // desplegar categoría por categoría. Pensado para decidir pedidos rápido:
+  // además de las ventas y el margen, se calcula en qué puesto está ese
+  // producto dentro de su categoría y dentro de TODO el local, sobre el
+  // mismo período que ya está filtrado arriba — así se ve de una si es un
+  // producto importante o uno marginal antes de comprarlo.
+  if(_ventaCatBusqueda || _ventaCatFiltroCategoria){
     var termino = _ventaCatBusqueda.toLowerCase();
     var criterioVal = function(dp){ return _ventaCatOrdenPor==='qty' ? dp.qty : dp.rev; };
 
@@ -25912,10 +25931,10 @@ function renderVentasPorCategoria(porProducto) {
 
     var encontrados = [];
     Object.keys(porCategoria).forEach(function(cat){
+      if(_ventaCatFiltroCategoria && cat !== _ventaCatFiltroCategoria) return;
       var prodsCat = porCategoria[cat].productos;
-      var matchCat = cat.toLowerCase().indexOf(termino) !== -1;
       Object.keys(prodsCat).forEach(function(nombre){
-        if(matchCat || nombre.toLowerCase().indexOf(termino) !== -1){
+        if(!termino || nombre.toLowerCase().indexOf(termino) !== -1){
           encontrados.push({nombre: nombre, cat: cat, dp: prodsCat[nombre]});
         }
       });
@@ -25923,7 +25942,11 @@ function renderVentasPorCategoria(porProducto) {
     encontrados.sort(function(a,b){ return criterioVal(b.dp) - criterioVal(a.dp); });
 
     if(!encontrados.length){
-      el.innerHTML = botonesOrden + '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Ningún producto vendido en este período coincide con "'+_ventaCatBusqueda+'"</div>';
+      var descFiltro = [
+        _ventaCatBusqueda ? '"'+_ventaCatBusqueda+'"' : null,
+        _ventaCatFiltroCategoria ? 'en '+_ventaCatFiltroCategoria : null
+      ].filter(Boolean).join(' ');
+      el.innerHTML = botonesOrden + '<div style="padding:14px;text-align:center;color:var(--gray);font-size:.78rem">Ningún producto vendido en este período coincide con '+descFiltro+'</div>';
       return;
     }
 
