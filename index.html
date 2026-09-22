@@ -12846,8 +12846,7 @@ function renderRentabilidad() {
     '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.7rem;color:var(--gray);margin-top:2px">'+
       '💳 Costo posnet sobre $'+Number(Math.round(medios["Débito"])).toLocaleString("es-AR")+' en débito: <b style="color:var(--red)">'+fmt(Math.round(costoPostnet))+'</b>'+
       '<span style="display:block;font-size:.64rem;margin-top:2px">Diferencia entre lo que pagó el cliente con tarjeta y lo que realmente te acredita Mercado Pago</span>'+
-      (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — ya incluida en Ingresos netos</div>':'')+
-      (cobroFiados>0?'<div style="margin-top:6px">🤝 Cobro de fiados: <b style="color:var(--gold)">'+fmt(cobroFiados)+'</b> — ya incluido en Ingresos netos</div>':'')+
+      (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — desglosado abajo en "Cargas virtuales"</div>':'')+
     '</div>';
 
   // Costo de mercadería y margen bruto — para saber cuánto de lo facturado
@@ -12914,7 +12913,13 @@ function renderRentabilidad() {
     }
   }
 
-  // Cobros por medio
+  // Cobros por medio — tiene que sumar EXACTO el total de Ingresos netos, si
+  // no da la sensación de que algo no cierra. Antes cargas virtuales y el
+  // cobro de fiados quedaban afuera de esta grilla (solo se mencionaban
+  // aparte) y la suma de las 3 cajas de siempre no daba igual a Ingresos
+  // netos — ahora se agregan como cajas propias solo cuando hay algo que
+  // mostrar, para que Efectivo + Transferencia + Posnet + estas dos cierre
+  // siempre contra el total de arriba.
   var cobrosEl = document.getElementById('cobrosGrid');
   if(cobrosEl){
     cobrosEl.innerHTML=
@@ -12932,7 +12937,19 @@ function renderRentabilidad() {
         '<div class="cl">💳 Posnet</div>'+
         '<div class="cv">'+fmt(Math.round(netoDebito))+'</div>'+
         '<div class="cn">Neto después del posnet</div>'+
-      '</div>';
+      '</div>'+
+      (gananciaCargas>0?
+        '<div class="cobro-box">'+
+          '<div class="cl">📱 Cargas virtuales</div>'+
+          '<div class="cv" style="color:var(--green)">'+fmt(gananciaCargas)+'</div>'+
+          '<div class="cn">Ganancia de recargas</div>'+
+        '</div>' : '')+
+      (cobroFiados>0?
+        '<div class="cobro-box">'+
+          '<div class="cl">🤝 Cobro de fiados</div>'+
+          '<div class="cv" style="color:var(--gold)">'+fmt(cobroFiados)+'</div>'+
+          '<div class="cn">Deudas viejas cobradas</div>'+
+        '</div>' : '');
   }
 
   // Top 5 egresos
