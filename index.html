@@ -9538,8 +9538,13 @@ function chequearTopeConsumo() {
   var margen = currentEmp.margenAviso || 0;
   if(pendiente >= (currentEmp.topeConsumo - margen)){
     var restante = Math.max(0, currentEmp.topeConsumo - pendiente);
-    return '⚠️ Llevás <b style="color:var(--gold)">'+fmt(pendiente)+'</b> de un tope de <b style="color:var(--white)">'+fmt(currentEmp.topeConsumo)+'</b>.'+
-      (restante>0 ? '<br>Te quedan <b style="color:var(--red)">'+fmt(restante)+'</b> disponibles.' : '<br><b style="color:var(--red)">Alcanzaste tu tope.</b>');
+    // Texto plano con **negrita** (no HTML crudo): este aviso pasa por
+    // formatearTextoMensaje() igual que cualquier mensaje de texto libre,
+    // que escapa las etiquetas para que un mensaje no pueda romper la
+    // pantalla — con HTML directo acá, ese escape mostraba las etiquetas
+    // como texto en vez de aplicarlas.
+    return '⚠️ Llevás **'+fmt(pendiente)+'** de un tope de **'+fmt(currentEmp.topeConsumo)+'**.'+
+      (restante>0 ? '\nTe quedan **'+fmt(restante)+'** disponibles.' : '\n**Alcanzaste tu tope.**');
   }
   return null;
 }
@@ -24857,8 +24862,13 @@ function mostrarMensajesAlIniciar() {
 function formatearTextoMensaje(txt) {
   if(!txt) return '';
   // Escapar primero, para que el texto del mensaje no pueda romper la pantalla
+  // (así nadie puede meter HTML/JS escribiendo un mensaje). Recién después se
+  // habilita **negrita** con una sintaxis propia y segura, tipo markdown —
+  // así los avisos generados por el sistema (como el del tope de consumo)
+  // pueden resaltar un monto sin poder inyectar HTML arbitrario.
   var seguro = String(txt)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
   var lineas = seguro.split(/\r?\n/);
   var html = '';
