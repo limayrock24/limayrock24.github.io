@@ -18998,11 +18998,24 @@ function refrescarFiltroCategorias() {
   sel.value = seleccionActual;
 }
 
-// Atajo desde Rentabilidad: llevar directo al Catálogo para cargar los
-// costos faltantes que afectan el cálculo de margen bruto (el contador
-// "Sin precio" de ahí arriba ya muestra cuántos productos faltan).
+// '' | 'precio' | 'costo' — filtro rápido activado tocando el contador
+// "Sin precio" / "Sin costo" de arriba del catálogo, para detectar y
+// corregir esos productos sin tener que buscarlos a ojo. Un producto sin
+// costo cargado arruina el margen real (Ventas por categoría, Rentabilidad);
+// uno sin precio de venta directamente no se puede cobrar bien.
+var _catFiltroFaltante = '';
+
+function toggleCatFiltroFaltante(tipo) {
+  _catFiltroFaltante = (_catFiltroFaltante === tipo) ? '' : tipo;
+  renderCatalogo();
+}
+
+// Atajo desde Rentabilidad: llevar directo al Catálogo con el filtro de
+// "sin costo" ya activado, para cargar lo que falta y que el margen dé real.
 function irACatalogoSinCosto() {
   switchTab('catalogo');
+  _catFiltroFaltante = 'costo';
+  renderCatalogo();
 }
 
 function renderCatalogo() {
@@ -19013,12 +19026,22 @@ function renderCatalogo() {
   if(!body) return;
   var inv = getStockInv();
   var filtered = [];
-  PRODUCTS.forEach(function(p,i){ p._idx=i; if((!term||p.name.toLowerCase().includes(term)||(p.codigo&&p.codigo.toLowerCase().includes(term)))&&(!catFil||p.cat===catFil)) filtered.push(p); });
+  PRODUCTS.forEach(function(p,i){
+    p._idx=i;
+    var okTexto = !term||p.name.toLowerCase().includes(term)||(p.codigo&&p.codigo.toLowerCase().includes(term));
+    var okCat = !catFil||p.cat===catFil;
+    var okFaltante = !_catFiltroFaltante ||
+      (_catFiltroFaltante==='precio' ? (!p.pventa||p.pventa===0) : (!p.costo||p.costo===0));
+    if(okTexto && okCat && okFaltante) filtered.push(p);
+  });
   if(stats){
     var sp=PRODUCTS.filter(function(p){return !p.pventa||p.pventa===0;}).length;
+    var sc=PRODUCTS.filter(function(p){return !p.costo||p.costo===0;}).length;
     stats.innerHTML='<div class="cat-stat">Total: <span>'+PRODUCTS.length+'</span></div>'+
       '<div class="cat-stat">Mostrando: <span>'+filtered.length+'</span></div>'+
-      (sp>0?'<div class="cat-stat" style="border-color:rgba(204,0,0,.3)">Sin precio: <span style="color:var(--red)">'+sp+'</span></div>':'');
+      (sp>0?'<div class="cat-stat" onclick="toggleCatFiltroFaltante(\'precio\')" style="cursor:pointer;border-color:rgba(204,0,0,.3)'+(_catFiltroFaltante==='precio'?';background:var(--red);color:#fff':'')+'">⚠ Sin precio: <span style="color:'+(_catFiltroFaltante==='precio'?'#fff':'var(--red)')+'">'+sp+'</span></div>':'')+
+      (sc>0?'<div class="cat-stat" onclick="toggleCatFiltroFaltante(\'costo\')" style="cursor:pointer;border-color:rgba(245,194,0,.4)'+(_catFiltroFaltante==='costo'?';background:var(--gold);color:var(--black)':'')+'">⚠ Sin costo: <span style="color:'+(_catFiltroFaltante==='costo'?'var(--black)':'var(--gold)')+'">'+sc+'</span></div>':'')+
+      (_catFiltroFaltante?'<div class="cat-stat" onclick="toggleCatFiltroFaltante(\''+_catFiltroFaltante+'\')" style="cursor:pointer;color:var(--gray)">✕ Quitar filtro</div>':'');
   }
   if(!filtered.length){ body.innerHTML='<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--gray)">Sin resultados</td></tr>'; return; }
   body.innerHTML='';
