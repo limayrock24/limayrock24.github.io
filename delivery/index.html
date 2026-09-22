@@ -12734,9 +12734,11 @@ function calcularMargenBrutoDeVentas(ventasList) {
   };
 }
 
-function renderRentabilidad() {
-  var rango = getFechasRango(_periodoCurrent);
-
+// Resumen de Rentabilidad para un rango de fechas — un solo lugar para todo
+// el cálculo de ingresos/egresos/margen, así la pantalla en vivo y el PDF
+// exportado SIEMPRE muestran los mismos números (antes cada uno tenía su
+// propia cuenta y se podían desalinear, como pasó con el cobro de fiados).
+function calcularResumenRentabilidad(rango) {
   // Ventas del período
   var ventas = VENTAS.filter(function(v){
     if(v.anulada) return false;
@@ -12781,11 +12783,37 @@ function renderRentabilidad() {
   });
   var gananciaCargas = cargasVirtuales.reduce(function(s,c){ return s+c.ganancia; },0);
 
-  // Ingresos netos = lo que realmente entró (Efectivo + Transferencia + Débito ya neteado + cargas virtuales)
-  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas;
+  // Cobro de fiados viejos (saldarFiado) — es plata real que entró hoy, aunque
+  // la mercadería haya salido otro día. No se muestra por separado, se
+  // suma directo a Ingresos netos porque es plata real en la cuenta.
+  var cobroFiados = medios['Cobro fiado'] || 0;
+
+  // Ingresos netos = lo que realmente entró (Efectivo + Transferencia + Débito ya neteado + cargas virtuales + cobro de fiados)
+  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + cobroFiados;
 
   // Resultado neto = Ingresos netos − Egresos (el consumo interno NO resta acá, es solo referencia)
   var neto = ingresosNetos - totalEgresos;
+
+  var margen = calcularMargenBrutoDeVentas(ventas);
+
+  return {
+    ventas: ventas, egresos: egresos, consumos: consumos,
+    totalEgresos: totalEgresos, totalConsumos: totalConsumos,
+    medios: medios, netoDebito: netoDebito, costoPostnet: costoPostnet,
+    cargasVirtuales: cargasVirtuales, gananciaCargas: gananciaCargas,
+    cobroFiados: cobroFiados, ingresosNetos: ingresosNetos, neto: neto,
+    margen: margen
+  };
+}
+
+function renderRentabilidad() {
+  var rango = getFechasRango(_periodoCurrent);
+  var r = calcularResumenRentabilidad(rango);
+  var ventas = r.ventas, egresos = r.egresos, consumos = r.consumos;
+  var totalEgresos = r.totalEgresos, totalConsumos = r.totalConsumos;
+  var medios = r.medios, netoDebito = r.netoDebito, costoPostnet = r.costoPostnet;
+  var cargasVirtuales = r.cargasVirtuales, gananciaCargas = r.gananciaCargas;
+  var cobroFiados = r.cobroFiados, ingresosNetos = r.ingresosNetos, neto = r.neto;
   var positivo = neto >= 0;
 
   // Render KPIs
@@ -12816,12 +12844,13 @@ function renderRentabilidad() {
       '💳 Costo posnet sobre $'+Number(Math.round(medios["Débito"])).toLocaleString("es-AR")+' en débito: <b style="color:var(--red)">'+fmt(Math.round(costoPostnet))+'</b>'+
       '<span style="display:block;font-size:.64rem;margin-top:2px">Diferencia entre lo que pagó el cliente con tarjeta y lo que realmente te acredita Mercado Pago</span>'+
       (cargasVirtuales.length>0?'<div style="margin-top:6px">📱 Cargas virtuales ('+cargasVirtuales.length+'): ganancia <b style="color:var(--green)">'+fmt(gananciaCargas)+'</b> — ya incluida en Ingresos netos</div>':'')+
+      (cobroFiados>0?'<div style="margin-top:6px">🤝 Cobro de fiados: <b style="color:var(--gold)">'+fmt(cobroFiados)+'</b> — ya incluido en Ingresos netos</div>':'')+
     '</div>';
 
   // Costo de mercadería y margen bruto — para saber cuánto de lo facturado
   // es "reposición" del costo de la mercadería vendida y cuánto queda como
   // margen real para cubrir sueldos, luz, servicios, etc.
-  var margen = calcularMargenBrutoDeVentas(ventas);
+  var margen = r.margen;
   var margenGrid = document.getElementById('margenGrid');
   if(margenGrid){
     margenGrid.innerHTML =
@@ -12953,40 +12982,37 @@ function exportarRentabilidadPDF() {
   var rango = getFechasRango(_periodoCurrent);
   var periodoNombre = {hoy:'Hoy',semana:'Esta semana',mes:'Este mes',todo:'Todo el período'}[_periodoCurrent];
 
-  var ventas = VENTAS.filter(function(v){
-    if(v.anulada) return false;
-    var d=new Date(v.fecha); return d>=rango.desde&&d<=rango.hasta;
-  });
-  var egresos = getEgresos().filter(function(e){
-    var d=new Date(e.fecha+'T12:00:00'); return d>=rango.desde&&d<=rango.hasta;
-  });
-  var consumos = getConsumos().filter(function(c){
-    var d=new Date(c.fecha); return d>=rango.desde&&d<=rango.hasta;
-  });
-
-  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
-  var totalIng = ventas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
-  var totalEgr = egresos.reduce(function(s,e){return s+e.monto;},0);
-  var totalCon = consumos.reduce(function(s,c){return s+c.total;},0);
-  var medios={Efectivo:0,Transferencia:0,'Débito':0};
-  ventas.forEach(function(v){medios[v.medio]=(medios[v.medio]||0)+v.total;});
-  var costoPostnet = medios['Débito'] - medios['Débito']/getDebitoFactor();
-  var neto = totalIng - totalEgr - totalCon;
+  // Mismo cálculo que la pantalla en vivo — antes el PDF tenía su propia
+  // cuenta aparte (contaba la carga Y el cobro de un mismo fiado como dos
+  // ingresos, y restaba el consumo interno del resultado) y daba números
+  // distintos a los que se ven en pantalla.
+  var r = calcularResumenRentabilidad(rango);
+  var egresos = r.egresos;
+  var medios = r.medios;
+  var margen = r.margen;
 
   var contenido =
     '<h3 style="font-size:14px;color:#333;margin-bottom:10px">Período: '+periodoNombre+'</h3>'+
     '<div class="kpis">'+
-      '<div class="kpi"><div class="l">Ingresos</div><div class="v" style="color:#27ae60">$'+Number(totalIng).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">Egresos</div><div class="v" style="color:#CC0000">$'+Number(totalEgr).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e67e22">$'+Number(totalCon).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">Costo posnet</div><div class="v" style="color:#CC0000">$'+Number(Math.round(costoPostnet)).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">RESULTADO NETO</div><div class="v" style="color:'+(neto>=0?'#27ae60':'#CC0000')+'">$'+Number(neto).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Ingresos netos</div><div class="v" style="color:#27ae60">$'+Number(r.ingresosNetos).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Egresos</div><div class="v" style="color:#CC0000">$'+Number(r.totalEgresos).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Consumo interno</div><div class="v" style="color:#e67e22">$'+Number(r.totalConsumos).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Costo posnet</div><div class="v" style="color:#CC0000">$'+Number(Math.round(r.costoPostnet)).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">RESULTADO NETO</div><div class="v" style="color:'+(r.neto>=0?'#27ae60':'#CC0000')+'">$'+Number(r.neto).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
+    '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Costo de mercadería y margen bruto</h3>'+
+    '<div class="kpis">'+
+      '<div class="kpi"><div class="l">Costo de mercadería</div><div class="v" style="color:#e67e22">$'+Number(Math.round(margen.costoTotal)).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Margen bruto</div><div class="v" style="color:#27ae60">$'+Number(Math.round(margen.margenBruto)).toLocaleString('es-AR')+'</div></div>'+
+    '</div>'+
+    (margen.pctCobertura<99.5?'<p style="font-size:11px;color:#999;margin:4px 0 0">Calculado sobre el '+margen.pctCobertura.toFixed(0)+'% de la facturación ($'+Number(Math.round(margen.revConCosto)).toLocaleString('es-AR')+' de $'+Number(Math.round(margen.revTotal)).toLocaleString('es-AR')+') — el resto son productos sin precio de costo cargado.</p>':'')+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Ingresos por medio de cobro</h3>'+
     '<table><thead><tr><th>Medio</th><th>Bruto</th><th>Neto</th></tr></thead><tbody>'+
       '<tr><td>💵 Efectivo</td><td>$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</td><td>$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</td></tr>'+
       '<tr><td>📲 Transferencia</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td></tr>'+
       '<tr><td>💳 Débito</td><td>$'+Number(medios['Débito']).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(medios['Débito']/getDebitoFactor())).toLocaleString('es-AR')+'</td></tr>'+
+      (r.cobroFiados>0?'<tr><td>🤝 Cobro de fiados</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td></tr>':'')+
+      (r.gananciaCargas>0?'<tr><td>📱 Cargas virtuales (ganancia)</td><td>$'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+'</td></tr>':'')+
     '</tbody></table>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Egresos del período</h3>'+
     '<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Monto</th></tr></thead><tbody>'+
