@@ -12310,7 +12310,11 @@ function renderResumenProveedores() {
   var el = document.getElementById('resumenProveedores');
   if(!el) return;
 
-  var egresos = getEgresos();
+  // A diferencia de "Resumen de sueldos/servicios/otros" (que sí filtran por
+  // categoría), acá faltaba excluir esas categorías — se estaban agrupando
+  // TODOS los egresos del período por su campo "proveedor", así que un
+  // sueldo o un pago de "otros" con ese campo cargado aparecía mezclado acá.
+  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === 'proveedor'; });
   var desde, hasta;
 
   if(_resumenProvDesde && _resumenProvHasta){
