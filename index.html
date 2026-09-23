@@ -2275,7 +2275,7 @@ mark{background:rgba(245,194,0,.28);color:var(--white);border-radius:2px;padding
 .tabs::-webkit-scrollbar-track{background:var(--surface)}
 .tabs::-webkit-scrollbar-thumb{background:var(--red);border-radius:3px}
 .tabs-wrap{margin-bottom:10px}
-.tab-btn{background:transparent;border:1.5px solid var(--border);border-radius:4px;padding:6px 12px;color:var(--gray);font-family:'Oswald',sans-serif;font-size:.7rem;cursor:pointer;font-weight:600;transition:all .15s;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.tab-btn{background:transparent;border:1.5px solid var(--border);border-radius:4px;padding:6px 12px;color:var(--gray);font-family:'Oswald',sans-serif;font-size:.7rem;cursor:pointer;font-weight:600;transition:all .15s;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;flex:1;text-align:center}
 .tab-btn.active{background:var(--red);border-color:var(--red);color:var(--white);box-shadow:0 2px 8px rgba(204,0,0,.35)}
 .tab-pane{display:none}
 .tab-pane.active{display:block}
@@ -2923,6 +2923,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .dash-card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px;cursor:pointer;transition:border-color .15s}
 .dash-card:hover{border-color:var(--gold)}
 .dash-card.full{grid-column:span 2}
+.dash-card.centrado{text-align:center}
 .dash-card.green{border-color:rgba(0,204,68,.25);background:rgba(0,204,68,.04)}
 .dash-card.red{border-color:rgba(204,0,0,.25);background:rgba(204,0,0,.04)}
 .dash-card.gold{border-color:rgba(245,194,0,.25);background:rgba(245,194,0,.04)}
@@ -18778,6 +18779,17 @@ function renderDashboard() {
   var el = document.getElementById('dashContent');
   if(!el) return;
 
+  // El dashboard se vuelve a dibujar solo cada vez que llega algo nuevo por
+  // sync (una venta, un movimiento) — eso reemplaza TODO el HTML de acá
+  // adentro, incluida la lista de "Movimientos del turno" si estaba
+  // desplegada, y el scroll volvía siempre al principio sin dejar leerla
+  // tranquilo. Guardamos acá el scroll de esas listas y lo restauramos
+  // después de reconstruir el HTML.
+  var scrollsMovGuardados = {};
+  el.querySelectorAll('[data-mov-scroll]').forEach(function(d){
+    scrollsMovGuardados[d.getAttribute('data-mov-scroll')] = d.scrollTop;
+  });
+
   var hoy = new Date(); hoy.setHours(0,0,0,0);
   var fin = new Date(); fin.setHours(23,59,59,999);
 
@@ -18921,15 +18933,29 @@ function renderDashboard() {
     var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
-    // compartidas, así que se muestra una sola vez arriba de todo.
+    // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
+    // tarjetas que Dinero → Liquidez (Efectivo en Caja / Efectivo Afuera /
+    // Mercado Pago / Total), para no tener dos formas distintas de mostrar
+    // la misma plata.
+    var totalLiqVivo = (isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0) +
+                        (isFinite(liqVivo.efectivoFuera)?liqVivo.efectivoFuera:0) +
+                        (isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0);
     var resumenGlobalHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
-          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo</div>'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo en caja</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0)+'</div>'+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
-          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Merc. Pago</div>'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💰 Efectivo afuera</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(isFinite(liqVivo.efectivoFuera)?liqVivo.efectivoFuera:0)+'</div>'+
+        '</div>'+
+        '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Mercado Pago</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'+
+        '</div>'+
+        '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center;border:1px solid var(--border)">'+
+          '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🏦 Total</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalLiqVivo)+'</div>'+
         '</div>'+
       '</div>';
 
@@ -19007,7 +19033,7 @@ function renderDashboard() {
             (expandido ? '▲ Ocultar movimientos' : '▼ Ver movimientos del turno')+
           '</button>'+
         '</div>'+
-        (expandido ? '<div style="max-height:260px;overflow-y:auto;margin-top:10px">'+detalleHtml+'</div>' : '')+
+        (expandido ? '<div data-mov-scroll="'+claveExpandido+'" style="max-height:260px;overflow-y:auto;margin-top:10px">'+detalleHtml+'</div>' : '')+
       '</div>';
     }).join('');
 
@@ -19022,16 +19048,25 @@ function renderDashboard() {
       : '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gold);font-size:.85rem">⏳ Consultando el estado del turno...</div>';
   }
 
+  // Margen bruto de lo vendido hoy — mismo cálculo que usa Rentabilidad
+  // (costo de mercadería vs. lo facturado), para saber de entrada cuánto de
+  // ese neto es ganancia real y no solo reposición de mercadería.
+  var margenHoy = calcularMargenBrutoDeVentas(ventasHoy);
+  var pctMargenHoy = margenHoy.revConCosto>0 ? (margenHoy.margenBruto/margenHoy.revConCosto*100) : 0;
+
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
   el.innerHTML = (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
     '<div class="dash-grid">'+
-      dc('green full','ventas',
+      dc('green full centrado','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
           ventasHoySinFiado.length+' ventas · ticket '+fmt(ticketProm)+
           ' · ☀️ '+fmt(diurnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
           ' · 🌙 '+fmt(nocturnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
           (cobroFiadosHoy>0?' · incluye '+fmt(cobroFiadosHoy)+' de cobro de fiados':'')+
-          (cargasHoy.length>0?' · incluye '+cargasHoy.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasHoy):'')))+
+          (cargasHoy.length>0?' · incluye '+cargasHoy.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasHoy):'')+
+          '<div style="margin-top:4px">📈 Margen bruto de hoy: <b style="color:var(--green)">'+fmt(margenHoy.margenBruto)+'</b>'+(margenHoy.revConCosto>0?' ('+pctMargenHoy.toFixed(0)+'%)':'')+
+          (margenHoy.pctCobertura<99.5?' <span style="color:var(--gray)">· calculado sobre el '+margenHoy.pctCobertura.toFixed(0)+'% de la facturación con costo cargado</span>':'')+
+          '</div>'))+
       dc('','ventas', dv('💵 Efectivo', fmt(medios.Efectivo), 'green', ''))+
       dc('','ventas', dv('📲 Transferencia', fmt(medios.Transferencia), 'blue', ''))+
       dc('','ventas', dv('💳 Posnet neto', fmt(debitoNeto), 'gold', 'comisión: '+fmt(Math.round(costoPostnet))))+
@@ -19112,6 +19147,13 @@ function renderDashboard() {
       return '<div class="dash-section-title">⏹ Últimos cierres</div>'+
         '<div style="border:1px solid var(--border);border-radius:5px;overflow:hidden">'+rows+'</div>';
     })();
+
+  // Restaurar el scroll de "Movimientos del turno" que se haya guardado
+  // arriba, para no interrumpir a quien lo estaba leyendo.
+  Object.keys(scrollsMovGuardados).forEach(function(clave){
+    var d = el.querySelector('[data-mov-scroll="'+clave+'"]');
+    if(d) d.scrollTop = scrollsMovGuardados[clave];
+  });
 
   // Event delegation: click en cualquier elemento con data-tab navega
   el.onclick = function(ev) {
