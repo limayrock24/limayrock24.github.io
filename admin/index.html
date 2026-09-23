@@ -6606,7 +6606,7 @@ function quitarImagenProd() {
   document.getElementById('pmQuitarFotoBtn').style.display = 'none';
 }
 
-function fmt(n) { return '$ ' + Number(n).toLocaleString('es-AR'); }
+function fmt(n) { return '$ ' + Number(n).toLocaleString('es-AR', {maximumFractionDigits:2}); }
 
 // Formatea EN VIVO, dentro del propio campo, mientras se escribe (ej: 1000000 -> "1.000.000")
 // El input debe ser type="text" inputmode="numeric" (no type="number", que no admite puntos).
@@ -8153,8 +8153,13 @@ function renderVentas() {
   // "ganancia" al total sin tocar estos casilleros, y las cajas de
   // Efectivo/Transferencia/Posnet no sumaban igual que "Total neto cobrado".
   cargasPeriodo.forEach(function(c){
-    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
-    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+    var cobrado = c.montoCobrado||0, descMP = c.montoMP||0;
+    // Registros sin montos (ej. la comisión de un cambio de efectivo)
+    // solo traen la ganancia: entra entera al medio, para que el efecto
+    // sobre el total sea siempre la ganancia, igual que en Auditoría.
+    if(!cobrado && !descMP) cobrado = c.ganancia||0;
+    medios[c.medio] = (medios[c.medio]||0) + cobrado;
+    medios.Transferencia = (medios.Transferencia||0) - descMP;
   });
 
   // Posnet neto = bruto − recargo: el recargo es justo lo que se lleva la
@@ -12828,8 +12833,13 @@ function calcularResumenRentabilidad(rango) {
   cargasVirtuales.forEach(function(c){
     // El medio de una carga virtual es siempre Efectivo o Transferencia
     // (nunca Débito), así que esto no afecta netoDebito/costoPostnet.
-    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
-    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+    var cobrado = c.montoCobrado||0, descMP = c.montoMP||0;
+    // Registros sin montos (ej. la comisión de un cambio de efectivo)
+    // solo traen la ganancia: entra entera al medio, para que el efecto
+    // sobre el total sea siempre la ganancia, igual que en Auditoría.
+    if(!cobrado && !descMP) cobrado = c.ganancia||0;
+    medios[c.medio] = (medios[c.medio]||0) + cobrado;
+    medios.Transferencia = (medios.Transferencia||0) - descMP;
   });
 
   // Cobro de fiados viejos (saldarFiado) — es plata real que entró hoy, aunque
@@ -13683,6 +13693,15 @@ function initAuditoria() {
   renderAuditoria();
 }
 
+// Lo que realmente entró por una venta, sin el recargo del Posnet. En una
+// Mixta se suman sus partes (lo que efectivamente se cobró), igual que el
+// desglose por medio de Ventas/Dashboard/Rentabilidad — así Auditoría da
+// exactamente lo mismo aunque las partes no sumen justo el subtotal.
+function netoCobradoVenta(v) {
+  if(v.medio==='Mixto' && v.mixto) return (v.mixto.efectivo||0)+(v.mixto.transferencia||0)+(v.mixto.debito||0);
+  return (v.total||0)-(v.recargo||0);
+}
+
 function renderAuditoria() {
   var empFiltro  = document.getElementById('auditEmpSel')  ? document.getElementById('auditEmpSel').value  : '';
   var fechaDesde = document.getElementById('auditFechaDesde') ? document.getElementById('auditFechaDesde').value : '';
@@ -13704,7 +13723,7 @@ function renderAuditoria() {
   // medio real), porque ese sí es plata que entró.
   var totalVentas = ventas.filter(function(v){return !v.anulada && !v.fiadoCarga;});
   // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
-  var totalVentasMonto = totalVentas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var totalVentasMonto = totalVentas.reduce(function(s,v){return s+netoCobradoVenta(v);},0);
   var anuladas    = ventas.filter(function(v){return v.anulada;});
   var ticketProm  = totalVentas.length ? Math.round(totalVentasMonto/totalVentas.length) : 0;
 
@@ -13787,7 +13806,7 @@ function exportarAuditoriaPDF() {
   // Mismo criterio que en pantalla: sin fiadoCarga (no es plata real), sin
   // el recargo del Posnet, y sumando la ganancia de cargas virtuales.
   var ventasOk=ventas.filter(function(v){return !v.anulada && !v.fiadoCarga;});
-  var total=ventasOk.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var total=ventasOk.reduce(function(s,v){return s+netoCobradoVenta(v);},0);
   var cargasAuditPDF = getCargasVirtuales().filter(function(c){
     var d = new Date(c.fecha);
     return d>=desde && d<=hasta && (!empFiltro || c.empleado===empFiltro);
@@ -18782,8 +18801,13 @@ function renderDashboard() {
   // la "ganancia" al total sin tocar Efectivo/Transferencia, y esas cajas
   // no sumaban lo mismo que "Neto cobrado hoy".
   cargasHoy.forEach(function(c){
-    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
-    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+    var cobrado = c.montoCobrado||0, descMP = c.montoMP||0;
+    // Registros sin montos (ej. la comisión de un cambio de efectivo)
+    // solo traen la ganancia: entra entera al medio, para que el efecto
+    // sobre el total sea siempre la ganancia, igual que en Auditoría.
+    if(!cobrado && !descMP) cobrado = c.ganancia||0;
+    medios[c.medio] = (medios[c.medio]||0) + cobrado;
+    medios.Transferencia = (medios.Transferencia||0) - descMP;
   });
   // Posnet neto = bruto − recargo, y se suman los cobros de fiados viejos —
   // mismo criterio que Ventas y Auditoría, para que den exactamente igual.
