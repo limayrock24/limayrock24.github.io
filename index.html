@@ -3868,6 +3868,10 @@ body.night-on{background:#080005}
       </div>
       <!-- Sub-pane: Equipo -->
       <div id="empSubEquipo">
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button class="rent-period-btn active" id="elf-empleados" onclick="selEmpListFiltro('empleados')">👥 Empleados</button>
+          <button class="rent-period-btn" id="elf-delivery" onclick="selEmpListFiltro('delivery')">🛵 Delivery</button>
+        </div>
         <div id="empCards"></div>
       </div>
       <!-- Sub-pane: Horas -->
@@ -3991,6 +3995,15 @@ body.night-on{background:#080005}
             Solo ve los pedidos: puede tomarlos, contactar al cliente y marcarlos entregados.<br>
             No accede a ventas, caja, catálogo ni al resto del sistema.
           </div>
+        </div>
+
+        <!-- Permitir consumos (solo Delivery) -->
+        <div class="recep-toggle" id="filaConsumoDeliv" style="display:none">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--white)">🧾 Permitir consumos</div>
+            <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Habilita que se le puedan cargar consumos en el local, igual que a un empleado</div>
+          </div>
+          <div class="recep-toggle-switch" id="emConsumoToggle" onclick="toggleConsumoDelivAcceso()"></div>
         </div>
 
         <!-- Acceso a Delivery (repartidor) -->
@@ -10580,7 +10593,7 @@ function filtrarConsumoEmp() {
   var term = ((document.getElementById('consumoEmpBuscar')||{}).value||'').toLowerCase().trim();
   var empleados = getEmpleados().filter(function(e){
     if(e.activo === false) return false;
-    if(e.rol === 'repartidor') return false; // los repartidores no consumen en el local
+    if(e.rol === 'repartidor' && !e.permiteConsumo) return false; // salvo que se lo habilite explícitamente
     return !term || e.nombre.toLowerCase().indexOf(term) !== -1;
   }).sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); });
 
@@ -10596,7 +10609,8 @@ function filtrarConsumoEmp() {
     var div = document.createElement('div');
     div.style.cssText='display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;cursor:pointer;transition:.1s';
     div.innerHTML='<span style="font-size:1.05rem">👤</span><span style="font-size:.88rem">'+e.nombre+'</span>'+
-      (e.rol==='admin'?'<span style="font-size:.62rem;color:var(--gold);margin-left:auto">admin</span>':'');
+      (e.rol==='admin'?'<span style="font-size:.62rem;color:var(--gold);margin-left:auto">admin</span>':'')+
+      (e.rol==='repartidor'?'<span style="font-size:.62rem;color:#22c55e;margin-left:auto">🛵 delivery</span>':'');
     div.onmouseover=function(){this.style.borderColor='#3498DB';};
     div.onmouseout=function(){this.style.borderColor='var(--border)';};
     div.onclick=(function(nombre){return function(){selConsumoEmp(nombre);};})(e.nombre);
@@ -13678,17 +13692,34 @@ function renderAuditoria() {
   });
 
   // Stats
-  var totalVentas = ventas.filter(function(v){return !v.anulada;});
+  // Se excluye fiadoCarga (la carga original de un fiado): no es plata real,
+  // es solo el registro de la deuda — igual criterio que Ventas/Dashboard/
+  // Rentabilidad. El cobro del fiado sí queda (esFiado sin fiadoCarga, con
+  // medio real), porque ese sí es plata que entró.
+  var totalVentas = ventas.filter(function(v){return !v.anulada && !v.fiadoCarga;});
   // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
-  var totalMonto  = totalVentas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var totalVentasMonto = totalVentas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var anuladas    = ventas.filter(function(v){return v.anulada;});
-  var ticketProm  = totalVentas.length ? Math.round(totalMonto/totalVentas.length) : 0;
+  var ticketProm  = totalVentas.length ? Math.round(totalVentasMonto/totalVentas.length) : 0;
+
+  // Cargas virtuales del mismo rango/empleado: no son "venta" (no están en
+  // VENTAS), pero sí suman al total facturado. Como el monto cobrado entra
+  // a un medio y el monto de Mercado Pago sale de otro, el efecto neto sobre
+  // el TOTAL es exactamente la ganancia — mismo criterio que Ventas/Dashboard.
+  var cargasAudit = getCargasVirtuales().filter(function(c){
+    var d = new Date(c.fecha);
+    return d>=desde && d<=hasta && (!empFiltro || c.empleado===empFiltro);
+  });
+  var gananciaCargasAudit = cargasAudit.reduce(function(s,c){return s+(c.ganancia||0);},0);
+  var totalMonto = totalVentasMonto + gananciaCargasAudit;
 
   var statEl = document.getElementById('auditStat');
   if(statEl){
     statEl.innerHTML=
       '<div class="audit-box"><div class="al">Ventas OK</div><div class="av">'+totalVentas.length+'</div></div>'+
-      '<div class="audit-box"><div class="al">Total facturado</div><div class="av">'+fmt(totalMonto)+'</div></div>'+
+      '<div class="audit-box"><div class="al">Total facturado</div><div class="av">'+fmt(totalMonto)+'</div>'+
+      (cargasAudit.length>0?'<div style="font-size:.6rem;color:var(--gray);margin-top:2px">incluye '+cargasAudit.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasAudit)+'</div>':'')+
+      '</div>'+
       '<div class="audit-box"><div class="al">Ticket promedio</div><div class="av">'+fmt(ticketProm)+'</div></div>';
   }
 
@@ -13747,8 +13778,15 @@ function exportarAuditoriaPDF() {
   var ventas = VENTAS.filter(function(v){
     var d=new Date(v.fecha); return d>=desde&&d<=hasta&&(!empFiltro||v.empleado===empFiltro);
   });
-  // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
-  var total=ventas.filter(function(v){return !v.anulada;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  // Mismo criterio que en pantalla: sin fiadoCarga (no es plata real), sin
+  // el recargo del Posnet, y sumando la ganancia de cargas virtuales.
+  var ventasOk=ventas.filter(function(v){return !v.anulada && !v.fiadoCarga;});
+  var total=ventasOk.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
+  var cargasAuditPDF = getCargasVirtuales().filter(function(c){
+    var d = new Date(c.fecha);
+    return d>=desde && d<=hasta && (!empFiltro || c.empleado===empFiltro);
+  });
+  total += cargasAuditPDF.reduce(function(s,c){return s+(c.ganancia||0);},0);
   var rows=ventas.slice().reverse().map(function(v){
     var d=new Date(v.fecha);
     var prods=v.items?v.items.map(function(i){return i.name+' ×'+i.qty;}).join(', ').slice(0,50):'';
@@ -20680,17 +20718,47 @@ function selEmpTab(tab) {
   if(tab==='auditoria') initAuditoria();
 }
 
+// Un solo criterio de "es delivery" para no repetirlo distinto en cada
+// lugar (rol repartidor, o un empleado común al que además se le dio
+// acceso a Delivery). Se usa tanto para el filtro de la lista como para
+// la tarjeta individual.
+function empEsDelivery(emp) {
+  return (emp.rol === 'repartidor') || (!!emp.accesoDelivery && emp.rol !== 'admin');
+}
+
+// Filtro de la lista de Equipo: 'empleados' (atención al público, reposición,
+// mantenimiento, admin) o 'delivery' (repartidores / con acceso a Delivery).
+var _empListFiltro = 'empleados';
+function selEmpListFiltro(f) {
+  _empListFiltro = f;
+  var be = document.getElementById('elf-empleados');
+  var bd = document.getElementById('elf-delivery');
+  if(be) be.classList.toggle('active', f==='empleados');
+  if(bd) bd.classList.toggle('active', f==='delivery');
+  renderEmpAdmin();
+}
+
 function renderEmpAdmin() {
   var el = document.getElementById('empCards');
   if(!el) return;
-  var emps     = getEmpleados();
+  // Se guarda junto a cada empleado su índice real en getEmpleados(), porque
+  // abrirEmpModal(idx) busca por esa posición — al filtrar la lista, la
+  // posición dentro del array filtrado ya no coincide con la real.
+  var emps     = getEmpleados()
+    .map(function(e, idxReal){ return {emp:e, idxReal:idxReal}; })
+    .filter(function(x){ return _empListFiltro === 'delivery' ? empEsDelivery(x.emp) : !empEsDelivery(x.emp); });
   var cierres  = getCierres();
   var consumos = getConsumos();
   var ahora    = new Date();
   var inicioMes= new Date(ahora.getFullYear(), ahora.getMonth(), 1);
 
   el.innerHTML = '';
-  emps.forEach(function(emp, i){
+  if(!emps.length){
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">'+
+      (_empListFiltro==='delivery' ? 'Sin repartidores cargados' : 'Sin empleados cargados')+'</div>';
+  }
+  emps.forEach(function(item){
+    var emp = item.emp, i = item.idxReal;
     // Horas del mes
     var turnosMes = cierres.filter(function(c){ return c.empleado===emp.nombre && new Date(c.fecha)>=inicioMes; });
     var minutos   = turnosMes.reduce(function(s,c){return s+(c.durMinutos||0);},0);
@@ -20707,7 +20775,7 @@ function renderEmpAdmin() {
     var vh    = parseFloat(emp.valorHora)||0;
     var sueldo= vh>0 ? fmt(Math.round((minutos/60)*vh)) : '—';
 
-    var esDelivery = (emp.rol === 'repartidor') || (!!emp.accesoDelivery && emp.rol !== 'admin');
+    var esDelivery = empEsDelivery(emp);
     var dispDeliv  = esDelivery && !!emp.disponibleDelivery;
 
     // ¿Tiene las notificaciones de pedido realmente activas hoy? Se fija si
@@ -20794,6 +20862,11 @@ function toggleStockAcceso() {
   sw.classList.toggle('on');
 }
 
+function toggleConsumoDelivAcceso() {
+  var sw = document.getElementById('emConsumoToggle');
+  if(sw) sw.classList.toggle('on');
+}
+
 function abrirEmpModal(idx) {
   _emPinBuf = '';
   _emRol    = 'empleado';
@@ -20804,6 +20877,7 @@ function abrirEmpModal(idx) {
   var recepSw = document.getElementById('emRecepToggle');
   var stockSw = document.getElementById('emStockToggle');
   var delivSw = document.getElementById('emDeliveryToggle');
+  var consumoDelivSw = document.getElementById('emConsumoToggle');
   var funcionSel = document.getElementById('emFuncion');
   var topeInp = document.getElementById('emTopeConsumo');
   var margenInp = document.getElementById('emMargenAviso');
@@ -20820,6 +20894,7 @@ function abrirEmpModal(idx) {
     if(recepSw) recepSw.classList.toggle('on', !!emp.accesoRecepcion);
     if(stockSw) stockSw.classList.toggle('on', !!emp.accesoStock);
     if(delivSw) delivSw.classList.toggle('on', !!emp.accesoDelivery);
+    if(consumoDelivSw) consumoDelivSw.classList.toggle('on', !!emp.permiteConsumo);
   } else {
     document.getElementById('emNombre').value = '';
     _emPinBuf = '';
@@ -20832,6 +20907,7 @@ function abrirEmpModal(idx) {
     if(recepSw) recepSw.classList.remove('on');
     if(stockSw) stockSw.classList.remove('on');
     if(delivSw) delivSw.classList.remove('on');
+    if(consumoDelivSw) consumoDelivSw.classList.remove('on');
   }
 
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
@@ -20877,6 +20953,11 @@ function selEmpRol(rol) {
 
   var aviso = document.getElementById('emAvisoRepartidor');
   if(aviso) aviso.style.display = esRep ? 'block' : 'none';
+
+  // "Permitir consumos" es al revés que los demás switches de repartidor:
+  // solo tiene sentido mostrarlo cuando el rol SÍ es Delivery.
+  var filaConsumoDeliv = document.getElementById('filaConsumoDeliv');
+  if(filaConsumoDeliv) filaConsumoDeliv.style.display = esRep ? '' : 'none';
 }
 
 function emPinPress(d) {
@@ -20911,14 +20992,17 @@ function guardarEmpModal() {
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
   var stockOn = document.getElementById('emStockToggle').classList.contains('on');
   var deliveryOn = document.getElementById('emDeliveryToggle').classList.contains('on');
+  var consumoDelivOn = document.getElementById('emConsumoToggle') ? document.getElementById('emConsumoToggle').classList.contains('on') : false;
   var funcion = document.getElementById('emFuncion') ? document.getElementById('emFuncion').value : '';
   var topeConsumo = getMontoInputValue('emTopeConsumo');
   var margenAviso = getMontoInputValue('emMargenAviso');
   // El rol Repartidor define sus permisos solo, sin depender de los switches
-  // (que están ocultos para ese rol).
+  // (que están ocultos para ese rol). "Permitir consumos" solo aplica (y solo
+  // se guarda en true) cuando el rol es Delivery.
   if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; deliveryOn = true; }
+  else { consumoDelivOn = false; }
   var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
-    topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
+    permiteConsumo: consumoDelivOn, topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
     EMPLEADOS[idx] = empData;
   } else {
