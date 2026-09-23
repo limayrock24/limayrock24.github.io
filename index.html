@@ -8135,11 +8135,21 @@ function renderVentas() {
     recargoTotal += v.recargo || 0;
   });
 
+  // Cargas virtuales: entra lo cobrado al medio real (Efectivo o
+  // Transferencia) y sale de Transferencia lo que se descuenta de Mercado
+  // Pago — mismo criterio que Rentabilidad. Antes solo se sumaba la
+  // "ganancia" al total sin tocar estos casilleros, y las cajas de
+  // Efectivo/Transferencia/Posnet no sumaban igual que "Total neto cobrado".
+  cargasPeriodo.forEach(function(c){
+    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
+    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+  });
+
   var debitoNeto  = Math.round(medios['Débito'] / getDebitoFactor());
   var costoPostnet= medios['Débito'] - debitoNeto;
   var mixtas      = ventasReales.filter(function(v){ return v.medio==='Mixto'; });
 
-  var netoTotal = medios.Efectivo + medios.Transferencia + debitoNeto + gananciaCargasPeriodo;
+  var netoTotal = medios.Efectivo + medios.Transferencia + debitoNeto;
   var totalDiurnas  = diurnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var totalNocturnas= nocturnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
 
@@ -8148,7 +8158,7 @@ function renderVentas() {
     '<div class="reporte-box" style="grid-column:span 2;cursor:pointer;'+(_filtroMedioVenta===null?'border-color:var(--green);background:rgba(0,204,68,.1)':'border-color:rgba(0,204,68,.3);background:rgba(0,204,68,.05)')+'" onclick="selFiltroMedioVenta(null)">'+
       '<div class="rlbl">💰 Total neto cobrado del día</div>'+
       '<div class="rval" style="font-size:1.8rem;color:var(--green)">'+fmt(netoTotal)+'</div>'+
-      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas · tocá para ver todo</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas'+(cargasPeriodo.length>0?' · incluye '+cargasPeriodo.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasPeriodo):'')+' · tocá para ver todo</div>'+
     '</div>'+
     // Diurnas / Nocturnas
     '<div class="reporte-box">'+
@@ -18719,11 +18729,20 @@ function renderDashboard() {
       medios['Débito']+=(v.mixto.debito||0);
     } else { medios[v.medio]=(medios[v.medio]||0)+(v.total||0); }
   });
-  var debitoNeto   = Math.round(medios['Débito']/getDebitoFactor());
-  var costoPostnet = medios['Débito'] - debitoNeto;
   var cargasHoy = getCargasVirtuales().filter(function(c){ return new Date(c.fecha) >= hoy && new Date(c.fecha) <= fin; });
   var gananciaCargasHoy = cargasHoy.reduce(function(s,c){ return s+(c.ganancia||0); },0);
-  var netoReal     = medios.Efectivo + medios.Transferencia + debitoNeto + gananciaCargasHoy;
+  // Cargas virtuales: entra lo cobrado al medio real (Efectivo o
+  // Transferencia) y sale de Transferencia lo que se descuenta de Mercado
+  // Pago — mismo criterio que Rentabilidad y Ventas. Antes solo se sumaba
+  // la "ganancia" al total sin tocar Efectivo/Transferencia, y esas cajas
+  // no sumaban lo mismo que "Neto cobrado hoy".
+  cargasHoy.forEach(function(c){
+    medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
+    medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
+  });
+  var debitoNeto   = Math.round(medios['Débito']/getDebitoFactor());
+  var costoPostnet = medios['Débito'] - debitoNeto;
+  var netoReal     = medios.Efectivo + medios.Transferencia + debitoNeto;
   var ventasHoySinFiado = ventasHoy.filter(function(v){ return !v.fiadoCarga; });
   var totalHoyNeto = ventasHoySinFiado.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var ticketProm   = ventasHoySinFiado.length ? Math.round(totalHoyNeto/ventasHoySinFiado.length) : 0;
@@ -18937,7 +18956,8 @@ function renderDashboard() {
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
           ventasHoySinFiado.length+' ventas · ticket '+fmt(ticketProm)+
           ' · ☀️ '+fmt(diurnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
-          ' · 🌙 '+fmt(nocturnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))))+
+          ' · 🌙 '+fmt(nocturnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
+          (cargasHoy.length>0?' · incluye '+cargasHoy.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasHoy):'')))+
       dc('','ventas', dv('💵 Efectivo', fmt(medios.Efectivo), 'green', ''))+
       dc('','ventas', dv('📲 Transferencia', fmt(medios.Transferencia), 'blue', ''))+
       dc('','ventas', dv('💳 Posnet neto', fmt(debitoNeto), 'gold', 'comisión: '+fmt(Math.round(costoPostnet))))+
