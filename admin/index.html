@@ -4123,7 +4123,6 @@ body.night-on{background:#080005}
           <input type="hidden" id="eMedio" value="Efectivo">
           <div style="display:flex;gap:8px;margin-top:4px">
             <button class="receg-medio-btn active" id="em-Efectivo" onclick="selEgMedio('Efectivo')" style="flex:1">💵 Efectivo</button>
-            <button class="receg-medio-btn" id="em-Transferencia" onclick="selEgMedio('Transferencia')" style="flex:1">📲 Transferencia</button>
             <button class="receg-medio-btn" id="em-Mixto" onclick="selEgMedio('Mixto')" style="flex:1">⚡ Mixto</button>
             <button class="receg-medio-btn" id="em-MercadoPago" onclick="selEgMedio('MercadoPago')" style="flex:1">💳 Mercado Pago</button>
           </div>
@@ -4131,7 +4130,7 @@ body.night-on{background:#080005}
         <div id="eMixtoWrap" style="display:none;margin-top:8px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="numeric" id="eMixtoEfec" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEgAdmin()"></div>
-            <div class="field" style="margin:0"><label style="font-size:.68rem">Transferencia $</label><input type="text" inputmode="numeric" id="eMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEgAdmin()"></div>
+            <div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="numeric" id="eMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEgAdmin()"></div>
           </div>
           <div style="font-size:.68rem;color:var(--gray);margin-top:4px;text-align:right" id="eMixtoTotal">Total: $0</div>
         </div>
@@ -22318,7 +22317,6 @@ function initRecepEgresos() {
     '<div class="field"><label>Medio de pago</label>'+
       '<div style="display:flex;gap:8px;margin-top:4px">'+
         '<button class="receg-medio-btn active" id="recegm-Efectivo" onclick="selRecEgMedio(\'Efectivo\')" style="flex:1">💵 Efectivo</button>'+
-        '<button class="receg-medio-btn" id="recegm-Transferencia" onclick="selRecEgMedio(\'Transferencia\')" style="flex:1">📲 Transferencia</button>'+
         '<button class="receg-medio-btn" id="recegm-Mixto" onclick="selRecEgMedio(\'Mixto\')" style="flex:1">⚡ Mixto</button>'+
         '<button class="receg-medio-btn" id="recegm-MercadoPago" onclick="selRecEgMedio(\'MercadoPago\')" style="flex:1">💳 Mercado Pago</button>'+
       '</div>'+
@@ -22327,7 +22325,7 @@ function initRecepEgresos() {
     '<div id="recEgMixtoWrap" style="display:none">'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
         '<div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="numeric" id="recEgMixtoEfec" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEg()"></div>'+
-        '<div class="field" style="margin:0"><label style="font-size:.68rem">Transferencia $</label><input type="text" inputmode="numeric" id="recEgMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEg()"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="numeric" id="recEgMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEg()"></div>'+
       '</div>'+
       '<div style="font-size:.68rem;color:var(--gray);margin-top:4px;text-align:right" id="recEgMixtoTotal">Total: $0</div>'+
     '</div>'+
@@ -22338,7 +22336,11 @@ function initRecepEgresos() {
 
 function selEgMedio(medio) {
   document.getElementById('eMedio').value = medio;
-  ['Efectivo','Transferencia','Mixto','MercadoPago'].forEach(function(m){
+  // "Transferencia" se sacó como botón propio: hoy va a la misma cuenta que
+  // Mercado Pago (Lemon Cash quedó dado de baja), así que tener las dos
+  // opciones solo confundía. Sigue soportado por si quedó algún egreso
+  // viejo guardado con ese medio.
+  ['Efectivo','Mixto','MercadoPago'].forEach(function(m){
     var b = document.getElementById('em-'+m);
     if(b) b.classList.toggle('active', m===medio);
   });
@@ -22362,7 +22364,7 @@ function actualizarTotalMixtoEgAdmin() {
 
 function selRecEgMedio(medio) {
   document.getElementById('recEgMedio').value = medio;
-  ['Efectivo','Transferencia','Mixto','MercadoPago'].forEach(function(m){
+  ['Efectivo','Mixto','MercadoPago'].forEach(function(m){
     var b = document.getElementById('recegm-'+m);
     if(b) b.classList.toggle('active', m===medio);
   });
