@@ -8141,7 +8141,7 @@ function renderVentas() {
     if(v.medio==='Mixto' && v.mixto){
       medios.Efectivo      += v.mixto.efectivo      || 0;
       medios.Transferencia += v.mixto.transferencia  || 0;
-      medios['Débito']     += v.mixto.debito         || 0;
+      medios['Débito']     += (v.mixto.debito||0) + (v.recargo||0); // el Posnet cobró la parte de débito + su recargo
     } else {
       medios[v.medio] = (medios[v.medio]||0) + v.total;
     }
@@ -8158,11 +8158,17 @@ function renderVentas() {
     medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
   });
 
-  var debitoNeto  = Math.round(medios['Débito'] / getDebitoFactor());
-  var costoPostnet= medios['Débito'] - debitoNeto;
+  // Posnet neto = bruto − recargo: el recargo es justo lo que se lleva la
+  // comisión. Restarlo venta por venta (en vez de dividir el total por el
+  // factor) da exactamente lo mismo que Auditoría, sin diferencias de redondeo.
+  var debitoNeto  = medios['Débito'] - recargoTotal;
+  var costoPostnet= recargoTotal;
+  // Cobro de fiados viejos: plata real que entró, no tiene casillero propio
+  // pero suma al total (igual que en Rentabilidad y Auditoría).
+  var cobroFiadosPeriodo = medios['Cobro fiado'] || 0;
   var mixtas      = ventasReales.filter(function(v){ return v.medio==='Mixto'; });
 
-  var netoTotal = medios.Efectivo + medios.Transferencia + debitoNeto;
+  var netoTotal = medios.Efectivo + medios.Transferencia + debitoNeto + cobroFiadosPeriodo;
   var totalDiurnas  = diurnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var totalNocturnas= nocturnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
 
@@ -8171,7 +8177,7 @@ function renderVentas() {
     '<div class="reporte-box" style="grid-column:span 2;cursor:pointer;'+(_filtroMedioVenta===null?'border-color:var(--green);background:rgba(0,204,68,.1)':'border-color:rgba(0,204,68,.3);background:rgba(0,204,68,.05)')+'" onclick="selFiltroMedioVenta(null)">'+
       '<div class="rlbl">💰 Total neto cobrado del día</div>'+
       '<div class="rval" style="font-size:1.8rem;color:var(--green)">'+fmt(netoTotal)+'</div>'+
-      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas'+(cargasPeriodo.length>0?' · incluye '+cargasPeriodo.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasPeriodo):'')+' · tocá para ver todo</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas'+(cobroFiadosPeriodo>0?' · incluye '+fmt(cobroFiadosPeriodo)+' de cobro de fiados':'')+(cargasPeriodo.length>0?' · incluye '+cargasPeriodo.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasPeriodo):'')+' · tocá para ver todo</div>'+
     '</div>'+
     // Diurnas / Nocturnas
     '<div class="reporte-box">'+
@@ -12797,14 +12803,15 @@ function calcularResumenRentabilidad(rango) {
     if(v.medio==='Mixto' && v.mixto){
       medios.Efectivo      += v.mixto.efectivo      || 0;
       medios.Transferencia += v.mixto.transferencia  || 0;
-      medios['Débito']     += v.mixto.debito         || 0;
+      medios['Débito']     += (v.mixto.debito||0) + (v.recargo||0); // el Posnet cobró la parte de débito + su recargo
     } else {
       medios[v.medio] = (medios[v.medio]||0) + v.total;
     }
   });
   // Neto débito (quitar el 10% que se va al posnet) — misma fórmula que Dashboard y Ventas
-  var netoDebito = medios['Débito'] / getDebitoFactor();
-  var costoPostnet = medios['Débito'] - netoDebito;
+  // Posnet neto = bruto − recargo (exacto, mismo criterio que Ventas y Auditoría)
+  var costoPostnet = ventas.reduce(function(s,v){ return s+(v.recargo||0); },0);
+  var netoDebito = medios['Débito'] - costoPostnet;
 
   // Cargas virtuales del período (recarga de celular/DirecTV con el Posnet
   // de Mercado Pago) — no es una "ganancia" que aparece de la nada: entra
@@ -13069,7 +13076,7 @@ function exportarRentabilidadPDF() {
     '<table><thead><tr><th>Medio</th><th>Bruto</th><th>Neto</th></tr></thead><tbody>'+
       '<tr><td>💵 Efectivo</td><td>$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</td><td>$'+Number(medios.Efectivo).toLocaleString('es-AR')+'</td></tr>'+
       '<tr><td>📲 Transferencia</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td><td>$'+Number(medios.Transferencia).toLocaleString('es-AR')+'</td></tr>'+
-      '<tr><td>💳 Débito</td><td>$'+Number(medios['Débito']).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(medios['Débito']/getDebitoFactor())).toLocaleString('es-AR')+'</td></tr>'+
+      '<tr><td>💳 Débito</td><td>$'+Number(medios['Débito']).toLocaleString('es-AR')+'</td><td>$'+Number(Math.round(r.netoDebito)).toLocaleString('es-AR')+'</td></tr>'+
       (r.cobroFiados>0?'<tr><td>🤝 Cobro de fiados</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td><td>$'+Number(r.cobroFiados).toLocaleString('es-AR')+'</td></tr>':'')+
     '</tbody></table>'+
     (r.gananciaCargas>0?'<p style="font-size:11px;color:#999;margin:4px 0 0">📱 Incluye '+r.cargasVirtuales.length+' carga(s) virtual(es) por $'+Number(Math.round(r.gananciaCargas)).toLocaleString('es-AR')+' de ganancia, ya repartida arriba entre Efectivo y Transferencia.</p>':'')+
@@ -16670,18 +16677,19 @@ function exportarInformeAsesoriaPDF() {
     if(v.medio==='Mixto' && v.mixto){
       medios.Efectivo      += v.mixto.efectivo      || 0;
       medios.Transferencia += v.mixto.transferencia || 0;
-      medios['Débito']     += v.mixto.debito        || 0;
+      medios['Débito']     += (v.mixto.debito||0) + (v.recargo||0); // el Posnet cobró la parte de débito + su recargo
     } else {
       medios[v.medio] = (medios[v.medio]||0) + v.total;
     }
   });
-  var netoDebito = medios['Débito'] / getDebitoFactor();
+  // Posnet neto = bruto − recargo (exacto, mismo criterio que Ventas y Auditoría)
+  var netoDebito = medios['Débito'] - ventas.reduce(function(s,v){ return s+(v.recargo||0); },0);
   var cargasVirtuales = getCargasVirtuales().filter(function(c){
     var d = new Date(c.fecha);
     return d>=desde && d<=hasta;
   });
   var gananciaCargas = cargasVirtuales.reduce(function(s,c){ return s+c.ganancia; },0);
-  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas;
+  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + (medios['Cobro fiado']||0);
   var neto = ingresosNetos - totalEgresos;
 
   var ticketPromedio = ingresosNetos / ventas.length;
@@ -17022,7 +17030,7 @@ function renderRepMedios(vA, vB, labelA, labelB) {
       if(v.medio==='Mixto'&&v.mixto){
         m.Efectivo      +=(v.mixto.efectivo||0);
         m.Transferencia +=(v.mixto.transferencia||0);
-        m.Débito        +=(v.mixto.debito||0);
+        m.Débito        +=(v.mixto.debito||0)+(v.recargo||0);
       } else {
         m[v.medio]=(m[v.medio]||0)+v.total;
       }
@@ -17121,7 +17129,7 @@ function exportarReportePDF() {
   // Medios
   var medios={Efectivo:0,Transferencia:0,'Débito':0};
   vA.forEach(function(v){
-    if(v.medio==='Mixto'&&v.mixto){ medios.Efectivo+=(v.mixto.efectivo||0); medios.Transferencia+=(v.mixto.transferencia||0); medios['Débito']+=(v.mixto.debito||0); }
+    if(v.medio==='Mixto'&&v.mixto){ medios.Efectivo+=(v.mixto.efectivo||0); medios.Transferencia+=(v.mixto.transferencia||0); medios['Débito']+=(v.mixto.debito||0)+(v.recargo||0); }
     else { medios[v.medio]=(medios[v.medio]||0)+v.total; }
   });
 
@@ -18764,7 +18772,7 @@ function renderDashboard() {
     if(v.medio==='Mixto'&&v.mixto){
       medios.Efectivo+=(v.mixto.efectivo||0);
       medios.Transferencia+=(v.mixto.transferencia||0);
-      medios['Débito']+=(v.mixto.debito||0);
+      medios['Débito']+=(v.mixto.debito||0)+(v.recargo||0);
     } else { medios[v.medio]=(medios[v.medio]||0)+(v.total||0); }
   });
   var cargasHoy = getCargasVirtuales().filter(function(c){ return new Date(c.fecha) >= hoy && new Date(c.fecha) <= fin; });
@@ -18778,9 +18786,12 @@ function renderDashboard() {
     medios[c.medio] = (medios[c.medio]||0) + (c.montoCobrado||0);
     medios.Transferencia = (medios.Transferencia||0) - (c.montoMP||0);
   });
-  var debitoNeto   = Math.round(medios['Débito']/getDebitoFactor());
-  var costoPostnet = medios['Débito'] - debitoNeto;
-  var netoReal     = medios.Efectivo + medios.Transferencia + debitoNeto;
+  // Posnet neto = bruto − recargo, y se suman los cobros de fiados viejos —
+  // mismo criterio que Ventas y Auditoría, para que den exactamente igual.
+  var costoPostnet = ventasHoy.reduce(function(s,v){ return v.fiadoCarga ? s : s+(v.recargo||0); },0);
+  var debitoNeto   = medios['Débito'] - costoPostnet;
+  var cobroFiadosHoy = medios['Cobro fiado'] || 0;
+  var netoReal     = medios.Efectivo + medios.Transferencia + debitoNeto + cobroFiadosHoy;
   var ventasHoySinFiado = ventasHoy.filter(function(v){ return !v.fiadoCarga; });
   var totalHoyNeto = ventasHoySinFiado.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var ticketProm   = ventasHoySinFiado.length ? Math.round(totalHoyNeto/ventasHoySinFiado.length) : 0;
@@ -18995,6 +19006,7 @@ function renderDashboard() {
           ventasHoySinFiado.length+' ventas · ticket '+fmt(ticketProm)+
           ' · ☀️ '+fmt(diurnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
           ' · 🌙 '+fmt(nocturnas.filter(function(v){return !v.fiadoCarga;}).reduce(function(s,v){return s+(v.total-(v.recargo||0));},0))+
+          (cobroFiadosHoy>0?' · incluye '+fmt(cobroFiadosHoy)+' de cobro de fiados':'')+
           (cargasHoy.length>0?' · incluye '+cargasHoy.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasHoy):'')))+
       dc('','ventas', dv('💵 Efectivo', fmt(medios.Efectivo), 'green', ''))+
       dc('','ventas', dv('📲 Transferencia', fmt(medios.Transferencia), 'blue', ''))+
