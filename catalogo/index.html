@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790220431";
+window.__LR_BUILD = "1790221082";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -974,6 +974,14 @@ function agregarCombo(nombre){
   actualizarCartBar();
 }
 
+// Wrapper para el botón ✕ del panel del carrito: además de sacar una unidad,
+// si el carrito está abierto lo vuelve a dibujar (si no, la lista de items
+// quedaba vieja hasta cerrar y volver a abrir).
+function quitarComboDesdeCarrito(nombre){
+  quitarCombo(nombre);
+  if(document.getElementById('cartOverlay').classList.contains('show')) abrirCarrito();
+}
+
 function quitarCombo(nombre){
   var v = CARRITO_COMBOS[nombre];
   if(!v) return;
@@ -1337,9 +1345,22 @@ function armarListaItemsHtml(){
   var html = '';
   Object.keys(CARRITO).forEach(function(k){
     var it = CARRITO[k];
-    html += '<div class="cart-item"><span>'+it.nombre+' ×'+it.cantidad+'</span><span>'+fmt(it.precio*it.cantidad)+'</span></div>';
+    html += '<div class="cart-item"><span>'+it.nombre+' ×'+it.cantidad+'</span>'+
+      '<span style="display:flex;align-items:center;gap:10px">'+fmt(it.precio*it.cantidad)+
+        '<button onclick="quitarProductoCarrito(\''+escJs(k)+'\')" title="Quitar" style="background:none;border:none;color:var(--red);font-size:1rem;line-height:1;cursor:pointer;padding:2px 4px">✕</button>'+
+      '</span></div>';
   });
   return html;
+}
+
+// Saca un producto del carrito por completo (no de a uno) — se usa desde
+// el botón ✕ del panel del carrito, ya que ahí antes no había forma de
+// sacar algo sin cerrar el carrito y volver a buscarlo en la lista.
+function quitarProductoCarrito(nombre){
+  delete CARRITO[nombre];
+  renderList();
+  actualizarCartBar();
+  if(document.getElementById('cartOverlay').classList.contains('show')) abrirCarrito();
 }
 
 // Los combos se listan aparte, con lo que incluye cada uno
@@ -1352,7 +1373,9 @@ function armarListaCombosHtml(){
       '<span>'+(e.cb.emoji||'🎁')+' '+e.nombre+' ×'+e.cantidad+
         (incluye ? '<div style="font-size:.66rem;color:var(--gray)">'+incluye+'</div>' : '')+
       '</span>'+
-      '<span>'+fmt(e.cb.precio*e.cantidad)+'</span>'+
+      '<span style="display:flex;align-items:center;gap:10px">'+fmt(e.cb.precio*e.cantidad)+
+        '<button onclick="quitarComboDesdeCarrito(\''+escJs(e.nombre)+'\')" title="Quitar" style="background:none;border:none;color:var(--red);font-size:1rem;line-height:1;cursor:pointer;padding:2px 4px">✕</button>'+
+      '</span>'+
     '</div>';
   }).join('');
 }
@@ -1370,17 +1393,29 @@ function armarListaManualHtml(){
     html += '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:#F4B400;text-transform:uppercase;margin-top:14px;margin-bottom:6px">🧀 Sueltos</div>';
     conPrecio.forEach(function(k){
       var it = CARRITO_MANUAL[k];
-      html += '<div class="cart-item"><span>'+it.nombre+' <span style="color:var(--gray)">('+it.texto+')</span></span><span>'+fmt(it.precio)+'</span></div>';
+      html += '<div class="cart-item"><span>'+it.nombre+' <span style="color:var(--gray)">('+it.texto+')</span></span>'+
+        '<span style="display:flex;align-items:center;gap:10px">'+fmt(it.precio)+
+          '<button onclick="quitarManualDesdeCarrito(\''+escJs(k)+'\')" title="Quitar" style="background:none;border:none;color:var(--red);font-size:1rem;line-height:1;cursor:pointer;padding:2px 4px">✕</button>'+
+        '</span></div>';
     });
   }
   if(aConfirmar.length){
     html += '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--red);text-transform:uppercase;margin-top:14px;margin-bottom:6px">📝 A confirmar precio</div>';
     aConfirmar.forEach(function(k){
       var it = CARRITO_MANUAL[k];
-      html += '<div class="cart-item"><span>'+it.nombre+'</span><span style="color:var(--gray)">'+it.texto+'</span></div>';
+      html += '<div class="cart-item"><span>'+it.nombre+'</span>'+
+        '<span style="display:flex;align-items:center;gap:10px;color:var(--gray)">'+it.texto+
+          '<button onclick="quitarManualDesdeCarrito(\''+escJs(k)+'\')" title="Quitar" style="background:none;border:none;color:var(--red);font-size:1rem;line-height:1;cursor:pointer;padding:2px 4px">✕</button>'+
+        '</span></div>';
     });
   }
   return html;
+}
+
+// Wrapper para el botón ✕ del panel del carrito (ver quitarComboDesdeCarrito).
+function quitarManualDesdeCarrito(id){
+  quitarItemManual(id);
+  if(document.getElementById('cartOverlay').classList.contains('show')) abrirCarrito();
 }
 
 function abrirCarrito(){
