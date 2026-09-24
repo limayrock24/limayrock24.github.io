@@ -8308,6 +8308,9 @@ function renderVentas() {
   var totalDiurnas  = diurnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
   var totalNocturnas= nocturnas.reduce(function(s,v){return s+(v.total-(v.recargo||0));},0);
 
+  // Margen bruto del mismo período que se está mirando en Ventas — misma
+  // cuenta que ya se usa en Rentabilidad, para no duplicar el criterio.
+  var margenPeriodo = calcularMargenBrutoDeVentas(ventasReales);
   document.getElementById('statGrid').innerHTML=
     // Fila destacada: Total neto real del día
     '<div class="reporte-box" style="grid-column:span 2;cursor:pointer;'+(_filtroMedioVenta===null?'border-color:var(--green);background:rgba(0,204,68,.1)':'border-color:rgba(0,204,68,.3);background:rgba(0,204,68,.05)')+'" onclick="selFiltroMedioVenta(null)">'+
@@ -8349,7 +8352,17 @@ function renderVentas() {
       '<div class="reporte-box">'+
         '<div class="rlbl">💰 Pagos mixtos</div>'+
         '<div class="rval" style="font-size:1.1rem;color:var(--gold)">'+mixtas.length+' ventas</div>'+
-      '</div>':'');
+      '</div>':'')+
+    // Margen bruto del período — mismo cálculo que en Rentabilidad, para
+    // no tener que ir a otra pestaña a ver cuánto quedó de ganancia real.
+    '<div class="reporte-box" style="grid-column:span 2;border-color:rgba(39,174,96,.4);background:rgba(39,174,96,.06)">'+
+      '<div class="rlbl">📈 Margen bruto del período</div>'+
+      '<div class="rval" style="font-size:1.4rem;color:#27ae60">'+fmt(margenPeriodo.margenBruto)+'</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+
+        (margenPeriodo.revConCosto>0 ? ((margenPeriodo.margenBruto/margenPeriodo.revConCosto*100).toFixed(0)+'% sobre '+fmt(margenPeriodo.revConCosto)+' con costo cargado') : (margenPeriodo.revTotal>0 ? 'ningún producto vendido tiene costo cargado' : 'sin ventas en este período'))+
+        (margenPeriodo.pctCobertura<100 && margenPeriodo.revSinCosto>0 ? ' · '+fmt(margenPeriodo.revSinCosto)+' sin costo cargado (no cuenta para el margen)' : '')+
+      '</div>'+
+    '</div>';
 
   // Lista de ventas
   var list = document.getElementById('ventasList');
