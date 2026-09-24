@@ -1520,14 +1520,32 @@
   // Promociones del catálogo público
   window.__lrDB.collection('promos').onSnapshot(function(snap){
     var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
+    // Los "grupos destacados" (ej: Sky con sus 6 sabores, que en el catálogo
+    // web se muestran como UNA sola tarjeta con selector) viven en esta misma
+    // colección, con tipoImperdible:'grupo' — así el catálogo (que solo tiene
+    // permiso de lectura sobre 'promos', no sobre colecciones de admin) puede
+    // verlos sin necesitar un permiso nuevo. Se separan acá para no mezclarse
+    // con las promos sueltas ni con las copias de combos.
+    var grupos = [];
+    snap.forEach(function(doc){
+      var d=doc.data();
+      // Los grupos quedan FUERA de la lista de promos: no tienen 'id', y
+      // savePromos() guarda/borra por id — si entraban acá, al guardar
+      // cualquier promo se escribían en un documento 'undefined' y el
+      // grupo aparecía repetido en el catálogo.
+      if(d.tipoImperdible === 'grupo'){ grupos.push(d); return; }
+      lista.push(d);
+      mapa[String(d.id)]=JSON.parse(JSON.stringify(d));
+    });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
     window.__lrPromosCache = lista;
+    window.__lrGruposDestacadosCache = grupos;
     window.__lrSync.ultimoPromosSnapshot = mapa;
     window.__lrSync.promosListos = true;
     refrescarPantallaVentaSiExiste();
-    if(typeof renderPromosAdmin==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
-      renderPromosAdmin();
+    if(document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
+      if(typeof renderPromosAdmin==='function') renderPromosAdmin();
+      if(typeof renderGruposDestacadosAdmin==='function') renderGruposDestacadosAdmin();
     }
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando promos:', err); window.__lrSync.promosListos = true; ocultarCargaSiListo(); });
@@ -3763,6 +3781,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sp-proveedores" onclick="switchTab('proveedores')">🚚 Proveedores</button>
       <button class="ftbtn" id="sp-pedidos"     onclick="switchTab('pedidos')">🛒 Pedidos</button>
       <button class="ftbtn" id="sp-combos"      onclick="switchTab('combos')">🎁 Combos</button>
+      <button class="ftbtn" id="sp-imperdibles" onclick="switchTab('imperdibles')">⭐ Imperdibles</button>
       <button class="ftbtn" id="sp-codigos"     onclick="switchTab('codigos')">📟 Códigos</button>
       <button class="ftbtn" id="sp-logcat"      onclick="switchTab('logcat')">📝 Log</button>
     </div>
@@ -4712,6 +4731,23 @@ body.night-on{background:#080005}
       <div id="itemsManualesCardsAdmin"></div>
     </div>
 
+    <!-- IMPERDIBLES: lo que aparece arriba de todo en el catálogo web, en
+         tarjeta grande. Productos sueltos marcados uno por uno, o agrupados
+         (ej: Sky con sus 6 sabores) para que el cliente elija cuál se lleva. -->
+    <div class="tab-pane" id="pane-imperdibles">
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🔥 Destacar productos</div>
+      <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Tildá los productos que querés que aparezcan en "Imperdibles hoy" en el catálogo web, con una etiqueta opcional (ej: "Precio especial", "🆕 Novedad"). Se ven todos acá, sin tener que entrar producto por producto.</div>
+      <input type="text" id="impProdSearch" placeholder="🔍 Buscar producto..." oninput="filtrarImpProductos(this.value)" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--white);font-size:.85rem;margin-bottom:10px">
+      <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:320px;overflow-y:auto" id="impProdList"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:26px 0 6px">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">⭐ Grupos con selector (ej: Sky — todos los sabores)</div>
+        <button class="btn-save" style="padding:6px 14px" onclick="abrirGrupoDestModal(null)">+ Nuevo grupo</button>
+      </div>
+      <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Para productos con varios sabores o variantes: se muestran como UNA sola tarjeta en el catálogo, y el cliente elige cuál se lleva al tocar "+".</div>
+      <div id="impGruposCards"></div>
+    </div>
+
     <!-- CÓDIGOS DE BARRAS -->
     <div class="tab-pane" id="pane-codigos">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -5516,6 +5552,51 @@ body.night-on{background:#080005}
       <button onclick="guardarComboModal()" style="background:var(--green);color:var(--black);border:none;border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-weight:700">✓ Guardar</button>
     </div>
     <button onclick="closeComboModal()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>
+  </div>
+</div>
+
+<!-- GRUPO DESTACADO MODAL: imperdible con selector (ej: Sky, elegir sabor) -->
+<div class="prov-modal-overlay" id="grupoDestModalOverlay">
+  <div class="prov-modal-box" style="max-height:90vh;overflow-y:auto">
+    <h3 id="gdModalTitulo">⭐ Nuevo grupo</h3>
+    <div id="gdImagenBox" style="display:none;text-align:center;margin-bottom:6px">
+      <img id="gdImagenPreview" src="" style="max-width:130px;max-height:130px;border-radius:8px;object-fit:cover;border:1px solid var(--border)">
+    </div>
+    <div id="gdSinImagenBox" style="display:none;text-align:center;margin-bottom:6px;color:var(--gray);font-size:.72rem">📷 Sin foto — una buena foto hace mucho más llamativo el grupo</div>
+    <input type="file" id="gdImagenInput" accept="image/*" capture="environment" style="display:none" onchange="onSeleccionarImagenGrupoDest(this)">
+    <div style="display:flex;justify-content:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button type="button" onclick="document.getElementById('gdImagenInput').click()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">📤 Subir foto nueva</button>
+      <button type="button" id="gdQuitarFotoBtn" onclick="quitarImagenGrupoDest()" style="display:none;background:none;border:1px solid rgba(204,0,0,.4);color:var(--red);border-radius:6px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">🗑 Quitar foto</button>
+    </div>
+    <div class="field">
+      <label>O usar la foto de uno de los productos del grupo</label>
+      <select id="gdFotoDeProducto" onchange="elegirFotoDeProductoGrupo(this.value)" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;color:var(--white);padding:9px 10px;font-size:.82rem"></select>
+    </div>
+    <div class="field">
+      <label>Nombre del grupo</label>
+      <input type="text" id="gdNombre" placeholder="Ej: Sky — todos los sabores">
+    </div>
+    <div class="field">
+      <label>Etiqueta (opcional)</label>
+      <input type="text" id="gdEtiqueta" placeholder="Ej: Elegí tu sabor" maxlength="30">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px 12px;margin-bottom:10px">
+      <label for="gdActivo" style="font-size:.78rem;color:var(--light);cursor:pointer">Grupo activo (aparece en el catálogo web)</label>
+      <input type="checkbox" id="gdActivo" checked style="width:20px;height:20px;accent-color:var(--green);cursor:pointer">
+    </div>
+    <div class="field">
+      <label>Productos que se pueden elegir (<span id="gdProdCount">0</span>)</label>
+      <div class="prov-add-search">
+        <input type="text" id="gdAddSearch" placeholder="Buscar producto del catálogo..." oninput="buscarProdParaGrupoDest()" autocomplete="off">
+        <div class="prov-add-results" id="gdAddResults" style="display:none"></div>
+      </div>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:220px;overflow-y:auto;margin-top:6px" id="gdProdList"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+      <button class="btn-del" id="gdModalDel" onclick="eliminarGrupoDestModalBtn()" style="background:transparent;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">🗑 Eliminar</button>
+      <button onclick="guardarGrupoDestModal()" style="background:var(--green);color:var(--black);border:none;border-radius:4px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-weight:700">✓ Guardar</button>
+    </div>
+    <button onclick="closeGrupoDestModal()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer">Cancelar</button>
   </div>
 </div>
 
@@ -7841,7 +7922,7 @@ function abrirAdminSinTurno() {
 }
 function switchTab(tab) {
   cerrarTodosLosOverlays();
-  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','codigos','delivery','mensajes'];
+  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     // El botón de la sección Productos se maneja aparte: tiene que quedar
@@ -7859,7 +7940,7 @@ function switchTab(tab) {
   // catálogo, stock, proveedores, pedidos a proveedores, combos, códigos y el
   // registro de cambios. Antes cada una era un botón suelto en la barra de
   // arriba, que ya tenía veinte y obligaba a deslizar para encontrar algo.
-  var pantallasProductos = ['catalogo','inventario','proveedores','pedidos','combos','codigos','logcat'];
+  var pantallasProductos = ['catalogo','inventario','proveedores','pedidos','combos','imperdibles','codigos','logcat'];
   var esProductos = pantallasProductos.indexOf(tab) !== -1;
 
   var subP = document.getElementById('subtabsProductos');
@@ -7971,6 +8052,7 @@ function switchTab(tab) {
   if(tab==='delivery') renderDeliveryPanel();
   if(tab==='mensajes') renderMensajesPanel();
   if(tab==='combos') renderCombos();
+  if(tab==='imperdibles') renderImperdiblesAdmin();
   if(tab==='empleados'){ renderEmpAdmin(); selEmpTab('equipo'); }
 }
 
@@ -24219,7 +24301,7 @@ var COMBOS = getCombos();
 function renderPromosAdmin() {
   var el = document.getElementById('promoCardsAdmin');
   if(!el) return;
-  var promos = getPromos();
+  var promos = getPromos().filter(function(p){ return p.tipoImperdible !== 'grupo'; });
   if(!promos.length) {
     el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.78rem">Sin promos cargadas todavía</div>';
     return;
@@ -24865,6 +24947,329 @@ function eliminarComboModal() {
     } else {
       showToast(nombre+' eliminado');
     }
+  });
+}
+
+// ═══════════════ IMPERDIBLES (destacados del catálogo web) ═══════════════
+//
+// Dos formas de destacar algo en "Imperdibles hoy" del catálogo:
+// 1) Un producto suelto (p.destacado / p.etiquetaDestacado, ya viaja con el
+//    resto de los datos del producto — ver guardarProdModal).
+// 2) Un "grupo con selector": varios productos (ej. los 6 sabores de Sky)
+//    que en el catálogo se ven como UNA sola tarjeta; al tocar "+" el
+//    cliente elige cuál se lleva. Se guardan en la colección 'promos' (con
+//    tipoImperdible:'grupo') para reusar el mismo permiso de lectura que ya
+//    tiene el catálogo sobre esa colección, sin pedir uno nuevo.
+
+function renderImperdiblesAdmin() {
+  renderImpProductosList();
+  renderGruposDestacadosAdmin();
+}
+
+// ── Destacar productos individuales, todos desde una sola pantalla ────────
+var _impProdFiltro = '';
+
+function filtrarImpProductos(term) {
+  _impProdFiltro = (term||'').toLowerCase().trim();
+  renderImpProductosList();
+}
+
+function renderImpProductosList() {
+  var el = document.getElementById('impProdList');
+  if(!el) return;
+  var term = _impProdFiltro;
+  var lista = PRODUCTS.filter(function(p){ return !term || p.name.toLowerCase().indexOf(term) !== -1; });
+  // Los ya destacados primero, para verlos de un vistazo.
+  lista = lista.slice().sort(function(a,b){
+    if(!!a.destacado === !!b.destacado) return 0;
+    return a.destacado ? -1 : 1;
+  });
+  if(!lista.length) { el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.78rem">Sin resultados</div>'; return; }
+  var muchos = lista.length > 60;
+  el.innerHTML = lista.slice(0, 60).map(function(p){
+    return '<div class="prov-prod-row" style="align-items:flex-start;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:160px">'+
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">'+
+          '<input type="checkbox" '+(p.destacado?'checked':'')+' onchange="toggleDestacadoRapido(\''+escJs(p.name)+'\',this.checked)" style="width:18px;height:18px;accent-color:var(--gold);cursor:pointer">'+
+          '<span class="ppn">'+p.name+'</span>'+
+        '</label>'+
+        (p.destacado ? '<input type="text" value="'+(p.etiquetaDestacado||'').replace(/"/g,'&quot;')+'" placeholder="Etiqueta opcional (ej: Precio especial)" maxlength="30" onchange="cambiarEtiquetaDestacadoRapido(\''+escJs(p.name)+'\',this.value)" style="width:100%;margin-top:6px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:6px 8px;font-size:.76rem">' : '')+
+      '</div>'+
+    '</div>';
+  }).join('') + (muchos ? '<div style="padding:8px;text-align:center;color:var(--gray);font-size:.7rem">Mostrando los primeros 60 — usá el buscador para encontrar otro</div>' : '');
+}
+
+function toggleDestacadoRapido(nombre, on) {
+  var idx = PRODUCTS.findIndex(function(p){ return p.name === nombre; });
+  if(idx === -1) return;
+  PRODUCTS[idx].destacado = !!on;
+  window.__lrProductosTocados = [nombre];
+  saveLocalConBorrado(on ? '✅ Destacado' : '✅ Ya no está destacado').catch(function(){});
+  renderImpProductosList();
+}
+
+function cambiarEtiquetaDestacadoRapido(nombre, valor) {
+  var idx = PRODUCTS.findIndex(function(p){ return p.name === nombre; });
+  if(idx === -1) return;
+  PRODUCTS[idx].etiquetaDestacado = (valor||'').trim() || null;
+  window.__lrProductosTocados = [nombre];
+  saveLocalConBorrado('✅ Etiqueta guardada').catch(function(){});
+}
+
+// ── Grupos con selector (ej: Sky — todos los sabores) ─────────────────────
+function getGruposDestacados() { return Array.isArray(window.__lrGruposDestacadosCache) ? window.__lrGruposDestacadosCache : []; }
+
+// idSeguro()/limpiarUndefined() viven dentro del bloque de sincronización
+// y no se ven desde acá, así que el id del documento y la limpieza se
+// resuelven localmente (mismo criterio: '/' no puede ir en un id).
+function _gdDocId(nombre) { return 'grupo-' + String(nombre).replace(/\//g, '-'); }
+function guardarGrupoDestacadoDB(grupo) {
+  var datos = JSON.parse(JSON.stringify(Object.assign({tipoImperdible:'grupo'}, grupo)));
+  return window.__lrDB.collection('promos').doc(_gdDocId(grupo.nombre)).set(datos);
+}
+function eliminarGrupoDestacadoDB(nombre) {
+  return window.__lrDB.collection('promos').doc(_gdDocId(nombre)).delete();
+}
+
+function renderGruposDestacadosAdmin() {
+  var el = document.getElementById('impGruposCards');
+  if(!el) return;
+  var grupos = getGruposDestacados();
+  if(!grupos.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">Sin grupos creados aún. Creá el primero con "+ Nuevo grupo".</div>';
+    return;
+  }
+  el.innerHTML = '';
+  grupos.forEach(function(g) {
+    var card = document.createElement('div');
+    card.className = 'combo-card';
+    if(g.activo === false) card.style.opacity = '.5';
+    card.onclick = function(){ abrirGrupoDestModal(g.nombre); };
+    var icono = g.imgUrl ? '<img src="'+g.imgUrl+'" onclick="event.stopPropagation();ampliarImagen(\''+escJs(g.imgUrl)+'\',\''+escJs(g.nombre)+'\')" style="width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:pointer">' : '⭐';
+    var pausado = (g.activo === false);
+    card.innerHTML =
+      '<div class="cc-icon" style="'+(g.imgUrl?'width:44px;height:44px':'')+'">'+icono+'</div>'+
+      '<div class="cc-body">'+
+        '<div class="cc-name">'+g.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+'</div>'+
+        '<div class="cc-prods">'+(g.productos||[]).length+' opciones'+(g.etiqueta?' · '+g.etiqueta:'')+'</div>'+
+      '</div>'+
+      '<button onclick="event.stopPropagation();togglePausaGrupoDest(\''+escJs(g.nombre)+'\')" style="background:transparent;border:1px solid '+(pausado?'var(--green)':'var(--gray)')+';color:'+(pausado?'var(--green)':'var(--gray)')+';border-radius:4px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:.5px;white-space:nowrap;cursor:pointer;flex-shrink:0">'+(pausado?'▶ Activar':'⏸ Pausar')+'</button>';
+    el.appendChild(card);
+  });
+}
+
+function togglePausaGrupoDest(nombre) {
+  var grupos = getGruposDestacados();
+  var g = grupos.find(function(x){ return x.nombre === nombre; });
+  if(!g) return;
+  var nuevoActivo = (g.activo === false) ? true : false;
+  var copia = Object.assign({}, g, {activo: nuevoActivo});
+  guardarGrupoDestacadoDB(copia).then(function(){
+    showToast(nuevoActivo === false ? '⏸ '+nombre+' pausado' : '▶ '+nombre+' activado');
+  }).catch(function(e){ console.error('Error pausando grupo destacado:', e); showToast('❌ No se pudo actualizar', true); });
+}
+
+var _gdProductos = [];
+var _gdEditNombreOriginal = null;
+
+function poblarGdFotoSelect() {
+  var sel = document.getElementById('gdFotoDeProducto');
+  if(!sel) return;
+  var conFoto = _gdProductos.filter(function(nombre){
+    var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+    return p && imgProducto(p);
+  });
+  if(!conFoto.length){
+    sel.innerHTML = '<option value="">— ninguno de los productos agregados tiene foto todavía —</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Elegir producto...</option>' + conFoto.map(function(n){
+    return '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+'</option>';
+  }).join('');
+}
+
+function elegirFotoDeProductoGrupo(nombre) {
+  if(!nombre) return;
+  var p = PRODUCTS.find(function(x){ return x.name === nombre; });
+  var url = p ? imgProducto(p) : null;
+  if(!url){ showToast('Ese producto no tiene foto', true); return; }
+  window._gdImgUrlActual = url;
+  document.getElementById('gdImagenBox').style.display = 'block';
+  document.getElementById('gdSinImagenBox').style.display = 'none';
+  document.getElementById('gdQuitarFotoBtn').style.display = 'inline-block';
+  document.getElementById('gdImagenPreview').src = url;
+}
+
+// Sube la foto de un GRUPO destacado (mismo mecanismo que combos/productos,
+// en su propia carpeta dentro de Storage).
+function subirImagenGrupoDest(file, nombreGrupo) {
+  return comprimirImagenProd(file, 900, 0.82).then(function(blob){
+    var rutaLimpia = 'imperdibles/' + Date.now() + '-' + nombreGrupo.toLowerCase()
+      .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '.jpg';
+    var ref = window.__lrStorage.ref().child(rutaLimpia);
+    return ref.put(blob, {contentType:'image/jpeg'}).then(function(){ return ref.getDownloadURL(); });
+  });
+}
+
+function onSeleccionarImagenGrupoDest(input) {
+  var file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  var nombre = document.getElementById('gdNombre').value.trim();
+  if(!nombre){ showToast('Poné primero el nombre del grupo', true); return; }
+  showToast('⏳ Subiendo foto...');
+  subirImagenGrupoDest(file, nombre).then(function(url){
+    window._gdImgUrlActual = url;
+    document.getElementById('gdImagenBox').style.display = 'block';
+    document.getElementById('gdSinImagenBox').style.display = 'none';
+    document.getElementById('gdQuitarFotoBtn').style.display = 'inline-block';
+    document.getElementById('gdImagenPreview').src = url;
+    showToast('✅ Foto lista — no te olvides de tocar Guardar');
+  }).catch(function(e){
+    console.error('Error subiendo imagen de grupo destacado:', e);
+    showToast('❌ No se pudo subir la foto: '+((e&&e.code)||(e&&e.message)||'error desconocido'), true);
+  });
+}
+
+function quitarImagenGrupoDest() {
+  window._gdImgUrlActual = null;
+  document.getElementById('gdImagenBox').style.display = 'none';
+  document.getElementById('gdSinImagenBox').style.display = 'block';
+  document.getElementById('gdQuitarFotoBtn').style.display = 'none';
+}
+
+function buscarProdParaGrupoDest() {
+  var term = document.getElementById('gdAddSearch').value.toLowerCase().trim();
+  var results = document.getElementById('gdAddResults');
+  if(!term) { results.style.display = 'none'; return; }
+  var matches = PRODUCTS.filter(function(p) {
+    return (p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term))) && _gdProductos.indexOf(p.name) === -1;
+  }).slice(0, 8);
+  if(!matches.length) {
+    results.innerHTML = '<div class="prov-add-result-item" style="color:var(--gray)">Sin resultados</div>';
+  } else {
+    results.innerHTML = matches.map(function(p) {
+      return '<div class="prov-add-result-item" onclick="agregarGdProd(\''+escJs(p.name)+'\')">'
+        +p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
+    }).join('');
+  }
+  results.style.display = 'block';
+}
+
+function agregarGdProd(nombre) {
+  if(_gdProductos.indexOf(nombre) === -1) _gdProductos.push(nombre);
+  document.getElementById('gdAddSearch').value = '';
+  document.getElementById('gdAddResults').style.display = 'none';
+  renderGdProdList();
+  poblarGdFotoSelect();
+}
+
+function quitarGdProd(i) {
+  _gdProductos.splice(i, 1);
+  renderGdProdList();
+  poblarGdFotoSelect();
+}
+
+function renderGdProdList() {
+  var el = document.getElementById('gdProdList');
+  var count = document.getElementById('gdProdCount');
+  if(count) count.textContent = _gdProductos.length;
+  if(!el) return;
+  if(!_gdProductos.length) {
+    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray);font-size:.74rem">Buscá y agregá los productos que van a poder elegirse (ej: los 6 sabores de Sky)</div>';
+    return;
+  }
+  el.innerHTML = _gdProductos.map(function(nombre, i) {
+    var prod = PRODUCTS.find(function(p){ return p.name === nombre; });
+    return '<div class="prov-prod-row"><div><div class="ppn">'+nombre+'</div><div class="ppc">'+(prod?prod.cat:'no encontrado')+(prod&&prod.pventa?' · '+fmt(prod.pventa):'')+'</div></div><button class="prov-prod-del" onclick="quitarGdProd('+i+')">✕</button></div>';
+  }).join('');
+}
+
+function abrirGrupoDestModal(nombreOriginal) {
+  cerrarOverlaysDeCatalogo();
+  document.getElementById('gdAddSearch').value = '';
+  document.getElementById('gdAddResults').style.display = 'none';
+  var grupos = getGruposDestacados();
+  var g = nombreOriginal ? grupos.find(function(x){ return x.nombre === nombreOriginal; }) : null;
+  _gdEditNombreOriginal = nombreOriginal || null;
+  if(g) {
+    document.getElementById('gdModalTitulo').textContent = 'Editar — '+g.nombre;
+    document.getElementById('gdNombre').value = g.nombre;
+    document.getElementById('gdEtiqueta').value = g.etiqueta || '';
+    document.getElementById('gdActivo').checked = (g.activo !== false);
+    _gdProductos = (g.productos||[]).slice();
+    window._gdImgUrlActual = g.imgUrl || null;
+    document.getElementById('gdImagenBox').style.display = g.imgUrl ? 'block' : 'none';
+    document.getElementById('gdSinImagenBox').style.display = g.imgUrl ? 'none' : 'block';
+    document.getElementById('gdQuitarFotoBtn').style.display = g.imgUrl ? 'inline-block' : 'none';
+    if(g.imgUrl) document.getElementById('gdImagenPreview').src = g.imgUrl;
+    document.getElementById('gdModalDel').style.display = 'block';
+  } else {
+    document.getElementById('gdModalTitulo').textContent = '⭐ Nuevo grupo';
+    document.getElementById('gdNombre').value = '';
+    document.getElementById('gdEtiqueta').value = '';
+    document.getElementById('gdActivo').checked = true;
+    _gdProductos = [];
+    window._gdImgUrlActual = null;
+    document.getElementById('gdImagenBox').style.display = 'none';
+    document.getElementById('gdSinImagenBox').style.display = 'none';
+    document.getElementById('gdQuitarFotoBtn').style.display = 'none';
+    document.getElementById('gdModalDel').style.display = 'none';
+  }
+  renderGdProdList();
+  poblarGdFotoSelect();
+  document.getElementById('grupoDestModalOverlay').classList.add('open');
+  setTimeout(function(){ document.getElementById('gdNombre').focus(); }, 150);
+}
+
+function closeGrupoDestModal() {
+  document.getElementById('grupoDestModalOverlay').classList.remove('open');
+}
+
+function guardarGrupoDestModal() {
+  var nombre = document.getElementById('gdNombre').value.trim();
+  var etiqueta = document.getElementById('gdEtiqueta').value.trim();
+  var activo = document.getElementById('gdActivo').checked;
+  if(!nombre){ showToast('Ingresá un nombre para el grupo', true); return; }
+  if(_gdProductos.length < 2){ showToast('Agregá al menos 2 productos al grupo', true); return; }
+  var grupos = getGruposDestacados();
+  var yaExiste = grupos.some(function(g){ return g.nombre === nombre && nombre !== _gdEditNombreOriginal; });
+  if(yaExiste){ showToast('Ya existe otro grupo con ese nombre', true); return; }
+  var grupo = {
+    nombre: nombre,
+    etiqueta: etiqueta || null,
+    imgUrl: window._gdImgUrlActual || null,
+    productos: _gdProductos.slice(),
+    activo: activo
+  };
+  showToast('⏳ Guardando grupo...');
+  var promesa = (_gdEditNombreOriginal && _gdEditNombreOriginal !== nombre)
+    ? eliminarGrupoDestacadoDB(_gdEditNombreOriginal).then(function(){ return guardarGrupoDestacadoDB(grupo); })
+    : guardarGrupoDestacadoDB(grupo);
+  promesa.then(function(){
+    showToast('✅ Grupo guardado');
+    closeGrupoDestModal();
+  }).catch(function(e){
+    console.error('Error guardando grupo destacado:', e);
+    showToast('❌ No se pudo guardar el grupo', true);
+  });
+}
+
+function eliminarGrupoDestModalBtn() {
+  if(!_gdEditNombreOriginal) return;
+  var nombreABorrar = _gdEditNombreOriginal;
+  askConfirm('¿Eliminar el grupo "'+nombreABorrar+'"?').then(function(ok){
+    if(!ok) return;
+    eliminarGrupoDestacadoDB(nombreABorrar).then(function(){
+      showToast('🗑 Grupo eliminado');
+      closeGrupoDestModal();
+    }).catch(function(e){
+      console.error('Error eliminando grupo destacado:', e);
+      showToast('❌ No se pudo eliminar', true);
+    });
   });
 }
 

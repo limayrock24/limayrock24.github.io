@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790214416";
+window.__LR_BUILD = "1790215205";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -196,6 +196,17 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <div id="catVarGrupos"></div>
     <button type="button" onclick="confirmarComboVarCatalogo()" id="catVarConfirmBtn" disabled style="width:100%;margin-top:16px;background:var(--green);color:#04231d;border:none;border-radius:8px;padding:13px;font-family:'Oswald',sans-serif;font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Agregar al carrito</button>
     <button type="button" onclick="cerrarComboVarSelector()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:11px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cancelar</button>
+  </div>
+</div>
+
+<!-- Selector de un "grupo destacado" (ej: Sky — todos los sabores): a diferencia
+     del de arriba, acá se elige un PRODUCTO REAL y se agrega tal cual al
+     carrito, no se arma un combo. -->
+<div id="grupoDestSelectorOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:flex-end;justify-content:center">
+  <div style="background:var(--card);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 18px 24px;max-height:80vh;overflow-y:auto">
+    <h3 id="grupoDestSelectorTitulo" style="margin:0 0 14px;font-family:'Oswald',sans-serif;color:var(--white)"></h3>
+    <div id="grupoDestSelectorOpciones"></div>
+    <button type="button" onclick="cerrarGrupoDestSelector()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:11px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cancelar</button>
   </div>
 </div>
 
@@ -621,10 +632,24 @@ db.collection('combos').onSnapshot(function(snap){
 });
 
 // Fuente 2: la copia publicada por el panel de admin
+//
+// Acá también viajan los "grupos destacados" (ej: Sky con sus 6 sabores,
+// marcados con tipoImperdible:'grupo' desde el admin) — reusan esta misma
+// colección para no necesitar un permiso de lectura nuevo, pero se separan
+// de los combos porque en el catálogo se muestran distinto: una tarjeta que
+// abre un selector para elegir CUÁL de los productos del grupo se lleva.
+var GRUPOS_DESTACADOS = [];
 db.collection('promos').onSnapshot(function(snap){
   var lista = [];
+  var grupos = [];
   snap.forEach(function(doc){
     var d = doc.data() || {};
+    if(d.tipoImperdible === 'grupo'){
+      if(d.activo === false || !d.nombre || !(d.productos||[]).length) return;
+      if(grupos.some(function(x){ return x.nombre === d.nombre; })) return; // por si quedó un duplicado
+      grupos.push(d);
+      return;
+    }
     // Solo se descarta lo explícitamente desactivado o lo que no tiene nombre.
     // Antes se exigía además un precio mayor a cero, y eso dejaba afuera las
     // promos viejas que guardaban el precio en otro formato.
@@ -633,10 +658,12 @@ db.collection('promos').onSnapshot(function(snap){
     lista.push(normalizarCombo(d));
   });
   _combosCopia = lista;
+  GRUPOS_DESTACADOS = grupos;
   window.__lrComboSnapCopia = snap.size;
   promosListos = true;
   chequearListo();
   unificarCombos();
+  if(document.getElementById('mainContent').style.display==='block') renderList();
 }, function(err){
   // Si no se pueden leer los combos, queda anotado de forma visible para poder
   // diagnosticarlo, en vez de que simplemente no aparezcan sin explicación.
@@ -766,29 +793,56 @@ function renderList(){
   try{
     if(!term && CATEGORIA_SEL === 'Todas'){
       var destacados = PRODUCTOS.filter(function(p){ return p.destacado; });
-      if(destacados.length){
-        htmlImperdibles = '<div class="cat-title">🔥 Imperdibles hoy</div>' +
-          destacados.map(function(p){
-            var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
-            var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
-            var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
-            var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
-            var imgHtml = imgSrc
-              ? '<img class="imperdible-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">'
-              : '<div class="imperdible-thumb-placeholder">FOTO<br>PRODUCTO</div>';
-            var badgeHtml = p.etiquetaDestacado ? '<div class="imperdible-badge">'+p.etiquetaDestacado+'</div>' : '';
-            var ctrlHtml = sinStock
-              ? '<span class="sin-stock-tag">Sin stock</span>'
-              : '<div class="qty-ctrl">'+
-                  (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
-                  '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
-                '</div>';
-            return '<div class="imperdible-card" style="'+(sinStock?'opacity:.55':'')+'">'+
-              imgHtml+
-              '<div class="prod-info">'+badgeHtml+'<div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
-              ctrlHtml+
+      var htmlDestacadosSueltos = destacados.map(function(p){
+        var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
+        var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
+        var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
+        var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
+        var imgHtml = imgSrc
+          ? '<img class="imperdible-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">'
+          : '<div class="imperdible-thumb-placeholder">FOTO<br>PRODUCTO</div>';
+        var badgeHtml = p.etiquetaDestacado ? '<div class="imperdible-badge">'+p.etiquetaDestacado+'</div>' : '';
+        var ctrlHtml = sinStock
+          ? '<span class="sin-stock-tag">Sin stock</span>'
+          : '<div class="qty-ctrl">'+
+              (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
+              '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
             '</div>';
-          }).join('');
+        return '<div class="imperdible-card" style="'+(sinStock?'opacity:.55':'')+'">'+
+          imgHtml+
+          '<div class="prod-info">'+badgeHtml+'<div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
+          ctrlHtml+
+        '</div>';
+      }).join('');
+
+      // Grupos con selector (ej: "Sky — todos los sabores"): una sola tarjeta
+      // que, al tocarla, abre una hoja para elegir CUÁL de los productos del
+      // grupo se lleva. El precio mostrado es el del más barato ("Desde $X")
+      // cuando los sabores no cuestan todos lo mismo.
+      var htmlGrupos = (typeof GRUPOS_DESTACADOS !== 'undefined' ? GRUPOS_DESTACADOS : []).map(function(g){
+        var prods = (g.productos||[]).map(function(n){ return PRODUCTOS.find(function(p){ return p.name === n; }); }).filter(Boolean);
+        if(!prods.length) return '';
+        var todosSinStock = prods.every(function(p){ return (p.name in STOCK) && STOCK[p.name] <= 0; });
+        var precios = prods.map(function(p){ return PRECIO_NOCTURNO ? p.precioNoc : p.precio; });
+        var minPrecio = Math.min.apply(null, precios);
+        var maxPrecio = Math.max.apply(null, precios);
+        var precioHtml = (minPrecio === maxPrecio) ? fmt(minPrecio) : ('Desde '+fmt(minPrecio));
+        var imgHtml = g.imgUrl
+          ? '<img class="imperdible-thumb" src="'+g.imgUrl+'" alt="" style="'+(todosSinStock?'opacity:.35':'')+'">'
+          : '<div class="imperdible-thumb-placeholder">FOTO<br>PRODUCTO</div>';
+        var badgeHtml = g.etiqueta ? '<div class="imperdible-badge">'+g.etiqueta+'</div>' : '';
+        var ctrlHtml = todosSinStock
+          ? '<span class="sin-stock-tag">Sin stock</span>'
+          : '<button class="qty-btn add" style="width:auto;border-radius:8px;padding:0 12px;font-size:.68rem;font-family:Oswald,sans-serif;text-transform:uppercase;letter-spacing:.5px" onclick="abrirGrupoDestSelector(\''+escJs(g.nombre)+'\')">Elegir</button>';
+        return '<div class="imperdible-card" style="'+(todosSinStock?'opacity:.55':'cursor:pointer')+'"'+(todosSinStock?'':' onclick="abrirGrupoDestSelector(\''+escJs(g.nombre)+'\')"')+'>'+
+          imgHtml+
+          '<div class="prod-info">'+badgeHtml+'<div class="prod-name">'+g.nombre+'</div><div class="prod-price">'+precioHtml+'</div></div>'+
+          ctrlHtml+
+        '</div>';
+      }).join('');
+
+      if(htmlDestacadosSueltos || htmlGrupos){
+        htmlImperdibles = '<div class="cat-title">🔥 Imperdibles hoy</div>' + htmlDestacadosSueltos + htmlGrupos;
       }
     }
   }catch(e){ console.error('Error dibujando imperdibles:', e); }
@@ -991,6 +1045,37 @@ function confirmarComboVarCatalogo(){
   cerrarComboVarSelector();
   renderList();
   actualizarCartBar();
+}
+
+// ── Selector de un "grupo destacado" (ej: Sky — todos los sabores) ─────────
+// A diferencia del selector de arriba (que arma un combo), acá se elige un
+// producto real del catálogo y se agrega tal cual al carrito.
+function abrirGrupoDestSelector(nombreGrupo){
+  var g = (typeof GRUPOS_DESTACADOS !== 'undefined' ? GRUPOS_DESTACADOS : []).find(function(x){ return x.nombre === nombreGrupo; });
+  if(!g) return;
+  document.getElementById('grupoDestSelectorTitulo').textContent = g.etiqueta || g.nombre;
+  var html = (g.productos||[]).map(function(nombreProd){
+    var p = PRODUCTOS.find(function(x){ return x.name === nombreProd; });
+    if(!p) return '';
+    var sinStock = (nombreProd in STOCK) && STOCK[nombreProd] <= 0;
+    var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
+    return '<button type="button" '+(sinStock?'disabled':'onclick="elegirProductoDeGrupoDest(\''+escJs(nombreProd)+'\')"')+
+      ' style="width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;font-family:Barlow,sans-serif;font-size:.88rem;cursor:'+(sinStock?'not-allowed':'pointer')+';opacity:'+(sinStock?'.5':'1')+'">'+
+      '<span style="color:var(--white)">'+nombreProd+'</span>'+
+      '<span style="color:'+(sinStock?'var(--gray)':'var(--green)')+';font-family:Oswald,sans-serif;font-weight:600;flex-shrink:0">'+(sinStock?'Sin stock':fmt(precioMostrar))+'</span>'+
+    '</button>';
+  }).join('');
+  document.getElementById('grupoDestSelectorOpciones').innerHTML = html;
+  document.getElementById('grupoDestSelectorOverlay').style.display = 'flex';
+}
+
+function cerrarGrupoDestSelector(){
+  document.getElementById('grupoDestSelectorOverlay').style.display = 'none';
+}
+
+function elegirProductoDeGrupoDest(nombreProd){
+  cambiarCantidad(nombreProd, 1);
+  cerrarGrupoDestSelector();
 }
 
 // Cada suelto define su propia base de precio: cada 100g (fiambre, típico
