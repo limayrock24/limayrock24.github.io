@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790221452";
+window.__LR_BUILD = "1790221591";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -1130,7 +1130,7 @@ function abrirGrupoDestSelector(nombreGrupo){
     // a propósito (imgUrl === null).
     var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
     var imgHtml = imgSrc
-      ? '<img src="'+imgSrc+'" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;'+(sinStock?'opacity:.4':'')+'">'
+      ? '<img src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(nombreProd)+'\')" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:zoom-in;'+(sinStock?'opacity:.4':'')+'">'
       : '<div style="width:44px;height:44px;border-radius:6px;background:rgba(255,255,255,.06);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.9rem">📷</div>';
     return '<button type="button" '+(sinStock?'disabled':'onclick="elegirProductoDeGrupoDest(\''+escJs(nombreProd)+'\')"')+
       ' style="width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-family:Barlow,sans-serif;font-size:.88rem;cursor:'+(sinStock?'not-allowed':'pointer')+';opacity:'+(sinStock?'.5':'1')+'">'+
