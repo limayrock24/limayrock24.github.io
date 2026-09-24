@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790223282";
+window.__LR_BUILD = "1790224248";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -210,6 +210,9 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .error-msg{color:var(--red);font-size:.78rem;margin-top:8px;display:none}
 
 .status-screen{position:fixed;inset:0;background:var(--black);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
+/* Mismo "titileo" (fade in/out) que usa el panel admin para el puntito de
+   "en vivo" mientras conecta — acá se lo pongo al logo. */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .status-screen.show{display:flex}
 .status-screen h2{font-family:'Oswald',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--gold);margin:0 0 10px}
 .status-screen p{color:var(--gray);font-size:.85rem;max-width:340px;line-height:1.5}
@@ -261,6 +264,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 </div>
 
 <div id="noDeliveryScreen" class="status-screen">
+  <img src="/logo.png" alt="Limay Rock" style="width:min(220px,70%);margin:0 auto 18px;display:block;animation:pulse 2s infinite">
   <h2>🛵 Delivery en pausa</h2>
   <p>Ahora mismo no tenemos repartidores disponibles, así que no estamos tomando pedidos a domicilio.</p>
   <p style="margin-top:14px"><b style="color:#F4B400">Pero el local está abierto y te esperamos.</b><br>
@@ -271,7 +275,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
      style="display:inline-block;margin-top:16px;background:#D2201F;color:#fff;text-decoration:none;border-radius:8px;padding:12px 22px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px">📍 Cómo llegar</a>
   <p style="margin-top:18px;font-size:.85rem;opacity:.75">Volvé a entrar en un rato: apenas se conecte un repartidor, el delivery se reactiva solo.</p>
   <a href="https://www.instagram.com/limay.rock/" target="_blank" rel="noopener"
-     style="display:inline-block;margin-top:14px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;text-decoration:none;border-radius:8px;padding:11px 22px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px">📷 Seguinos en Instagram</a>
+     style="display:inline-flex;align-items:center;gap:7px;margin-top:14px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;text-decoration:none;border-radius:8px;padding:11px 22px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+    Seguinos en Instagram
+  </a>
 </div>
 
 <div id="thanksScreen" class="status-screen">
