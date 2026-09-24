@@ -25274,8 +25274,10 @@ function buscarProdParaGrupoDest() {
     results.innerHTML = '<div class="prov-add-result-item" style="color:var(--gray)">Sin resultados</div>';
   } else {
     results.innerHTML = matches.map(function(p) {
+      var img = imgProducto(p);
+      var thumb = img ? '<img src="'+img+'" style="width:22px;height:22px;object-fit:cover;border-radius:3px;margin-right:6px;vertical-align:middle">' : '';
       return '<div class="prov-add-result-item" onclick="agregarGdProd(\''+escJs(p.name)+'\')">'
-        +p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
+        +thumb+p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
     }).join('');
   }
   results.style.display = 'block';
@@ -25306,7 +25308,11 @@ function renderGdProdList() {
   }
   el.innerHTML = _gdProductos.map(function(nombre, i) {
     var prod = PRODUCTS.find(function(p){ return p.name === nombre; });
-    return '<div class="prov-prod-row"><div><div class="ppn">'+nombre+'</div><div class="ppc">'+(prod?prod.cat:'no encontrado')+(prod&&prod.pventa?' · '+fmt(prod.pventa):'')+'</div></div><button class="prov-prod-del" onclick="quitarGdProd('+i+')">✕</button></div>';
+    var img = prod ? imgProducto(prod) : null;
+    var thumb = img
+      ? '<img src="'+img+'" style="width:34px;height:34px;object-fit:cover;border-radius:5px;flex-shrink:0">'
+      : '<div style="width:34px;height:34px;border-radius:5px;background:rgba(255,255,255,.06);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:var(--gray)">📷</div>';
+    return '<div class="prov-prod-row" style="display:flex;align-items:center;gap:8px">'+thumb+'<div style="flex:1"><div class="ppn">'+nombre+'</div><div class="ppc">'+(prod?prod.cat:'no encontrado')+(prod&&prod.pventa?' · '+fmt(prod.pventa):'')+'</div></div><button class="prov-prod-del" onclick="quitarGdProd('+i+')">✕</button></div>';
   }).join('');
 }
 
