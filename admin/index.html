@@ -1348,6 +1348,24 @@
     });
   };
 
+  // Orden manual e íconos de las pestañas de categorías del catálogo web.
+  // Documento aparte (no metido en 'gruposCategorias' ni en 'categorias')
+  // para no pisarlo sin querer: esos dos se reescriben solos cada vez que se
+  // agrega/edita una categoría o un grupo, y perderíamos el orden guardado.
+  window.__lrDB.collection(window.__lrCOL.config).doc('categoriasVista').onSnapshot(function(doc){
+    var d = doc.exists ? doc.data() : {};
+    window.CAT_ORDEN = Array.isArray(d.orden) ? d.orden : [];
+    window.CAT_ICONOS = (d.iconos && typeof d.iconos==='object') ? d.iconos : {};
+    window.__lrSync.categoriasVistaListo = true;
+    ocultarCargaSiListo();
+  }, function(err){ console.error('Error sincronizando orden/íconos de categorías:', err); window.__lrSync.categoriasVistaListo = true; ocultarCargaSiListo(); });
+
+  window.__lrSaveCatOrdenIconos = function(data){
+    window.__lrDB.collection(window.__lrCOL.config).doc('categoriasVista').set(limpiarUndefined(data)).catch(function(e){
+      console.error('Error guardando orden/íconos de categorías', e);
+    });
+  };
+
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
@@ -5021,6 +5039,7 @@ body.night-on{background:#080005}
         <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirGruposCatModal()">🗂 Agrupar (catálogo web)</button>
+        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#9b59b6;color:#9b59b6" onclick="abrirOrdenCatModal()">🔢 Orden e iconos (catálogo web)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">📈 Aumento masivo</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
@@ -5092,6 +5111,19 @@ body.night-on{background:#080005}
         <div id="editorGrupoCatCheckboxes" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:12px"></div>
         <button onclick="guardarEditorGrupoCat()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px;margin-bottom:8px">✓ Guardar grupo</button>
         <button id="editorGrupoCatBorrar" onclick="borrarEditorGrupoCat()" style="width:100%;background:none;border:1px solid rgba(204,0,0,.4);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;display:none">🗑 Eliminar este grupo</button>
+      </div>
+    </div>
+
+    <!-- MODAL ORDEN E ICONOS DE CATEGORÍAS (solo afecta cómo se ven las pestañas en el catálogo web) -->
+    <div class="prod-modal-overlay" id="ordenCatOverlay" onclick="if(event.target===this)closeOrdenCatModal()">
+      <div class="prod-modal-box" style="max-width:420px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#9b59b6;text-transform:uppercase">🔢 Orden e iconos</span>
+          <button onclick="closeOrdenCatModal()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
+        </div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Así se ven las pestañas de categorías en el catálogo web. Usá las flechas para poner primero las más pedidas, y agregales un emoji si querés (opcional).</div>
+        <div id="ordenCatList" style="max-height:360px;overflow-y:auto;margin-bottom:12px"></div>
+        <button onclick="guardarOrdenCatModal()" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer;letter-spacing:1px">✓ Guardar orden</button>
       </div>
     </div>
 
@@ -14024,6 +14056,33 @@ function getFcmTokens() { return Array.isArray(window.__lrFcmTokensCache) ? wind
 function getGruposCategorias() { return (window.GRUPOS_CATEGORIAS && typeof window.GRUPOS_CATEGORIAS==='object') ? window.GRUPOS_CATEGORIAS : {}; }
 function saveGruposCategorias(grupos) { window.GRUPOS_CATEGORIAS = grupos; if(window.__lrSaveGruposCategorias) window.__lrSaveGruposCategorias(grupos); }
 
+function getCatOrden() { return Array.isArray(window.CAT_ORDEN) ? window.CAT_ORDEN : []; }
+function getCatIconos() { return (window.CAT_ICONOS && typeof window.CAT_ICONOS==='object') ? window.CAT_ICONOS : {}; }
+function saveCatOrdenIconos(orden, iconos) {
+  window.CAT_ORDEN = orden;
+  window.CAT_ICONOS = iconos;
+  if(window.__lrSaveCatOrdenIconos) window.__lrSaveCatOrdenIconos({ orden: orden, iconos: iconos });
+}
+
+// Misma cuenta que hace el catálogo web: cada categoría real que esté
+// adentro de un grupo se ve como una sola pestaña (el nombre del grupo);
+// las que no están en ningún grupo se ven sueltas, tal cual.
+function calcularPillsCatalogoWeb() {
+  var cats = [];
+  (PRODUCTS||[]).forEach(function(p){
+    var c = p.cat || 'General';
+    if(cats.indexOf(c) === -1) cats.push(c);
+  });
+  var grupos = getGruposCategorias();
+  var pills = [];
+  cats.forEach(function(c){
+    var grupo = Object.keys(grupos).find(function(g){ return (grupos[g]||[]).indexOf(c) !== -1; });
+    var etiqueta = grupo || c;
+    if(pills.indexOf(etiqueta) === -1) pills.push(etiqueta);
+  });
+  return pills;
+}
+
 function getManualPresets() {
   return (window.__lrSync && window.__lrSync.manualPresetsListos && Array.isArray(window.__lrManualPresetsCache)) ? window.__lrManualPresetsCache : ['Pan','Fiambre','Levadura','Caramelos','Frutas y Verduras'];
 }
@@ -19711,6 +19770,66 @@ function borrarEditorGrupoCat() {
     renderGruposCatList();
     showToast('✅ Grupo eliminado');
   });
+}
+
+// ── ORDEN E ICONOS DE LAS PESTAÑAS DE CATEGORÍAS (catálogo web) ─────────────
+// Copia de trabajo en memoria mientras el modal está abierto — recién se
+// guarda de verdad al tocar "Guardar orden".
+var _ocPills = [];
+var _ocIconos = {};
+
+function abrirOrdenCatModal() {
+  var pillsActuales = calcularPillsCatalogoWeb();
+  var ordenGuardado = getCatOrden();
+  // Las que ya tienen un lugar guardado van primero, respetando ese orden;
+  // las nuevas (categoría o grupo recién creado) se agregan al final,
+  // ordenadas alfabéticamente entre ellas para que no aparezcan salteadas.
+  var conocidas = ordenGuardado.filter(function(n){ return pillsActuales.indexOf(n) !== -1; });
+  var nuevas = pillsActuales.filter(function(n){ return conocidas.indexOf(n) === -1; }).sort();
+  _ocPills = conocidas.concat(nuevas);
+  _ocIconos = Object.assign({}, getCatIconos());
+  renderOrdenCatList();
+  document.getElementById('ordenCatOverlay').classList.add('open');
+}
+
+function closeOrdenCatModal() {
+  document.getElementById('ordenCatOverlay').classList.remove('open');
+}
+
+function renderOrdenCatList() {
+  var el = document.getElementById('ordenCatList');
+  if(!_ocPills.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);font-size:.78rem;padding:14px">Todavía no hay categorías con productos.</div>';
+    return;
+  }
+  el.innerHTML = _ocPills.map(function(nombre, i){
+    var idIcono = 'oc_'+i;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.05)">'+
+      '<input type="text" id="'+idIcono+'" value="'+(_ocIconos[nombre]||'').replace(/"/g,'&quot;')+'" maxlength="4" placeholder="🏷" oninput="_ocIconos[_ocPills['+i+']]=this.value" style="width:42px;text-align:center;background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:6px 2px;color:var(--white);font-size:1rem">'+
+      '<span style="flex:1;color:var(--white);font-size:.82rem">'+nombre+'</span>'+
+      '<button onclick="moverOrdenCat('+i+',-1)" '+(i===0?'disabled':'')+' style="background:none;border:1px solid var(--border);color:'+(i===0?'var(--border)':'var(--gray)')+';border-radius:4px;padding:4px 9px;cursor:'+(i===0?'default':'pointer')+';font-size:.85rem">↑</button>'+
+      '<button onclick="moverOrdenCat('+i+',1)" '+(i===_ocPills.length-1?'disabled':'')+' style="background:none;border:1px solid var(--border);color:'+(i===_ocPills.length-1?'var(--border)':'var(--gray)')+';border-radius:4px;padding:4px 9px;cursor:'+(i===_ocPills.length-1?'default':'pointer')+';font-size:.85rem">↓</button>'+
+    '</div>';
+  }).join('');
+}
+
+function moverOrdenCat(i, dir) {
+  var j = i + dir;
+  if(j < 0 || j >= _ocPills.length) return;
+  var tmp = _ocPills[i];
+  _ocPills[i] = _ocPills[j];
+  _ocPills[j] = tmp;
+  renderOrdenCatList();
+}
+
+function guardarOrdenCatModal() {
+  // Solo se guardan los iconos de pestañas que existen ahora, para no ir
+  // acumulando entradas de categorías viejas ya borradas.
+  var iconosAGuardar = {};
+  _ocPills.forEach(function(n){ if(_ocIconos[n]) iconosAGuardar[n] = _ocIconos[n]; });
+  saveCatOrdenIconos(_ocPills.slice(), iconosAGuardar);
+  closeOrdenCatModal();
+  showToast('✅ Orden guardado');
 }
 
 // ── EDICIÓN MASIVA DE PRECIOS ───────────────────────────────────────────────

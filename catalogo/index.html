@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790218265";
+window.__LR_BUILD = "1790220234";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -382,6 +382,8 @@ let PROMOS = [];
 let ITEMS_MANUALES = [];
 let COMBOS = [];
 let GRUPOS_CATEGORIAS = {}; // { "Golosinas y Chocolates": ["Alfajores","Chocolates",...], ... } — solo agrupa navegación
+let CAT_ORDEN = [];  // orden manual de las pestañas de categorías, elegido desde el admin
+let CAT_ICONOS = {}; // { "Nombre de pestaña": "🍬" } — emoji opcional por pestaña
 let CARRITO_COMBOS = {};   // { nombreCombo: cantidad }
 let STOCK = {};
 let CARRITO = {};
@@ -470,11 +472,19 @@ function renderCatPills(){
     var etiqueta = grupo || c;
     if(pillsFinales.indexOf(etiqueta) === -1) pillsFinales.push(etiqueta);
   });
-  pillsFinales.sort();
+  // Orden elegido a mano desde el admin: las que tienen un lugar guardado
+  // van en ese orden; las nuevas (categoría recién creada) se agregan al
+  // final, alfabéticamente, para que no se pierdan de vista.
+  var orden = Array.isArray(CAT_ORDEN) ? CAT_ORDEN : [];
+  var conOrden = pillsFinales.filter(function(c){ return orden.indexOf(c) !== -1; })
+    .sort(function(a,b){ return orden.indexOf(a) - orden.indexOf(b); });
+  var sinOrden = pillsFinales.filter(function(c){ return orden.indexOf(c) === -1; }).sort();
+  pillsFinales = conOrden.concat(sinOrden);
   var todas = ['Todas'].concat(pillsFinales);
   var cont = document.getElementById('catPills');
   cont.innerHTML = todas.map(function(c){
-    return '<div class="cat-pill'+(c===CATEGORIA_SEL?' active':'')+'" onclick="seleccionarCategoria(\''+escJs(c)+'\')">'+c+'</div>';
+    var icono = (CAT_ICONOS && CAT_ICONOS[c]) ? CAT_ICONOS[c]+' ' : '';
+    return '<div class="cat-pill'+(c===CATEGORIA_SEL?' active':'')+'" onclick="seleccionarCategoria(\''+escJs(c)+'\')">'+icono+c+'</div>';
   }).join('');
 
   // Si lo elegido es un grupo, agregar una segunda fila para poder ir
@@ -631,6 +641,14 @@ db.collection('config').doc('gruposCategorias').onSnapshot(function(doc){
   chequearListo();
   if(document.getElementById('mainContent').style.display==='block'){ renderCatPills(); renderList(); }
 }, function(err){ console.error('Error sincronizando grupos de categorías:', err); gruposListos = true; chequearListo(); });
+
+// Orden manual e íconos de las pestañas de categorías, elegidos desde el admin.
+db.collection('config').doc('categoriasVista').onSnapshot(function(doc){
+  var d = doc.exists ? doc.data() : {};
+  CAT_ORDEN = Array.isArray(d.orden) ? d.orden : [];
+  CAT_ICONOS = (d.iconos && typeof d.iconos==='object') ? d.iconos : {};
+  if(document.getElementById('mainContent').style.display==='block') renderCatPills();
+}, function(err){ console.error('Error sincronizando orden/íconos de categorías:', err); });
 
 // Fuente 1: la colección real de combos
 db.collection('combos').onSnapshot(function(snap){
