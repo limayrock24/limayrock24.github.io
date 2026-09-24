@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790221276";
+window.__LR_BUILD = "1790221452";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -100,6 +100,15 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   letter-spacing:5px;color:var(--gray);text-transform:uppercase;margin-top:12px}
 @media(max-width:420px){ .header img{height:76px} .header{padding:24px 14px 16px} }
 .delivery-banner{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding:9px 14px;background:linear-gradient(90deg, rgba(210,32,31,.14), rgba(244,180,0,.09));border-bottom:1px solid rgba(244,180,0,.22)}
+
+/* Botón flotante del carrito: fixed (no dentro del flujo normal), así se
+   queda siempre arriba a la derecha aunque se scrollee la página entera. */
+.floating-cart-btn{position:fixed;top:14px;right:14px;z-index:60;width:46px;height:46px;border-radius:50%;
+  background:linear-gradient(135deg,#D2201F,#F4B400);border:none;display:flex;align-items:center;justify-content:center;
+  font-size:1.25rem;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.floating-cart-badge{position:absolute;top:-3px;right:-3px;background:var(--green);color:#04231d;font-family:'Oswald',sans-serif;
+  font-size:.65rem;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  padding:0 4px;border:2px solid var(--black)}
 .db-item{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;font-weight:600}
 .db-item.db-gold{color:var(--gold)}
 .db-item.db-green{color:var(--green)}
@@ -264,6 +273,14 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 </div>
 
 <div id="mainContent" style="display:none">
+  <!-- Botón flotante del carrito: fijo arriba a la derecha, siempre a mano
+       aunque el cliente esté scrolleado abajo del todo. Un solo botón que
+       abre y cierra (toggleCarrito), más práctico que tener que volver
+       arriba a buscar la barra del carrito. -->
+  <button type="button" class="floating-cart-btn" onclick="toggleCarrito()" title="Ver pedido">
+    🛒
+    <span class="floating-cart-badge" id="floatingCartBadge" style="display:none">0</span>
+  </button>
   <div class="header">
     <img src="/logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
@@ -1346,6 +1363,18 @@ function actualizarCartBar(){
   } else {
     bar.classList.remove('show');
   }
+  var badge = document.getElementById('floatingCartBadge');
+  if(badge){
+    var totalBadge = cant + cantManual;
+    if(totalBadge > 0){ badge.textContent = totalBadge; badge.style.display = 'flex'; }
+    else badge.style.display = 'none';
+  }
+}
+
+// Un solo botón que abre y cierra el carrito, según cómo esté en ese momento.
+function toggleCarrito(){
+  if(document.getElementById('cartOverlay').classList.contains('show')) cerrarCarrito();
+  else abrirCarrito();
 }
 
 function armarListaItemsHtml(){
