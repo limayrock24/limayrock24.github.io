@@ -25101,11 +25101,15 @@ function elegirFotoDeProductoGrupo(nombre) {
   document.getElementById('gdImagenPreview').src = url;
 }
 
-// Sube la foto de un GRUPO destacado (mismo mecanismo que combos/productos,
-// en su propia carpeta dentro de Storage).
+// Sube la foto de un GRUPO destacado. OJO: usa la carpeta 'combos/' (con
+// prefijo 'grupo-' en el nombre de archivo para no confundirla) en vez de
+// una carpeta propia 'imperdibles/', porque las reglas de Storage sólo
+// tienen permiso de escritura en 'productos/' y 'combos/' — una carpeta
+// nueva da "storage/unauthorized" hasta que alguien agregue la regla desde
+// la consola de Firebase, cosa que no podemos hacer desde acá.
 function subirImagenGrupoDest(file, nombreGrupo) {
   return comprimirImagenProd(file, 900, 0.82).then(function(blob){
-    var rutaLimpia = 'imperdibles/' + Date.now() + '-' + nombreGrupo.toLowerCase()
+    var rutaLimpia = 'combos/grupo-' + Date.now() + '-' + nombreGrupo.toLowerCase()
       .replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u').replace(/ñ/g,'n')
       .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') + '.jpg';
     var ref = window.__lrStorage.ref().child(rutaLimpia);
