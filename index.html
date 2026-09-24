@@ -2169,15 +2169,20 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
    para que acompañe la altura de la fila de botones. */
 .logo-wrap{display:flex;align-items:flex-start;padding:2px 20px 0 26px;flex-shrink:0}
 @media(max-width:700px){ .logo-wrap{padding-left:8px} }
-.logo-wrap img{height:170px;object-fit:contain;display:block}
-@media(max-width:1300px){ .logo-wrap img{height:140px} }
-@media(max-width:1100px){ .logo-wrap img{height:104px} }
-@media(max-width:700px){ .logo-wrap img{height:56px} .logo-wrap{padding:0 10px 0 0;align-items:center} }
+/* El logo nuevo (logo-barra.png) es mucho más ancho que el anterior
+   (apaisado en vez de apilado), así que se controla por ANCHO en vez de
+   alto — si no, al fijar solo la altura queda gigante de ancho y desarma
+   el resto de la barra. Los anchos elegidos ocupan aproximadamente el
+   mismo lugar que ocupaba el logo viejo en cada tamaño de pantalla. */
+.logo-wrap img{width:224px;height:auto;object-fit:contain;display:block}
+@media(max-width:1300px){ .logo-wrap img{width:185px} }
+@media(max-width:1100px){ .logo-wrap img{width:137px} }
+@media(max-width:700px){ .logo-wrap img{width:88px} .logo-wrap{padding:0 10px 0 0;align-items:center} }
 /* Los botones bajan un poco para quedar a media altura del logo, en vez de
    pegados al borde superior de la barra. */
-.header-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:60px}
-@media(max-width:1300px){ .header-actions{margin-top:48px} }
-@media(max-width:1100px){ .header-actions{margin-top:34px} }
+.header-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:28px}
+@media(max-width:1300px){ .header-actions{margin-top:22px} }
+@media(max-width:1100px){ .header-actions{margin-top:16px} }
 @media(max-width:700px){ .header-actions{margin-top:0} }
 .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .header-count{font-family:'Oswald',sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
