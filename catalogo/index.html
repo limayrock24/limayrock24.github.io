@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790222617";
+window.__LR_BUILD = "1790223282";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -120,10 +120,14 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .db-sep{width:1px;height:12px;background:var(--border)}
 
 /* Imperdibles: tarjetas grandes destacadas, marcadas a mano desde el admin */
-.imperdible-card{display:flex;gap:12px;border-radius:12px;padding:12px;align-items:center;margin-bottom:10px;border:1.5px solid var(--red);background:linear-gradient(135deg, rgba(210,32,31,.14), rgba(244,180,0,.06))}
+/* Dorado en vez de rojo: el rojo ya se usa en todo el sitio (logo, botón
+   "Elegir", categoría activa) y se pierde en el ruido — el dorado destaca
+   sin sumarse a eso, y ya es el color secundario de la marca (el rayo del
+   logo, "Abierto las 24hs"). */
+.imperdible-card{display:flex;gap:12px;border-radius:12px;padding:12px;align-items:center;margin-bottom:10px;border:1.5px solid var(--gold);background:linear-gradient(135deg, rgba(244,180,0,.14), rgba(210,32,31,.05))}
 .imperdible-thumb{width:84px;height:84px;flex-shrink:0;border-radius:9px;object-fit:cover;background:#fff}
 .imperdible-thumb-placeholder{width:84px;height:84px;flex-shrink:0;border-radius:9px;background:var(--surface);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:.6rem;text-align:center;line-height:1.3;font-family:'Barlow',sans-serif}
-.imperdible-badge{display:inline-block;font-family:'Oswald',sans-serif;font-size:.62rem;letter-spacing:1px;text-transform:uppercase;border-radius:5px;padding:2px 8px;margin-bottom:5px;color:var(--red);background:rgba(210,32,31,.15);border:1px solid rgba(210,32,31,.4)}
+.imperdible-badge{display:inline-block;font-family:'Oswald',sans-serif;font-size:.62rem;letter-spacing:1px;text-transform:uppercase;border-radius:5px;padding:2px 8px;margin-bottom:5px;color:var(--gold);background:rgba(244,180,0,.15);border:1px solid rgba(244,180,0,.4)}
 
 /* Combos: tarjetas en grilla de 2 columnas, con foto grande arriba */
 /* Deslizable en fila, no en grilla: así entran muchos combos sin alargar
