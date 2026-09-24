@@ -4405,12 +4405,45 @@ body.night-on{background:#080005}
       <select id="corrTipo" onchange="cambiarTipoCorreccionCierre()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
         <option value="ingreso">💵 Ingreso de efectivo fuera de caja</option>
         <option value="egreso">🚚 Pago a proveedor no registrado</option>
+        <option value="transferencia">🔄 Cambio entre cuentas no registrado</option>
+        <option value="venta">🛒 Venta no registrada (producto)</option>
         <option value="contado">🖊 Corregir el monto contado (error al cargar el cierre)</option>
       </select>
     </div>
     <div class="field" id="corrProvField" style="display:none">
       <label>Proveedor</label>
       <select id="corrProv" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem"></select>
+    </div>
+    <div class="field" id="corrTransferField" style="display:none">
+      <label>Desde</label>
+      <select id="corrTransferDesde" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem;margin-bottom:8px">
+        <option value="Efectivo">Efectivo en caja</option>
+        <option value="MercadoPago">Mercado Pago</option>
+      </select>
+      <label>Hacia</label>
+      <select id="corrTransferHacia" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
+        <option value="MercadoPago">Mercado Pago</option>
+        <option value="Efectivo">Efectivo en caja</option>
+      </select>
+    </div>
+    <div class="field" id="corrProdField" style="display:none">
+      <label>Producto</label>
+      <input type="text" id="corrProdBuscar" placeholder="Escribí el nombre..." oninput="buscarProdCorrCierre()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
+      <div id="corrProdSuggestions" style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;display:none;margin-top:4px;margin-bottom:8px"></div>
+      <div class="field-row">
+        <div class="field">
+          <label>Cantidad</label>
+          <input type="number" id="corrProdCant" value="1" min="0.001" step="any" oninput="calcMontoCorrProd()">
+        </div>
+        <div class="field">
+          <label>Medio de pago</label>
+          <select id="corrProdMedio" onchange="calcMontoCorrProd()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
+            <option value="Efectivo">💵 Efectivo</option>
+            <option value="Transferencia">📲 Transferencia</option>
+            <option value="Débito">💳 Posnet</option>
+          </select>
+        </div>
+      </div>
     </div>
     <div class="field"><label id="corrMontoLabel">Monto ($)</label><input type="text" inputmode="numeric" id="corrMonto" placeholder="0" oninput="formatMontoInput(this)"></div>
     <div class="field"><label>Nota (qué pasó)</label><input type="text" id="corrNota" placeholder="Ej: lo sacó Jazmín para completar el pago"></div>
@@ -10144,11 +10177,13 @@ function renderCierres() {
       var egresosRow = arqueo.egresosEfectivo>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− Egresos efectivo</span><span class="abv" style="color:var(--red)">'+fmt(arqueo.egresosEfectivo||0)+'</span></div>' : '';
       var retirosRow = arqueo.retirosCaja>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− Retiros de caja</span><span class="abv" style="color:var(--gold)">'+fmt(arqueo.retirosCaja||0)+'</span></div>' : '';
       var ingresosRow = arqueo.ingresosCaja>0 ? '<div class="arqueo-breakdown-row"><span class="abl">+ Ingreso de efectivo</span><span class="abv" style="color:var(--green)">'+fmt(arqueo.ingresosCaja||0)+'</span></div>' : '';
+      var transfRow = arqueo.transferenciasCaja ? '<div class="arqueo-breakdown-row"><span class="abl">'+(arqueo.transferenciasCaja>0?'+ Cambio recibido en caja':'− Cambio enviado desde caja')+'</span><span class="abv" style="color:'+(arqueo.transferenciasCaja>0?'var(--green)':'var(--gold)')+'">'+fmt(Math.abs(arqueo.transferenciasCaja))+'</span></div>' : '';
       detalleArqueo =
         '<div class="arqueo-breakdown" style="margin-top:8px">'+
           '<div class="arqueo-breakdown-row"><span class="abl">Efectivo inicial</span><span class="abv">'+fmt(arqueo.efectivoInicial||0)+'</span></div>'+
           '<div class="arqueo-breakdown-row"><span class="abl">+ Ventas efectivo</span><span class="abv">'+fmt(arqueo.ventasEfectivo||0)+'</span></div>'+
           ingresosRow+
+          transfRow+
           egresosRow+
           retirosRow+
           '<div class="arqueo-breakdown-row total"><span class="abl">= Esperado en caja</span><span class="abv">'+fmt(arqueo.esperado||0)+'</span></div>'+
@@ -10176,6 +10211,16 @@ function renderCierres() {
         (c.correcciones||[]).map(function(cor){
           if(cor.tipo === 'contado'){
             return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🖊 Monto contado corregido: '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
+              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          }
+          if(cor.tipo === 'transferencia'){
+            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🔄 Cambio no registrado: '+(NOMBRES_CUENTA_TC[cor.desde]||cor.desde)+' → '+(NOMBRES_CUENTA_TC[cor.hacia]||cor.hacia)+': <b>'+fmt(cor.monto)+'</b>'+
+              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          }
+          if(cor.tipo === 'venta'){
+            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🛒 Venta no registrada: '+(cor.cantidad||1)+'× '+(cor.producto||'producto')+' ('+(cor.medio||'Efectivo')+'): <b>'+fmt(cor.monto)+'</b>'+
               (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
               '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
           }
@@ -10246,13 +10291,69 @@ function abrirCorreccionCierre(idx) {
   var provs = getProveedores();
   selProv.innerHTML = provs.map(function(p){ return '<option value="'+p.nombre.replace(/"/g,'&quot;')+'">'+p.nombre+'</option>'; }).join('');
 
+  document.getElementById('corrTransferDesde').value = 'Efectivo';
+  document.getElementById('corrTransferHacia').value = 'MercadoPago';
+  document.getElementById('corrProdBuscar').value = '';
+  document.getElementById('corrProdSuggestions').style.display = 'none';
+  document.getElementById('corrProdCant').value = 1;
+  document.getElementById('corrProdMedio').value = 'Efectivo';
+  _corrProdSelNombre = null;
+
   cambiarTipoCorreccionCierre();
   document.getElementById('corregirCierreModal').classList.add('open');
+}
+
+// Buscador de producto para la corrección "Venta no registrada" — mismo
+// patrón que el buscador de Ingresar mercadería en Stock (stockSearchProds).
+var _corrProdSelNombre = null;
+function buscarProdCorrCierre() {
+  var term = document.getElementById('corrProdBuscar').value.toLowerCase().trim();
+  var sugg = document.getElementById('corrProdSuggestions');
+  _corrProdSelNombre = null;
+  if(!term){ sugg.style.display='none'; return; }
+  var matches = [];
+  for(var i=0;i<PRODUCTS.length;i++){
+    if(PRODUCTS[i].name.toLowerCase().includes(term)) matches.push({p:PRODUCTS[i], idx:i});
+    if(matches.length>=8) break;
+  }
+  if(!matches.length){ sugg.style.display='none'; return; }
+  sugg.style.display='block'; sugg.innerHTML='';
+  matches.forEach(function(m){
+    var div=document.createElement('div');
+    div.style.cssText='padding:8px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);font-size:.82rem;color:var(--light)';
+    div.textContent=m.p.name+' — '+fmt(m.p.pventa||0);
+    div.onmouseover=function(){this.style.background='rgba(204,0,0,.1)'};
+    div.onmouseout=function(){this.style.background='transparent'};
+    div.onclick=function(){ seleccionarProdCorrCierre(m.idx); };
+    sugg.appendChild(div);
+  });
+}
+function seleccionarProdCorrCierre(idx) {
+  var p = PRODUCTS[idx];
+  if(!p) return;
+  _corrProdSelNombre = p.name;
+  document.getElementById('corrProdBuscar').value = p.name;
+  document.getElementById('corrProdSuggestions').style.display = 'none';
+  calcMontoCorrProd();
+}
+// Precarga el monto según precio de catálogo × cantidad (con recargo si es
+// Débito), pero queda editable por si se cobró distinto en el momento.
+function calcMontoCorrProd() {
+  if(!_corrProdSelNombre) return;
+  var p = PRODUCTS.find(function(x){ return x.name === _corrProdSelNombre; });
+  if(!p) return;
+  var cant = parseFloat(document.getElementById('corrProdCant').value) || 1;
+  var medio = document.getElementById('corrProdMedio').value;
+  var subtotal = (p.pventa||0) * cant;
+  if(medio === 'Débito') subtotal = Math.round(subtotal * (1 + (getDebitoPct()/100)));
+  document.getElementById('corrMonto').value = Math.round(subtotal).toLocaleString('es-AR');
 }
 
 function cambiarTipoCorreccionCierre() {
   var tipo = document.getElementById('corrTipo').value;
   document.getElementById('corrProvField').style.display = (tipo==='egreso') ? 'block' : 'none';
+  document.getElementById('corrTransferField').style.display = (tipo==='transferencia') ? 'block' : 'none';
+  document.getElementById('corrProdField').style.display = (tipo==='venta') ? 'block' : 'none';
   var lbl = document.getElementById('corrMontoLabel');
   var ayuda = document.getElementById('corrAyuda');
   if(tipo === 'contado'){
@@ -10260,6 +10361,12 @@ function cambiarTipoCorreccionCierre() {
     var actual = c && c.arqueo ? (c.arqueo.contado||0) : 0;
     if(lbl) lbl.textContent = 'Monto contado correcto ($) — hoy dice '+fmt(actual);
     if(ayuda) ayuda.textContent = 'Reemplaza el monto contado de este cierre por el correcto y recalcula la diferencia (sobrante/faltante) al instante. No toca ventas, egresos ni ningún otro dato — solo corrige el error de carga. Queda anotado el valor anterior, el nuevo, el motivo, quién y cuándo.';
+  } else if(tipo === 'transferencia'){
+    if(lbl) lbl.textContent = 'Monto ($)';
+    if(ayuda) ayuda.textContent = 'Registra un cambio entre cuentas (ej: Mercado Pago → Efectivo) con la fecha de este cierre. Si mueve efectivo hacia o desde la caja, ajusta el esperado y la diferencia de ESTE cierre. Queda anotado quién y cuándo.';
+  } else if(tipo === 'venta'){
+    if(lbl) lbl.textContent = 'Total cobrado ($)';
+    if(ayuda) ayuda.textContent = 'Registra la venta de un producto que salió pero no se cargó — se suma a Ventas y Rentabilidad de ese día y descuenta stock como cualquier venta. Si se cobró en efectivo, también ajusta el esperado y la diferencia de ESTE cierre.';
   } else {
     if(lbl) lbl.textContent = 'Monto ($)';
     if(ayuda) ayuda.textContent = 'Se registra con la fecha de este cierre — aparece en Egresos/Rentabilidad de ese día, y este cierre recalcula su diferencia. Queda anotado quién y cuándo hizo la corrección, sin borrar los datos originales.';
@@ -10338,7 +10445,7 @@ function guardarCorreccionCierre() {
       [{name: nota || 'Ingreso de efectivo fuera de caja', qty:1, precio:monto, subtotal:monto}],
       monto, currentEmp ? currentEmp.nombre : 'Admin',
       'Corrección del cierre de '+real.empleado+' ('+new Date(fechaCierre).toLocaleDateString('es-AR')+')');
-  } else {
+  } else if(tipo === 'egreso') {
     var prov = document.getElementById('corrProv').value;
     if(!prov){ showToast('Elegí un proveedor', true); return; }
     var egresos = getEgresos();
@@ -10368,17 +10475,114 @@ function guardarCorreccionCierre() {
     });
     if(movsEg.length>2000) movsEg = movsEg.slice(-2000);
     saveMovimientos(movsEg);
+  } else if(tipo === 'transferencia') {
+    var corrDesde = document.getElementById('corrTransferDesde').value;
+    var corrHacia = document.getElementById('corrTransferHacia').value;
+    if(!corrDesde || !corrHacia || corrDesde === corrHacia){ showToast('Elegí cuentas de origen y destino distintas', true); return; }
+
+    var transfers = getTransferCuentas();
+    transfers.push({
+      id: Date.now(),
+      fecha: fechaCierre,
+      desde: corrDesde, hacia: corrHacia, monto: monto,
+      nota: (nota || 'Cambio entre cuentas no registrado') + ' (corrección post-cierre)',
+      empleado: currentEmp ? currentEmp.nombre : 'Admin'
+    });
+    saveTransferCuentas(transfers);
+
+    // Solo afecta el arqueo de efectivo si una de las dos puntas es la caja
+    // (ej: Mercado Pago → Lemon Cash no mueve un peso de la caja física).
+    var netEfectivo = (corrHacia==='Efectivo'?monto:0) - (corrDesde==='Efectivo'?monto:0);
+    if(netEfectivo !== 0){
+      if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+      real.arqueo.transferenciasCaja = (real.arqueo.transferenciasCaja||0) + netEfectivo;
+      real.arqueo.esperado = (real.arqueo.esperado||0) + netEfectivo;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+    }
+
+    var movsTc = getMovimientos();
+    movsTc.push({
+      id: transfers[transfers.length-1].id, fecha: new Date().toISOString(), tipo:'transfer-cuentas',
+      resumen: (NOMBRES_CUENTA_TC[corrDesde]||corrDesde)+' → '+(NOMBRES_CUENTA_TC[corrHacia]||corrHacia)+(nota?' — '+nota:'')+' (corrección del cierre de '+real.empleado+', '+new Date(fechaCierre).toLocaleDateString('es-AR')+')',
+      total: monto, responsable: currentEmp ? currentEmp.nombre : 'Admin', extra: '',
+      items:[{nombre:(NOMBRES_CUENTA_TC[corrDesde]||corrDesde)+' → '+(NOMBRES_CUENTA_TC[corrHacia]||corrHacia), qty:1, subtotal:monto}]
+    });
+    if(movsTc.length>2000) movsTc = movsTc.slice(-2000);
+    saveMovimientos(movsTc);
+  } else if(tipo === 'venta') {
+    if(!_corrProdSelNombre){ showToast('Buscá y seleccioná el producto', true); return; }
+    var prodCorr = PRODUCTS.find(function(p){ return p.name === _corrProdSelNombre; });
+    if(!prodCorr){ showToast('Ese producto ya no está en el catálogo', true); return; }
+    var cantCorr = parseFloat(document.getElementById('corrProdCant').value) || 1;
+    var medioCorr = document.getElementById('corrProdMedio').value;
+
+    // Si se cobró por Posnet, el monto incluye el recargo: se separa igual
+    // que en una venta normal, así Ventas/Rentabilidad calculan el Posnet
+    // neto (bruto − recargo) sin contar la comisión como ingreso.
+    var recargoCorr = medioCorr === 'Débito' ? Math.round(monto - monto/getDebitoFactor()) : 0;
+    var subtotalCorr = monto - recargoCorr;
+    var itemCorr = { name: prodCorr.name, qty: cantCorr, precio: subtotalCorr/cantCorr, subtotal: subtotalCorr };
+    var ventaCorr = {
+      id: Date.now(),
+      fecha: fechaCierre,
+      empleado: real.empleado,
+      turno: real.turno,
+      medio: medioCorr,
+      mixto: null,
+      subtotal: subtotalCorr,
+      recargo: recargoCorr,
+      total: monto,
+      delivery: null,
+      items: [itemCorr],
+      anulada: false,
+      correccionPostCierre: true
+    };
+    VENTAS.push(ventaCorr);
+    saveVentas(VENTAS);
+    descontarStock([itemCorr], 'venta');
+
+    if(!real.ventas) real.ventas = [];
+    real.ventas.push({ medio: medioCorr, total: monto });
+    real.cantVentas = (real.cantVentas||0) + 1;
+    real.total = (real.total||0) + monto;
+
+    if(medioCorr === 'Efectivo'){
+      if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+      real.arqueo.ventasEfectivo = (real.arqueo.ventasEfectivo||0) + monto;
+      real.arqueo.esperado = (real.arqueo.esperado||0) + monto;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+    }
+
+    var movsV = getMovimientos();
+    movsV.push({
+      id: ventaCorr.id, fecha: new Date().toISOString(), tipo:'venta',
+      resumen: prodCorr.name+' ×'+cantCorr+(nota?' — '+nota:'')+' (corrección del cierre de '+real.empleado+', '+new Date(fechaCierre).toLocaleDateString('es-AR')+')',
+      total: monto, responsable: currentEmp ? currentEmp.nombre : 'Admin', extra: medioCorr,
+      items:[{nombre:prodCorr.name, qty:cantCorr, subtotal:monto}]
+    });
+    if(movsV.length>2000) movsV = movsV.slice(-2000);
+    saveMovimientos(movsV);
   }
 
   if(!real.correcciones) real.correcciones = [];
-  real.correcciones.push({
+  var entradaCorreccion = {
     tipo: tipo,
     monto: monto,
     nota: nota,
-    proveedor: tipo==='egreso' ? document.getElementById('corrProv').value : null,
     fecha: new Date().toISOString(),
     autor: currentEmp ? currentEmp.nombre : 'Admin'
-  });
+  };
+  if(tipo === 'egreso') entradaCorreccion.proveedor = document.getElementById('corrProv').value;
+  if(tipo === 'transferencia'){
+    entradaCorreccion.desde = document.getElementById('corrTransferDesde').value;
+    entradaCorreccion.hacia = document.getElementById('corrTransferHacia').value;
+  }
+  if(tipo === 'venta'){
+    entradaCorreccion.producto = _corrProdSelNombre;
+    entradaCorreccion.cantidad = parseFloat(document.getElementById('corrProdCant').value) || 1;
+    entradaCorreccion.medio = document.getElementById('corrProdMedio').value;
+  }
+  real.correcciones.push(entradaCorreccion);
 
   saveCierres(cierres);
   document.getElementById('corregirCierreModal').classList.remove('open');
