@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790221591";
+window.__LR_BUILD = "1790222009";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -236,7 +236,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
      carrito, no se arma un combo. -->
 <div id="grupoDestSelectorOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:flex-end;justify-content:center">
   <div style="background:var(--card);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 18px 24px;max-height:80vh;overflow-y:auto">
-    <h3 id="grupoDestSelectorTitulo" style="margin:0 0 14px;font-family:'Oswald',sans-serif;color:var(--white)"></h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 id="grupoDestSelectorTitulo" style="margin:0;font-family:'Oswald',sans-serif;color:var(--white)"></h3>
+      <button type="button" onclick="cerrarGrupoDestSelector()" style="background:none;border:none;color:var(--gray);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 0 0 10px">✕</button>
+    </div>
     <div id="grupoDestSelectorOpciones"></div>
     <button type="button" onclick="cerrarGrupoDestSelector()" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:11px;font-family:'Oswald',sans-serif;font-size:.8rem;text-transform:uppercase;letter-spacing:.5px;cursor:pointer">Cancelar</button>
   </div>
@@ -304,15 +307,31 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <button onclick="abrirCarrito()">Ver pedido</button>
 </div>
 
-<!-- Paso 1: carrito -->
+<!-- Paso 1: solo productos y precio, para revisar el pedido de un vistazo
+     antes de pasar a cargar los datos de entrega. -->
 <div class="overlay" id="cartOverlay">
   <div class="modal">
-    <h3>🛒 Tu pedido</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">🛒 Tu pedido</h3>
+      <button type="button" onclick="cerrarCarrito()" style="background:none;border:none;color:var(--gray);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 0 0 10px">✕</button>
+    </div>
     <div id="cartItemsList"></div>
     <div class="subtotal-row"><span>Subtotal productos</span><span id="cartSubtotalModal">$0</span></div>
     <div class="envio-row" id="envioRow"><span>Costo de envío</span><span id="cartEnvioModal">$0</span></div>
     <div class="total-row"><span>Total</span><b id="cartTotalModal">$0</b></div>
 
+    <button class="btn-primary" onclick="irADatos()">Continuar</button>
+    <button class="btn-secondary" onclick="cerrarCarrito()">Seguir viendo el catálogo</button>
+  </div>
+</div>
+
+<!-- Paso 2: datos de entrega y pago, ya separados de la revisión del pedido -->
+<div class="overlay" id="datosOverlay">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">📝 Tus datos</h3>
+      <button type="button" onclick="cerrarDatosPedido()" style="background:none;border:none;color:var(--gray);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 0 0 10px">✕</button>
+    </div>
     <div class="field">
       <label>Tu nombre y apellido</label>
       <input type="text" id="clienteNombre" placeholder="Nombre y apellido">
@@ -348,11 +367,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <div class="error-msg" id="checkoutError"></div>
 
     <button class="btn-primary" onclick="irAConfirmar()">Realizar pedido</button>
-    <button class="btn-secondary" onclick="cerrarCarrito()">Seguir viendo el catálogo</button>
+    <button class="btn-secondary" onclick="volverAlCarritoDesdeDatos()">◀ Volver</button>
   </div>
 </div>
 
-<!-- Paso 2: confirmación final antes de WhatsApp -->
+<!-- Paso 3: confirmación final antes de WhatsApp -->
 <div class="overlay" id="confirmOverlay">
   <div class="modal">
     <h3>✅ Confirmá tu pedido</h3>
@@ -542,6 +561,7 @@ setTimeout(function(){
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('cartBar').classList.remove('show');
   document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('datosOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('expiredScreen').classList.add('show');
 }, DURACION_SESION_MIN * 60 * 1000);
@@ -1373,8 +1393,16 @@ function actualizarCartBar(){
 
 // Un solo botón que abre y cierra el carrito, según cómo esté en ese momento.
 function toggleCarrito(){
-  if(document.getElementById('cartOverlay').classList.contains('show')) cerrarCarrito();
-  else abrirCarrito();
+  // Ahora el pedido tiene 3 pantallas posibles (revisar, datos, confirmar).
+  // Si cualquiera está abierta, el botón flotante las cierra todas; si no
+  // hay ninguna abierta, abre la primera.
+  var pasos = ['cartOverlay','datosOverlay','confirmOverlay'];
+  var hayAbierto = pasos.some(function(id){ return document.getElementById(id).classList.contains('show'); });
+  if(hayAbierto){
+    pasos.forEach(function(id){ document.getElementById(id).classList.remove('show'); });
+  } else {
+    abrirCarrito();
+  }
 }
 
 function armarListaItemsHtml(){
@@ -1465,6 +1493,22 @@ function abrirCarrito(){
 }
 function cerrarCarrito(){
   document.getElementById('cartOverlay').classList.remove('show');
+}
+
+// Paso 1 → paso 2: de revisar el pedido a cargar los datos de entrega.
+function irADatos(){
+  document.getElementById('checkoutError').style.display = 'none';
+  document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('datosOverlay').classList.add('show');
+}
+// La ✕ de "Tus datos" abandona todo el pedido, igual que la del paso 1.
+function cerrarDatosPedido(){
+  document.getElementById('datosOverlay').classList.remove('show');
+}
+// Paso 2 → paso 1: volver a ver los productos (por si quiere sacar o agregar algo).
+function volverAlCarritoDesdeDatos(){
+  document.getElementById('datosOverlay').classList.remove('show');
+  abrirCarrito();
 }
 
 // ── UBICACIÓN Y MEDIO DE PAGO ───────────────────────────────────────────────
@@ -1563,12 +1607,12 @@ function irAConfirmar(){
 
   document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml() + armarListaManualHtml();
   document.getElementById('confirmTotal').textContent = fmt(totalConEnvio());
-  document.getElementById('cartOverlay').classList.remove('show');
+  document.getElementById('datosOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.add('show');
 }
 function volverAlCarrito(){
   document.getElementById('confirmOverlay').classList.remove('show');
-  document.getElementById('cartOverlay').classList.add('show');
+  document.getElementById('datosOverlay').classList.add('show');
 }
 
 function confirmarPedido(){
