@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790222009";
+window.__LR_BUILD = "1790222223";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -102,10 +102,15 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .delivery-banner{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding:9px 14px;background:linear-gradient(90deg, rgba(210,32,31,.14), rgba(244,180,0,.09));border-bottom:1px solid rgba(244,180,0,.22)}
 
 /* Botón flotante del carrito: fixed (no dentro del flujo normal), así se
-   queda siempre arriba a la derecha aunque se scrollee la página entera. */
+   queda siempre a mano aunque se scrollee la página entera. Arranca arriba
+   a la derecha, pero se puede arrastrar hacia arriba/abajo (queda pegado
+   siempre al costado más cercano, izquierda o derecha — nunca queda a la
+   mitad de la pantalla). touch-action:none para que arrastrarlo con el
+   dedo no scrollee la página al mismo tiempo. */
 .floating-cart-btn{position:fixed;top:14px;right:14px;z-index:60;width:46px;height:46px;border-radius:50%;
   background:linear-gradient(135deg,#D2201F,#F4B400);border:none;display:flex;align-items:center;justify-content:center;
-  font-size:1.25rem;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  font-size:1.25rem;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.5);touch-action:none;user-select:none}
+.floating-cart-btn.dragging{cursor:grabbing;transition:none}
 .floating-cart-badge{position:absolute;top:-3px;right:-3px;background:var(--green);color:#04231d;font-family:'Oswald',sans-serif;
   font-size:.65rem;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;
   padding:0 4px;border:2px solid var(--black)}
@@ -280,7 +285,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
        aunque el cliente esté scrolleado abajo del todo. Un solo botón que
        abre y cierra (toggleCarrito), más práctico que tener que volver
        arriba a buscar la barra del carrito. -->
-  <button type="button" class="floating-cart-btn" onclick="toggleCarrito()" title="Ver pedido">
+  <button type="button" class="floating-cart-btn" id="floatingCartBtn" onclick="toggleCarrito()" title="Ver pedido">
     🛒
     <span class="floating-cart-badge" id="floatingCartBadge" style="display:none">0</span>
   </button>
@@ -1404,6 +1409,121 @@ function toggleCarrito(){
     abrirCarrito();
   }
 }
+
+// ── ARRASTRAR EL BOTÓN FLOTANTE DEL CARRITO ─────────────────────────────────
+// Se puede mover libremente (sobre todo arriba/abajo) pero al soltarlo
+// siempre queda pegado al costado más cercano (izquierda o derecha), nunca
+// suelto en el medio de la pantalla. La posición elegida se guarda en este
+// dispositivo, así la próxima vez que entra al catálogo arranca donde lo
+// dejaron la última vez.
+(function(){
+  var LS_KEY = 'lr_cart_btn_pos';
+  var btn, moved, dragging, startX, startY, startLeft, startTop;
+
+  function margen(){ return 10; }
+
+  function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
+
+  function aplicarPosicion(top, lado, valorLado){
+    btn.style.top = top + 'px';
+    btn.style.bottom = 'auto';
+    if(lado === 'left'){ btn.style.left = valorLado + 'px'; btn.style.right = 'auto'; }
+    else { btn.style.right = valorLado + 'px'; btn.style.left = 'auto'; }
+  }
+
+  function guardarPosicion(top, lado, valorLado){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify({ top: top, lado: lado, valorLado: valorLado })); }catch(e){}
+  }
+
+  function restaurarPosicion(){
+    var guardado = null;
+    try{ guardado = JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){}
+    if(guardado && typeof guardado.top === 'number'){
+      var alto = btn.offsetHeight || 46;
+      var topClamp = clamp(guardado.top, margen(), window.innerHeight - alto - margen());
+      aplicarPosicion(topClamp, guardado.lado === 'left' ? 'left' : 'right', guardado.valorLado);
+    }
+    // Si no hay nada guardado, se queda con la posición inicial del CSS
+    // (arriba a la derecha), tal cual arranca hoy.
+  }
+
+  function onDown(x, y){
+    var rect = btn.getBoundingClientRect();
+    dragging = true;
+    moved = false;
+    startX = x; startY = y;
+    startLeft = rect.left; startTop = rect.top;
+    btn.classList.add('dragging');
+  }
+
+  function onMove(x, y){
+    if(!dragging) return;
+    var dx = x - startX, dy = y - startY;
+    if(Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+    if(!moved) return;
+    var ancho = btn.offsetWidth || 46, alto = btn.offsetHeight || 46;
+    var nuevoLeft = clamp(startLeft + dx, margen(), window.innerWidth - ancho - margen());
+    var nuevoTop = clamp(startTop + dy, margen(), window.innerHeight - alto - margen());
+    btn.style.left = nuevoLeft + 'px';
+    btn.style.top = nuevoTop + 'px';
+    btn.style.right = 'auto';
+    btn.style.bottom = 'auto';
+  }
+
+  function onUp(){
+    if(!dragging) return;
+    dragging = false;
+    btn.classList.remove('dragging');
+    if(!moved) return; // fue un toque/click normal, no un arrastre — no tocar la posición
+    var rect = btn.getBoundingClientRect();
+    var centroX = rect.left + rect.width/2;
+    var lado = (centroX < window.innerWidth/2) ? 'left' : 'right';
+    var valorLado = (lado === 'left') ? rect.left : (window.innerWidth - rect.right);
+    valorLado = Math.max(valorLado, margen());
+    var top = clamp(rect.top, margen(), window.innerHeight - rect.height - margen());
+    aplicarPosicion(top, lado, valorLado);
+    guardarPosicion(top, lado, valorLado);
+  }
+
+  function iniciarArrastreBotonCarrito(){
+    btn = document.getElementById('floatingCartBtn');
+    if(!btn) return;
+    restaurarPosicion();
+
+    btn.addEventListener('pointerdown', function(e){
+      onDown(e.clientX, e.clientY);
+      btn.setPointerCapture && btn.setPointerCapture(e.pointerId);
+    });
+    btn.addEventListener('pointermove', function(e){ onMove(e.clientX, e.clientY); });
+    btn.addEventListener('pointerup', onUp);
+    btn.addEventListener('pointercancel', onUp);
+
+    // Si se arrastró, cancelar el click que dispararía toggleCarrito() —
+    // si no, cada vez que lo mueve también se abriría/cerraría el carrito.
+    btn.addEventListener('click', function(e){
+      if(moved){ e.preventDefault(); e.stopPropagation(); moved = false; }
+    }, true);
+
+    // Si cambia el tamaño de la ventana (o gira el celular), mantenerlo
+    // adentro de la pantalla.
+    window.addEventListener('resize', function(){
+      var rect = btn.getBoundingClientRect();
+      // Con el catálogo todavía oculto (pantalla de carga) el botón mide 0 y
+      // quedaría mandado arriba a la izquierda: en ese caso no se toca.
+      if(!rect.width) return;
+      var lado = (rect.left < window.innerWidth/2) ? 'left' : 'right';
+      var valorLado = (lado === 'left') ? rect.left : (window.innerWidth - rect.right);
+      var top = clamp(rect.top, margen(), window.innerHeight - rect.height - margen());
+      aplicarPosicion(top, lado, Math.max(valorLado, margen()));
+    });
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', iniciarArrastreBotonCarrito);
+  } else {
+    iniciarArrastreBotonCarrito();
+  }
+})();
 
 function armarListaItemsHtml(){
   var html = '';
