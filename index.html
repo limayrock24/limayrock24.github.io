@@ -5279,6 +5279,17 @@ body.night-on{background:#080005}
             <div id="pmProveedoresDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1.5px solid var(--border);border-radius:4px;margin-top:2px;max-height:170px;overflow-y:auto;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.4)"></div>
           </div>
         </div>
+        <div class="recep-toggle" id="filaDestacadoProd">
+          <div>
+            <div style="font-size:.85rem;color:var(--white)">🔥 Destacar en catálogo (Imperdibles)</div>
+            <div style="font-size:.7rem;color:var(--gray);margin-top:2px">Aparece arriba de todo en el catálogo web, en una tarjeta grande</div>
+          </div>
+          <div class="recep-toggle-switch" id="pmDestacadoToggle" onclick="togglePmDestacado()"></div>
+        </div>
+        <div class="field" id="filaEtiquetaDestacado" style="display:none">
+          <label>Etiqueta (opcional)</label>
+          <input type="text" id="pmEtiquetaDestacado" placeholder="Ej: Precio especial, 🆕 Novedad, ⭐ Más pedido" maxlength="30">
+        </div>
         <div class="prod-modal-footer">
           <button class="btn-del" id="prodModalDel" onclick="eliminarProdModal()">🗑 Eliminar</button>
           <button class="btn-save-prod" onclick="guardarProdModal()">✓ Guardar</button>
@@ -19399,12 +19410,19 @@ function abrirProdModal(idx) {
     document.getElementById('pmSinImagenBox').style.display = imgProd ? 'none' : 'block';
     document.getElementById('pmQuitarFotoBtn').style.display = imgProd ? 'inline-block' : 'none';
     if(imgProd) document.getElementById('pmImagenPreview').src = imgProd;
+    var swDest = document.getElementById('pmDestacadoToggle');
+    swDest.classList.toggle('on', !!p.destacado);
+    document.getElementById('filaEtiquetaDestacado').style.display = p.destacado ? 'block' : 'none';
+    document.getElementById('pmEtiquetaDestacado').value = p.etiquetaDestacado || '';
   } else {
     document.getElementById('prodModalTitulo').textContent='+ Nuevo producto';
     if(del) del.style.display='none';
     document.getElementById('pmImagenBox').style.display='none';
     document.getElementById('pmSinImagenBox').style.display='none';
     document.getElementById('pmQuitarFotoBtn').style.display='none';
+    document.getElementById('pmDestacadoToggle').classList.remove('on');
+    document.getElementById('filaEtiquetaDestacado').style.display='none';
+    document.getElementById('pmEtiquetaDestacado').value='';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
@@ -19488,6 +19506,16 @@ function quitarPmProveedor(nombreProv) {
 }
 
 function closeProdModal() { document.getElementById('prodModalOverlay').classList.remove('open'); }
+
+// Toggle "Destacar en catálogo" — muestra/oculta el campo de etiqueta libre
+// (ej: "Precio especial", "🆕 Novedad") que se ve en la tarjeta grande del
+// catálogo web, dentro de "Imperdibles hoy".
+function togglePmDestacado() {
+  var sw = document.getElementById('pmDestacadoToggle');
+  var on = !sw.classList.contains('on');
+  sw.classList.toggle('on', on);
+  document.getElementById('filaEtiquetaDestacado').style.display = on ? 'block' : 'none';
+}
 
 // ── GESTIÓN DE CATEGORÍAS ──────────────────────────────────────────────────
 // Las categorías ya viven en Firebase (config/categorias) y se sincronizan
@@ -20415,7 +20443,9 @@ function guardarProdModal() {
     pventa = 0;
   }
   var codigo = (document.getElementById('pmCodigo').value||'').trim();
-  var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null};
+  var destacado = document.getElementById('pmDestacadoToggle').classList.contains('on');
+  var etiquetaDestacado = (document.getElementById('pmEtiquetaDestacado').value||'').trim();
+  var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null,destacado:destacado,etiquetaDestacado:etiquetaDestacado||null};
   var esNuevo = !(idx>=0 && PRODUCTS[idx]);
   // Al RENOMBRAR un producto hay que borrar el registro viejo: en la nube cada
   // producto se guarda bajo su nombre, así que guardar con el nombre nuevo

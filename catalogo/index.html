@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1789803140";
+window.__LR_BUILD = "1790213230";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -82,7 +82,25 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .header .sub{position:relative;z-index:1;font-family:'Oswald',sans-serif;font-size:.7rem;
   letter-spacing:5px;color:var(--gray);text-transform:uppercase;margin-top:12px}
 @media(max-width:420px){ .header img{height:76px} .header{padding:24px 14px 16px} }
-.delivery-banner{text-align:center;padding:8px 14px;font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;background:rgba(46,204,113,.1);color:var(--green);border-bottom:1px solid rgba(46,204,113,.25)}
+.delivery-banner{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;padding:9px 14px;background:linear-gradient(90deg, rgba(210,32,31,.14), rgba(244,180,0,.09));border-bottom:1px solid rgba(244,180,0,.22)}
+.db-item{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;font-weight:600}
+.db-item.db-gold{color:var(--gold)}
+.db-item.db-green{color:var(--green)}
+.db-sep{width:1px;height:12px;background:var(--border)}
+
+/* Imperdibles: tarjetas grandes destacadas, marcadas a mano desde el admin */
+.imperdible-card{display:flex;gap:12px;border-radius:12px;padding:12px;align-items:center;margin-bottom:10px;border:1.5px solid var(--red);background:linear-gradient(135deg, rgba(210,32,31,.14), rgba(244,180,0,.06))}
+.imperdible-thumb{width:84px;height:84px;flex-shrink:0;border-radius:9px;object-fit:cover;background:#fff}
+.imperdible-thumb-placeholder{width:84px;height:84px;flex-shrink:0;border-radius:9px;background:var(--surface);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:.6rem;text-align:center;line-height:1.3;font-family:'Barlow',sans-serif}
+.imperdible-badge{display:inline-block;font-family:'Oswald',sans-serif;font-size:.62rem;letter-spacing:1px;text-transform:uppercase;border-radius:5px;padding:2px 8px;margin-bottom:5px;color:var(--red);background:rgba(210,32,31,.15);border:1px solid rgba(210,32,31,.4)}
+
+/* Combos: tarjetas en grilla de 2 columnas, con foto grande arriba */
+.combo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.combo-card{background:var(--card);border:1.5px solid rgba(210,32,31,.5);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.combo-card.en-carrito{border-color:var(--green)}
+.combo-card-img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#fff;display:block}
+.combo-card-img-placeholder{width:100%;aspect-ratio:1/1;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:1.7rem}
+.combo-card-body{padding:10px}
 .wrap{max-width:600px;margin:0 auto;padding:14px}
 #searchInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--white);font-family:'Barlow',sans-serif;font-size:.95rem;outline:none;margin-bottom:14px}
 #searchInput:focus{border-color:var(--red)}
@@ -213,7 +231,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <img src="/logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
   </div>
-  <div class="delivery-banner">🛵 Delivery activo — hacé tu pedido</div>
+  <div class="delivery-banner">
+    <span class="db-item db-gold">🕐 Abierto las 24hs</span>
+    <span class="db-sep"></span>
+    <span class="db-item db-green">🛵 Delivery activo ahora</span>
+  </div>
 
   <div class="wrap">
     <input type="text" id="searchInput" placeholder="🔍 Buscar producto..." oninput="renderList()">
@@ -512,7 +534,7 @@ db.collection('productos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
     var d = doc.data();
-    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, precioNoc:d.pnoc||d.pventa, cat:d.cat||'General', imgUrl:d.imgUrl});
+    if(d.name && d.pventa > 0) lista.push({name:d.name, precio:d.pventa, precioNoc:d.pnoc||d.pventa, cat:d.cat||'General', imgUrl:d.imgUrl, destacado:!!d.destacado, etiquetaDestacado:d.etiquetaDestacado||''});
   });
   lista.sort(function(a,b){ return a.name.localeCompare(b.name); });
   PRODUCTOS = lista;
@@ -732,11 +754,51 @@ function renderList(){
       '</div>';
     });
   });
+  // "Imperdibles hoy": productos marcados a mano desde el admin (p.destacado),
+  // en tarjeta grande con foto y una etiqueta libre opcional (ej: "Precio
+  // especial", "🆕 Novedad"). Igual que los combos, solo en la pantalla
+  // inicial (sin búsqueda ni filtro de categoría) para no estorbar cuando el
+  // cliente está buscando algo puntual.
+  var htmlImperdibles = '';
+  try{
+    if(!term && CATEGORIA_SEL === 'Todas'){
+      var destacados = PRODUCTOS.filter(function(p){ return p.destacado; });
+      if(destacados.length){
+        htmlImperdibles = '<div class="cat-title">🔥 Imperdibles hoy</div>' +
+          destacados.map(function(p){
+            var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
+            var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
+            var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
+            var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
+            var imgHtml = imgSrc
+              ? '<img class="imperdible-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">'
+              : '<div class="imperdible-thumb-placeholder">FOTO<br>PRODUCTO</div>';
+            var badgeHtml = p.etiquetaDestacado ? '<div class="imperdible-badge">'+p.etiquetaDestacado+'</div>' : '';
+            var ctrlHtml = sinStock
+              ? '<span class="sin-stock-tag">Sin stock</span>'
+              : '<div class="qty-ctrl">'+
+                  (cant > 0 ? '<button class="qty-btn" onclick="cambiarCantidad(\''+escJs(p.name)+'\',-1)">−</button><span class="qty-num">'+cant+'</span>' : '')+
+                  '<button class="qty-btn add" onclick="cambiarCantidad(\''+escJs(p.name)+'\',1)">+</button>'+
+                '</div>';
+            return '<div class="imperdible-card" style="'+(sinStock?'opacity:.55':'')+'">'+
+              imgHtml+
+              '<div class="prod-info">'+badgeHtml+'<div class="prod-name">'+p.name+'</div><div class="prod-price">'+fmt(precioMostrar)+'</div></div>'+
+              ctrlHtml+
+            '</div>';
+          }).join('');
+      }
+    }
+  }catch(e){ console.error('Error dibujando imperdibles:', e); }
+
   // Los combos van ARRIBA de todo, dentro de la misma lista de productos.
   //
   // Antes se dibujaban en un contenedor aparte con su propia función, y ese
   // bloque no llegaba a ejecutarse en el navegador del cliente. Poniéndolos acá
   // dependen del mismo código que ya se sabe que funciona.
+  //
+  // Formato tarjeta (antes era una fila chica igual a cualquier producto
+  // suelto): son el mejor gancho de venta, así que se agrandan con foto
+  // grande arriba, en una grilla de 2 columnas.
   var htmlCombos = '';
   try{
     // Los combos se muestran SOLO en la pantalla inicial: sin búsqueda escrita y
@@ -747,6 +809,7 @@ function renderList(){
       : [];
     if(combosVisibles.length && CATEGORIA_SEL === 'Todas'){
       htmlCombos = '<div class="cat-title">🎁 Combos y promos</div>' +
+        '<div class="combo-grid">' +
         combosVisibles.map(function(cb){
           var i = COMBOS.indexOf(cb);
           var enCarrito = comboCantEnCarrito(cb.nombre);
@@ -755,27 +818,31 @@ function renderList(){
             var n = it.qty || it.cant || 1;
             return it.nombre + (n>1 ? ' \u00d7'+n : '');
           }).join(' + ') || cb.descripcion || '';
-          var imgHtmlCombo = cb.imgUrl ? '<img class="prod-thumb" src="'+cb.imgUrl+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(cb.imgUrl)+'\',\''+escJs(cb.nombre)+'\')" style="cursor:pointer">' : '';
-          return '<div class="prod-row" style="border-color:'+(enCarrito?'#2ecc71':'rgba(210,32,31,.5)')+'">'+
+          var imgHtmlCombo = cb.imgUrl
+            ? '<img class="combo-card-img" src="'+cb.imgUrl+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(cb.imgUrl)+'\',\''+escJs(cb.nombre)+'\')" style="cursor:pointer">'
+            : '<div class="combo-card-img-placeholder">'+(cb.emoji||'🎁')+'</div>';
+          return '<div class="combo-card'+(enCarrito?' en-carrito':'')+'">'+
             imgHtmlCombo+
-            '<div class="prod-info">'+
-              '<div class="prod-name">'+(cb.emoji||'\ud83c\udf81')+' '+cb.nombre+'</div>'+
+            '<div class="combo-card-body">'+
+              '<div class="prod-name">'+(cb.emoji||'🎁')+' '+cb.nombre+'</div>'+
               (detalle ? '<div style="font-size:.7rem;color:var(--gray);margin-top:2px;line-height:1.35">'+detalle+'</div>' : '')+
-              '<div class="prod-price">'+fmt(cb.precio)+'</div>'+
-            '</div>'+
-            '<div class="qty-ctrl">'+
-              (enCarrito
-                ? '<button class="qty-btn" onclick="quitarComboPorIndice('+i+')">\u2212</button>'+
-                  '<span style="font-family:Oswald,sans-serif;color:var(--white);min-width:18px;text-align:center">'+enCarrito+'</span>'
-                : '')+
-              '<button class="add-btn" onclick="agregarComboPorIndice('+i+')">+</button>'+
+              '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">'+
+                '<div class="prod-price">'+fmt(cb.precio)+'</div>'+
+                '<div class="qty-ctrl">'+
+                  (enCarrito
+                    ? '<button class="qty-btn" onclick="quitarComboPorIndice('+i+')">−</button><span class="qty-num">'+enCarrito+'</span>'
+                    : '')+
+                  '<button class="qty-btn add" onclick="agregarComboPorIndice('+i+')">+</button>'+
+                '</div>'+
+              '</div>'+
             '</div>'+
           '</div>';
-        }).join('');
+        }).join('') +
+        '</div>';
     }
   }catch(e){ console.error('Error dibujando combos:', e); }
 
-  cont.innerHTML = htmlCombos + html;
+  cont.innerHTML = htmlImperdibles + htmlCombos + html;
 }
 
 // DEPRECADA: esta versión dibujaba los combos como tarjetas en un contenedor
