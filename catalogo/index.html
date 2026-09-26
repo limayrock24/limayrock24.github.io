@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790286130";
+window.__LR_BUILD = "1790395370";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -117,6 +117,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 .db-item{font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:1px;text-transform:uppercase;font-weight:600}
 .db-item.db-gold{color:var(--gold)}
 .db-item.db-green{color:var(--green)}
+.db-item.db-red{color:#ff5c5c}
 .db-sep{width:1px;height:12px;background:var(--border)}
 
 /* Imperdibles: tarjetas grandes destacadas, marcadas a mano desde el admin */
@@ -263,24 +264,6 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <button onclick="location.reload()" style="margin-top:16px;background:#D2201F;color:#fff;border:none;border-radius:8px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;cursor:pointer">🔄 Actualizar</button>
 </div>
 
-<div id="noDeliveryScreen" class="status-screen">
-  <img src="/logo.png" alt="Limay Rock" style="width:min(220px,70%);margin:0 auto 18px;display:block;animation:pulse 2s infinite">
-  <h2>🛵 Delivery en pausa</h2>
-  <p>Ahora mismo no tenemos repartidores disponibles, así que no estamos tomando pedidos a domicilio.</p>
-  <p style="margin-top:14px"><b style="color:#F4B400">Pero el local está abierto y te esperamos.</b><br>
-  Acercate y hacé tu compra.</p>
-  <p style="margin-top:16px;font-size:.9rem;line-height:1.5">📍 Av. Pascual Puente 774<br>
-  <span style="opacity:.7">Senillosa, Neuquén</span></p>
-  <a href="https://maps.google.com/?q=Av.+Pascual+Puente+774,+Q8320+Senillosa,+Neuqu%C3%A9n" target="_blank" rel="noopener"
-     style="display:inline-block;margin-top:16px;background:#D2201F;color:#fff;text-decoration:none;border-radius:8px;padding:12px 22px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px">📍 Cómo llegar</a>
-  <p style="margin-top:18px;font-size:.85rem;opacity:.75">Volvé a entrar en un rato: apenas se conecte un repartidor, el delivery se reactiva solo.</p>
-  <a href="https://www.instagram.com/limay.rock/" target="_blank" rel="noopener"
-     style="display:inline-flex;align-items:center;gap:7px;margin-top:14px;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);color:#fff;text-decoration:none;border-radius:8px;padding:11px 22px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
-    Seguinos en Instagram
-  </a>
-</div>
-
 <div id="thanksScreen" class="status-screen">
   <h2>✅ ¡Pedido enviado!</h2>
   <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega. ¡Gracias por elegirnos!</p>
@@ -302,7 +285,19 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   <div class="delivery-banner">
     <span class="db-item db-gold">🕐 Abierto las 24hs</span>
     <span class="db-sep"></span>
-    <span class="db-item db-green">🛵 Delivery activo ahora</span>
+    <span class="db-item db-green" id="dbDeliveryEstado">🛵 Delivery activo ahora</span>
+  </div>
+
+  <!-- Antes esto bloqueaba TODO el catálogo con una pantalla completa. Ahora
+       el catálogo se puede ver siempre (para mirar precios y planear la
+       compra); esto es solo un aviso compacto que aparece cuando no se
+       puede pedir, y el botón flotante del carrito se oculta para no dejar
+       avanzar un pedido que no se puede cumplir. -->
+  <div id="deliveryPausaAviso" style="display:none;background:rgba(210,32,31,.08);border:1px solid rgba(210,32,31,.3);border-radius:10px;padding:14px 16px;margin:0 16px 14px;text-align:center">
+    <div style="color:#F4B400;font-family:'Oswald',sans-serif;font-size:.82rem;letter-spacing:1px;margin-bottom:5px">🛵 DELIVERY EN PAUSA AHORA</div>
+    <div style="font-size:.8rem;color:#ccc;line-height:1.4;margin-bottom:10px">No estamos tomando pedidos por delivery en este momento, pero el local está abierto — podés acercarte y comprar directo. Mirá el catálogo igual, así ya sabés qué llevar.</div>
+    <a href="https://maps.google.com/?q=Av.+Pascual+Puente+774,+Q8320+Senillosa,+Neuqu%C3%A9n" target="_blank" rel="noopener"
+       style="display:inline-block;background:#D2201F;color:#fff;text-decoration:none;border-radius:8px;padding:9px 20px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px">📍 Cómo llegar</a>
   </div>
 
   <div class="wrap">
@@ -434,6 +429,32 @@ let _manualModo = {}; // { itemId: 'peso' | 'monto' } — cómo está pidiendo e
 let COSTO_ENVIO = 0;
 let ZONA_CFG = null;
 let ZONA_ACTUAL = null;   // 'urbana' | 'rural' | null (todavía sin ubicación)
+let DELIVERY_ACTIVO = true;
+
+// Actualiza el banner de arriba y el aviso de pausa según el estado del
+// delivery. El catálogo se ve siempre — esto solo avisa si se puede pedir
+// o no, y oculta el botón flotante del carrito mientras está en pausa para
+// no dejar avanzar un pedido que no se puede cumplir.
+function actualizarBannerDelivery(){
+  var estadoEl = document.getElementById('dbDeliveryEstado');
+  var avisoEl = document.getElementById('deliveryPausaAviso');
+  var cartBtn = document.getElementById('floatingCartBtn');
+  if(!estadoEl) return;
+  if(DELIVERY_ACTIVO){
+    estadoEl.className = 'db-item db-green';
+    var costoBase = (ZONA_CFG && ZONA_CFG.costoUrbano != null) ? ZONA_CFG.costoUrbano : COSTO_ENVIO;
+    estadoEl.textContent = costoBase > 0
+      ? '🛵 Delivery activo — envío desde ' + fmt(costoBase)
+      : '🛵 Delivery activo ahora';
+    if(avisoEl) avisoEl.style.display = 'none';
+    if(cartBtn) cartBtn.style.display = '';
+  } else {
+    estadoEl.className = 'db-item db-red';
+    estadoEl.textContent = '🛑 Delivery en pausa';
+    if(avisoEl) avisoEl.style.display = 'block';
+    if(cartBtn) cartBtn.style.display = 'none';
+  }
+}
 
 // Distancia en km entre dos puntos del planeta (fórmula del semiverseno).
 function distanciaKm(lat1, lng1, lat2, lng2){
@@ -606,15 +627,13 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
   // mostraba precios diurnos toda la madrugada.
   PRECIO_NOCTURNO = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
-  if(!activo && !sesionVencida){
-    document.getElementById('loadingScreen').classList.remove('show');
-    document.getElementById('mainContent').style.display = 'none';
-    document.getElementById('noDeliveryScreen').classList.add('show');
-    return;
-  }
-  if(activo){
-    document.getElementById('noDeliveryScreen').classList.remove('show');
-  }
+
+  // Antes, con el delivery en pausa, se bloqueaba TODO el catálogo con una
+  // pantalla completa. Ahora el catálogo se puede ver siempre — solo cambia
+  // el aviso de arriba y se oculta el botón del carrito (actualizarBannerDelivery).
+  DELIVERY_ACTIVO = activo;
+  actualizarBannerDelivery();
+
   deliveryListo = true;
   chequearListo();
 });
@@ -1597,6 +1616,10 @@ function quitarManualDesdeCarrito(id){
 }
 
 function abrirCarrito(){
+  // Freno de seguridad: el botón flotante ya se oculta con el delivery en
+  // pausa (actualizarBannerDelivery), pero por si se llega a abrir por otro
+  // lado no se deja avanzar un pedido que no se puede cumplir.
+  if(!DELIVERY_ACTIVO){ alert('El delivery está en pausa ahora — no podemos tomar pedidos, pero podés acercarte al local a comprar directo.'); return; }
   document.getElementById('cartItemsList').innerHTML = armarListaCombosHtml() + armarListaItemsHtml() + armarListaManualHtml();
   document.getElementById('cartSubtotalModal').textContent = fmt(subtotalCarrito());
   document.getElementById('cartEnvioModal').textContent = fmt(COSTO_ENVIO);
@@ -1731,6 +1754,7 @@ function volverAlCarrito(){
 
 function confirmarPedido(){
   if(sesionVencida) return;
+  if(!DELIVERY_ACTIVO){ alert('El delivery está en pausa ahora — no podemos tomar pedidos, pero podés acercarte al local a comprar directo.'); return; }
   var nombre = document.getElementById('clienteNombre').value.trim();
   var telefono = document.getElementById('clienteTelefono').value.trim();
   var direccion = document.getElementById('clienteDireccion').value.trim();
