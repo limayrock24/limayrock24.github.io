@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790482132";
+window.__LR_BUILD = "1790484818";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -359,7 +359,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
       <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
-      <div style="font-size:.68rem;color:var(--gray);margin-top:6px">Necesitamos tu ubicación para poder llegar. Los datos de abajo son opcionales pero nos ayudan.</div>
+      <div style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación es obligatorio</b> para poder confirmar el pedido — es lo que le llega al repartidor para encontrarte. Los datos de abajo son opcionales, pero ayudan a llegar más rápido.</div>
       <input type="text" id="clienteDireccion" placeholder="Calle y número (opcional)" style="margin-top:8px">
       <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
     </div>
@@ -1752,15 +1752,26 @@ function elegirMedioPago(medio){
   if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
 }
 
+// GPS OBLIGATORIO para pedir por acá (ver irAConfirmar): sin ubicación
+// compartida no se puede confirmar el pedido — es el dato que hace que le
+// llegue al repartidor en su app con el mapa. La dirección escrita más abajo
+// sigue existiendo, pero ahora es un dato ADICIONAL (para tocar el timbre
+// correcto), no un reemplazo del GPS.
+function _catEsIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
 // Toma las coordenadas del GPS del celular y arma un link de Google Maps que
-// el repartidor puede abrir para que lo guíe. No reemplaza la dirección
-// escrita: se guardan las dos, porque el GPS puede fallar en interiores y la
-// dirección escrita sirve para tocar el timbre correcto.
+// el repartidor puede abrir para que lo guíe.
 function usarMiUbicacion(){
   var btn = document.getElementById('btnUbicacion');
   var est = document.getElementById('ubicacionEstado');
   if(!navigator.geolocation){
-    if(est){ est.style.display='block'; est.style.color='#e74c3c'; est.textContent = 'Tu teléfono no permite compartir ubicación. Escribí la dirección a mano.'; }
+    if(est){
+      est.style.display='block'; est.style.color='#e74c3c';
+      est.innerHTML = 'Tu navegador no permite compartir ubicación, así que no podemos tomarte el pedido por acá. ' +
+        '<a href="https://wa.me/'+NUMERO_WHATSAPP+'" target="_blank" style="color:#2ecc71;font-weight:600">Escribinos por WhatsApp</a> y te lo tomamos ahí.';
+    }
     return;
   }
   if(btn){ btn.textContent = '📍 Buscando tu ubicación...'; btn.disabled = true; }
@@ -1780,12 +1791,21 @@ function usarMiUbicacion(){
     }
   }, function(err){
     if(btn){ btn.textContent = '📍 Compartir mi ubicación'; btn.disabled = false; }
-    if(est){
-      est.style.display = 'block';
-      est.style.color = '#e74c3c';
-      est.textContent = (err.code === 1)
-        ? 'Necesitamos el permiso de ubicación para poder llevarte el pedido. Activalo y probá de nuevo.'
-        : 'No pudimos tomar tu ubicación. Probá de nuevo o escribinos por WhatsApp.';
+    if(!est) return;
+    est.style.display = 'block';
+    est.style.color = '#e74c3c';
+    if(err.code === 1){
+      // Permiso denegado: en iPhone Safari no vuelve a preguntar solo, hay
+      // que ir a Ajustes a mano — en Android alcanza con el ícono del
+      // candado/info junto a la dirección del sitio. Pasos distintos, así
+      // que el mensaje también lo es.
+      est.innerHTML = _catEsIOS()
+        ? 'Le dijiste que no al permiso de ubicación. Para pedir por acá es obligatorio: andá a <b>Ajustes del iPhone → Privacidad y seguridad → Localización</b>, buscá Safari (o esta app, si la instalaste en la pantalla de inicio) y activala. Después volvé y tocá "Compartir mi ubicación" de nuevo.'
+        : 'Le dijiste que no al permiso de ubicación. Para pedir por acá es obligatorio: tocá el candado o el ícono de información junto a la dirección del navegador, activá el permiso de Ubicación, y volvé a tocar "Compartir mi ubicación".';
+    } else {
+      est.innerHTML = 'No pudimos tomar tu ubicación (probá salir a un lugar más abierto o cerca de una ventana). ' +
+        '<button type="button" onclick="usarMiUbicacion()" style="background:none;border:none;color:#2ecc71;font-weight:600;text-decoration:underline;cursor:pointer;padding:0;font-size:inherit">Probar de nuevo</button> — ' +
+        'o <a href="https://wa.me/'+NUMERO_WHATSAPP+'" target="_blank" style="color:#2ecc71;font-weight:600">escribinos por WhatsApp</a>.';
     }
   }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
 }
@@ -1802,8 +1822,8 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  if(!UBICACION_GPS && !direccion){
-    errEl.textContent = 'Tocá "Compartir mi ubicación" o, si no te deja, escribí tu dirección a mano.';
+  if(!UBICACION_GPS){
+    errEl.textContent = 'Para confirmar el pedido es obligatorio compartir tu ubicación (tocá el botón "📍 Compartir mi ubicación" más arriba) — es lo que le llega al repartidor para encontrarte.';
     errEl.style.display = 'block';
     return;
   }
