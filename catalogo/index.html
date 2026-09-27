@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790475084";
+window.__LR_BUILD = "1790475642";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -288,6 +288,15 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <span class="db-item db-green" id="dbDeliveryEstado">🛵 Delivery activo ahora</span>
   </div>
 
+  <!-- Instructivo cortito de cómo pedir, siempre a la vista arriba del todo:
+       mucha gente entraba al catálogo, no entendía que había que tocar el
+       carrito para avanzar, y se iba sin pedir nada. Un botón chico y
+       discreto se perdía; esto va como una tira clickeable bien visible. -->
+  <button type="button" onclick="abrirAyuda()"
+    style="display:block;width:calc(100% - 32px);margin:0 16px 12px;background:rgba(244,180,0,.08);border:1px solid rgba(244,180,0,.35);border-radius:8px;padding:9px 12px;color:#F4B400;font-family:'Barlow',sans-serif;font-size:.78rem;text-align:center;cursor:pointer">
+    ❓ ¿Cómo hago mi pedido? <span style="text-decoration:underline">Tocá acá</span>
+  </button>
+
   <!-- Antes esto bloqueaba TODO el catálogo con una pantalla completa. Ahora
        el catálogo se puede ver siempre (para mirar precios y planear la
        compra); esto es solo un aviso compacto que aparece cuando no se
@@ -384,6 +393,28 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     </p>
     <button class="btn-primary" onclick="confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
     <button class="btn-secondary" onclick="volverAlCarrito()">Volver</button>
+  </div>
+</div>
+
+<!-- Instructivo: pasos cortos para pedir, siempre disponible desde el botón
+     de arriba del catálogo. No es un paso del pedido en sí (no hay "volver"
+     a nada), solo información — se cierra y listo. -->
+<div class="overlay" id="ayudaOverlay">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0">❓ Cómo hacer tu pedido</h3>
+      <button type="button" onclick="cerrarAyuda()" style="background:none;border:none;color:var(--gray);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 0 0 10px">✕</button>
+    </div>
+    <ol style="margin:14px 0 0;padding-left:20px;color:var(--white);font-size:.85rem;line-height:1.9">
+      <li>Mirá el catálogo y tocá el <b>+</b> en cada producto que quieras.</li>
+      <li>Tocá el botón 🛒 <b>de arriba a la derecha</b> para ver tu pedido.</li>
+      <li>Tocá <b>"Continuar"</b> y cargá tu <b>nombre, dirección y forma de pago</b>.</li>
+      <li>Confirmá — se abre <b>WhatsApp con el pedido ya armado</b>, solo tenés que enviarlo.</li>
+    </ol>
+    <p style="font-size:.76rem;color:var(--gray);margin-top:14px;line-height:1.5">
+      Ahí mismo, por WhatsApp, te confirmamos la compra, el medio de pago y la entrega. ¡Así de simple!
+    </p>
+    <button class="btn-primary" onclick="cerrarAyuda()">Entendido</button>
   </div>
 </div>
 
@@ -1641,6 +1672,15 @@ function abrirCarrito(){
 }
 function cerrarCarrito(){
   document.getElementById('cartOverlay').classList.remove('show');
+}
+
+// Instructivo de cómo pedir — solo informativo, no forma parte del flujo del
+// pedido (no toca el carrito ni nada de eso).
+function abrirAyuda(){
+  document.getElementById('ayudaOverlay').classList.add('show');
+}
+function cerrarAyuda(){
+  document.getElementById('ayudaOverlay').classList.remove('show');
 }
 
 // Paso 1 → paso 2: de revisar el pedido a cargar los datos de entrega.
