@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790475642";
+window.__LR_BUILD = "1790475943";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -566,6 +566,15 @@ function renderCatPills(){
     var c = p.cat || 'General';
     if(cats.indexOf(c) === -1) cats.push(c);
   });
+  // Una categoría puede quedar SOLO con ítems manuales (ej: Fiambrería, si se
+  // borraron todos los productos de carga normal y se pasó todo a manual).
+  // Antes esta pestaña no se armaba mirando nada más que PRODUCTOS, así que
+  // esa categoría dejaba de aparecer en la barra de pestañas — aunque sus
+  // ítems seguían viéndose igual dentro de "Todas".
+  ITEMS_MANUALES.forEach(function(it){
+    var c = it.categoria || 'General';
+    if(cats.indexOf(c) === -1) cats.push(c);
+  });
   // Cada categoría real que esté adentro de un grupo se muestra como el
   // nombre del grupo (una sola pestaña), no como categorías sueltas.
   var pillsFinales = [];
@@ -828,7 +837,10 @@ db.collection('itemsManualesCatalogo').onSnapshot(function(snap){
   ITEMS_MANUALES = lista;
   itemsManualesListos = true;
   chequearListo();
-  if(document.getElementById('mainContent').style.display==='block') renderList();
+  // También refrescar las pestañas: si esta actualización agrega o saca la
+  // última categoría que dependía solo de ítems manuales, la pestaña tiene
+  // que aparecer o desaparecer en el momento, no recién al recargar.
+  if(document.getElementById('mainContent').style.display==='block'){ renderCatPills(); renderList(); }
 }, function(err){
   console.error('Error cargando items manuales (se continúa sin mostrarlos):', err);
   ITEMS_MANUALES = [];
