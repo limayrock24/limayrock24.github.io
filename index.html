@@ -10133,7 +10133,19 @@ function renderStockAlerts() {
 
 function resolverStock(i) {
   var alerts = getStockAlerts();
-  alerts[i].resuelta=true;
+  var a = alerts[i];
+  if(a){
+    a.resuelta = true;
+    // Si la alerta es de un "suelto" (fiambrería, frutas/verduras, pan), acá
+    // también se le saca la marca de sin stock — si no, quedaba resuelta la
+    // alerta pero el suelto seguía figurando sin stock en el catálogo web y
+    // en el panel de venta, sin ninguna forma de notarlo desde este panel.
+    if(a.tipo === 'sin' && typeof getItemsManuales === 'function'){
+      var items = getItemsManuales();
+      var item = items.find(function(x){ return x.nombre === a.nombre; });
+      if(item && item.sinStock){ item.sinStock = false; saveItemsManuales(items); }
+    }
+  }
   saveStockAlerts(alerts);
   renderStockAlerts();
   showToast('Alerta resuelta');
@@ -14491,6 +14503,41 @@ function usarSueltoEnVenta(it) {
   if(precioInp) setTimeout(function(){ precioInp.focus(); precioInp.select(); }, 150);
 }
 
+// Marca un "suelto" (fiambrería, frutas/verduras, pan — lo que se pide por
+// gramos desde el catálogo web) como sin stock, desde el panel de venta. Con
+// esto: (1) el catálogo web lo muestra como "Sin stock" y no deja pedirlo, y
+// (2) queda una alerta en el panel admin (el número rojo junto a ⚙), igual
+// que las alertas de stock de productos comunes.
+function marcarSueltoSinStock(it) {
+  var items = getItemsManuales();
+  var item = items.find(function(x){ return x.id === it.id; });
+  if(!item) return;
+  item.sinStock = true;
+  item.sinStockDesde = new Date().toISOString();
+  item.sinStockPor = currentEmp ? currentEmp.nombre : '—';
+  saveItemsManuales(items);
+  reportarStock(item.nombre, 'sin');
+  filterAll();
+  showToast('🚫 '+item.nombre+' marcado SIN STOCK');
+}
+
+// Revierte la marca de sin stock — desde el panel de venta (cuando se
+// repone) o al resolver la alerta desde el panel admin (ver resolverStock).
+function marcarSueltoConStock(it) {
+  var items = getItemsManuales();
+  var item = items.find(function(x){ return x.id === it.id; });
+  if(!item) return;
+  item.sinStock = false;
+  saveItemsManuales(items);
+  // Resolver también la alerta pendiente, si hay una: si no, quedaba
+  // colgada en el panel admin después de reponer el producto.
+  var alerts = getStockAlerts();
+  var alerta = alerts.find(function(a){ return a.nombre === item.nombre && a.tipo === 'sin' && !a.resuelta; });
+  if(alerta){ alerta.resuelta = true; saveStockAlerts(alerts); }
+  filterAll();
+  showToast('✅ '+item.nombre+' vuelve a tener stock');
+}
+
 // ── ALERTA DE STOCK AL AGREGAR ─────────────────────────────────────────────
 function getStockProd(nombre) {
   var inv = getStockInv();
@@ -14566,24 +14613,45 @@ function renderList(list, term) {
 
     itemsSueltos.forEach(function(it){
       var sufijo = it.unidad==='unidad' ? ' c/u' : (it.unidad==='pesokg' ? ' /kg' : ' /100g');
+      var sinStock = !!it.sinStock;
       var tr = document.createElement('tr');
-      tr.style.background = 'rgba(244,180,0,.07)';
-      tr.onclick = function(){ usarSueltoEnVenta(it); };
+      tr.style.background = sinStock ? 'rgba(210,32,31,.10)' : 'rgba(244,180,0,.07)';
+      // Marcado sin stock: no tiene sentido dejar cargarlo al carrito, así
+      // que se saca el click de la fila entera (solo queda el botón de
+      // "✅ Ya hay stock" para revertirlo).
+      if(!sinStock) tr.onclick = function(){ usarSueltoEnVenta(it); };
       var td1 = document.createElement('td');
       td1.style.fontSize = '.85rem';
-      td1.innerHTML = '<span>🧀 '+(term ? hl(it.nombre, term) : it.nombre)+'</span>';
+      td1.innerHTML = '<span'+(sinStock?' style="opacity:.6"':'')+'>🧀 '+(term ? hl(it.nombre, term) : it.nombre)+'</span>'+
+        (sinStock ? '<span class="badge-agotado">SIN STOCK</span>' : '');
       var td2 = document.createElement('td');
       td2.className = 'td-p';
-      td2.style.color = 'var(--gold)';
+      td2.style.color = sinStock ? 'var(--gray)' : 'var(--gold)';
       td2.textContent = fmt(it.precioKg)+sufijo;
       var td3 = document.createElement('td');
       td3.className = 'td-add';
-      var btnSuelto = document.createElement('button');
-      btnSuelto.className = 'add-btn';
-      btnSuelto.textContent = '📝';
-      btnSuelto.title = 'Cargar en Ítem manual';
-      btnSuelto.onclick = function(e){ e.stopPropagation(); usarSueltoEnVenta(it); };
-      td3.appendChild(btnSuelto);
+      td3.style.whiteSpace = 'nowrap';
+      if(!sinStock){
+        var btnSuelto = document.createElement('button');
+        btnSuelto.className = 'add-btn';
+        btnSuelto.textContent = '📝';
+        btnSuelto.title = 'Cargar en Ítem manual';
+        btnSuelto.onclick = function(e){ e.stopPropagation(); usarSueltoEnVenta(it); };
+        td3.appendChild(btnSuelto);
+      }
+      // Botón para avisar que se acabó (o que volvió a haber): se ve tanto en
+      // el catálogo web (aparece como "Sin stock", no se puede pedir) como en
+      // el panel admin (badge de alertas de stock, junto a ⚙).
+      var btnStock = document.createElement('button');
+      btnStock.className = 'add-btn';
+      btnStock.style.marginLeft = '4px';
+      btnStock.textContent = sinStock ? '✅' : '🚫';
+      btnStock.title = sinStock ? 'Marcar que ya hay stock de nuevo' : 'Marcar SIN STOCK (avisa en el catálogo web y en el panel admin)';
+      btnStock.onclick = function(e){
+        e.stopPropagation();
+        if(sinStock) marcarSueltoConStock(it); else marcarSueltoSinStock(it);
+      };
+      td3.appendChild(btnStock);
       tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
       tbody.appendChild(tr);
     });
