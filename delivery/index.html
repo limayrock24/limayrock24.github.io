@@ -4422,6 +4422,7 @@ body.night-on{background:#080005}
         <option value="transferencia">🔄 Cambio entre cuentas no registrado</option>
         <option value="venta">🛒 Venta no registrada (producto)</option>
         <option value="contado">🖊 Corregir el monto contado (error al cargar el cierre)</option>
+        <option value="efectivoInicial">🌅 Corregir el efectivo inicial del turno (error al abrir el cierre)</option>
       </select>
     </div>
     <div class="field" id="corrProvField" style="display:none">
@@ -10251,6 +10252,11 @@ function renderCierres() {
               (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
               '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
           }
+          if(cor.tipo === 'efectivoInicial'){
+            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🌅 Efectivo inicial corregido (post-cierre): '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
+              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
+              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          }
           if(cor.tipo === 'transferencia'){
             return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🔄 Cambio no registrado: '+(NOMBRES_CUENTA_TC[cor.desde]||cor.desde)+' → '+(NOMBRES_CUENTA_TC[cor.hacia]||cor.hacia)+': <b>'+fmt(cor.monto)+'</b>'+
               (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
@@ -10398,6 +10404,11 @@ function cambiarTipoCorreccionCierre() {
     var actual = c && c.arqueo ? (c.arqueo.contado||0) : 0;
     if(lbl) lbl.textContent = 'Monto contado correcto ($) — hoy dice '+fmt(actual);
     if(ayuda) ayuda.textContent = 'Reemplaza el monto contado de este cierre por el correcto y recalcula la diferencia (sobrante/faltante) al instante. No toca ventas, egresos ni ningún otro dato — solo corrige el error de carga. Queda anotado el valor anterior, el nuevo, el motivo, quién y cuándo.';
+  } else if(tipo === 'efectivoInicial'){
+    var cIni = (window.__lrCierresRenderCache||[])[_corrCierreIdx];
+    var actualIni = cIni && cIni.arqueo ? (cIni.arqueo.efectivoInicial||0) : 0;
+    if(lbl) lbl.textContent = 'Efectivo inicial correcto ($) — hoy dice '+fmt(actualIni);
+    if(ayuda) ayuda.textContent = 'Reemplaza el efectivo inicial de este turno por el correcto y recalcula el esperado y la diferencia (sobrante/faltante) al instante. No toca ventas, egresos ni ningún otro dato — solo corrige el error de carga del inicio del turno. Queda anotado el valor anterior, el nuevo, el motivo, quién y cuándo.';
   } else if(tipo === 'transferencia'){
     if(lbl) lbl.textContent = 'Monto ($)';
     if(ayuda) ayuda.textContent = 'Registra un cambio entre cuentas (ej: Mercado Pago → Efectivo) con la fecha de este cierre. Si mueve efectivo hacia o desde la caja, ajusta el esperado y la diferencia de ESTE cierre. Queda anotado quién y cuándo.';
@@ -10421,7 +10432,7 @@ function guardarCorreccionCierre() {
   var nota = document.getElementById('corrNota').value.trim();
   // Para "contado" el valor correcto puede ser $0 (caja quedó vacía) — solo
   // los otros dos tipos son un movimiento que no tiene sentido cargar en $0.
-  if(tipo === 'contado'){
+  if(tipo === 'contado' || tipo === 'efectivoInicial'){
     if(monto < 0){ showToast('Ingresá un monto válido', true); return; }
   } else if(!monto || monto<=0){ showToast('Ingresá un monto válido', true); return; }
 
@@ -10458,6 +10469,35 @@ function guardarCorreccionCierre() {
     _corrCierreIdx = null;
     renderCierres();
     showToast('✅ Monto contado corregido');
+    return;
+  }
+
+  if(tipo === 'efectivoInicial') {
+    // Igual que "contado": corrige un error de carga (esta vez del inicio del
+    // turno), no un movimiento de plata real — ajusta el esperado por la
+    // diferencia y recalcula, sin tocar ventas/egresos/movimientos.
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+    var iniAnterior = real.arqueo.efectivoInicial || 0;
+    var deltaIni = monto - iniAnterior;
+    real.arqueo.efectivoInicial = monto;
+    real.arqueo.esperado = (real.arqueo.esperado||0) + deltaIni;
+    real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+
+    if(!real.correcciones) real.correcciones = [];
+    real.correcciones.push({
+      tipo: 'efectivoInicial',
+      montoAnterior: iniAnterior,
+      montoNuevo: monto,
+      nota: nota,
+      fecha: new Date().toISOString(),
+      autor: currentEmp ? currentEmp.nombre : 'Admin'
+    });
+
+    saveCierres(cierres);
+    document.getElementById('corregirCierreModal').classList.remove('open');
+    _corrCierreIdx = null;
+    renderCierres();
+    showToast('✅ Efectivo inicial corregido');
     return;
   }
 
