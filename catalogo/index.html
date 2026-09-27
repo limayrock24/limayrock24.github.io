@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790469007";
+window.__LR_BUILD = "1790475084";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -591,14 +591,11 @@ function fmt(n){ return '$' + Number(n||0).toLocaleString('es-AR'); }
 function idSeguro(s){ return String(s).replace(/\//g, '-'); }
 function escJs(s){ return String(s).replace(/'/g, "\\'"); }
 
-setTimeout(function(){
-  sesionVencida = true;
-  document.getElementById('mainContent').style.display = 'none';
-  document.getElementById('cartOverlay').classList.remove('show');
-  document.getElementById('datosOverlay').classList.remove('show');
-  document.getElementById('confirmOverlay').classList.remove('show');
-  document.getElementById('expiredScreen').classList.add('show');
-}, DURACION_SESION_MIN * 60 * 1000);
+// Antes, a los DURACION_SESION_MIN minutos de tener el catálogo abierto, se
+// bloqueaba todo pidiendo actualizar la página ("Se venció la sesión"). Se
+// sacó ese límite: el catálogo ahora se puede dejar abierto todo lo que haga
+// falta sin que se corte solo. sesionVencida queda en el código (nunca pasa
+// a true) para no tocar el resto de las funciones que ya la usan como freno.
 
 let deliveryListo = false, productosListos = false, stockListos = false, promosListos = false, itemsManualesListos = false, combosListos = false, gruposListos = false;
 
