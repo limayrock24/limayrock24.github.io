@@ -8811,7 +8811,8 @@ function anularVentaDirecto(id, alTerminar) {
         }
       }
     });
-    saveStockInv(inv);
+    window.__lrStockInvCache = inv;
+    guardarOperacionProtegida('StockInv', getStockInv, 'Anulación de venta #'+id+' — stock devuelto');
 
     // Registrar en movimientos
     registrarOperacion('ingreso', (v.items||[]).map(function(i){
@@ -8858,7 +8859,7 @@ function anularVentaDirecto(id, alTerminar) {
     if(typeof renderVentas==='function') renderVentas('');
     if(typeof updateStockNotif==='function') updateStockNotif();
     if(typeof filterAll==='function') filterAll();
-    showToast('Venta anulada — stock devuelto');
+    showToast('Venta anulada');
     if(typeof alTerminar === 'function') alTerminar();
   })();
 }
@@ -10998,7 +10999,8 @@ function eliminarConsumoMov(id) {
           inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
         }
       });
-      saveStockInv(inv);
+      window.__lrStockInvCache = inv;
+      guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por consumo eliminado');
     }
     consumos.splice(idx, 1);
     saveConsumos(consumos);
@@ -12713,7 +12715,8 @@ function registrarEgreso() {
 
   var egresos = getEgresos();
   egresos.push(egreso);
-  saveEgresos(egresos);
+  window.__lrEgresosCache = egresos;
+  guardarOperacionProtegida('Egresos', getEgresos, 'Egreso a '+prov+' ($'+Number(monto).toLocaleString('es-AR')+')');
 
   // Registrar en movimientos (igual que hace Recepción, para que el pago
   // aparezca una sola vez y en el mismo lugar sin importar desde dónde se cargó).
@@ -12740,7 +12743,6 @@ function registrarEgreso() {
   cambiarCatEgreso();
   selEgMedio('Efectivo');
   renderEgresos();
-  showToast('💸 Egreso registrado: $'+Number(monto).toLocaleString('es-AR'));
 }
 
 function renderEgresos() {
@@ -13162,13 +13164,13 @@ function eliminarEgreso(id) {
   askConfirm('¿Eliminás este egreso?').then(function(ok){
     if(!ok) return;
     var egresos = getEgresos().filter(function(e){ return e.id!==id; });
-    saveEgresos(egresos);
+    window.__lrEgresosCache = egresos;
+    guardarOperacionProtegida('Egresos', getEgresos, 'Egreso eliminado');
     // Borrar también el movimiento asociado (mismo id), si existe
     var movs = getMovimientos();
     var movsSinEste = movs.filter(function(m){ return m.id!==id; });
     if(movsSinEste.length !== movs.length) saveMovimientos(movsSinEste);
     renderEgresos();
-    showToast('Egreso eliminado');
   });
 }
 
@@ -16201,7 +16203,8 @@ function confirmarFiadoParcial(){
     fechaPago: null,
     nota:      'Saldo de una compra de '+fmt(total)+' — pagó '+fmt(paga)+' en '+_fpMedio
   });
-  saveFiados(fiados);
+  window.__lrFiadosCache = fiados;
+  guardarOperacionProtegida('Fiados', getFiados, 'Fiado parcial de '+nombre+' ('+fmt(resto)+')');
 
   // 3) El stock se descuenta COMPLETO: se llevó toda la mercadería
   descontarStock(cart, 'venta');
@@ -16239,7 +16242,8 @@ function registrarFiado() {
     pagado:   false,
     fechaPago: null
   });
-  saveFiados(fiados);
+  window.__lrFiadosCache = fiados;
+  guardarOperacionProtegida('Fiados', getFiados, 'Fiado a '+nombre+' ('+fmt(subtotal)+')');
   descontarStock(cart, 'fiado');
   registrarOperacion('fiado', cart, subtotal, currentEmp?currentEmp.nombre:'—', 'Fiado a '+nombre);
   updateProdCount(cart);
@@ -16433,11 +16437,12 @@ function eliminarClienteFiado(nombre) {
         if(inv[item.name] !== undefined) inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
       });
     });
-    saveStockInv(inv);
+    window.__lrStockInvCache = inv;
+    guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiados de '+nombre);
     var restantes = fiados.filter(function(f){ return f.cliente !== nombre; });
-    saveFiados(restantes);
+    window.__lrFiadosCache = restantes;
+    guardarOperacionProtegida('Fiados', getFiados, 'Cliente "'+nombre+'" eliminado ('+delFiados.length+' fiados)');
     renderFiados();
-    showToast('Cliente "'+nombre+'" eliminado ('+delFiados.length+' fiados)');
   });
 }
 
@@ -16456,12 +16461,13 @@ function eliminarFiado(id) {
           inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
         }
       });
-      saveStockInv(inv);
+      window.__lrStockInvCache = inv;
+      guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiado de '+f.cliente);
     }
     fiados.splice(idx, 1);
-    saveFiados(fiados);
+    window.__lrFiadosCache = fiados;
+    guardarOperacionProtegida('Fiados', getFiados, 'Fiado de '+f.cliente+' eliminado');
     renderFiados();
-    showToast('Fiado eliminado');
   });
 }
 
@@ -16484,7 +16490,8 @@ function saldarFiado(cliente) {
         (f.items||[]).forEach(function(i){ itemsCobrados.push(i); });
       }
     });
-    saveFiados(fiados);
+    window.__lrFiadosCache = fiados;
+    guardarOperacionProtegida('Fiados', getFiados, 'Fiados de '+cliente+' cobrados ('+fmt(totalCobrado)+')');
 
     // Registrar como ingreso en VENTAS
     if(totalCobrado > 0){
@@ -16513,7 +16520,6 @@ function saldarFiado(cliente) {
     }
 
     renderFiados();
-    showToast('✓ Fiados de '+cliente+' cobrados: '+fmt(totalCobrado));
   });
 }
 
@@ -19054,7 +19060,8 @@ function confirmarCobroFiado() {
       }
     });
   }
-  saveFiados(fiados);
+  window.__lrFiadosCache = fiados;
+  guardarOperacionProtegida('Fiados', getFiados, (_cobroTipo==='total'?'Cobro total':'Cobro parcial')+' de fiado — '+_cobroCliente+' ('+fmt(totalCobrado)+')');
 
   VENTAS = getVentas();
   var ventaFiado={
@@ -19449,7 +19456,8 @@ function confirmarDevolucionConsign() {
   itemsDevueltos.forEach(function(i){
     if(inv[i.name]) inv[i.name].stock = (inv[i.name].stock||0) + i.qty;
   });
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Devolución de consignación de '+c.cliente);
 
   registrarOperacion('devolucion-consignacion', itemsDevueltos, montoTotal, currentEmp?currentEmp.nombre:'Admin', 'Devolución de '+c.cliente);
 
@@ -21249,7 +21257,8 @@ function guardarProdModal() {
   }
   inv[nombre].stock  = nuevoStock;
   inv[nombre].minimo = nuevoMin;
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Stock de '+nombre);
 
   // Sincronizar proveedor(es) asignados desde la lista de chips
   var provsElegidos = _pmProveedoresAsignados.slice();
@@ -22222,8 +22231,8 @@ function confirmarRecepcionMerc(provIdx) {
     return;
   }
 
-  saveStockInv(inv);
-  saveLocal();
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Recepción de '+prov.nombre+' — '+movItems.length+' producto'+(movItems.length>1?'s':''));
   filterAll();
 
   var movs=getMovimientos();
@@ -22241,7 +22250,6 @@ function confirmarRecepcionMerc(provIdx) {
   saveMovimientos(movs);
   autoSaveNow();
 
-  showToast('✅ Recepción de '+prov.nombre+' registrada — '+movItems.length+' producto'+(movItems.length>1?'s':''));
   initRecepMerc();
 }
 
@@ -22921,7 +22929,8 @@ function confirmarIngresoRecep(idx) {
   var despues = antes + cant;
   inv[p.name].stock = despues;
   if(costo>0) inv[p.name].costo = costo;
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, '+'+cant+' u. de '+p.name+' — Stock: '+despues);
 
   var movs=getMovimientos();
   movs.push({id:Date.now(),fecha:new Date().toISOString(),tipo:'ingreso',resumen:p.name+' ×'+cant+' unidades',total:costo*cant,responsable:_recepEmp?_recepEmp.nombre:'Recepción',extra:'Recepción de mercadería',items:[{nombre:p.name,qty:cant,precio:costo,subtotal:costo*cant,stock:despues}]});
@@ -22932,7 +22941,6 @@ function confirmarIngresoRecep(idx) {
   document.getElementById('recepCantIngreso').value='';
   var stockEl = document.getElementById('recepStockActual');
   if(stockEl) stockEl.textContent = despues+' unidades';
-  showToast('✅ +'+cant+' u. de '+p.name+' — Stock: '+despues);
   renderRecepCatalogo();
 }
 
@@ -23072,7 +23080,8 @@ function confirmarRecepMerc() {
     recibidos.push({nombre:prod, qty:qty, antes:antes, despues:inv[prod].stock});
   });
 
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Recepción de '+(_recepMercProv?_recepMercProv.nombre:'proveedor')+' — '+recibidos.length+' producto'+(recibidos.length!==1?'s':''));
 
   // Registrar en movimientos de stock
   var movs = getStockMovs();
@@ -23087,7 +23096,6 @@ function confirmarRecepMerc() {
 
   updateStockNotif();
   cerrarRecepMerc();
-  showToast('✅ '+recibidos.length+' producto'+(recibidos.length!==1?'s':'')+' ingresados al stock');
 }
 
 function initRecepEgresos() {
@@ -23227,7 +23235,8 @@ function confirmarEgresoRecep() {
   var egreso = {id:Date.now(),fecha:hoy,ts:new Date().toISOString(),prov:prov,proveedor:prov,monto:monto,medio:medio,nota:nota,responsable:_recepEmp?_recepEmp.nombre:'Recepción'};
   if(mixtoData) egreso.mixto = mixtoData;
   egresos.push(egreso);
-  saveEgresos(egresos);
+  window.__lrEgresosCache = egresos;
+  guardarOperacionProtegida('Egresos', getEgresos, 'Pago a '+prov+' ('+fmt(monto)+')');
   autoSaveNow();
 
   // Registrar en movimientos
@@ -23238,7 +23247,6 @@ function confirmarEgresoRecep() {
   saveMovimientos(movs);
 
   initRecepEgresos(); // re-render para refrescar el select con el nuevo proveedor si se agregó
-  showToast('✅ Pago registrado: '+fmt(monto)+' a '+prov);
 }
 
 function renderRecepEgresosHist() {
@@ -24072,7 +24080,8 @@ function guardarCargaStock() {
   var stockAntes = inv[_cargaStockProdSel].stock || 0;
   var stockDespues = nuevo;
   inv[_cargaStockProdSel].stock = stockDespues;
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, _cargaStockProdSel+': '+stockAntes+' → '+stockDespues);
 
   var movs = getStockMovs();
   movs.push({
@@ -24089,7 +24098,6 @@ function guardarCargaStock() {
   // desde la misma pantalla que el resto de los movimientos del negocio.
   registrarMovimiento('ajuste-stock', _cargaStockProdSel, stockDespues - stockAntes, stockAntes, stockDespues, currentEmp ? currentEmp.nombre : (window.__lrAdminSinTurno ? 'Admin' : 'Empleado'));
 
-  showToast('✓ '+_cargaStockProdSel+': '+stockAntes+' → '+stockDespues);
   autoSaveNow();
 
   document.getElementById('cargaStockEditor').style.display = 'none';
@@ -27247,7 +27255,8 @@ function ingresarStock() {
     precio:precio,
     tipo:'ingreso'
   });
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Stock actualizado: +'+cant+' unidades de '+key);
 
   // Actualizar precio en PRODUCTS
   if(costo>0) prod.costo=costo;
@@ -27263,7 +27272,6 @@ function ingresarStock() {
   _stockSelNombre=null;
 
   renderInventario();
-  showToast('✅ Stock actualizado: +'+cant+' unidades de '+key);
 }
 
 // ── PRODUCTOS VENDIDOS POR FECHA (para controlar stock físico vs sistema) ──
@@ -27846,7 +27854,9 @@ function descontarStock(items, tipoMov) {
       descontarUnProd(item.name, item.qty);
     }
   });
-  saveStockInv(inv);
+  var etiquetaTipo = {venta:'Venta', consumo:'Consumo', fiado:'Fiado', consignacion:'Consignación'}[tipo] || 'Descuento de stock';
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, etiquetaTipo+' — '+items.length+' producto(s)');
   if(alertas.length) updateStockNotif();
 }
 
@@ -28499,7 +28509,8 @@ function confirmarAjusteStock() {
   var nota = document.getElementById('ajusteEntradaNota').value.trim() || 'Entrada de mercadería';
 
   inv[_ajusteStockProd].stock = stockDespues;
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, _ajusteStockProd+': '+stockAntes+' → '+stockDespues+' (+'+cant+')');
 
   var movs = getStockMovs();
   movs.push({id:Date.now(),ts:new Date().toISOString(),producto:_ajusteStockProd,tipo:'entrada',stockAntes:stockAntes,stockDespues:stockDespues,diferencia:cant,nota:nota,responsable:currentEmp?currentEmp.nombre:'Admin'});
@@ -28511,7 +28522,6 @@ function confirmarAjusteStock() {
 
   document.getElementById('ajusteStockModal').classList.remove('open');
   renderInventario();
-  showToast('✓ '+_ajusteStockProd+': '+stockAntes+' → '+stockDespues+' (+'+cant+')');
   autoSaveNow();
 }
 
@@ -28548,7 +28558,8 @@ function confirmarRetiroVencido() {
   var stockDespues = Math.max(0, stockAntes - cant);
 
   inv[_retiroVencidoProd].stock = stockDespues;
-  saveStockInv(inv);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, _retiroVencidoProd+': '+stockAntes+' → '+stockDespues+' ('+motivo+')');
 
   // Se registra SOLO como movimiento de stock — nunca toca ventas, ingresos ni fiados/deuda
   var movs = getStockMovs();
@@ -28570,7 +28581,6 @@ function confirmarRetiroVencido() {
   if(typeof renderRecepCatalogo==='function') renderRecepCatalogo();
   var stockEl = document.getElementById('recepStockActual');
   if(stockEl) stockEl.textContent = stockDespues+' unidades';
-  showToast('🗑 '+_retiroVencidoProd+': '+stockAntes+' → '+stockDespues+' ('+motivo+')');
   autoSaveNow();
 }
 
