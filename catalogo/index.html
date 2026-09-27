@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790395370";
+window.__LR_BUILD = "1790469007";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -431,6 +431,14 @@ let ZONA_CFG = null;
 let ZONA_ACTUAL = null;   // 'urbana' | 'rural' | null (todavía sin ubicación)
 let DELIVERY_ACTIVO = true;
 
+// Elige el costo nocturno si corresponde (00 a 08hs, igual que los precios de
+// productos) y hay uno cargado; si no, se cobra el mismo costo de siempre.
+// PRECIO_NOCTURNO se declara más abajo, pero para cuando esta función se
+// llama de verdad (siempre async, tras el primer onSnapshot) ya está definida.
+function costoSegunHorario(base, baseNoc){
+  return (PRECIO_NOCTURNO && baseNoc != null) ? baseNoc : base;
+}
+
 // Actualiza el banner de arriba y el aviso de pausa según el estado del
 // delivery. El catálogo se ve siempre — esto solo avisa si se puede pedir
 // o no, y oculta el botón flotante del carrito mientras está en pausa para
@@ -442,7 +450,7 @@ function actualizarBannerDelivery(){
   if(!estadoEl) return;
   if(DELIVERY_ACTIVO){
     estadoEl.className = 'db-item db-green';
-    var costoBase = (ZONA_CFG && ZONA_CFG.costoUrbano != null) ? ZONA_CFG.costoUrbano : COSTO_ENVIO;
+    var costoBase = (ZONA_CFG && ZONA_CFG.costoUrbano != null) ? costoSegunHorario(ZONA_CFG.costoUrbano, ZONA_CFG.costoUrbanoNoc) : COSTO_ENVIO;
     estadoEl.textContent = costoBase > 0
       ? '🛵 Delivery activo — envío desde ' + fmt(costoBase)
       : '🛵 Delivery activo ahora';
@@ -472,7 +480,7 @@ function distanciaKm(lat1, lng1, lat2, lng2){
 function recalcularEnvioPorZona(){
   if(!ZONA_CFG || ZONA_CFG.lat == null || !UBICACION_GPS){
     ZONA_ACTUAL = null;
-    if(ZONA_CFG && ZONA_CFG.costoUrbano != null) COSTO_ENVIO = ZONA_CFG.costoUrbano;
+    if(ZONA_CFG && ZONA_CFG.costoUrbano != null) COSTO_ENVIO = costoSegunHorario(ZONA_CFG.costoUrbano, ZONA_CFG.costoUrbanoNoc);
     actualizarCartelZona();
     return;
   }
@@ -481,8 +489,8 @@ function recalcularEnvioPorZona(){
   ZONA_ACTUAL = (km <= radio) ? 'urbana' : 'rural';
   ZONA_DISTANCIA = km;
   COSTO_ENVIO = (ZONA_ACTUAL === 'rural')
-    ? (ZONA_CFG.costoRural != null ? ZONA_CFG.costoRural : COSTO_ENVIO)
-    : (ZONA_CFG.costoUrbano != null ? ZONA_CFG.costoUrbano : COSTO_ENVIO);
+    ? costoSegunHorario(ZONA_CFG.costoRural != null ? ZONA_CFG.costoRural : COSTO_ENVIO, ZONA_CFG.costoRuralNoc)
+    : costoSegunHorario(ZONA_CFG.costoUrbano != null ? ZONA_CFG.costoUrbano : COSTO_ENVIO, ZONA_CFG.costoUrbanoNoc);
   actualizarCartelZona();
   // Refrescar los montos que están a la vista en el carrito, para que el
   // cliente vea el envío corregido en el momento en que comparte su ubicación.
@@ -614,6 +622,10 @@ setInterval(function(){
     PRECIO_NOCTURNO = deberia;
     if(typeof renderList === 'function') renderList();
     if(typeof renderPromos === 'function') renderPromos();
+    // El envío también tiene su tarifa nocturna (si está cargada) — recalcular
+    // y refrescar el banner de arriba al cruzar las 00:00 u 08:00.
+    recalcularEnvioPorZona();
+    actualizarBannerDelivery();
   }
 }, 60000);
 
@@ -621,12 +633,14 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
   ZONA_CFG = doc.exists ? (doc.data().zonaCfg || null) : null;
-  recalcularEnvioPorZona();
-  // El precio nocturno se decide por la HORA, igual que en el panel de venta:
-  // de 00:00 a 08:00 rigen los nocturnos. Antes dependía de que alguien se
-  // acordara de tildar la casilla en el admin, y si se olvidaba, el catálogo
-  // mostraba precios diurnos toda la madrugada.
+  // El precio nocturno (productos Y envío) se decide por la HORA, igual que
+  // en el panel de venta: de 00:00 a 08:00 rigen los nocturnos. Antes
+  // dependía de que alguien se acordara de tildar la casilla en el admin, y
+  // si se olvidaba, el catálogo mostraba precios diurnos toda la madrugada.
+  // Se calcula ANTES de recalcularEnvioPorZona() porque esa función ya elige
+  // entre el costo de envío diurno/nocturno según este valor.
   PRECIO_NOCTURNO = (function(){ var h = new Date().getHours(); return h >= 0 && h < 8; })();
+  recalcularEnvioPorZona();
 
   // Antes, con el delivery en pausa, se bloqueaba TODO el catálogo con una
   // pantalla completa. Ahora el catálogo se puede ver siempre — solo cambia

@@ -26168,6 +26168,21 @@ function renderConfigZonas(){
       '</div>'+
     '</div>'+
 
+    // Envío nocturno: mismo criterio que los precios nocturnos de productos
+    // (00 a 08hs). Si se deja vacío, el catálogo cobra el mismo envío de día
+    // a toda hora — no rompe nada para quien no lo configure.
+    '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🌙 Envío nocturno (00 a 08hs) — opcional, si lo dejás vacío se cobra igual que de día</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío urbano nocturno</div>'+
+        '<input type="number" value="'+(z.costoUrbanoNoc != null ? z.costoUrbanoNoc : '')+'" min="0" placeholder="'+(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+'" oninput="guardarZonaCfgDemorado(\'costoUrbanoNoc\', this.value)" onblur="guardarZonaCfg(\'costoUrbanoNoc\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--green);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío rural nocturno</div>'+
+        '<input type="number" value="'+(z.costoRuralNoc != null ? z.costoRuralNoc : '')+'" min="0" placeholder="'+(z.costoRural != null ? z.costoRural : 0)+'" oninput="guardarZonaCfgDemorado(\'costoRuralNoc\', this.value)" onblur="guardarZonaCfg(\'costoRuralNoc\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+    '</div>'+
+
     '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
       // Elegir en el mapa es la forma cómoda desde la computadora; el GPS
       // sirve si se está parado en el local con el celular.
@@ -26188,7 +26203,14 @@ function renderConfigZonas(){
 var _zonaCfgTimer = null;
 function guardarZonaCfgDemorado(campo, valor){
   if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
-  window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  // Los envíos nocturnos son opcionales: vacío = "cobrar igual que de día"
+  // (null). Sin esto, el campo vacío se guardaba como $0 y de noche el
+  // envío salía gratis con solo tocar el campo y salir.
+  if(/Noc$/.test(campo) && String(valor==null?'':valor).trim() === ''){
+    window.__lrZonaCfg[campo] = null;
+  } else {
+    window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  }
   if(campo === 'costoUrbano') window.__lrCostoEnvio = window.__lrZonaCfg[campo];
   clearTimeout(_zonaCfgTimer);
   _zonaCfgTimer = setTimeout(function(){ persistirZonaCfg(); }, 900);
@@ -26196,7 +26218,14 @@ function guardarZonaCfgDemorado(campo, valor){
 
 function guardarZonaCfg(campo, valor){
   if(!window.__lrZonaCfg) window.__lrZonaCfg = {};
-  window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  // Los envíos nocturnos son opcionales: vacío = "cobrar igual que de día"
+  // (null). Sin esto, el campo vacío se guardaba como $0 y de noche el
+  // envío salía gratis con solo tocar el campo y salir.
+  if(/Noc$/.test(campo) && String(valor==null?'':valor).trim() === ''){
+    window.__lrZonaCfg[campo] = null;
+  } else {
+    window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
+  }
   if(campo === 'costoUrbano') window.__lrCostoEnvio = window.__lrZonaCfg[campo];
   persistirZonaCfg();
   showToast('✓ Guardado');
