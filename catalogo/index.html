@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790475943";
+window.__LR_BUILD = "1790476258";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -111,6 +111,12 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
   background:linear-gradient(135deg,#D2201F,#F4B400);border:none;display:flex;align-items:center;justify-content:center;
   font-size:1.25rem;cursor:grab;box-shadow:0 4px 14px rgba(0,0,0,.5);touch-action:none;user-select:none}
 .floating-cart-btn.dragging{cursor:grabbing;transition:none}
+/* Botón de ayuda: mismo tamaño y posición "espejada" que el carrito, pero
+   fijo (no se arrastra) y con la paleta dorada en vez de roja, para que se
+   note que son dos botones distintos con funciones distintas. */
+.help-btn{position:fixed;top:14px;left:14px;z-index:60;width:38px;height:38px;border-radius:50%;
+  background:var(--surface);border:2px solid #F4B400;color:#F4B400;display:flex;align-items:center;justify-content:center;
+  font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5)}
 .floating-cart-badge{position:absolute;top:-3px;right:-3px;background:var(--green);color:#04231d;font-family:'Oswald',sans-serif;
   font-size:.65rem;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;
   padding:0 4px;border:2px solid var(--black)}
@@ -278,6 +284,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     🛒
     <span class="floating-cart-badge" id="floatingCartBadge" style="display:none">0</span>
   </button>
+  <!-- Botón de ayuda: fijo arriba a la izquierda (espejado del carrito, que
+       queda a la derecha), para que se note que es un botón del catálogo y
+       no un producto más. Abre el instructivo de cómo pedir. -->
+  <button type="button" class="help-btn" id="helpBtn" onclick="abrirAyuda()" title="¿Cómo hago mi pedido?">?</button>
   <div class="header">
     <img src="/logo.png" alt="Limay Rock Drugstore 24hs">
     <div class="sub">Pedí tu delivery</div>
@@ -287,15 +297,6 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <span class="db-sep"></span>
     <span class="db-item db-green" id="dbDeliveryEstado">🛵 Delivery activo ahora</span>
   </div>
-
-  <!-- Instructivo cortito de cómo pedir, siempre a la vista arriba del todo:
-       mucha gente entraba al catálogo, no entendía que había que tocar el
-       carrito para avanzar, y se iba sin pedir nada. Un botón chico y
-       discreto se perdía; esto va como una tira clickeable bien visible. -->
-  <button type="button" onclick="abrirAyuda()"
-    style="display:block;width:calc(100% - 32px);margin:0 16px 12px;background:rgba(244,180,0,.08);border:1px solid rgba(244,180,0,.35);border-radius:8px;padding:9px 12px;color:#F4B400;font-family:'Barlow',sans-serif;font-size:.78rem;text-align:center;cursor:pointer">
-    ❓ ¿Cómo hago mi pedido? <span style="text-decoration:underline">Tocá acá</span>
-  </button>
 
   <!-- Antes esto bloqueaba TODO el catálogo con una pantalla completa. Ahora
        el catálogo se puede ver siempre (para mirar precios y planear la
