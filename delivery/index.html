@@ -14295,6 +14295,13 @@ function calcularPillsCatalogoWeb() {
     var c = p.cat || 'General';
     if(cats.indexOf(c) === -1) cats.push(c);
   });
+  // Igual que el catálogo: una categoría con solo ítems manuales (sueltos)
+  // también tiene su pestaña, así que tiene que poder ordenarse acá.
+  getItemsManuales().forEach(function(it){
+    if(it.activo === false) return;
+    var c = it.categoria || 'General';
+    if(cats.indexOf(c) === -1) cats.push(c);
+  });
   var grupos = getGruposCategorias();
   var pills = [];
   cats.forEach(function(c){
