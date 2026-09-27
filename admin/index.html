@@ -10260,31 +10260,30 @@ function renderCierres() {
       correccionesHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">'+
         '<div style="font-size:.65rem;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-family:Oswald,sans-serif">🛠 Correcciones aplicadas</div>'+
         correccionesIniHtml+
-        (c.correcciones||[]).map(function(cor){
+        (c.correcciones||[]).map(function(cor, k){
+          var cuerpo;
           if(cor.tipo === 'contado'){
-            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🖊 Monto contado corregido: '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
-              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
-              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+            cuerpo = '🖊 Monto contado corregido: '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>';
+          } else if(cor.tipo === 'efectivoInicial'){
+            cuerpo = '🌅 Efectivo inicial corregido (post-cierre): '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>';
+          } else if(cor.tipo === 'transferencia'){
+            cuerpo = '🔄 Cambio no registrado: '+(NOMBRES_CUENTA_TC[cor.desde]||cor.desde)+' → '+(NOMBRES_CUENTA_TC[cor.hacia]||cor.hacia)+': <b>'+fmt(cor.monto)+'</b>';
+          } else if(cor.tipo === 'venta'){
+            cuerpo = '🛒 Venta no registrada: '+(cor.cantidad||1)+'× '+(cor.producto||'producto')+' ('+(cor.medio||'Efectivo')+'): <b>'+fmt(cor.monto)+'</b>';
+          } else {
+            cuerpo = (cor.tipo==='ingreso' ? '+ Ingreso fuera de caja' : '− Egreso a '+(cor.proveedor||'proveedor')+' no registrado')+': <b>'+fmt(cor.monto)+'</b>';
           }
-          if(cor.tipo === 'efectivoInicial'){
-            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🌅 Efectivo inicial corregido (post-cierre): '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>'+
-              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
-              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          cuerpo += (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '');
+
+          if(cor.anulada){
+            return '<div style="font-size:.72rem;color:var(--gray);margin-bottom:3px;text-decoration:line-through;opacity:.65">'+cuerpo+
+              '<div style="font-size:.62rem;color:var(--gray);text-decoration:none">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+
+              '<br>❌ Anulada por '+cor.anuladaPor+' · '+new Date(cor.anuladaFecha).toLocaleString('es-AR')+'</div></div>';
           }
-          if(cor.tipo === 'transferencia'){
-            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🔄 Cambio no registrado: '+(NOMBRES_CUENTA_TC[cor.desde]||cor.desde)+' → '+(NOMBRES_CUENTA_TC[cor.hacia]||cor.hacia)+': <b>'+fmt(cor.monto)+'</b>'+
-              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
-              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
-          }
-          if(cor.tipo === 'venta'){
-            return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">🛒 Venta no registrada: '+(cor.cantidad||1)+'× '+(cor.producto||'producto')+' ('+(cor.medio||'Efectivo')+'): <b>'+fmt(cor.monto)+'</b>'+
-              (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
-              '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
-          }
-          var etiqueta = cor.tipo==='ingreso' ? '+ Ingreso fuera de caja' : '− Egreso a '+(cor.proveedor||'proveedor')+' no registrado';
-          return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px">'+etiqueta+': <b>'+fmt(cor.monto)+'</b>'+
-            (cor.nota ? ' — <span style="color:var(--gray)">'+cor.nota+'</span>' : '')+
-            '<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></div>';
+          return '<div style="font-size:.72rem;color:var(--light);margin-bottom:3px;display:flex;justify-content:space-between;align-items:flex-start;gap:6px">'+
+            '<span>'+cuerpo+'<div style="font-size:.62rem;color:var(--gray)">'+cor.autor+' · '+new Date(cor.fecha).toLocaleString('es-AR')+'</div></span>'+
+            '<button onclick="event.stopPropagation();anularCorreccionCierre('+idx+','+k+')" title="Anular esta corrección" style="flex-shrink:0;background:none;border:1px solid rgba(255,255,255,.2);color:var(--gray);border-radius:4px;padding:2px 7px;font-size:.68rem;cursor:pointer">✕</button>'+
+          '</div>';
         }).join('')+
       '</div>';
     }
@@ -10515,10 +10514,16 @@ function guardarCorreccionCierre() {
     return;
   }
 
+  // Vincula esta corrección con el registro puntual que crea (egreso, retiro,
+  // transferencia o venta) y con su movimiento — así, si después hay que
+  // anularla, se sabe EXACTAMENTE qué borrar/revertir, sin adivinar.
+  var refIdCorr = null;
+
   if(tipo === 'ingreso') {
     var retiros = getRetirosCaja();
+    refIdCorr = Date.now();
     retiros.push({
-      id: Date.now(),
+      id: refIdCorr,
       monto: monto,
       tipo: 'ingreso',
       nota: (nota || 'Ingreso de efectivo fuera de caja') + ' (corrección post-cierre)',
@@ -10535,13 +10540,15 @@ function guardarCorreccionCierre() {
     registrarOperacion('ingreso-caja',
       [{name: nota || 'Ingreso de efectivo fuera de caja', qty:1, precio:monto, subtotal:monto}],
       monto, currentEmp ? currentEmp.nombre : 'Admin',
-      'Corrección del cierre de '+real.empleado+' ('+new Date(fechaCierre).toLocaleDateString('es-AR')+')');
+      'Corrección del cierre de '+real.empleado+' ('+new Date(fechaCierre).toLocaleDateString('es-AR')+')',
+      0, refIdCorr);
   } else if(tipo === 'egreso') {
     var prov = document.getElementById('corrProv').value;
     if(!prov){ showToast('Elegí un proveedor', true); return; }
     var egresos = getEgresos();
+    refIdCorr = Date.now();
     egresos.push({
-      id: Date.now(),
+      id: refIdCorr,
       prov: prov, proveedor: prov,
       categoria: 'proveedor',
       monto: monto,
@@ -10572,8 +10579,9 @@ function guardarCorreccionCierre() {
     if(!corrDesde || !corrHacia || corrDesde === corrHacia){ showToast('Elegí cuentas de origen y destino distintas', true); return; }
 
     var transfers = getTransferCuentas();
+    refIdCorr = Date.now();
     transfers.push({
-      id: Date.now(),
+      id: refIdCorr,
       fecha: fechaCierre,
       desde: corrDesde, hacia: corrHacia, monto: monto,
       nota: (nota || 'Cambio entre cuentas no registrado') + ' (corrección post-cierre)',
@@ -10613,8 +10621,9 @@ function guardarCorreccionCierre() {
     var recargoCorr = medioCorr === 'Débito' ? Math.round(monto - monto/getDebitoFactor()) : 0;
     var subtotalCorr = monto - recargoCorr;
     var itemCorr = { name: prodCorr.name, qty: cantCorr, precio: subtotalCorr/cantCorr, subtotal: subtotalCorr };
+    refIdCorr = Date.now();
     var ventaCorr = {
-      id: Date.now(),
+      id: refIdCorr,
       fecha: fechaCierre,
       empleado: real.empleado,
       turno: real.turno,
@@ -10673,6 +10682,7 @@ function guardarCorreccionCierre() {
     entradaCorreccion.cantidad = parseFloat(document.getElementById('corrProdCant').value) || 1;
     entradaCorreccion.medio = document.getElementById('corrProdMedio').value;
   }
+  if(refIdCorr) entradaCorreccion.refId = refIdCorr;
   real.correcciones.push(entradaCorreccion);
 
   saveCierres(cierres);
@@ -10680,6 +10690,116 @@ function guardarCorreccionCierre() {
   _corrCierreIdx = null;
   renderCierres();
   showToast('✅ Corrección aplicada');
+}
+
+// ── ANULAR UNA CORRECCIÓN YA APLICADA ───────────────────────────────────────
+// Solo desde el panel admin (esta pantalla ya vive adentro de .admin-panel).
+// No borra la corrección del historial: la marca "anulada" y revierte su
+// efecto en el arqueo del cierre, para que el historial completo quede
+// siempre a la vista (quién la cargó, quién la anuló, cuándo).
+//
+// Ojo con "contado" y "efectivoInicial": esos dos ESCRIBEN un valor absoluto
+// (no suman/restan), así que si hay OTRA corrección del mismo tipo cargada
+// DESPUÉS, anular esta de acá pisaría ese valor más nuevo sin querer. Por eso
+// se bloquea si no es la última de su tipo.
+//
+// "refId" vincula la corrección con el registro puntual que generó (egreso,
+// ingreso, transferencia o venta) — solo lo tienen las corregidas después de
+// este cambio. Las anteriores igual se pueden anular (revierte los números
+// del cierre bien), pero el registro suelto que generaron en su momento
+// (por ejemplo, el egreso en Admin → Egresos) hay que borrarlo a mano ahí.
+function anularCorreccionCierre(idx, i) {
+  var cierresVisibles = window.__lrCierresRenderCache || [];
+  var cVisible = cierresVisibles[idx];
+  if(!cVisible){ showToast('No se encontró ese cierre', true); return; }
+  var cierres = getCierres();
+  var real = cierres.find(function(x){ return x.fecha === cVisible.fecha && x.empleado === cVisible.empleado && x.horaFin === cVisible.horaFin; });
+  if(!real || !real.correcciones || !real.correcciones[i]){ showToast('No se encontró esa corrección', true); return; }
+  var cor = real.correcciones[i];
+  if(cor.anulada){ showToast('Esa corrección ya estaba anulada', true); return; }
+
+  if(cor.tipo === 'contado' || cor.tipo === 'efectivoInicial'){
+    var hayMasNuevaDelMismoTipo = real.correcciones.some(function(otra, j){
+      return j > i && otra.tipo === cor.tipo && !otra.anulada;
+    });
+    if(hayMasNuevaDelMismoTipo){
+      showToast('Primero anulá la corrección de "'+(cor.tipo==='contado'?'monto contado':'efectivo inicial')+'" más reciente de este cierre — esta quedó pisada por esa.', true);
+      return;
+    }
+  }
+
+  var avisoSinRefId = cor.refId ? '' :
+    ' Ojo: esta corrección es anterior a esta función, así que el registro que generó no se va a borrar solo — vas a tener que eliminarlo vos a mano donde corresponda (por ejemplo, en Egresos).';
+
+  askConfirm('¿Anular esta corrección? Se va a revertir su efecto en el arqueo de este cierre.'+avisoSinRefId).then(function(ok){
+    if(!ok) return;
+
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+
+    if(cor.tipo === 'contado'){
+      real.arqueo.contado = cor.montoAnterior||0;
+      real.arqueo.diferencia = real.arqueo.contado - (real.arqueo.esperado||0);
+    } else if(cor.tipo === 'efectivoInicial'){
+      var deltaIni = (cor.montoNuevo||0) - (cor.montoAnterior||0);
+      real.arqueo.efectivoInicial = cor.montoAnterior||0;
+      real.arqueo.esperado = (real.arqueo.esperado||0) - deltaIni;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+    } else if(cor.tipo === 'ingreso'){
+      real.arqueo.ingresosCaja = (real.arqueo.ingresosCaja||0) - cor.monto;
+      real.arqueo.esperado = (real.arqueo.esperado||0) - cor.monto;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+      if(cor.refId){
+        saveRetirosCaja(getRetirosCaja().filter(function(r){ return r.id !== cor.refId; }));
+        saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+      }
+    } else if(cor.tipo === 'egreso'){
+      real.arqueo.egresosEfectivo = (real.arqueo.egresosEfectivo||0) - cor.monto;
+      real.arqueo.esperado = (real.arqueo.esperado||0) + cor.monto;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+      if(cor.refId){
+        saveEgresos(getEgresos().filter(function(e){ return e.id !== cor.refId; }));
+        saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+      }
+    } else if(cor.tipo === 'transferencia'){
+      var netEfectivo = (cor.hacia==='Efectivo'?cor.monto:0) - (cor.desde==='Efectivo'?cor.monto:0);
+      if(netEfectivo !== 0){
+        real.arqueo.transferenciasCaja = (real.arqueo.transferenciasCaja||0) - netEfectivo;
+        real.arqueo.esperado = (real.arqueo.esperado||0) - netEfectivo;
+        real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+      }
+      if(cor.refId){
+        saveTransferCuentas(getTransferCuentas().filter(function(t){ return t.id !== cor.refId; }));
+        saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+      }
+    } else if(cor.tipo === 'venta'){
+      real.total = (real.total||0) - cor.monto;
+      real.cantVentas = Math.max(0, (real.cantVentas||0) - 1);
+      if(Array.isArray(real.ventas)){
+        var posVenta = real.ventas.findIndex(function(rv){ return rv.medio === cor.medio && rv.total === cor.monto; });
+        if(posVenta !== -1) real.ventas.splice(posVenta, 1);
+      }
+      if(cor.medio === 'Efectivo'){
+        real.arqueo.ventasEfectivo = (real.arqueo.ventasEfectivo||0) - cor.monto;
+        real.arqueo.esperado = (real.arqueo.esperado||0) - cor.monto;
+        real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+      }
+      if(cor.refId && typeof anularVentaDirecto === 'function'){
+        // La venta de la corrección es una venta real más (con
+        // correccionPostCierre:true) — se reusa la misma anulación que
+        // cualquier otra venta: devuelve stock, la marca anulada y borra
+        // su movimiento asociado.
+        anularVentaDirecto(cor.refId);
+      }
+    }
+
+    cor.anulada = true;
+    cor.anuladaPor = currentEmp ? currentEmp.nombre : 'Admin';
+    cor.anuladaFecha = new Date().toISOString();
+
+    saveCierres(cierres);
+    renderCierres();
+    showToast('✅ Corrección anulada');
+  });
 }
 
 // ── CORREGIR EFECTIVO INICIAL DEL TURNO ACTIVO ──────────────────────────────
