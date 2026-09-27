@@ -179,7 +179,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "1"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "2"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -733,6 +733,28 @@ function renderPanelRepartidor() {
   }).join('');
 }
 
+// ── HISTORIAL: agrupado por día, con totales de hoy/semana/mes ─────────────
+// "Ganancia" acá es SOLO el envío — es la plata que se lleva el repartidor,
+// no el total del pedido (eso es venta del local, no ingresa a su bolsillo).
+var _histExpandido = {}; // clave YYYY-MM-DD -> true/false, se acuerda entre renders
+
+function _histClaveDia(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _histInicioSemana(ref){
+  // Semana calendario lunes a domingo.
+  var d = new Date(ref); d.setHours(0,0,0,0);
+  var dow = d.getDay(); // 0=domingo .. 6=sábado
+  var diff = (dow === 0) ? 6 : dow - 1;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+function _histInicioMes(ref){
+  var d = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  d.setHours(0,0,0,0);
+  return d;
+}
+
 function renderHistorialRepartidor(){
   var cont = document.getElementById('repartidorLista');
   if(!cont || !currentEmp) return;
@@ -741,45 +763,94 @@ function renderHistorialRepartidor(){
     return p.repartidor === yo && p.estadoDelivery === 'entregado' && !p.anulado;
   }).sort(function(a,b){ return new Date(b.entregadoEn||b.fecha) - new Date(a.entregadoEn||a.fecha); });
 
-  var hoy = new Date(); hoy.setHours(0,0,0,0);
-  var deHoy = mios.filter(function(p){ return new Date(p.entregadoEn||p.fecha) >= hoy; });
-  var envioHoy = deHoy.reduce(function(s,p){ return s + (p.envio||0); }, 0);
-
-  var resumen =
-    '<div style="display:flex;gap:8px;margin-bottom:14px">'+
-      '<div style="flex:1;background:var(--card);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:10px;text-align:center">'+
-        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Hoy</div>'+
-        '<div style="font-family:Oswald,sans-serif;font-size:1.4rem;color:#22c55e">'+deHoy.length+'</div>'+
-      '</div>'+
-      '<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
-        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Envíos hoy</div>'+
-        '<div style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold)">'+fmt(envioHoy)+'</div>'+
-      '</div>'+
-      '<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">'+
-        '<div style="font-size:.6rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Total</div>'+
-        '<div style="font-family:Oswald,sans-serif;font-size:1.4rem;color:var(--white)">'+mios.length+'</div>'+
-      '</div>'+
-    '</div>';
-
   if(!mios.length){
-    cont.innerHTML = resumen + '<div style="text-align:center;color:var(--gray);padding:30px 20px;font-size:.85rem">Todavía no entregaste ningún pedido</div>';
+    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px 20px;font-size:.85rem">Todavía no entregaste ningún pedido</div>';
     return;
   }
 
-  cont.innerHTML = resumen + mios.slice(0,60).map(function(p){
+  var ahora = new Date();
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var inicioSemana = _histInicioSemana(ahora);
+  var inicioMes = _histInicioMes(ahora);
+  var claveHoy = _histClaveDia(hoy);
+
+  function totales(desde){
+    var enRango = mios.filter(function(p){ return new Date(p.entregadoEn||p.fecha) >= desde; });
+    return { cant: enRango.length, ganancia: enRango.reduce(function(s,p){ return s+(p.envio||0); }, 0) };
+  }
+  var tHoy = totales(hoy), tSemana = totales(inicioSemana), tMes = totales(inicioMes);
+
+  function tarjeta(titulo, t, destacado){
+    return '<div style="flex:1;background:var(--card);border:1px solid '+(destacado?'rgba(34,197,94,.35)':'var(--border)')+';border-radius:8px;padding:10px;text-align:center">'+
+      '<div style="font-size:.58rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">'+titulo+'</div>'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:'+(destacado?'#22c55e':'var(--white)')+'">'+t.cant+'</div>'+
+      '<div style="font-size:.72rem;color:var(--gold);margin-top:1px">'+fmt(t.ganancia)+'</div>'+
+    '</div>';
+  }
+  var resumen = '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+    tarjeta('Hoy', tHoy, true) + tarjeta('Esta semana', tSemana, false) + tarjeta('Este mes', tMes, false) +
+  '</div>';
+
+  // Agrupar por día (hasta 90 días atrás, para no acumular sin límite).
+  var limiteAtras = new Date(hoy); limiteAtras.setDate(limiteAtras.getDate() - 90);
+  var grupos = {}; // clave -> {fecha, items:[]}
+  var ordenClaves = [];
+  mios.forEach(function(p){
     var f = new Date(p.entregadoEn||p.fecha);
-    var esDeHoy = f >= hoy;
-    var cuando = esDeHoy
-      ? 'Hoy ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})
-      : f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.05)">'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
-        '<div style="font-size:.66rem;color:var(--gray)">'+cuando+(p.envio>0?' · envío '+fmt(p.envio):'')+'</div>'+
+    if(f < limiteAtras) return;
+    var clave = _histClaveDia(f);
+    if(!grupos[clave]){ grupos[clave] = { fecha: f, items: [] }; ordenClaves.push(clave); }
+    grupos[clave].items.push(p);
+  });
+
+  var htmlDias = ordenClaves.map(function(clave){
+    var g = grupos[clave];
+    var cantDia = g.items.length;
+    var gananciaDia = g.items.reduce(function(s,p){ return s+(p.envio||0); }, 0);
+    var esHoy = clave === claveHoy;
+    var etiquetaFecha = esHoy
+      ? 'Hoy'
+      : g.fecha.toLocaleDateString('es-AR',{weekday:'long', day:'2-digit', month:'2-digit'});
+    etiquetaFecha = etiquetaFecha.charAt(0).toUpperCase()+etiquetaFecha.slice(1);
+
+    // Por defecto: abiertos los días de ESTA semana (incluido hoy), colapsados
+    // los más viejos — salvo que el repartidor ya haya tocado ese día antes.
+    if(!(clave in _histExpandido)){
+      _histExpandido[clave] = (g.fecha >= inicioSemana);
+    }
+    var abierto = _histExpandido[clave];
+
+    var detalle = !abierto ? '' : g.items.map(function(p){
+      var f = new Date(p.entregadoEn||p.fecha);
+      var hora = f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray)">'+hora+(p.envio>0?' · envío '+fmt(p.envio):' · sin envío')+'</div>'+
+        '</div>'+
+        '<div style="font-family:Oswald,sans-serif;color:#22c55e;white-space:nowrap">'+fmt(p.total)+'</div>'+
+      '</div>';
+    }).join('');
+
+    return '<div style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
+      '<div onclick="toggleHistDia(\''+clave+'\')" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 12px;background:'+(esHoy?'rgba(34,197,94,.08)':'var(--card)')+';cursor:pointer">'+
+        '<div style="display:flex;align-items:center;gap:8px;min-width:0">'+
+          '<span style="font-size:.7rem;color:var(--gray);transform:rotate('+(abierto?'90':'0')+'deg);transition:transform .15s;flex-shrink:0">▶</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:.82rem;color:'+(esHoy?'#22c55e':'var(--white)')+'">'+etiquetaFecha+'</span>'+
+          '<span style="font-size:.7rem;color:var(--gray)">· '+cantDia+' envío'+(cantDia===1?'':'s')+'</span>'+
+        '</div>'+
+        '<span style="font-family:Oswald,sans-serif;font-size:.85rem;color:var(--gold);white-space:nowrap">'+fmt(gananciaDia)+'</span>'+
       '</div>'+
-      '<div style="font-family:Oswald,sans-serif;color:#22c55e;white-space:nowrap">'+fmt(p.total)+'</div>'+
+      (abierto ? '<div style="padding:0 12px">'+detalle+'</div>' : '')+
     '</div>';
   }).join('');
+
+  cont.innerHTML = resumen + htmlDias;
+}
+
+function toggleHistDia(clave){
+  _histExpandido[clave] = !_histExpandido[clave];
+  renderHistorialRepartidor();
 }
 
 function tomarPedido(id) {
