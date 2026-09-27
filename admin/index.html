@@ -11380,7 +11380,34 @@ function saveDeliveries(d) { window.__lrDeliveryCache = d; if(window.__lrSaveDel
 
 // Pedidos hechos por clientes desde el catálogo público (sin login)
 function getPedidosWeb() { return (window.__lrSync && window.__lrSync.pedidosWebListos && Array.isArray(window.__lrPedidosWebCache)) ? window.__lrPedidosWebCache : []; }
-function savePedidosWeb(p) { window.__lrPedidosWebCache = p; if(window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(p); }
+// Antes esto pisaba TODA la caché local con el array que se tenía a mano en
+// el momento de la mutación (el típico "leer todo, cambiar un pedido, guardar
+// todo de nuevo"). El problema: ese array se lee al EMPEZAR una acción (por
+// ejemplo "Cargar al carrito"), y si esa acción tarda un toque — sobre todo
+// si hay un cartel de confirmación de por medio ("¿seguro que querés
+// agregarlo igual?") — un pedido nuevo del catálogo web puede llegar
+// mientras tanto. Ese pedido nuevo nunca se borraba de la base (no hay
+// ningún .delete() sobre esta colección), pero SÍ desaparecía de esta copia
+// local hasta el próximo aviso de Firestore, porque quedaba afuera del array
+// que se estaba por guardar. Un empleado mirando la pantalla en ese momento
+// veía el pedido esfumarse.
+//
+// Ahora se hace merge por id sobre la copia MÁS RECIENTE conocida (no sobre
+// el array viejo que se tenía a mano): los pedidos que ya estaban y no se
+// tocaron se conservan tal cual, y solo se pisan los que de verdad cambiaron.
+// Así, un pedido que haya llegado mientras tanto nunca se pierde de vista.
+function savePedidosWeb(p) {
+  var actual = (window.__lrPedidosWebCache || []).slice();
+  var indicePorId = {};
+  actual.forEach(function(x, i){ indicePorId[String(x.id)] = i; });
+  p.forEach(function(x){
+    var key = String(x.id);
+    if(indicePorId.hasOwnProperty(key)) actual[indicePorId[key]] = x;
+    else { actual.push(x); indicePorId[key] = actual.length - 1; }
+  });
+  window.__lrPedidosWebCache = actual;
+  if(window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(p);
+}
 // El local confirma que el pedido ya fue cobrado (transferencia recibida o
 // efectivo en mano). Recién ahí el repartidor puede marcarlo como entregado,
 // para que no se cierre un pedido que todavía no se cobró.
