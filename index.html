@@ -4811,8 +4811,10 @@ body.night-on{background:#080005}
             <option value="unidad">Por unidad ($ c/u)</option>
           </select>
           <input type="number" id="imPrecioKgInput" min="0" placeholder="Precio $" style="width:110px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px 10px;font-size:.82rem">
+          <input type="number" id="imCostoKgInput" min="0" placeholder="Costo $ (opcional)" style="width:130px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gray);padding:8px 10px;font-size:.82rem">
           <button class="btn-save" style="padding:8px 16px" onclick="agregarItemManual()">+ Agregar</button>
         </div>
+        <div style="font-size:.68rem;color:var(--gray);margin-top:6px">El costo es opcional — mismo criterio que el precio (cada 100g, por kilo o por unidad, según lo que elijas arriba). Sin costo cargado, el producto sigue funcionando igual, solo que no suma al margen estimado de un combo que lo incluya.</div>
       </div>
       <div id="itemsManualesCardsAdmin"></div>
     </div>
@@ -8662,6 +8664,17 @@ function renderVentas() {
       porPromo[i.name].facturacion += i.subtotal||0;
       var costoUnidad = 0, precioSueltoUnidad = 0;
       i.comboItems.forEach(function(ci){
+        if(ci.tipo === 'manual') {
+          var itManualRk = getItemsManuales().find(function(x){ return x.nombre === ci.nombre; });
+          if(itManualRk){
+            var factorRk = ci.unidadItem === 'unidad' ? (ci.qty||1)
+              : ci.unidadItem === 'pesokg' ? ((ci.gramos||0)/1000)
+              : ((ci.gramos||0)/100);
+            costoUnidad += (itManualRk.costoKg||0) * factorRk;
+            precioSueltoUnidad += (itManualRk.precioKg||0) * factorRk;
+          }
+          return;
+        }
         var prod = PRODUCTS.find(function(p){ return p.name===ci.nombre; });
         costoUnidad += (prod && prod.costo ? prod.costo : 0) * (ci.qty||1);
         precioSueltoUnidad += (prod && prod.pventa ? prod.pventa : 0) * (ci.qty||1);
@@ -11746,13 +11759,15 @@ function agregarItemManual() {
   var nombre = document.getElementById('imNombreInput').value.trim();
   if(!nombre){ showToast('Escribí el nombre del producto'); return; }
   var precioKg = parseFloat((document.getElementById('imPrecioKgInput')||{}).value) || 0;
+  var costoKg = parseFloat((document.getElementById('imCostoKgInput')||{}).value) || 0;
   var unidad = ((document.getElementById('imUnidadInput')||{}).value) || 'peso100';
   var items = getItemsManuales();
   items.push({id: Date.now(), categoria: categoria, nombre: nombre, activo: true,
-              precioKg: precioKg, unidad: unidad});
+              precioKg: precioKg, costoKg: costoKg, unidad: unidad});
   saveItemsManuales(items);
   document.getElementById('imNombreInput').value = '';
   if(document.getElementById('imPrecioKgInput')) document.getElementById('imPrecioKgInput').value = '';
+  if(document.getElementById('imCostoKgInput')) document.getElementById('imCostoKgInput').value = '';
   showToast('📝 '+nombre+' agregado a '+categoria+(precioKg?' — '+fmt(precioKg)+sufijoUnidadManual(unidad):''));
   if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
@@ -11763,6 +11778,15 @@ function cambiarPrecioItemManual(id, valor) {
   it.precioKg = parseFloat(valor) || 0;
   saveItemsManuales(items);
   showToast(it.precioKg ? '💲 '+it.nombre+': '+fmt(it.precioKg)+sufijoUnidadManual(it.unidad) : 'Precio quitado de '+it.nombre);
+  if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
+}
+function cambiarCostoItemManual(id, valor) {
+  var items = getItemsManuales();
+  var it = items.find(function(i){ return i.id===id; });
+  if(!it) return;
+  it.costoKg = parseFloat(valor) || 0;
+  saveItemsManuales(items);
+  showToast(it.costoKg ? '💰 Costo de '+it.nombre+': '+fmt(it.costoKg)+sufijoUnidadManual(it.unidad) : 'Costo quitado de '+it.nombre);
   if(typeof renderItemsManualesAdmin==='function') renderItemsManualesAdmin();
 }
 
@@ -25025,12 +25049,15 @@ function renderItemsManualesAdmin() {
   el.innerHTML = orden.map(function(cat){
     return '<div style="font-size:.7rem;color:var(--gold);margin:8px 0 4px">'+cat+'</div>'+
       porCat[cat].map(function(it){
-        return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px">'+
+        return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px;flex-wrap:wrap;gap:6px">'+
           '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+
             (it.precioKg ? '<span style="color:var(--gold);font-size:.72rem"> · '+fmt(it.precioKg)+sufijoUnidadManual(it.unidad)+'</span>'
                          : '<span style="color:var(--gray);font-size:.7rem"> · sin precio</span>')+'</span>'+
-          '<input type="number" value="'+(it.precioKg||'')+'" min="0" placeholder="$" onchange="cambiarPrecioItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:90px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-size:.75rem;margin-left:auto;margin-right:8px">'+
-          '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
+          '<div style="display:flex;align-items:center;gap:6px;margin-left:auto">'+
+            '<input type="number" value="'+(it.precioKg||'')+'" min="0" placeholder="Precio" onchange="cambiarPrecioItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gold);padding:4px 6px;font-size:.75rem">'+
+            '<input type="number" value="'+(it.costoKg||'')+'" min="0" placeholder="Costo" onchange="cambiarCostoItemManual('+it.id+',this.value)" onclick="event.stopPropagation()" style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--gray);padding:4px 6px;font-size:.75rem">'+
+            '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
+          '</div>'+
         '</div>';
       }).join('');
   }).join('');
@@ -25630,6 +25657,14 @@ function actualizarCmResumen() {
       var promedio = costos.reduce(function(a,b){ return a+b; }, 0) / costos.length;
       if(costos.some(function(c){ return c !== costos[0]; })) gruposConCostoVariable.push(item.etiqueta);
       return s + (promedio * (item.qty||1));
+    }
+    if(item.tipo === 'manual') {
+      var itManual = getItemsManuales().find(function(x){ return x.nombre === item.nombre; });
+      if(!itManual || !itManual.costoKg) { sinCosto.push(item.nombre); return s; }
+      var costoItem = item.unidadItem === 'unidad' ? itManual.costoKg * (item.qty||1)
+        : item.unidadItem === 'pesokg' ? itManual.costoKg * ((item.gramos||0)/1000)
+        : itManual.costoKg * ((item.gramos||0)/100);
+      return s + costoItem;
     }
     var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
     if(!prod || !prod.costo) { sinCosto.push(item.nombre); return s; }
