@@ -1499,6 +1499,15 @@
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
     window.__lrPedidosWebCache = lista;
+    // Foto de cómo llegó cada pedido, atada al objeto mismo: al guardar,
+    // savePedidosWeb() compara contra esto para saber qué campos cambió
+    // de verdad cada acción, y no pisar con datos viejos lo que otro
+    // dispositivo haya cambiado mientras tanto.
+    // Se reusa el mismo WeakMap (no uno nuevo por aviso): una acción que
+    // empezó antes de este aviso sigue teniendo en la mano los objetos
+    // anteriores, y hay que poder saber cómo eran esos también.
+    var basePW = window.__lrPedidosWebBase || (window.__lrPedidosWebBase = new WeakMap());
+    lista.forEach(function(d){ basePW.set(d, JSON.stringify(d)); });
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
     window.__lrSync.pedidosWebListos = true;
     if(document.getElementById('searchInput') && typeof actualizarDeliveryPendBadge==='function'){
@@ -11397,16 +11406,51 @@ function getPedidosWeb() { return (window.__lrSync && window.__lrSync.pedidosWeb
 // tocaron se conservan tal cual, y solo se pisan los que de verdad cambiaron.
 // Así, un pedido que haya llegado mientras tanto nunca se pierde de vista.
 function savePedidosWeb(p) {
+  // Cada acción ("leer todo, cambiar un pedido, guardar todo") trae la lista
+  // tal como estaba cuando EMPEZÓ. Si mientras tanto llegó un pedido nuevo o
+  // otro dispositivo cambió alguno, guardar esa lista entera pisaba esos
+  // cambios con datos viejos: el pedido nuevo desaparecía de la pantalla, o
+  // un pedido "volvía atrás" (ej: se desmarcaba como cobrado).
+  //
+  // Ahora se guarda solo lo que esta acción cambió de verdad: se compara cada
+  // pedido contra cómo estaba al llegar de la nube (window.__lrPedidosWebBase)
+  // y se aplican SOLO los campos modificados sobre la versión más reciente
+  // conocida. Los pedidos que la acción no tocó no se escriben.
+  var base = window.__lrPedidosWebBase;
   var actual = (window.__lrPedidosWebCache || []).slice();
   var indicePorId = {};
   actual.forEach(function(x, i){ indicePorId[String(x.id)] = i; });
+  var aGuardar = [];
   p.forEach(function(x){
+    if(!x) return;
+    var baseJson = (base && base.has(x)) ? base.get(x) : null;
+    var ahoraJson = JSON.stringify(x);
+    if(baseJson !== null && baseJson === ahoraJson) return; // no lo tocó esta acción
     var key = String(x.id);
-    if(indicePorId.hasOwnProperty(key)) actual[indicePorId[key]] = x;
-    else { actual.push(x); indicePorId[key] = actual.length - 1; }
+    var idx = indicePorId.hasOwnProperty(key) ? indicePorId[key] : -1;
+    var resultado;
+    if(baseJson !== null && idx !== -1 && actual[idx] !== x){
+      // Hay una versión más nueva: aplicar encima solo los campos cambiados.
+      var viejo = JSON.parse(baseJson);
+      resultado = JSON.parse(JSON.stringify(actual[idx]));
+      var claves = {};
+      Object.keys(viejo).forEach(function(k){ claves[k] = true; });
+      Object.keys(x).forEach(function(k){ claves[k] = true; });
+      Object.keys(claves).forEach(function(k){
+        if(JSON.stringify(x[k]) !== JSON.stringify(viejo[k])){
+          if(x[k] === undefined) delete resultado[k]; else resultado[k] = JSON.parse(JSON.stringify(x[k]));
+        }
+      });
+    } else {
+      resultado = x; // pedido nuevo, o la lista ya es la más reciente
+    }
+    if(idx !== -1) actual[idx] = resultado;
+    else { actual.push(resultado); indicePorId[key] = actual.length - 1; }
+    if(base) base.set(resultado, JSON.stringify(resultado));
+    aGuardar.push(resultado);
   });
   window.__lrPedidosWebCache = actual;
-  if(window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(p);
+  if(aGuardar.length && window.__lrSavePedidosWeb) window.__lrSavePedidosWeb(aGuardar);
 }
 // El local confirma que el pedido ya fue cobrado (transferencia recibida o
 // efectivo en mano). Recién ahí el repartidor puede marcarlo como entregado,
