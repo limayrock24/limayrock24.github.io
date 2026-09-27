@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790477746";
+window.__LR_BUILD = "1790479231";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -1273,6 +1273,18 @@ function renderManualRow(it){
   var modo = _manualModo[it.id] || 'peso';
   var cat = it.categoria || 'General';
   var baseGramos = baseGramosDe(it);
+
+  // El empleado lo marca "sin stock" desde el panel de venta cuando se queda
+  // sin fiambre/fruta/pan de eso — acá se corta antes de armar los controles
+  // de peso/monto: no tiene sentido dejar pedir algo que no hay.
+  if(it.sinStock){
+    return '<div class="prod-row" style="opacity:.55;border-color:rgba(244,180,0,.35)">'+
+      '<div class="prod-info"><div class="prod-name">🧀 '+it.nombre+'</div>'+
+      (tienePrecio ? '<div class="prod-price">'+fmt(it.precioKg)+sufijoUnidadCatalogo(it)+'</div>' : '')+
+      '</div>'+
+      '<span class="sin-stock-tag">Sin stock</span>'+
+    '</div>';
+  }
 
   var html = '<div class="prod-row" style="flex-direction:column;align-items:stretch;justify-content:flex-start;gap:6px;border-color:rgba(244,180,0,.35)">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
