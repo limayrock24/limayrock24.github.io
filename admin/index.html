@@ -318,6 +318,20 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
+    // El panel de repartidor (/delivery/) es la MISMA app que el panel de
+    // venta/admin, pero solo muestra pedidos: no usa ventas, cierres, stock,
+    // clientes, proveedores, combos, movimientos, etc. Antes esperaba a que
+    // TODO eso sincronizara antes de destapar la pantalla, y con conexión de
+    // celular floja eso podía tardar varios segundos de más para nada — el
+    // resto de las colecciones se sigue sincronizando igual en segundo plano,
+    // simplemente ya no tapan la pantalla del repartidor mientras tanto.
+    if(location.pathname.indexOf('/delivery') !== -1){
+      if(s.empleadosListos && s.pedidosWebListos){
+        var overlayDel = document.getElementById('lrLoadingOverlay');
+        if(overlayDel) overlayDel.style.display = 'none';
+      }
+      return;
+    }
     if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.consignacionesListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos && s.stockMovsListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
