@@ -1676,6 +1676,12 @@
     if(typeof renderItemsManualesAdmin==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderItemsManualesAdmin();
     }
+    // La pestaña de categoría en el panel de venta también depende de estos
+    // ítems (una categoría puede tener solo sueltos) — refrescarla al vuelo
+    // si cambian, para no tener que recargar la página.
+    // try/catch: si la pantalla de venta todavía no está armada, que esto no
+    // corte el resto del aviso (ocultarCargaSiListo dejaría la carga trabada).
+    try{ if(typeof buildPills==='function' && document.getElementById('catPills')) buildPills(); }catch(e){ console.error('buildPills', e); }
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando items manuales:', err); window.__lrSync.itemsManualesListos = true; ocultarCargaSiListo(); });
 
@@ -7295,7 +7301,18 @@ function toggleNight() {
 
 // ── PILLS ──────────────────────────────────────────────────────────────────
 function buildPills() {
-  var used=ALL_CATS.filter(function(c){ return PRODUCTS.some(function(p){ return p.cat===c; }); });
+  // Una categoría puede tener solo "sueltos" (ítem manual, ej: fiambrería, si
+  // se borraron todos los productos de carga normal y quedó todo cargado como
+  // suelto). renderList() ya los mezcla igual dentro de esa categoría, pero
+  // esta pestaña solo miraba PRODUCTS para decidir qué categorías mostrar —
+  // así que la pestaña desaparecía y quedaba sin forma fácil de encontrarlos
+  // (solo aparecían navegando "TODAS"). Ahora también cuenta las categorías
+  // que tengan sueltos cargados.
+  var sueltosActivos = (typeof getItemsManuales === 'function' ? getItemsManuales() : []).filter(function(it){ return it.activo !== false; });
+  var used=ALL_CATS.filter(function(c){
+    return PRODUCTS.some(function(p){ return p.cat===c; })
+        || sueltosActivos.some(function(it){ return it.categoria===c; });
+  });
   var container=document.getElementById('catPills');
   container.innerHTML='';
   [''].concat(used).forEach(function(cat){
