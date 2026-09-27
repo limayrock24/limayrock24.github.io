@@ -7441,6 +7441,7 @@ function renderCartItems() {
     if(item.esCombo && item.comboItems && item.comboItems.length){
       comboDetalle = '<div style="font-size:.68rem;color:var(--gray);margin-top:3px;padding-left:4px;border-left:2px solid rgba(245,194,0,.3);line-height:1.6">'
         + item.comboItems.map(function(ci){
+            if(ci.tipo === 'manual' && ci.unidadItem !== 'unidad') return '· '+(ci.gramos >= 1000 ? (ci.gramos/1000)+' kg' : ci.gramos+' g')+' '+ci.nombre;
             return '· '+ci.nombre+(ci.qty>1?' ×'+ci.qty:'');
           }).join('<br>')
         + '</div>';
@@ -8802,6 +8803,7 @@ function anularVentaDirecto(id, alTerminar) {
       if(item.esCombo && item.comboItems) {
         // Combo: devolver stock de cada componente
         item.comboItems.forEach(function(ci){
+          if(ci.tipo === 'manual') return; // ítem manual: no se descontó stock
           if(inv[ci.nombre] !== undefined) {
             inv[ci.nombre].stock = (inv[ci.nombre].stock||0) + (ci.qty * item.qty);
           }
@@ -25068,6 +25070,11 @@ function renderCombos() {
     card.onclick = function() { abrirComboModal(i); };
     var prodNames = (combo.items||[]).map(function(item) {
       if(item.tipo === 'variable') return '🔀 '+item.etiqueta;
+      if(item.tipo === 'manual') {
+        if(item.unidadItem === 'unidad') return (item.qty > 1 ? item.qty+'× ' : '')+item.nombre;
+        var gramosTxt = item.gramos >= 1000 ? (item.gramos/1000)+' kg' : item.gramos+' g';
+        return gramosTxt+' '+item.nombre;
+      }
       return item.qty > 1 ? item.qty+'× '+item.nombre : item.nombre;
     }).join(', ');
     var pausado = (combo.activo === false);
@@ -25267,6 +25274,7 @@ function descontarStockCombos(items) {
     if(!cartItem.esCombo || !cartItem.comboItems) return;
     var mult = cartItem.qty;
     cartItem.comboItems.forEach(function(ci) {
+      if(ci.tipo === 'manual') return; // ítem manual: sin stock que descontar
       var idx = PRODUCTS.findIndex(function(p){ return p.name === ci.nombre; });
       if(idx === -1) return;
       var prod = PRODUCTS[idx];
@@ -25397,6 +25405,30 @@ function renderCmProdList() {
           '<button class="prov-prod-del" style="border-color:var(--gold);color:var(--gold)" onclick="abrirGrupoVarEditor('+i+')">✎</button>'+
           '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
         '</div>';
+    } else if(item.tipo === 'manual') {
+      row.style.background = 'rgba(255,255,255,.03)';
+      if(item.unidadItem === 'unidad') {
+        row.innerHTML =
+          '<div>'+
+            '<div class="ppn">📝 '+item.nombre+'</div>'+
+            '<div class="ppc">Ítem manual — sin stock cargado</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:6px">'+
+            '<input type="number" value="'+item.qty+'" min="1" style="width:48px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:3px;padding:3px 6px;text-align:center;font-size:.8rem" onchange="cambiarCantComboItem('+i+',this.value)">'+
+            '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
+          '</div>';
+      } else {
+        row.innerHTML =
+          '<div>'+
+            '<div class="ppn">📝 '+item.nombre+'</div>'+
+            '<div class="ppc">Ítem manual — sin stock cargado</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:6px">'+
+            '<input type="number" value="'+item.gramos+'" min="1" step="1" style="width:64px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:3px;padding:3px 6px;text-align:center;font-size:.8rem" onchange="cambiarGramosComboItem('+i+',this.value)">'+
+            '<span style="color:var(--gray);font-size:.72rem">g</span>'+
+            '<button class="prov-prod-del" onclick="quitarCmProd('+i+')">✕</button>'+
+          '</div>';
+      }
     } else {
       var prod = PRODUCTS.find(function(p){ return p.name === item.nombre; });
       row.innerHTML =
@@ -25515,13 +25547,24 @@ function buscarProdParaCombo() {
   var matches = PRODUCTS.filter(function(p) {
     return (p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term))) && !_cmProductos.find(function(x){ return x.nombre === p.name; });
   }).slice(0, 8);
-  if(!matches.length) {
+  // También se busca entre los ítems manuales (fiambrería, pan, sueltos por
+  // peso) — no tienen stock ni costo cargado, pero igual pueden ser parte de
+  // un combo (ej: "Combo asado" con 500g de chorizo suelto).
+  var matchesManuales = getItemsManuales().filter(function(it) {
+    return it.activo !== false && it.nombre.toLowerCase().includes(term) && !_cmProductos.find(function(x){ return x.tipo==='manual' && x.nombre === it.nombre; });
+  }).slice(0, 8 - matches.length);
+  var htmlProds = matches.map(function(p) {
+    return '<div class="prov-add-result-item" onclick="agregarCmProd(\''+p.name.replace(/'/g,"\\'")+'\')">'
+      +p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
+  }).join('');
+  var htmlManuales = matchesManuales.map(function(it) {
+    return '<div class="prov-add-result-item" onclick="agregarCmProdManual(\''+it.nombre.replace(/'/g,"\\'")+'\')">'
+      +'📝 '+it.nombre+' <span style="color:var(--gray);font-size:.68rem">— '+(it.categoria||'ítem manual')+', sin stock cargado</span></div>';
+  }).join('');
+  if(!matches.length && !matchesManuales.length) {
     results.innerHTML = '<div class="prov-add-result-item" style="color:var(--gray)">Sin resultados</div>';
   } else {
-    results.innerHTML = matches.map(function(p) {
-      return '<div class="prov-add-result-item" onclick="agregarCmProd(\''+p.name.replace(/'/g,"\\'")+'\')">'
-        +p.name+' <span style="color:var(--gray);font-size:.68rem">— '+p.cat+'</span></div>';
-    }).join('');
+    results.innerHTML = htmlProds + htmlManuales;
   }
   results.style.display = 'block';
 }
@@ -25532,6 +25575,34 @@ function agregarCmProd(nombre) {
   }
   document.getElementById('cmAddSearch').value = '';
   document.getElementById('cmAddResults').style.display = 'none';
+  renderCmProdList();
+  actualizarCmResumen();
+}
+
+// Agrega un ítem manual (fiambrería, pan, sueltos por peso) como componente
+// del combo. Como no tiene stock ni costo cargado, no participa del descuento
+// de stock ni del cálculo de costo estimado — solo describe qué lleva el
+// combo. La cantidad se carga directo en gramos (o unidades, si el ítem se
+// vende por unidad), no como "veces" igual que un producto normal.
+function agregarCmProdManual(nombre) {
+  if(_cmProductos.find(function(x){ return x.tipo==='manual' && x.nombre === nombre; })) return;
+  var it = getItemsManuales().find(function(x){ return x.nombre === nombre; });
+  if(!it) return;
+  if(it.unidad === 'unidad') {
+    _cmProductos.push({tipo:'manual', nombre: nombre, unidadItem:'unidad', qty: 1});
+  } else {
+    _cmProductos.push({tipo:'manual', nombre: nombre, unidadItem: it.unidad||'peso100', gramos: 100});
+  }
+  document.getElementById('cmAddSearch').value = '';
+  document.getElementById('cmAddResults').style.display = 'none';
+  renderCmProdList();
+  actualizarCmResumen();
+}
+
+// Cambia los gramos de un componente manual por peso (ej: "500 g de jamón").
+function cambiarGramosComboItem(i, val) {
+  var n = parseFloat(val);
+  if(n > 0) _cmProductos[i].gramos = n;
   renderCmProdList();
   actualizarCmResumen();
 }
@@ -27845,6 +27916,7 @@ function descontarStock(items, tipoMov) {
     if(item.esCombo && item.comboItems && item.comboItems.length) {
       // Combo: descontar cada componente individualmente
       item.comboItems.forEach(function(ci){
+        if(ci.tipo === 'manual') return; // ítem manual: sin stock que descontar
         descontarUnProd(ci.nombre, ci.qty * item.qty);
         registrarMovimiento('Venta (Combo)', ci.nombre, ci.qty * item.qty,
           inv[ci.nombre] ? inv[ci.nombre].stock + (ci.qty * item.qty) : 0,

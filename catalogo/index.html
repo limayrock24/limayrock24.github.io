@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1790531430";
+window.__LR_BUILD = "1790532371";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -1029,8 +1029,7 @@ function renderList(){
           var enCarrito = comboCantEnCarrito(cb.nombre);
           var detalle = (cb.items||[]).map(function(it){
             if(it.tipo === 'variable') return it.etiqueta || 'elegís sabor';
-            var n = it.qty || it.cant || 1;
-            return it.nombre + (n>1 ? ' \u00d7'+n : '');
+            return textoItemCombo(it);
           }).join(' + ') || cb.descripcion || '';
           var imgHtmlCombo = cb.imgUrl
             ? '<img class="combo-card-img" src="'+cb.imgUrl+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(cb.imgUrl)+'\',\''+escJs(cb.nombre)+'\')" style="cursor:pointer">'
@@ -1123,6 +1122,14 @@ function comboCantEnCarrito(nombre){
 
 // Reemplaza los grupos variables de un combo por el sabor efectivamente
 // elegido, dejando una lista de ítems fijos lista para mostrar o guardar.
+// Texto de un componente de combo: "500 g Queso cremoso" para ítems manuales
+// por peso, "Coca ×2" para el resto.
+function textoItemCombo(it){
+  if(it.tipo === 'manual' && it.unidadItem !== 'unidad' && it.gramos) return (it.gramos >= 1000 ? (it.gramos/1000)+' kg' : it.gramos+' g')+' '+it.nombre;
+  var n = it.qty || it.cant || 1;
+  return it.nombre + (n>1 ? ' \u00d7'+n : '');
+}
+
 function resolverItemsCombo(cb, seleccion){
   seleccion = seleccion || {};
   return (cb.items||[]).map(function(it, i){
@@ -1632,7 +1639,7 @@ function armarListaCombosHtml(){
   var entradas = entradasCombosCarrito();
   if(!entradas.length) return '';
   return entradas.map(function(e){
-    var incluye = (e.items||[]).map(function(it){ var n=it.qty||it.cant||1; return it.nombre + (n>1?' ×'+n:''); }).join(' + ');
+    var incluye = (e.items||[]).map(textoItemCombo).join(' + ');
     return '<div class="cart-item">'+
       '<span>'+(e.cb.emoji||'🎁')+' '+e.nombre+' ×'+e.cantidad+
         (incluye ? '<div style="font-size:.66rem;color:var(--gray)">'+incluye+'</div>' : '')+
@@ -1910,8 +1917,7 @@ function confirmarPedido(){
   entradasCombosCarrito().forEach(function(e){
     msg += '• '+(e.cb.emoji||'')+' '+e.nombre+' ×'+e.cantidad+' — '+fmt(e.cb.precio*e.cantidad)+'\n';
     (e.items||[]).forEach(function(it){
-      var n = it.qty || it.cant || 1;
-      msg += '    - '+it.nombre+(n>1?' ×'+n:'')+'\n';
+      msg += '    - '+textoItemCombo(it)+'\n';
     });
   });
   items.forEach(function(it){
