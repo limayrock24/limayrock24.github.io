@@ -673,10 +673,23 @@
     });
   };
 
-  window.__lrSaveProductos = function(lista, nombresABorrar){
+  // nombresTocados (opcional): si quien llama sabe exactamente qué producto(s)
+  // cambiaron, se pasa esa lista acá y se revisan SOLO esos contra el
+  // snapshot — evita recorrer y comparar los 1000+ productos completos en
+  // cada guardado, que es lo que hacía que cada edición se sintiera cada vez
+  // más lenta a medida que crecía el catálogo. Si no se pasa (undefined), se
+  // revisa todo el catálogo como siempre: es el modo seguro, y sigue siendo
+  // el que usan los lugares que todavía no avisan qué tocaron.
+  window.__lrSaveProductos = function(lista, nombresABorrar, nombresTocados){
     var prev = window.__lrSync.ultimoProductosSnapshot || {};
     var promesas = [];
+    var filtroTocados = null;
+    if(Array.isArray(nombresTocados)){
+      filtroTocados = {};
+      nombresTocados.forEach(function(n){ filtroTocados[n] = true; });
+    }
     lista.forEach(function(p){
+      if(filtroTocados && !filtroTocados[p.name]) return;
       try{
         var antes = prev[p.name];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
@@ -703,9 +716,13 @@
   // NOTA: existió acá un "camino rápido" (__lrSaveUnProducto) para guardar
   // un solo producto sin recorrer los 1000+ completos. Se revirtió por
   // seguridad (causaba duplicados al renombrar, fallas en crear/borrar) y
-  // se eliminó del todo el 10/8 al limpiar código muerto. Si se retoma la
-  // optimización de velocidad, hacerlo con cuidado y sin apuro — ver
-  // pendientes.
+  // se eliminó del todo el 10/8 al limpiar código muerto. Retomado el 28/9
+  // como el parámetro nombresTocados de __lrSaveProductos (arriba), con
+  // cuidado puntual en los dos puntos que rompieron la vez pasada: al
+  // renombrar se marca el nombre NUEVO (no el viejo, que ya no está en la
+  // lista) y, en la tabla de edición masiva, los productos tocados se van
+  // ACUMULANDO mientras el guardado está demorado (debounce) en vez de
+  // pisarse entre sí — ver marcarProductoTocado() y saveLocal().
 
   // Guarda solo el stock que cambió — clave para que una venta no reescriba
   // el inventario completo cada vez.
@@ -891,12 +908,25 @@
 
   // Guarda solo las ventas nuevas o modificadas (ej. una anulación) —
   // nunca reescribe el historial completo.
-  window.__lrSaveVentas = function(lista){
+  // idsTocados (opcional): igual que nombresTocados en __lrSaveProductos —
+  // si quien llama sabe qué venta(s) puntuales cambiaron (un cierre nuevo,
+  // una anulación), se revisa SOLO esa contra el snapshot en vez de
+  // recorrer y comparar TODO el historial de ventas en cada cierre, que es
+  // lo que hacía que cerrar una venta se sintiera cada vez más lento a
+  // medida que se acumulaban más ventas. Sin este parámetro, se revisa todo
+  // como siempre (modo seguro, para archivado/restauración masiva).
+  window.__lrSaveVentas = function(lista, idsTocados){
     var __promesas = [];
     var prev = window.__lrSync.ultimoVentasSnapshot || {};
+    var filtroTocados = null;
+    if(Array.isArray(idsTocados)){
+      filtroTocados = {};
+      idsTocados.forEach(function(id){ filtroTocados[String(id)] = true; });
+    }
     lista.forEach(function(v){
       try{
         var key = String(v.id);
+        if(filtroTocados && !filtroTocados[key]) return;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(v)){
           __promesas.push(window.__lrDB.collection(window.__lrCOL.ventas).doc(key).set(limpiarUndefined(v)));
@@ -6618,9 +6648,12 @@ function getEmpleados() {
 function getVentas() {
   return (window.__lrSync && window.__lrSync.ventasListos && Array.isArray(window.VENTAS)) ? window.VENTAS : [];
 }
-function saveVentas(v) {
+// idsTocados (opcional): ver el comentario de __lrSaveVentas. Se pasa el id
+// de la venta puntual que se creó/modificó para que el guardado no tenga
+// que revisar todo el historial.
+function saveVentas(v, idsTocados) {
   window.VENTAS = v;
-  if(window.__lrSaveVentas) window.__lrSaveVentas(v);
+  if(window.__lrSaveVentas) window.__lrSaveVentas(v, idsTocados);
 }
 // Cierres de turno: el código original no tenía un único punto de guardado
 // (leía/escribía localStorage directamente en ~20 lugares distintos). Se
@@ -7911,7 +7944,7 @@ function doConfirmarVenta2() {
     anulada: false
   };
   VENTAS.push(venta);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [venta.id]);
   // Republicar el estado del turno junto con la venta. Si por cualquier motivo
   // el registro del turno no llegó a la nube al abrirlo, se recompone acá: es
   // imposible que haya ventas y el turno no figure.
@@ -8806,7 +8839,7 @@ function anularVentaDirecto(id, alTerminar) {
     var v = VENTAS.find(function(v){ return v.id===id; });
     if(!v) return;
     v.anulada = true;
-    saveVentas(VENTAS);
+    saveVentas(VENTAS, [v.id]);
 
     // Devolver stock de los productos de la venta
     var inv = getStockInv();
@@ -9019,17 +9052,34 @@ function guardarLocalDebounced() {
   window._saveLocalDebounceTimer = setTimeout(function(){ saveLocal(); }, 700);
 }
 
+// Anota qué producto se está editando, para que el guardado (más abajo, en
+// saveLocal) revise solo ese en vez de recorrer el catálogo completo. Se
+// ACUMULA en vez de pisar: mientras el guardado está demorado (debounce de
+// 700ms) se puede editar más de un producto, y si esto pisara la lista en
+// vez de sumar, el guardado terminaría revisando solo el último producto
+// tocado — los cambios de los anteriores quedarían en pantalla pero nunca
+// se subirían a la nube, sin ningún aviso de error.
+function marcarProductoTocado(idx) {
+  try{
+    if(!(idx>=0 && PRODUCTS[idx])) return;
+    if(!Array.isArray(window.__lrProductosTocados)) window.__lrProductosTocados = [];
+    var n = PRODUCTS[idx].name;
+    if(window.__lrProductosTocados.indexOf(n) === -1) window.__lrProductosTocados.push(n);
+  }catch(e){}
+}
+
 function updProd(inp) {
   var idx=parseInt(inp.dataset.idx); var field=inp.dataset.field;
-  // Anotar cuál producto se está editando, para que el guardado revise solo ese
-  // en lugar de recorrer el catálogo completo.
-  try{ if(!isNaN(idx) && PRODUCTS[idx]) window.__lrProductosTocados = [PRODUCTS[idx].name]; }catch(e){}
-  if(field==='name'){ PRODUCTS[idx].name=inp.value; guardarLocalDebounced(); return; }
-  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  guardarLocalDebounced(); return; }
+  // Nombre: se marca DESPUÉS de aplicar el cambio, con el nombre nuevo — si
+  // se marcara el viejo, el guardado selectivo buscaría un producto que ya
+  // no existe con ese nombre y el renombre no se llegaría a subir.
+  if(field==='name'){ PRODUCTS[idx].name=inp.value; marcarProductoTocado(idx); guardarLocalDebounced(); return; }
+  if(field==='cat'){  PRODUCTS[idx].cat=inp.value;  marcarProductoTocado(idx); guardarLocalDebounced(); return; }
   var val=inp.value?parseFloat(inp.value):null;
   if(field==='pventa') PRODUCTS[idx].pventa=val?Math.round(val):0;
   else if(field==='pnoc') PRODUCTS[idx].pnoc=val?Math.round(val):null;
   else if(field==='costo') PRODUCTS[idx].costo=val||null;
+  marcarProductoTocado(idx);
   guardarLocalDebounced();
 }
 function updMargen(inp) {
@@ -9042,6 +9092,7 @@ function updMargen(inp) {
     var el=document.getElementById('pv_'+idx);
     if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
   }
+  marcarProductoTocado(idx);
   guardarLocalDebounced();
 }
 function autoRecalc(idx,inp) {
@@ -9050,6 +9101,7 @@ function autoRecalc(idx,inp) {
   var nuevo=calcPrice(costo,margen); PRODUCTS[idx].pventa=nuevo; PRODUCTS[idx].costo=costo;
   var el=document.getElementById('pv_'+idx);
   if(el){ el.value=nuevo; el.classList.add('recalc-flash'); setTimeout(function(){ el.classList.remove('recalc-flash'); },800); }
+  marcarProductoTocado(idx);
   guardarLocalDebounced();
 }
 
@@ -9085,8 +9137,9 @@ function delProd(idx) {
     // sincronizacion no lo va a volver a mostrar.
     if(!window.__lrBorradosPendientes) window.__lrBorradosPendientes = {};
     window.__lrBorradosPendientes[nombre] = Date.now();
-    // Nada que revisar del resto del catálogo: solo se está borrando este.
-    window.__lrProductosTocados = [];
+    // (No se toca window.__lrProductosTocados acá: el borrado de abajo ya
+    // pasa [] explícito. Dejarlo en [] quedaría "colgado" y el próximo
+    // guardado que no avise qué tocó no revisaría nada, en silencio.)
 
     // Queda registrado en el Log de catalogo, igual que las ediciones y altas.
     registrarCambioCatalogo('eliminado', nombre, [
@@ -9098,7 +9151,9 @@ function delProd(idx) {
     function intentarBorrado(){
       if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
       showToast('Borrando "'+nombre+'"...');
-      var promesaBorrado = window.__lrSaveProductos(PRODUCTS, [nombre]);
+      // Tercer parámetro en [] a propósito: acá solo se borra "nombre" (va en
+      // nombresABorrar), no hay ningún otro producto que revisar/comparar.
+      var promesaBorrado = window.__lrSaveProductos(PRODUCTS, [nombre], []);
       if(!window.__lrConTimeoutAviso){
         promesaBorrado.then(function(){
           delete window.__lrBorradosPendientes[nombre];
@@ -9270,7 +9325,7 @@ function mostrarEstadoGuardado(estado, texto){
   }
 }
 
-function saveLocalConBorrado(mensajeExito, nombresABorrar) {
+function saveLocalConBorrado(mensajeExito, nombresABorrar, tocadosForzados) {
   // Red de seguridad: si quedaron dos productos con el mismo nombre, dejar uno
   // solo. En la nube cada producto se guarda bajo su nombre, así que dos con el
   // mismo nombre son en realidad el mismo registro pisándose entre sí.
@@ -9296,8 +9351,11 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   // escribiendo otra cosa quedaba la duda de si el cambio anterior se guardó.
   // Este cartel se queda hasta que la nube confirma.
   mostrarEstadoGuardado('guardando');
-  var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar, window.__lrProductosTocados);
+  // tocadosForzados: lo pasa un reintento propio (más abajo), para no perder
+  // la lista de productos tocados original si el primer intento falló.
+  var tocados = (tocadosForzados !== undefined) ? tocadosForzados : window.__lrProductosTocados;
   window.__lrProductosTocados = null;
+  var promesa = window.__lrSaveProductos(PRODUCTS, nombresABorrar, tocados);
 
   promesa.then(function(){
     mostrarEstadoGuardado('ok', mensajeExito);
@@ -9305,7 +9363,7 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
     mostrarEstadoGuardado('error');
     if(typeof mostrarBadgePendientes==='function') mostrarBadgePendientes();
   });
-  var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar); };
+  var retry = function(){ saveLocalConBorrado(mensajeExito, nombresABorrar, tocados); };
   if(!window.__lrConTimeoutAviso) return promesa.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito); });
   return window.__lrConTimeoutAviso(promesa, 15000, retry).then(function(r){
     if(r.pendiente){
@@ -9339,14 +9397,22 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar) {
   });
 }
 
-function saveLocal(mensajeExito) {
+function saveLocal(mensajeExito, tocadosForzados) {
   buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
   filterAll();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   guardarPendienteLocalProductos(PRODUCTS); // respaldo propio, antes de intentar la nube
   showToast('⏳ Guardando en la nube...');
-  var promesaGuardado = window.__lrSaveProductos(PRODUCTS);
-  var retry = function(){ saveLocal(mensajeExito); };
+  // Si algo (edición en la tabla, edición masiva, aumento %) dejó anotado en
+  // window.__lrProductosTocados qué productos puntuales cambiaron, se revisan
+  // solo esos en vez de recorrer el catálogo completo. Si nadie lo anotó,
+  // queda undefined y se revisa todo — el modo seguro de siempre.
+  // tocadosForzados: lo pasa un reintento propio (más abajo), para no perder
+  // la lista original si el primer intento falló.
+  var tocados = (tocadosForzados !== undefined) ? tocadosForzados : window.__lrProductosTocados;
+  window.__lrProductosTocados = null;
+  var promesaGuardado = window.__lrSaveProductos(PRODUCTS, null, tocados);
+  var retry = function(){ saveLocal(mensajeExito, tocados); };
   if(!window.__lrConTimeoutAviso) return promesaGuardado.then(function(){ limpiarPendienteLocalProductos(); showToast(mensajeExito || '✅ CAMBIOS GUARDADOS Y CONFIRMADOS'); });
   return window.__lrConTimeoutAviso(promesaGuardado, 15000, retry).then(function(r){
     if(r.pendiente){
@@ -9673,7 +9739,7 @@ function doConfirmarVenta() {
     anulada: false
   };
   VENTAS.push(venta);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [venta.id]);
 
   // Registrar delivery por separado
   if(delivery > 0) {
@@ -10654,7 +10720,7 @@ function guardarCorreccionCierre() {
       correccionPostCierre: true
     };
     VENTAS.push(ventaCorr);
-    saveVentas(VENTAS);
+    saveVentas(VENTAS, [ventaCorr.id]);
     descontarStock([itemCorr], 'venta');
 
     if(!real.ventas) real.ventas = [];
@@ -16212,7 +16278,7 @@ function confirmarFiadoParcial(){
     anulada:  false
   };
   VENTAS.push(venta);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [venta.id]);
 
   // 2) El resto queda anotado en la cuenta corriente del cliente
   var fiados = getFiados();
@@ -16292,7 +16358,7 @@ function registrarFiado() {
     anulada:    false
   };
   VENTAS.push(_ventaFiado);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [_ventaFiado.id]);
 
   document.getElementById('ventaOkMonto').textContent = fmt(subtotal);
   document.getElementById('ventaOkMedio').textContent = 'Fiado a '+nombre;
@@ -16541,7 +16607,7 @@ function saldarFiado(cliente) {
         anulada:  false
       };
       VENTAS.push(ventaFiado);
-      saveVentas(VENTAS);
+      saveVentas(VENTAS, [ventaFiado.id]);
       autoSaveNow();
     }
 
@@ -19045,7 +19111,7 @@ function confirmarCobroFiado() {
       anulada:  false
     };
     VENTAS.push(ventaCefhas);
-    saveVentas(VENTAS);
+    saveVentas(VENTAS, [ventaCefhas.id]);
     autoSaveNow();
     registrarOperacion('venta', ventaCefhas.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — CEFHAS', 0, ventaCefhas.id);
 
@@ -19107,7 +19173,7 @@ function confirmarCobroFiado() {
     anulada:  false
   };
   VENTAS.push(ventaFiado);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [ventaFiado.id]);
   autoSaveNow();
   // Tipo propio: antes se registraba como una venta más y no había forma de
   // filtrar los cobros de fiado en el historial de movimientos.
@@ -19409,7 +19475,7 @@ function confirmarCobroConsignacion() {
     anulada: false
   };
   VENTAS.push(ventaConsig);
-  saveVentas(VENTAS);
+  saveVentas(VENTAS, [ventaConsig.id]);
   autoSaveNow();
   registrarOperacion('cobro-consignacion', ventaConsig.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _consignCobroMedio+' — '+c.cliente);
 
@@ -21408,7 +21474,9 @@ function eliminarProdModal() {
     // hay que pedir el borrado de este producto puntual.
     if(window.__lrSaveProductos){
       showToast('⏳ Eliminando en la nube...');
-      window.__lrSaveProductos(PRODUCTS, [nombre]).then(function(){
+      // Tercer parámetro en [] a propósito: acá solo se borra "nombre", no
+      // hay ningún otro producto que revisar/comparar.
+      window.__lrSaveProductos(PRODUCTS, [nombre], []).then(function(){
         delete window.__lrBorradosPendientes[nombre];
         showToast('✅ "'+nombre+'" eliminado y confirmado');
       }).catch(function(){
@@ -22427,14 +22495,15 @@ function borrarSeleccionados() {
     });
 
     window._cartelitosSel = {};
-    window.__lrProductosTocados = [];   // solo hay bajas, nada que revisar
     actualizarBotonCartelitos();
     renderCatalogo(); buildEditList(); buildPills(); filterAll();
 
     // UNA sola escritura a la nube para todos, en vez de una por producto.
     if(!window.__lrSaveProductos){ showToast(nombres.length+' productos eliminados (local)'); return; }
     showToast('Eliminando '+nombres.length+' productos...');
-    window.__lrSaveProductos(PRODUCTS, nombres).then(function(){
+    // Tercer parámetro en [] a propósito: acá solo hay bajas (nombres), no
+    // hay ningún otro producto que revisar/comparar.
+    window.__lrSaveProductos(PRODUCTS, nombres, []).then(function(){
       nombres.forEach(function(n){ delete window.__lrBorradosPendientes[n]; });
       showToast('✅ '+nombres.length+' productos eliminados');
     }).catch(function(){
