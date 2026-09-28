@@ -14925,6 +14925,9 @@ function renderList(list, term) {
   var main  = document.getElementById('main');
   var empty = document.getElementById('empty');
   main.innerHTML = '';
+  // Cada llamada invalida el dibujado por tandas que haya quedado a medias
+  // (ej: se sigue escribiendo en el buscador): ver más abajo.
+  var miRender = window._renderListToken = (window._renderListToken||0) + 1;
 
   var inv = getStockInv(); // para badges de stock
 
@@ -14957,6 +14960,12 @@ function renderList(list, term) {
   var todasCats = Object.keys(groups);
   Object.keys(gruposSueltos).forEach(function(c){ if(todasCats.indexOf(c) === -1) todasCats.push(c); });
 
+  // Se dibuja por tandas: primero lo que entra en pantalla y el resto en
+  // segundo plano, sin trabar. Antes se armaban las 1000+ filas de una (con
+  // "TODAS" o al buscar) aunque se vieran 15 o 20, y la pantalla quedaba
+  // clavada un momento en cada tecla del buscador o cada actualización.
+  // El orden final es exactamente el mismo que antes.
+  var tareas = []; // {sec, tbody, fila: function que arma el <tr>}
   todasCats.sort().forEach(function(cat){
     var items = groups[cat] || [];
     var itemsSueltos = gruposSueltos[cat] || [];
@@ -14973,7 +14982,7 @@ function renderList(list, term) {
     tbl.innerHTML = '<thead><tr><th>Producto</th><th class="c" style="width:110px">Precio</th><th class="c" style="width:40px"></th></tr></thead>';
     var tbody = document.createElement('tbody');
 
-    itemsSueltos.forEach(function(it){
+    itemsSueltos.forEach(function(it){ tareas.push({sec: sec, tbody: tbody, fila: function(){
       var sufijo = it.unidad==='unidad' ? ' c/u' : (it.unidad==='pesokg' ? ' /kg' : ' /100g');
       var sinStock = !!it.sinStock;
       var tr = document.createElement('tr');
@@ -15015,10 +15024,10 @@ function renderList(list, term) {
       };
       td3.appendChild(btnStock);
       tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
-      tbody.appendChild(tr);
-    });
+      return tr;
+    }}); });
 
-    items.forEach(function(p){
+    items.forEach(function(p){ tareas.push({sec: sec, tbody: tbody, fila: function(){
       var useNight = isNocturno() && p.pnoc;
       var precio   = useNight ? p.pnoc : p.pventa;
       var pc       = useNight ? 'color:var(--gold)' : 'color:var(--green)';
@@ -15037,9 +15046,6 @@ function renderList(list, term) {
         }
       }
 
-      // Sin bloqueo — el badge avisa visualmente pero siempre se puede agregar
-      var addBtnHtml = '<button class="add-btn" onclick="event.stopPropagation();addToCart('+JSON.stringify(p).replace(/"/g,"'")+')" >+</button>';
-
       var tr = document.createElement('tr');
       if(agotado) tr.className = 'prod-row-agotado'; // solo estilo visual
       tr.onclick = function(){ addToCart(p); };
@@ -15051,14 +15057,40 @@ function renderList(list, term) {
           (term ? hl(p.name, term) : p.name) + stockBadge +
         '</span></div></td>'+
         '<td class="td-p" style="'+pc+'">'+fmt(precio)+'</td>'+
-        '<td class="td-add">'+addBtnHtml+'</td>';
-      tbody.appendChild(tr);
-    });
+        '<td class="td-add"></td>';
+      // Sin bloqueo — el badge avisa visualmente pero siempre se puede agregar.
+      // El botón usa el producto directo (antes se armaba una copia en texto
+      // con JSON.stringify por cada fila, que era lento y se rompía con
+      // nombres que llevan comilla simple).
+      var addBtn = document.createElement('button');
+      addBtn.className = 'add-btn';
+      addBtn.textContent = '+';
+      addBtn.onclick = function(e){ e.stopPropagation(); addToCart(p); };
+      tr.lastChild.appendChild(addBtn);
+      return tr;
+    }}); });
 
     tbl.appendChild(tbody);
     sec.appendChild(tbl);
-    main.appendChild(sec);
   });
+
+  var PRIMERA_TANDA = 60, TANDA = 200, i = 0;
+  function dibujarHasta(limite){
+    for(; i < tareas.length && i < limite; i++){
+      var t = tareas[i];
+      if(!t.sec._enMain){ main.appendChild(t.sec); t.sec._enMain = true; }
+      t.tbody.appendChild(t.fila());
+    }
+  }
+  dibujarHasta(PRIMERA_TANDA);
+  (function seguir(){
+    if(i >= tareas.length) return;
+    setTimeout(function(){
+      if(miRender !== window._renderListToken) return; // hubo otro render: este se descarta
+      dibujarHasta(i + TANDA);
+      seguir();
+    }, 0);
+  })();
 }
 
 // ── ADDTOCART CON CHEQUEO DE STOCK ─────────────────────────────────────────
