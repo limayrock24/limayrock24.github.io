@@ -332,11 +332,27 @@
       }
       return;
     }
-    if(s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.consignacionesListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.movimientosListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.sorteosListos && s.proveedoresListos && s.combosListos && s.cierresMesListos && s.logCatalogoListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos && s.stockMovsListos){
+    // La pantalla se destapa apenas llega lo necesario para trabajar. El
+    // historial puro (movimientos, historial de stock, log del catálogo,
+    // cierres mensuales y sorteos) sigue llegando en segundo plano: son las
+    // colecciones que más crecen, y ninguna hace falta para vender, cerrar
+    // turno ni recibir mercadería (esas acciones solo AGREGAN registros, y
+    // sus guardados nunca borran lo que no está en la lista). Lo que sí las
+    // necesita completas (panel de admin, respaldo automático) espera a
+    // cargaCompleta() — ver esperarCargaCompleta().
+    if(cargaEsencialLista(s)){
       var overlay = document.getElementById('lrLoadingOverlay');
-      if(overlay) overlay.style.display = 'none';
+      if(overlay && !window.__lrEsperandoCargaCompleta) overlay.style.display = 'none';
     }
   }
+  function cargaEsencialLista(s){
+    return s.productosListos && s.inventarioListos && s.empleadosListos && s.ventasListos && s.cierresListos && s.consumosListos && s.egresosListos && s.fiadosListos && s.consignacionesListos && s.deliveryListos && s.prestamosListos && s.transferCuentasListos && s.cargasVirtualesListos && s.mensajesProgListos && s.mensajesPuntListos && s.categoriasListas && s.liquidezListos && s.sesionActivaListos && s.retirosCajaListos && s.clientesListos && s.proveedoresListos && s.combosListos && s.stockAlertsListos && s.prodCountListos && s.deliveryActivoListos && s.pedidosWebListos && s.promosListos && s.itemsManualesListos && s.manualPresetsListos && s.semanasColchonListos;
+  }
+  // true cuando llegó TODO, incluido el historial que se carga en segundo plano.
+  window.__lrCargaCompleta = function(){
+    var s = window.__lrSync;
+    return !!(cargaEsencialLista(s) && s.movimientosListos && s.stockMovsListos && s.logCatalogoListos && s.cierresMesListos && s.sorteosListos);
+  };
 
   // Escucha en vivo de productos: mantiene PRODUCTS actualizado siempre,
   // incluso si se edita el catálogo desde otro dispositivo (ej. panel admin).
@@ -8056,7 +8072,29 @@ function apc() { adminBuf=adminBuf.slice(0,-1); updateAdminDots(); }
 function updateAdminDots() { for(var i=0;i<4;i++) document.getElementById('ad'+i).classList.toggle('filled',i<adminBuf.length); }
 
 // ── ADMIN PANEL ────────────────────────────────────────────────────────────
+// Espera a que termine de llegar el historial que se carga en segundo plano
+// (ver ocultarCargaSiListo) y recién ahí ejecuta fn. Mientras tanto vuelve a
+// mostrar la pantalla de "cargando", para que no se pueda operar con datos a
+// medio llegar. Normalmente es instantáneo: solo espera si se entra apenas
+// abierta la app.
+function esperarCargaCompleta(fn) {
+  if(!window.__lrCargaCompleta || window.__lrCargaCompleta()){ fn(); return; }
+  window.__lrEsperandoCargaCompleta = true;
+  var ov = document.getElementById('lrLoadingOverlay');
+  if(ov) ov.style.display = 'flex';
+  var t = setInterval(function(){
+    if(!window.__lrCargaCompleta()) return;
+    clearInterval(t);
+    window.__lrEsperandoCargaCompleta = false;
+    if(ov) ov.style.display = 'none';
+    fn();
+  }, 250);
+}
+
 function openAdmin() {
+  // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
+  // historial completo: si todavía está llegando, se espera.
+  if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
   cerrarTodosLosOverlays();
   document.getElementById('adminOverlay').classList.add('open');
   try { updateFSAStatus("sin-arch"); } catch(e) { console.error('updateFSAStatus falló:', e); }
@@ -18432,6 +18470,9 @@ function iniciarBackupAutomatico() {
 }
 
 function descargarBackupSilencioso() {
+  // No armar un respaldo con el historial a medio llegar: se reintenta en un
+  // rato (ver ocultarCargaSiListo).
+  if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ setTimeout(descargarBackupSilencioso, 15000); return; }
   try {
     var data = collectAllData();
     var json = JSON.stringify(data, null, 2);
