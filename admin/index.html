@@ -9047,6 +9047,17 @@ function buildEditList() {
   });
 }
 
+// Refresca la pantalla de venta (pestañas de categorías + lista de productos)
+// después de editar el catálogo. Redibujar esa lista con 1000+ productos es lo
+// más pesado del sistema, y se hacía al instante (y a veces dos veces) en cada
+// guardado aunque el panel de admin la estuviera tapando. Ahora pasa por
+// __lrRefrescarVenta: si el admin está abierto se posterga hasta cerrarlo, y
+// si no, se agrupan los cambios seguidos en un solo redibujado.
+function refrescarVentaDiferido() {
+  if(typeof window.__lrRefrescarVenta === 'function') window.__lrRefrescarVenta();
+  else { buildPills(); filterAll(); }
+}
+
 function guardarLocalDebounced() {
   clearTimeout(window._saveLocalDebounceTimer);
   window._saveLocalDebounceTimer = setTimeout(function(){ saveLocal(); }, 700);
@@ -9147,7 +9158,7 @@ function delProd(idx) {
       {campo:'Precio venta', antes: (prodBorrado && prodBorrado.pventa) || 0, despues:'-'}
     ], currentEmp ? currentEmp.nombre : 'Admin');
 
-    buildEditList(); filterAll();
+    buildEditList(); refrescarVentaDiferido();
     function intentarBorrado(){
       if(!window.__lrSaveProductos){ showToast('PRODUCTO ELIMINADO (local)'); return; }
       showToast('Borrando "'+nombre+'"...');
@@ -9335,8 +9346,7 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar, tocadosForzados) {
     if(vistosNombre[_n]){ PRODUCTS.splice(_d, 1); }
     else vistosNombre[_n] = true;
   }
-  buildPills();
-  filterAll();
+  refrescarVentaDiferido();
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   guardarPendienteLocalProductos(PRODUCTS);
   // Se avisa que quedó guardado ACÁ y se deja seguir trabajando, pero el aviso
@@ -9398,8 +9408,7 @@ function saveLocalConBorrado(mensajeExito, nombresABorrar, tocadosForzados) {
 }
 
 function saveLocal(mensajeExito, tocadosForzados) {
-  buildPills(); // Reconstruir pills por si hay categorías nuevas con productos
-  filterAll();
+  refrescarVentaDiferido(); // pills y lista de venta (por si hay categorías nuevas con productos)
   if(!window.__lrSaveProductos){ showToast('✅ CAMBIOS GUARDADOS (local)'); return Promise.resolve(); }
   guardarPendienteLocalProductos(PRODUCTS); // respaldo propio, antes de intentar la nube
   showToast('⏳ Guardando en la nube...');
@@ -20688,7 +20697,7 @@ function guardarEdMasiva(){
     window.__lrProductosTocados = nombresTocados;
     saveLocal('✅ '+nombresTocados.length+' producto'+(nombresTocados.length===1?'':'s')+' actualizado'+(nombresTocados.length===1?'':'s'));
     renderEdMasiva();
-    renderCatalogo(); buildPills(); filterAll();
+    renderCatalogo(); refrescarVentaDiferido();
   });
 }
 
@@ -20957,7 +20966,7 @@ function confirmarAumentoMasivo() {
   window.__lrProductosTocados = _amPlan.afectados.map(function(x){ return x.p.name; });
   saveLocal();
   cerrarAumentoMasivoModal();
-  renderCatalogo(); buildPills(); filterAll();
+  renderCatalogo(); refrescarVentaDiferido();
   showToast('✅ Aumento del '+_amPlan.pct+'% aplicado a '+_amPlan.afectados.length+' producto(s)');
   _amPlan = null;
 }
@@ -21425,7 +21434,7 @@ function guardarProdModal() {
   // sin subir quedan anotados, se reintentan solos, y el cartelito amarillo
   // avisa cuántos faltan. Esperar por cada producto hacía que cargar unos pocos
   // llevara muchísimo tiempo.
-  closeProdModal(); renderCatalogo(); buildPills(); filterAll();
+  closeProdModal(); renderCatalogo(); refrescarVentaDiferido();
 
   saveLocalConBorrado(esNuevo ? '✅ Producto agregado' : '✅ Producto actualizado', huboRename ? [nombreViejo] : null)
     .catch(function(){
@@ -21469,7 +21478,7 @@ function eliminarProdModal() {
       {campo:'Categoria', antes: (prodDel && prodDel.cat) || '-', despues:'(eliminado)'},
       {campo:'Precio venta', antes: (prodDel && prodDel.pventa) || 0, despues:'-'}
     ], currentEmp ? currentEmp.nombre : 'Admin');
-    closeProdModal(); renderCatalogo(); filterAll();
+    closeProdModal(); renderCatalogo(); refrescarVentaDiferido();
     // Borrado explícito: saveLocal() ya no borra nada por su cuenta, así que
     // hay que pedir el borrado de este producto puntual.
     if(window.__lrSaveProductos){
@@ -22463,7 +22472,7 @@ function moverAcategoria(cat){
   window._cartelitosSel = {};
   actualizarBotonCartelitos();
   cerrarMoverCategoria();
-  buildPills(); refrescarFiltroCategorias(); renderCatalogo(); filterAll();
+  refrescarFiltroCategorias(); renderCatalogo(); refrescarVentaDiferido();
   if(typeof renderCatModalList === 'function') renderCatModalList();
 
   if(!movidos){ showToast('Esos productos ya estaban en "'+cat+'"'); return; }
@@ -22496,7 +22505,7 @@ function borrarSeleccionados() {
 
     window._cartelitosSel = {};
     actualizarBotonCartelitos();
-    renderCatalogo(); buildEditList(); buildPills(); filterAll();
+    renderCatalogo(); refrescarVentaDiferido();
 
     // UNA sola escritura a la nube para todos, en vez de una por producto.
     if(!window.__lrSaveProductos){ showToast(nombres.length+' productos eliminados (local)'); return; }
