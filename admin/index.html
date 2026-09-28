@@ -8099,7 +8099,6 @@ function openAdmin() {
   document.getElementById('adminOverlay').classList.add('open');
   try { updateFSAStatus("sin-arch"); } catch(e) { console.error('updateFSAStatus falló:', e); }
   try { actualizarStorageStatus(); } catch(e) { console.error('actualizarStorageStatus falló:', e); }
-  try { renderDashboard(); } catch(e) { console.error('renderDashboard falló:', e); }
   // Setear fecha de hoy en el selector
   var hoy = new Date();
   var yyyy = hoy.getFullYear();
@@ -8107,12 +8106,24 @@ function openAdmin() {
   var dd = String(hoy.getDate()).padStart(2,'0');
   var fechaEl = document.getElementById('fechaFiltro');
   if(fechaEl && !fechaEl.value) fechaEl.value = yyyy+'-'+mm+'-'+dd;
-  try { renderVentas(); } catch(e) { console.error('renderVentas falló:', e); }
-  try { renderTopProds(); } catch(e) { console.error('renderTopProds falló:', e); }
-  try { renderEmpAdmin(); } catch(e) { console.error('renderEmpAdmin falló:', e); }
-  try { buildEditList(); } catch(e) { console.error('buildEditList falló:', e); }
   try { updateStockNotif(); } catch(e) { console.error('updateStockNotif falló:', e); }
-  try { renderInventario(); } catch(e) { console.error('renderInventario falló:', e); }
+  // Se dibuja solo la pestaña que queda a la vista. Antes, al abrir el panel se
+  // armaban de una todas (dashboard, ventas, ranking, empleados, catálogo e
+  // inventario) aunque se fuera a mirar una sola — en el celular se notaba.
+  // Las demás se dibujan al entrar a cada una (switchTab).
+  var paneActivo = document.querySelector('#adminOverlay .tab-pane.active');
+  var tabActiva = paneActivo ? paneActivo.id.replace('pane-','') : 'dashboard';
+  try { renderPestanaAdmin(tabActiva); } catch(e) { console.error('render de '+tabActiva+' falló:', e); }
+}
+
+// Redibuja la pestaña del admin que se abre. Cubre las que antes se armaban
+// al abrir el panel; el resto ya se dibuja en switchTab.
+function renderPestanaAdmin(tab) {
+  if(tab==='dashboard') renderDashboard();
+  else if(tab==='ventas'){ renderVentas(); renderTopProds(); }
+  else if(tab==='empleados') renderEmpAdmin();
+  else if(tab==='catalogo') initCatalogo();
+  else if(tab==='inventario'){ renderInventario(); renderStockAlerts(); renderStockVentasDia(); }
 }
 function closeAdmin() {
   document.getElementById('adminOverlay').classList.remove('open');
@@ -8217,6 +8228,9 @@ function switchTab(tab) {
   var btnGrupoE = document.getElementById('btnGrupoEquipo');
   if(btnGrupoE) btnGrupoE.classList.toggle('active', esEquipo);
   if(tab==='cierres') renderCierres();
+  // Ventas no se dibujaba al entrar: dependía de que openAdmin armara todas
+  // las pestañas al abrir el panel, cosa que ya no hace.
+  if(tab==='ventas'){ renderVentas(); renderTopProds(); }
   if(tab==='inventario'){
     renderInventario(); renderStockAlerts();
     renderStockVentasDia();
