@@ -495,6 +495,87 @@
     return '{' + claves.map(function(k){ return JSON.stringify(k)+':'+stringifyOrdenado(obj[k]); }).join(',') + '}';
   }
 
+  // ── Sincronización incremental de colecciones ─────────────────────────────
+  // Antes, cada aviso de la nube (por ejemplo, una venta nueva hecha en otro
+  // equipo) hacía que ESTE equipo volviera a leer, copiar y ordenar TODOS los
+  // documentos de la colección — con miles de ventas/movimientos eso eran
+  // cientos de milisegundos trabados en cada equipo por cada venta, y cada
+  // día un poco más. Firestore ya dice qué documentos cambiaron
+  // (snap.docChanges()): acá se procesa solo eso y se reusa lo demás.
+  //
+  // Devuelve lo mismo que armaba cada escucha a mano:
+  //  • lista: array NUEVO y ordenado (se entrega una copia, así quien la
+  //    modifique con push/splice no toca el estado interno de acá).
+  //  • mapa: objeto NUEVO clave → clon independiente de cada documento, que
+  //    usan los __lrSaveX para saber qué cambió. Es una copia superficial
+  //    (los clones se reusan): así el mapa del aviso ANTERIOR queda intacto,
+  //    que es lo que usan las escuchas que avisan de novedades comparando
+  //    "antes" contra "ahora".
+  // opciones.clave(d): clave del mapa (por defecto String(d.id)).
+  // opciones.cmp(a,b): orden de la lista (por defecto por id, ascendente).
+  function crearListaIncremental(opciones){
+    opciones = opciones || {};
+    var claveDe = opciones.clave || function(d){ return String(d.id); };
+    var cmp = opciones.cmp || function(a,b){ return (a.id||0)-(b.id||0); };
+    var porDoc = {};   // id del documento en Firestore → {d, clave, clon}
+    var orden = [];    // datos ordenados (interno, nunca se entrega tal cual)
+    var mapa = {};     // clave → clon
+    // Si se va un documento cuya clave comparte otro (raro, pero posible: dos
+    // cierres con la misma fecha, un id repetido), el mapa pasa a apuntar al
+    // que queda, igual que cuando se rearmaba todo desde cero.
+    function soltarClave(entrada){
+      if(mapa[entrada.clave] !== entrada.clon) return;
+      delete mapa[entrada.clave];
+      for(var id in porDoc){
+        if(porDoc[id].clave === entrada.clave){ mapa[entrada.clave] = porDoc[id].clon; break; }
+      }
+    }
+    return function(snap){
+      var reordenar = false, nuevos = [];
+      snap.docChanges().forEach(function(ch){
+        var docId = ch.doc.id;
+        var previo = porDoc[docId];
+        if(ch.type === 'removed'){
+          if(previo){
+            delete porDoc[docId];
+            soltarClave(previo);
+          }
+          reordenar = true;
+          return;
+        }
+        var d = ch.doc.data();
+        var entrada = { d: d, clave: claveDe(d), clon: JSON.parse(JSON.stringify(d)) };
+        porDoc[docId] = entrada;
+        if(previo && previo.clave !== entrada.clave) soltarClave(previo);
+        mapa[entrada.clave] = entrada.clon;
+        if(previo){
+          // Modificado: se reemplaza en su lugar si no cambió su posición.
+          var i = orden.lastIndexOf(previo.d);
+          if(i !== -1 && cmp(previo.d, d) === 0) orden[i] = d;
+          else reordenar = true;
+        } else {
+          nuevos.push(d);
+        }
+      });
+      if(reordenar){
+        orden = Object.keys(porDoc).map(function(k){ return porDoc[k].d; });
+        orden.sort(cmp);
+      } else if(nuevos.length){
+        nuevos.sort(cmp);
+        // Caso normal (una venta nueva): va al final, sin reordenar todo.
+        if(!orden.length || cmp(orden[orden.length-1], nuevos[0]) <= 0){
+          for(var n = 0; n < nuevos.length; n++) orden.push(nuevos[n]);
+        } else {
+          orden = orden.concat(nuevos);
+          orden.sort(cmp);
+        }
+      }
+      var copiaMapa = {};
+      for(var k in mapa) copiaMapa[k] = mapa[k];
+      return { lista: orden.slice(), mapa: copiaMapa };
+    };
+  }
+
   // Red de seguridad para guardados: si la promesa de escritura a Firestore
   // no responde NI con éxito NI con error (ej. wifi con señal pero sin salida
   // real a internet), antes el usuario se quedaba mirando "Guardando en la
@@ -885,23 +966,15 @@
     return Promise.all(promesas);
   };
   // Escucha en vivo de ventas.
-  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot(function(snap){
-    var lista = [];
-    var mapa = {};
-    snap.forEach(function(doc){
-      var d = doc.data();
-      lista.push(d);
-      // clon independiente para la comparación — si no, mutar un item de la
-      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
-      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
-      mapa[String(d.id)] = JSON.parse(JSON.stringify(d));
-    });
-    lista.sort(function(a,b){ return (a.id||0) - (b.id||0); });
+  // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
+  // independiente de cada venta, para que mutar la lista no lo afecte).
+  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.VENTAS = lista;
     window.__lrSync.ultimoVentasSnapshot = mapa;
     window.__lrSync.ventasListos = true;
     ocultarCargaSiListo();
-  }, function(err){
+  }; })(crearListaIncremental()), function(err){
     console.error('Error sincronizando ventas:', err);
     window.__lrSync.ventasListos = true;
     ocultarCargaSiListo();
@@ -937,23 +1010,15 @@
       return Promise.all(__promesas);
   };
   // Escucha en vivo de cierres de turno.
-  window.__lrDB.collection(window.__lrCOL.cierres).onSnapshot(function(snap){
-    var lista = [];
-    var mapa = {};
-    snap.forEach(function(doc){
-      var d = doc.data();
-      lista.push(d);
-      // clon independiente para la comparación — si no, mutar un item de la
-      // lista (como al marcar algo "resuelto") también mutaba sin querer esta
-      // copia, haciendo que el sistema pensara "no cambió nada" y nunca guardara.
-      mapa[d.fecha] = JSON.parse(JSON.stringify(d));
-    });
-    lista.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+  // Incremental: ver crearListaIncremental. Clave y orden por fecha, igual
+  // que antes.
+  window.__lrDB.collection(window.__lrCOL.cierres).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCierresCache = lista;
     window.__lrSync.ultimoCierresSnapshot = mapa;
     window.__lrSync.cierresListos = true;
     ocultarCargaSiListo();
-  }, function(err){
+  }; })(crearListaIncremental({clave:function(d){ return d.fecha; }, cmp:function(a,b){ return new Date(a.fecha) - new Date(b.fecha); }})), function(err){
     console.error('Error sincronizando cierres:', err);
     window.__lrSync.cierresListos = true;
     ocultarCargaSiListo();
@@ -981,15 +1046,13 @@
   };
 
   // Consumos
-  window.__lrDB.collection(window.__lrCOL.consumos).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.consumos).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrConsumosCache = lista;
     window.__lrSync.ultimoConsumosSnapshot = mapa;
     window.__lrSync.consumosListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando consumos:', err); window.__lrSync.consumosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando consumos:', err); window.__lrSync.consumosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveConsumos = function(lista){
     var __promesas = [];
@@ -1014,10 +1077,8 @@
   };
 
   // Egresos
-  window.__lrDB.collection(window.__lrCOL.egresos).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.egresos).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de pagos nuevos (después de la carga inicial)
     if(window.__lrSync.egresosListos){
@@ -1034,7 +1095,7 @@
     window.__lrSync.ultimoEgresosSnapshot = mapa;
     window.__lrSync.egresosListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando egresos:', err); window.__lrSync.egresosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando egresos:', err); window.__lrSync.egresosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveEgresos = function(lista){
     var __promesas = [];
@@ -1059,15 +1120,13 @@
   };
 
   // Fiados
-  window.__lrDB.collection(window.__lrCOL.fiados).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.fiados).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrFiadosCache = lista;
     window.__lrSync.ultimoFiadosSnapshot = mapa;
     window.__lrSync.fiadosListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando fiados:', err); window.__lrSync.fiadosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando fiados:', err); window.__lrSync.fiadosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveFiados = function(lista){
     var __promesas = [];
@@ -1092,15 +1151,13 @@
   };
 
   // Consignaciones (mercadería entregada para vender/usar, se cobra a precio de costo)
-  window.__lrDB.collection(window.__lrCOL.consignaciones).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.consignaciones).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrConsignacionesCache = lista;
     window.__lrSync.ultimoConsignacionesSnapshot = mapa;
     window.__lrSync.consignacionesListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando consignaciones:', err); window.__lrSync.consignacionesListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando consignaciones:', err); window.__lrSync.consignacionesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveConsignaciones = function(lista){
     var __promesas = [];
@@ -1125,15 +1182,13 @@
   };
 
   // Delivery
-  window.__lrDB.collection(window.__lrCOL.delivery).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.delivery).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrDeliveryCache = lista;
     window.__lrSync.ultimoDeliverySnapshot = mapa;
     window.__lrSync.deliveryListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando delivery:', err); window.__lrSync.deliveryListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando delivery:', err); window.__lrSync.deliveryListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveDelivery = function(lista){
     var __promesas = [];
@@ -1151,15 +1206,13 @@
   };
 
   // Préstamos
-  window.__lrDB.collection(window.__lrCOL.prestamos).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.prestamos).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrPrestamosCache = lista;
     window.__lrSync.ultimoPrestamosSnapshot = mapa;
     window.__lrSync.prestamosListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando préstamos:', err); window.__lrSync.prestamosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando préstamos:', err); window.__lrSync.prestamosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSavePrestamos = function(lista){
     var __promesas = [];
@@ -1177,15 +1230,13 @@
   };
 
   // Transferencias entre cuentas
-  window.__lrDB.collection(window.__lrCOL.transferCuentas).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.transferCuentas).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrTransferCuentasCache = lista;
     window.__lrSync.ultimoTransferCuentasSnapshot = mapa;
     window.__lrSync.transferCuentasListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando transferencias:', err); window.__lrSync.transferCuentasListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando transferencias:', err); window.__lrSync.transferCuentasListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveTransferCuentas = function(lista){
     var __promesas = [];
@@ -1203,15 +1254,13 @@
   };
 
   // Cargas virtuales
-  window.__lrDB.collection(window.__lrCOL.cargasVirtuales).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.cargasVirtuales).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCargasVirtualesCache = lista;
     window.__lrSync.ultimoCargasVirtualesSnapshot = mapa;
     window.__lrSync.cargasVirtualesListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando cargas virtuales:', err); window.__lrSync.cargasVirtualesListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando cargas virtuales:', err); window.__lrSync.cargasVirtualesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCargasVirtuales = function(lista){
     var __promesas = [];
@@ -1229,15 +1278,13 @@
   };
 
   // Mensajes programados
-  window.__lrDB.collection(window.__lrCOL.mensajesProg).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.mensajesProg).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrMensajesProgCache = lista;
     window.__lrSync.ultimoMensajesProgSnapshot = mapa;
     window.__lrSync.mensajesProgListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando mensajes programados:', err); window.__lrSync.mensajesProgListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando mensajes programados:', err); window.__lrSync.mensajesProgListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMensajesProg = function(lista){
     var __promesas = [];
@@ -1262,10 +1309,8 @@
   };
 
   // Mensajes puntuales
-  window.__lrDB.collection(window.__lrCOL.mensajesPunt).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.mensajesPunt).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Detectar mensajes nuevos (agregados después de la carga inicial) para
     // entregarlos en el momento a un empleado que ya tiene el turno abierto —
@@ -1287,7 +1332,7 @@
     window.__lrSync.ultimoMensajesPuntSnapshot = mapa;
     window.__lrSync.mensajesPuntListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando mensajes puntuales:', err); window.__lrSync.mensajesPuntListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando mensajes puntuales:', err); window.__lrSync.mensajesPuntListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMensajesPunt = function(lista){
     var __promesas = [];
@@ -1313,10 +1358,8 @@
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
   // préstamos, etc. Usado sobre todo para Rentabilidad).
-  window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
     // cualquier dispositivo que tenga el panel abierto — no solo en el que
@@ -1345,7 +1388,7 @@
       renderMovimientos();
     }
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveMovimientos = function(lista){
     var __promesas = [];
@@ -1644,15 +1687,13 @@
   };
 
   // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
-  window.__lrDB.collection('stockMovsHistorial').onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection('stockMovsHistorial').onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrStockMovsCache = lista;
     window.__lrSync.ultimoStockMovsSnapshot = mapa;
     window.__lrSync.stockMovsListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando historial de stock:', err); window.__lrSync.stockMovsListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando historial de stock:', err); window.__lrSync.stockMovsListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveStockMovs = function(lista){
     var __promesas = [];
@@ -1867,15 +1908,13 @@
   };
 
   // Retiros de caja
-  window.__lrDB.collection(window.__lrCOL.retirosCaja).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.retirosCaja).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrRetirosCajaCache = lista;
     window.__lrSync.ultimoRetirosCajaSnapshot = mapa;
     window.__lrSync.retirosCajaListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando retiros de caja:', err); window.__lrSync.retirosCajaListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando retiros de caja:', err); window.__lrSync.retirosCajaListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveRetirosCaja = function(lista){
     var __promesas = [];
@@ -1924,15 +1963,13 @@
   };
 
   // Sorteos
-  window.__lrDB.collection(window.__lrCOL.sorteos).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.sorteos).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrSorteosCache = lista;
     window.__lrSync.ultimoSorteosSnapshot = mapa;
     window.__lrSync.sorteosListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando sorteos:', err); window.__lrSync.sorteosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando sorteos:', err); window.__lrSync.sorteosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveSorteos = function(lista){
     var __promesas = [];
@@ -2074,15 +2111,13 @@
   };
 
   // Cierres mensuales (resumen de Liquidez por período)
-  window.__lrDB.collection(window.__lrCOL.cierresMes).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.cierresMes).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCierresMesCache = lista;
     window.__lrSync.ultimoCierresMesSnapshot = mapa;
     window.__lrSync.cierresMesListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando cierres mensuales:', err); window.__lrSync.cierresMesListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando cierres mensuales:', err); window.__lrSync.cierresMesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCierresMes = function(lista){
     var __promesas = [];
@@ -2100,15 +2135,13 @@
   };
 
   // Log de cambios de catálogo (historial de precios/costos, solo se agrega)
-  window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot(function(snap){
-    var lista = [], mapa = {};
-    snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
-    lista.sort(function(a,b){ return (a.id||0)-(b.id||0); });
+  window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot((function(inc){ return function(snap){
+    var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrLogCatalogoCache = lista;
     window.__lrSync.ultimoLogCatalogoSnapshot = mapa;
     window.__lrSync.logCatalogoListos = true;
     ocultarCargaSiListo();
-  }, function(err){ console.error('Error sincronizando log de catálogo:', err); window.__lrSync.logCatalogoListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando log de catálogo:', err); window.__lrSync.logCatalogoListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveLogCatalogo = function(lista){
     var __promesas = [];
