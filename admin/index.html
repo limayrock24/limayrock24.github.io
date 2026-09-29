@@ -318,6 +318,14 @@
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
+    // Diagnóstico de carga (ver mostrarDiagnosticoCarga): se anota a los
+    // cuántos milisegundos de abrir la página llegó cada colección.
+    try{
+      var tiempos = window.__lrTiemposCarga || (window.__lrTiemposCarga = {});
+      for(var kT in s){ if(/List(o|a)s$/.test(kT) && s[kT] && !tiempos[kT]) tiempos[kT] = Math.round(performance.now()); }
+      if(!tiempos._pantalla && cargaEsencialLista(s)) tiempos._pantalla = Math.round(performance.now());
+      if(!tiempos._completa && window.__lrCargaCompleta && window.__lrCargaCompleta()) tiempos._completa = Math.round(performance.now());
+    }catch(eT){}
     // El panel de repartidor (/delivery/) es la MISMA app que el panel de
     // venta/admin, pero solo muestra pedidos: no usa ventas, cierres, stock,
     // clientes, proveedores, combos, movimientos, etc. Antes esperaba a que
@@ -3920,6 +3928,9 @@ body.night-on{background:#080005}
     <!-- DASHBOARD -->
     <div class="tab-pane active" id="pane-dashboard">
       <div id="dashContent"></div>
+      <div style="text-align:center;margin:18px 0 6px">
+        <span onclick="mostrarDiagnosticoCarga()" style="font-size:.66rem;color:var(--gray);text-decoration:underline;cursor:pointer">🩺 Diagnóstico de carga</span>
+      </div>
     </div>
 
     <!-- VENTAS -->
@@ -18908,6 +18919,80 @@ function guardarOperacionProtegida(coleccion, getter, etiqueta, silencioso) {
     } else if(intentos > 90){ clearInterval(esperar); }
   }, 500);
 })();
+
+// ── DIAGNÓSTICO DE CARGA ────────────────────────────────────────────────────
+// Solo lectura: muestra, para este equipo, cuántos registros tiene cada
+// colección, cuánto pesan, desde qué fecha hay datos y a los cuántos segundos
+// de abrir la app llegó cada una. Sirve para decidir qué historial conviene
+// dejar de traer entero al abrir (no cambia nada del sistema).
+function mostrarDiagnosticoCarga() {
+  var t = window.__lrTiemposCarga || {};
+  var cols = [
+    ['Ventas',              function(){ return window.VENTAS; },                   'ventasListos'],
+    ['Cierres',             function(){ return window.__lrCierresCache; },         'cierresListos'],
+    ['Movimientos',         function(){ return window.__lrMovimientosCache; },     'movimientosListos'],
+    ['Historial de stock',  function(){ return window.__lrStockMovsCache; },       'stockMovsListos'],
+    ['Log del catálogo',    function(){ return window.__lrLogCatalogoCache; },     'logCatalogoListos'],
+    ['Productos',           function(){ return window.PRODUCTS; },                 'productosListos'],
+    ['Consumos',            function(){ return window.__lrConsumosCache; },        'consumosListos'],
+    ['Egresos',             function(){ return window.__lrEgresosCache; },         'egresosListos'],
+    ['Fiados',              function(){ return window.__lrFiadosCache; },          'fiadosListos'],
+    ['Consignaciones',      function(){ return window.__lrConsignacionesCache; },  'consignacionesListos'],
+    ['Cargas virtuales',    function(){ return window.__lrCargasVirtualesCache; }, 'cargasVirtualesListos'],
+    ['Retiros de caja',     function(){ return window.__lrRetirosCajaCache; },     'retirosCajaListos'],
+    ['Delivery',            function(){ return window.__lrDeliveryCache; },        'deliveryListos'],
+    ['Pedidos web',         function(){ return window.__lrPedidosWebCache; },      'pedidosWebListos'],
+    ['Préstamos',           function(){ return window.__lrPrestamosCache; },       'prestamosListos'],
+    ['Transferencias',      function(){ return window.__lrTransferCuentasCache; }, 'transferCuentasListos'],
+    ['Mensajes programados',function(){ return window.__lrMensajesProgCache; },    'mensajesProgListos'],
+    ['Mensajes puntuales',  function(){ return window.__lrMensajesPuntCache; },    'mensajesPuntListos'],
+    ['Cierres mensuales',   function(){ return window.__lrCierresMesCache; },      'cierresMesListos'],
+    ['Sorteos',             function(){ return window.__lrSorteosCache; },         'sorteosListos']
+  ];
+  function seg(ms){ return ms ? (ms/1000).toFixed(1)+' s' : '—'; }
+  function fechaMin(lista){
+    var min = null;
+    (lista||[]).forEach(function(x){
+      var f = x && (x.fecha || x.ts);
+      if(!f) return;
+      var d = new Date(f);
+      if(!isNaN(d) && (!min || d < min)) min = d;
+    });
+    return min ? min.toLocaleDateString('es-AR') : '—';
+  }
+  var filas = cols.map(function(c){
+    var lista = [];
+    try{ lista = c[1]() || []; }catch(e){}
+    var kb = 0;
+    try{ kb = Math.round(JSON.stringify(lista).length/1024); }catch(e){}
+    return {nombre:c[0], n:(lista.length||0), kb:kb, desde:fechaMin(lista), llego:t[c[2]]};
+  }).sort(function(a,b){ return b.kb - a.kb; });
+  var totalKb = filas.reduce(function(s,f){ return s+f.kb; },0);
+  var html = '<div style="font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">🩺 DIAGNÓSTICO DE CARGA</div>'+
+    '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Pantalla lista a los <b style="color:var(--white)">'+seg(t._pantalla)+'</b> · todo cargado a los <b style="color:var(--white)">'+seg(t._completa)+'</b> · total en memoria ≈ <b style="color:var(--white)">'+(totalKb>=1024?(totalKb/1024).toFixed(1)+' MB':totalKb+' KB')+'</b></div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
+    '<tr style="color:var(--gray);text-align:left"><th style="padding:4px">Colección</th><th style="padding:4px;text-align:right">Registros</th><th style="padding:4px;text-align:right">Peso</th><th style="padding:4px">Desde</th><th style="padding:4px;text-align:right">Llegó</th></tr>'+
+    filas.map(function(f){
+      return '<tr style="border-top:1px solid var(--border)"><td style="padding:4px">'+f.nombre+'</td>'+
+        '<td style="padding:4px;text-align:right">'+f.n.toLocaleString('es-AR')+'</td>'+
+        '<td style="padding:4px;text-align:right">'+(f.kb>=1024?(f.kb/1024).toFixed(1)+' MB':f.kb+' KB')+'</td>'+
+        '<td style="padding:4px">'+f.desde+'</td>'+
+        '<td style="padding:4px;text-align:right">'+seg(f.llego)+'</td></tr>';
+    }).join('')+
+    '</table>'+
+    '<div style="font-size:.66rem;color:var(--gray);margin-top:10px">Los tiempos son de este equipo, desde que se abrió la página. Sacale una captura y pasásela a Claude.</div>';
+  var ov = document.getElementById('diagCargaOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'diagCargaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.onclick = function(e){ if(e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:var(--card,#111);border:1px solid var(--border,#333);border-radius:8px;padding:14px;max-width:560px;width:100%;max-height:85vh;overflow:auto;position:relative">'+
+    '<button onclick="document.getElementById(\'diagCargaOverlay\').remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--gray);font-size:1rem;cursor:pointer">✕</button>'+
+    html+'</div>';
+}
 
 // Actualizar indicador en el admin
 function actualizarStorageStatus() {
