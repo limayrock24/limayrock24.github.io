@@ -8737,6 +8737,12 @@ function renderVentas() {
       // quedaba todo tapado en 'Sin categoría' como un ítem aparte.
       if(i.esCombo && i.comboItems && i.comboItems.length){
         var pesos = i.comboItems.map(function(ci){
+          // Ítem manual (fiambre, pan...): pesa según su precio cargado y los
+          // gramos/unidades que lleva el combo.
+          if(ci.tipo === 'manual'){
+            var itM = itemManualDeCombo(ci);
+            return (itM && itM.precioKg) ? itM.precioKg * factorItemManualCombo(ci) : 0;
+          }
           var prod = PRODUCTS.find(function(p){ return p.name===ci.nombre; });
           return (prod && prod.pventa) ? prod.pventa * (ci.qty||1) : 0;
         });
@@ -8747,6 +8753,19 @@ function renderVentas() {
           // a prorrata según el precio individual de cada componente (o
           // parejo si ninguno tiene precio cargado), como estimación.
           var montoAsignado = sumaPesos>0 ? (i.subtotal||0)*(pesos[idx]/sumaPesos) : (i.subtotal||0)/i.comboItems.length;
+          // Ítem manual: se agrupa igual que cuando se vende suelto — bajo su
+          // categoría si es uno de los ítems manuales rápidos, y si no, no
+          // figura (mismo criterio que la venta suelta, más abajo). Cuenta
+          // una venta por combo, como una venta suelta de ese ítem.
+          if(ci.tipo === 'manual'){
+            var itMan = itemManualDeCombo(ci);
+            var catMan = itMan ? itMan.categoria : null;
+            if(!catMan || presetsRep.indexOf(catMan) === -1) return;
+            if(!porProductoVentas[catMan]) porProductoVentas[catMan] = {qty:0, montoVenta:0};
+            porProductoVentas[catMan].qty += (i.qty||1) * (ci.unidadItem === 'unidad' ? (ci.qty||1) : 1);
+            porProductoVentas[catMan].montoVenta += montoAsignado;
+            return;
+          }
           if(!porProductoVentas[ci.nombre]) porProductoVentas[ci.nombre] = {qty:0, montoVenta:0, promos:{}};
           porProductoVentas[ci.nombre].qty += cantidadReal;
           porProductoVentas[ci.nombre].montoVenta += montoAsignado;
@@ -11912,6 +11931,19 @@ function saveItemsManuales(l) { window.__lrItemsManualesCache = l; if(window.__l
 // Sufijo legible según cómo está pensado el precio de un producto suelto:
 // cada 100g, por kilo entero, o por unidad (fiambre suele cargarse cada
 // 100g; pan y milanesas, por kilo — cada producto elige el que le sirva).
+// Ítem manual dentro de un combo (ver agregarCmProdManual): cuántas "unidades
+// de precio" lleva. El precio/costo del ítem manual está cargado cada 100g,
+// por kilo o por unidad, así que 500g de algo a $X/100g son 5 × $X.
+function factorItemManualCombo(ci) {
+  if(ci.unidadItem === 'unidad') return ci.qty || 1;
+  if(ci.unidadItem === 'pesokg') return (ci.gramos||0) / 1000;
+  return (ci.gramos||0) / 100;
+}
+function itemManualDeCombo(ci) {
+  if(ci.tipo !== 'manual') return null;
+  return getItemsManuales().find(function(x){ return x.nombre === ci.nombre; }) || null;
+}
+
 function sufijoUnidadManual(unidad) {
   return unidad==='unidad' ? ' c/u' : (unidad==='pesokg' ? ' /kg' : ' /100g');
 }
@@ -13555,6 +13587,10 @@ function calcularMargenBrutoDeVentas(ventasList) {
       if(!i.name) return;
       if(i.esCombo && i.comboItems && i.comboItems.length){
         var pesos = i.comboItems.map(function(ci){
+          if(ci.tipo === 'manual'){
+            var itM = itemManualDeCombo(ci);
+            return (itM && itM.precioKg) ? itM.precioKg * factorItemManualCombo(ci) : 0;
+          }
           var prod = prodByName[ci.nombre];
           return (prod && prod.pventa) ? prod.pventa * (ci.qty||1) : 0;
         });
@@ -13562,6 +13598,18 @@ function calcularMargenBrutoDeVentas(ventasList) {
         i.comboItems.forEach(function(ci, idx){
           var cantidadReal = (ci.qty||1) * (i.qty||1);
           var montoAsignado = sumaPesos>0 ? (i.subtotal||0)*(pesos[idx]/sumaPesos) : (i.subtotal||0)/i.comboItems.length;
+          // Ítem manual con costo cargado (opcional): suma al margen igual que
+          // un producto; sin costo, va como "sin costo".
+          if(ci.tipo === 'manual'){
+            var itMan = itemManualDeCombo(ci);
+            if(itMan && itMan.costoKg){
+              costoTotal += itMan.costoKg * factorItemManualCombo(ci) * (i.qty||1);
+              revConCosto += montoAsignado;
+            } else {
+              revSinCosto += montoAsignado;
+            }
+            return;
+          }
           var prod = prodByName[ci.nombre];
           if(prod && prod.costo){
             costoTotal += prod.costo * cantidadReal;
@@ -18809,7 +18857,11 @@ window.addEventListener('online', function(){
 });
 
 // Uso: guardarOperacionProtegida('Prestamos', getPrestamos, 'Préstamo de Juan')
-function guardarOperacionProtegida(coleccion, getter, etiqueta) {
+// silencioso (opcional): no muestra el "✅ confirmado" cuando todo sale bien
+// — para guardados que acompañan a otra operación que ya avisa (ej: el
+// descuento de stock de cada venta). Los avisos de "sin señal" o de error se
+// muestran igual.
+function guardarOperacionProtegida(coleccion, getter, etiqueta, silencioso) {
   window['__lrGetter_'+coleccion] = getter; // para que el reintento sepa releer el estado actual
   var saveFn = window['__lrSave'+coleccion];
   if(!saveFn){ showToast('💾 '+etiqueta+' guardado (local)'); return Promise.resolve(); }
@@ -18823,17 +18875,17 @@ function guardarOperacionProtegida(coleccion, getter, etiqueta) {
   if(!window.__lrConTimeoutAviso){
     return promesa.then(function(){
       _lrEscribirPendientesOps(_lrLeerPendientesOps().filter(function(o){ return o.id !== opId; }));
-      showToast('✅ '+etiqueta+' confirmado');
+      if(!silencioso) showToast('✅ '+etiqueta+' confirmado');
     });
   }
-  return window.__lrConTimeoutAviso(promesa, 15000, function(){ guardarOperacionProtegida(coleccion, getter, etiqueta); })
+  return window.__lrConTimeoutAviso(promesa, 15000, function(){ guardarOperacionProtegida(coleccion, getter, etiqueta, silencioso); })
     .then(function(r){
       if(r.pendiente){
         showToast('💾 '+etiqueta+' guardado — se subirá solo cuando haya señal');
         _lrIniciarReintentoOps();
       } else {
         _lrEscribirPendientesOps(_lrLeerPendientesOps().filter(function(o){ return o.id !== opId; }));
-        showToast('✅ '+etiqueta+' confirmado en la nube');
+        if(!silencioso) showToast('✅ '+etiqueta+' confirmado en la nube');
       }
     })
     .catch(function(){
@@ -28211,7 +28263,9 @@ function descontarStock(items, tipoMov) {
   });
   var etiquetaTipo = {venta:'Venta', consumo:'Consumo', fiado:'Fiado', consignacion:'Consignación'}[tipo] || 'Descuento de stock';
   window.__lrStockInvCache = inv;
-  guardarOperacionProtegida('StockInv', getStockInv, etiquetaTipo+' — '+items.length+' producto(s)');
+  // Silencioso: la venta ya muestra su propio aviso; el del stock solo aparece
+  // si no hay señal o falla.
+  guardarOperacionProtegida('StockInv', getStockInv, etiquetaTipo+' — '+items.length+' producto(s)', true);
   if(alertas.length) updateStockNotif();
 }
 
