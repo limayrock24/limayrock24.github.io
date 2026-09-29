@@ -4816,6 +4816,7 @@ body.night-on{background:#080005}
           <option value="egreso">Egreso</option>
           <option value="ajuste-stock">Corrección de stock</option>
           <option value="baja-stock">Baja de stock</option>
+          <option value="stock">Movimientos de stock (todo)</option>
         </select>
       </div>
       <!-- Mismos períodos que Rentabilidad y el resto del sistema -->
@@ -5143,6 +5144,7 @@ body.night-on{background:#080005}
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase">Stock actual</div>
       <div style="display:flex;gap:6px;margin-bottom:8px">
         <input type="text" id="stockFiltro" placeholder="Filtrar..." oninput="renderInventario()" style="padding:7px 10px;font-size:.82rem">
+        <button onclick="verMovimientosStock()" style="white-space:nowrap;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:7px 10px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">📋 Ver movimientos</button>
       </div>
       <!-- Filtro de estado de stock -->
       <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
@@ -16790,16 +16792,24 @@ function getMovimientos() { return (window.__lrSync && window.__lrSync.movimient
 function saveMovimientos(m) { window.__lrMovimientosCache = m; if(window.__lrSaveMovimientos) window.__lrSaveMovimientos(m); }
 
 function registrarMovimiento(tipo, prodNombre, cant, stockAntes, stockDespues, responsable) {
+  registrarMovimientosLote([{tipo:tipo, producto:prodNombre, cantidad:cant, stockAntes:stockAntes, stockDespues:stockDespues, responsable:responsable}]);
+}
+// Varios movimientos con UN solo guardado (ej: una recepción de 30 productos).
+// Llamar a registrarMovimiento() en un bucle guardaba la lista completa de
+// movimientos una vez por producto.
+function registrarMovimientosLote(registros) {
   var movs = getMovimientos();
-  movs.push({
-    id:           Date.now() + Math.random(),
-    fecha:        new Date().toISOString(),
-    tipo:         tipo,       // ingreso / venta / consumo / fiado / ajuste
-    producto:     prodNombre,
-    cantidad:     cant,
-    stockAntes:   stockAntes,
-    stockDespues: stockDespues,
-    responsable:  responsable || (currentEmp ? currentEmp.nombre : '—')
+  registros.forEach(function(r){
+    movs.push({
+      id:           Date.now() + Math.random(),
+      fecha:        new Date().toISOString(),
+      tipo:         r.tipo,       // ingreso / venta / consumo / fiado / ajuste
+      producto:     r.producto,
+      cantidad:     r.cantidad,
+      stockAntes:   r.stockAntes,
+      stockDespues: r.stockDespues,
+      responsable:  r.responsable || (currentEmp ? currentEmp.nombre : '—')
+    });
   });
   // Mantener solo los últimos 2000 movimientos para no saturar localStorage
   if(movs.length > 2000) movs = movs.slice(-2000);
@@ -16950,6 +16960,9 @@ function renderMovimientos() {
     if(!tipoFil) coincideTipo = true;
     else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
     else if(tipoFil === 'consignaciones') coincideTipo = (m.tipo==='consignacion' || m.tipo==='cobro-consignacion' || m.tipo==='devolucion-consignacion');
+    // "stock" agrupa las 3 formas de tocar stock (ingreso, corrección, baja) para
+    // poder verlas todas juntas desde el atajo de Inventario, sin elegir una por una.
+    else if(tipoFil === 'stock') coincideTipo = (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock');
     else coincideTipo = (m.tipo === tipoFil);
     return coincideTipo && f >= desdeDate && f <= hastaDate;
   }).slice().reverse();
@@ -16971,6 +16984,8 @@ function renderMovimientos() {
       if(nCobro.length) partes.push(nCobro.length+' cobro'+(nCobro.length===1?'':'s')+' por '+fmt(nCobro.reduce(function(s,m){return s+(m.total||0);},0)));
       if(nParc.length)  partes.push(nParc.length+' parcial'+(nParc.length===1?'':'es')+' por '+fmt(nParc.reduce(function(s,m){return s+(m.total||0);},0)));
       resEl.textContent = partes.join(' · ');
+    } else if(tipoFil === 'stock') {
+      resEl.textContent = filtrados.length ? filtrados.length+' movimiento'+(filtrados.length===1?'':'s')+' de stock' : '';
     } else {
       var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimientos';
       resEl.textContent = filtrados.length
@@ -21483,6 +21498,9 @@ function guardarProdModal() {
       movs.push({id:Date.now(),ts:new Date().toISOString(),producto:nombre,tipo:'ajuste',stockAntes:stockAntes,stockDespues:nuevoStock,diferencia:nuevoStock-stockAntes,nota:'Ajuste desde catálogo',responsable:currentEmp?currentEmp.nombre:'Admin'});
       if(movs.length>500) movs=movs.slice(-500);
       saveStockMovs(movs);
+
+      // También visible en Movimientos (Admin)
+      registrarMovimiento('ajuste-stock', nombre, nuevoStock-stockAntes, stockAntes, nuevoStock, currentEmp?currentEmp.nombre:'Admin');
     }
   }
   inv[nombre].stock  = nuevoStock;
@@ -23326,6 +23344,11 @@ function confirmarRecepMerc() {
   });
   if(movs.length>5000) movs=movs.slice(-5000);
   saveStockMovs(movs);
+
+  // También visible en Movimientos (Admin), una entrada por producto recibido
+  registrarMovimientosLote(recibidos.map(function(r){
+    return {tipo:'ingreso', producto:r.nombre, cantidad:r.qty, stockAntes:r.antes, stockDespues:r.despues, responsable:currentEmp?currentEmp.nombre:'Recepción'};
+  }));
 
   updateStockNotif();
   cerrarRecepMerc();
@@ -27559,8 +27582,10 @@ function ingresarStock() {
   var inv=getStockInv();
   var key=prod.name;
   if(!inv[key]) inv[key]={stock:0,minimo:5,historial:[]};
+  var stockAntes = inv[key].stock;
   inv[key].stock+=cant;
   inv[key].minimo=minimo;
+  var stockDespues = inv[key].stock;
   inv[key].historial.push({
     fecha:new Date().toISOString(),
     cant:cant,
@@ -27571,11 +27596,16 @@ function ingresarStock() {
   window.__lrStockInvCache = inv;
   guardarOperacionProtegida('StockInv', getStockInv, 'Stock actualizado: +'+cant+' unidades de '+key);
 
+  // También visible en Movimientos (Admin) — antes solo quedaba en el historial
+  // interno del producto, que no se ve en ninguna pantalla.
+  registrarMovimiento('ingreso', key, cant, stockAntes, stockDespues, currentEmp?currentEmp.nombre:'Admin');
+
   // Actualizar precio en PRODUCTS
   if(costo>0) prod.costo=costo;
   if(precio>0) prod.pventa=precio;
 
-  // Reset form
+  // Reset form y foco de nuevo en el buscador: mismo criterio que "Cargar
+  // Stock", para poder tipear el próximo producto ya, sin tocar nada más.
   document.getElementById('stockSearchProd').value='';
   document.getElementById('stockIngCant').value='';
   document.getElementById('stockIngCosto').value='';
@@ -27583,6 +27613,7 @@ function ingresarStock() {
   document.getElementById('stockIngMin').value='5';
   document.getElementById('stockSelectedProd').style.display='none';
   _stockSelNombre=null;
+  document.getElementById('stockSearchProd').focus();
 
   renderInventario();
 }
@@ -28063,6 +28094,15 @@ function setStockFiltroEstado(estado) {
     if(b) b.classList.toggle('active', e===estado);
   });
   renderInventario();
+}
+
+// Atajo desde Inventario: ir directo a Movimientos con el filtro de stock ya
+// puesto, para no tener que ir a buscarlo y elegirlo a mano cada vez.
+function verMovimientosStock() {
+  switchTab('movimientos');
+  var sel = document.getElementById('movTipoSel');
+  if(sel) sel.value = 'stock';
+  renderMovimientos();
 }
 
 function renderInventario() {
@@ -28837,6 +28877,11 @@ function confirmarAjusteStock() {
   document.getElementById('ajusteStockModal').classList.remove('open');
   renderInventario();
   autoSaveNow();
+
+  // Reenfocar el filtro de Inventario (sin borrarlo) para poder seguir
+  // corrigiendo el próximo producto ya, mismo criterio que "Cargar Stock".
+  var filtroInv = document.getElementById('stockFiltro');
+  if(filtroInv) filtroInv.focus();
 }
 
 // ── RETIRO DE PRODUCTO (vencido / dañado) — resta stock, sin ingreso ni deuda ──
