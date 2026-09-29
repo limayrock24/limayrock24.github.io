@@ -518,6 +518,15 @@
     return '{' + claves.map(function(k){ return JSON.stringify(k)+':'+stringifyOrdenado(obj[k]); }).join(',') + '}';
   }
 
+  // ── Historial liviano al abrir ─────────────────────────────────────────────
+  // Movimientos, log del catálogo e historial de stock son registros que solo
+  // se AGREGAN (sus guardados nunca borran nada de la nube) y que crecen todos
+  // los días. Traerlos enteros al abrir hacía que en el celular la app tardara
+  // más de medio minuto. Ahora se escuchan en vivo solo los de los últimos 35
+  // días; lo anterior sigue intacto en la nube y se pide aparte, solo cuando
+  // una pantalla lo necesita (ver cargarHistorialViejo).
+  window.__lrCorteHistorial = Date.now() - 35*24*60*60*1000;
+
   // ── Sincronización incremental de colecciones ─────────────────────────────
   // Antes, cada aviso de la nube (por ejemplo, una venta nueva hecha en otro
   // equipo) hacía que ESTE equipo volviera a leer, copiar y ordenar TODOS los
@@ -1381,7 +1390,7 @@
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
   // préstamos, etc. Usado sobre todo para Rentabilidad).
-  window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot((function(inc){ return function(snap){
+  window.__lrDB.collection(window.__lrCOL.movimientos).where('id','>=',window.__lrCorteHistorial).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
@@ -1710,7 +1719,7 @@
   };
 
   // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
-  window.__lrDB.collection('stockMovsHistorial').onSnapshot((function(inc){ return function(snap){
+  window.__lrDB.collection('stockMovsHistorial').where('id','>=',window.__lrCorteHistorial).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrStockMovsCache = lista;
     window.__lrSync.ultimoStockMovsSnapshot = mapa;
@@ -2158,7 +2167,7 @@
   };
 
   // Log de cambios de catálogo (historial de precios/costos, solo se agrega)
-  window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot((function(inc){ return function(snap){
+  window.__lrDB.collection(window.__lrCOL.logCatalogo).where('id','>=',window.__lrCorteHistorial).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrLogCatalogoCache = lista;
     window.__lrSync.ultimoLogCatalogoSnapshot = mapa;
@@ -6279,24 +6288,6 @@ body.night-on{background:#080005}
     <div id="armarPedidoLista" style="max-height:360px;overflow-y:auto"></div>
     <button class="arqueo-confirm" onclick="generarPDFPedido()" style="margin-top:14px">📄 Generar PDF con lo cargado</button>
     <button onclick="document.getElementById('armarPedidoOverlay').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cerrar</button>
-  </div>
-</div>
-
-<div class="arqueo-modal" id="archivarOverlay" style="z-index:730">
-  <div class="arqueo-box" style="text-align:left;max-width:420px">
-    <h3>📦 Archivar ventas viejas</h3>
-    <div class="sub">Las ventas, cierres y movimientos de antes de la fecha que elijas se guardan en un archivo descargable y se sacan del sistema activo. Nada se borra — pero después de archivar, no se van a poder ver desde adentro del sistema, solo en el archivo.</div>
-    <div class="arqueo-field" style="margin-top:10px">
-      <label>Archivar todo lo de antes de:</label>
-      <input type="date" id="archivarFecha" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem">
-    </div>
-    <button class="arqueo-confirm" onclick="previsualizarArchivado()" style="margin-top:14px;background:#E74C3C">Ver qué se archivaría</button>
-    <button onclick="cerrarArchivarModal()" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>
-
-    <div id="archivarPreview" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
-      <div id="archivarPreviewTexto" style="font-size:.8rem;color:var(--white);line-height:1.6"></div>
-      <button class="arqueo-confirm" id="archivarConfirmarBtn" onclick="confirmarArchivado()" style="margin-top:10px;background:#E74C3C">✓ Sí, archivar y descargar</button>
-    </div>
   </div>
 </div>
 
@@ -16847,6 +16838,48 @@ function exportarFiadosPDF() {
 // ── BLOQUE 4: HISTORIAL Y PEDIDOS ──────────────────────────────────────────
 var SK_MOVS = 'lr_movimientos';
 
+// ── HISTORIAL ANTERIOR AL CORTE (ver __lrCorteHistorial) ────────────────────
+// Trae UNA vez, directo del servidor, todo lo que no llega por la escucha en
+// vivo (lo de antes del corte). Se pide desde el servidor a propósito: sin
+// señal, la copia local podría estar incompleta y un reporte o respaldo
+// saldría con huecos sin avisar — en ese caso falla y se avisa.
+// Se guarda APARTE de la lista en vivo: los guardados (registrarMovimiento,
+// etc.) siguen trabajando solo con lo reciente, así nunca reescriben lo viejo.
+window.__lrHistorialViejo = {};
+var _lrCargandoHistorialViejo = {};
+function cargarHistorialViejo(clave) {
+  var nombres = { movimientos: window.__lrCOL && window.__lrCOL.movimientos, logCatalogo: window.__lrCOL && window.__lrCOL.logCatalogo, stockMovs: 'stockMovsHistorial' };
+  if(window.__lrHistorialViejo[clave]) return Promise.resolve(window.__lrHistorialViejo[clave]);
+  if(!window.__lrDB || !nombres[clave] || !window.__lrCorteHistorial) return Promise.resolve([]);
+  if(_lrCargandoHistorialViejo[clave]) return _lrCargandoHistorialViejo[clave];
+  var corte = window.__lrCorteHistorial;
+  _lrCargandoHistorialViejo[clave] = window.__lrDB.collection(nombres[clave]).get({source:'server'}).then(function(snap){
+    var lista = [];
+    snap.forEach(function(doc){
+      var d = doc.data();
+      // Lo que NO trae la escucha en vivo: id anterior al corte, o un id que
+      // no es número (registros muy viejos o importados).
+      if(!(typeof d.id === 'number' && d.id >= corte)) lista.push(d);
+    });
+    lista.sort(function(a,b){ return (Number(a.id)||0) - (Number(b.id)||0); });
+    window.__lrHistorialViejo[clave] = lista;
+    delete _lrCargandoHistorialViejo[clave];
+    return lista;
+  }, function(err){
+    delete _lrCargandoHistorialViejo[clave];
+    throw err;
+  });
+  return _lrCargandoHistorialViejo[clave];
+}
+function cargarTodoHistorialViejo() {
+  return Promise.all([cargarHistorialViejo('movimientos'), cargarHistorialViejo('logCatalogo'), cargarHistorialViejo('stockMovs')]);
+}
+// Solo para MOSTRAR o exportar (nunca para guardar): lo viejo, si ya se
+// cargó, más lo reciente.
+function getMovimientosTodos() { return (window.__lrHistorialViejo.movimientos || []).concat(getMovimientos()); }
+function getLogCatalogoTodos() { return (window.__lrHistorialViejo.logCatalogo || []).concat(getLogCatalogo()); }
+function getStockMovsTodos()   { return (window.__lrHistorialViejo.stockMovs || []).concat(getStockMovs()); }
+
 function getMovimientos() { return (window.__lrSync && window.__lrSync.movimientosListos && Array.isArray(window.__lrMovimientosCache)) ? window.__lrMovimientosCache : []; }
 function saveMovimientos(m) { window.__lrMovimientosCache = m; if(window.__lrSaveMovimientos) window.__lrSaveMovimientos(m); }
 
@@ -17010,6 +17043,20 @@ function renderMovimientos() {
     }
   }
 
+  // Si el período elegido arranca antes del corte de la escucha en vivo, hace
+  // falta lo anterior: se pide al servidor una vez y se vuelve a dibujar.
+  if(window.__lrCorteHistorial && desdeDate.getTime() < window.__lrCorteHistorial){
+    if(!window.__lrHistorialViejo.movimientos){
+      var listaCarg = document.getElementById('movCardsList');
+      if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.78rem">⏳ Trayendo movimientos anteriores…</div>';
+      cargarHistorialViejo('movimientos').then(function(){ renderMovimientos(); }, function(){
+        if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--red);font-size:.78rem">No se pudieron traer los movimientos anteriores (¿sin señal?). <span onclick="renderMovimientos()" style="text-decoration:underline;cursor:pointer">Reintentar</span></div>';
+      });
+      return;
+    }
+    movs = getMovimientosTodos();
+  }
+
   var filtrados = movs.filter(function(m){
     var f = new Date(m.fecha);
     // "Fiados" agrupa los tres tipos relacionados: el fiado que se anota, el
@@ -17046,7 +17093,7 @@ function renderMovimientos() {
     } else if(tipoFil === 'stock') {
       resEl.textContent = filtrados.length ? filtrados.length+' movimiento'+(filtrados.length===1?'':'s')+' de stock' : '';
     } else {
-      var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimientos';
+      var nombreTipo = tipoFil ? (MOV_LABELS[tipoFil] || tipoFil) : 'movimiento';
       resEl.textContent = filtrados.length
         ? filtrados.length + ' ' + nombreTipo.toLowerCase() + (filtrados.length===1?'':'s') + ' · total ' + fmt(totalFil)
         : '';
@@ -17115,8 +17162,15 @@ function renderMovimientos() {
 }
 
 
+// El CSV exporta TODO el historial: primero se trae lo anterior al corte.
 function exportarMovimientosCSV() {
-  var movs = getMovimientos().slice().reverse();
+  showToast('⏳ Preparando el historial completo…');
+  cargarHistorialViejo('movimientos').then(function(){ _exportarMovimientosCSV(); }, function(){
+    showToast('⚠️ No se pudieron traer los movimientos anteriores (¿sin señal?) — probá de nuevo', true);
+  });
+}
+function _exportarMovimientosCSV() {
+  var movs = getMovimientosTodos().slice().reverse();
   var rows = ['Fecha,Hora,Tipo,Producto,Cantidad,Stock antes,Stock después,Responsable'];
   movs.forEach(function(m){
     var d = new Date(m.fecha);
@@ -18589,10 +18643,17 @@ function iniciarBackupAutomatico() {
   }, 5000); // 5 segundos después de cargar
 }
 
-function descargarBackupSilencioso() {
+function descargarBackupSilencioso(historialListo) {
   // No armar un respaldo con el historial a medio llegar: se reintenta en un
   // rato (ver ocultarCargaSiListo).
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ setTimeout(descargarBackupSilencioso, 15000); return; }
+  // El respaldo lleva también lo anterior al corte (ver cargarHistorialViejo);
+  // si no se puede traer (sin señal), se reintenta más tarde en vez de
+  // guardar un respaldo incompleto.
+  if(!historialListo){
+    cargarTodoHistorialViejo().then(function(){ descargarBackupSilencioso(true); }, function(){ setTimeout(descargarBackupSilencioso, 15*60*1000); });
+    return;
+  }
   try {
     var data = collectAllData();
     var json = JSON.stringify(data, null, 2);
@@ -18616,7 +18677,15 @@ function descargarBackupSilencioso() {
 }
 
 // ── BACKUP MANUAL ─────────────────────────────────────────────────────────
-function descargarBackup() {
+function descargarBackup(historialListo) {
+  // El respaldo lleva también lo anterior al corte (ver cargarHistorialViejo).
+  if(!historialListo){
+    showToast('⏳ Preparando el respaldo completo…');
+    cargarTodoHistorialViejo().then(function(){ descargarBackup(true); }, function(){
+      askConfirm('No se pudo traer el historial de movimientos y log anterior a '+new Date(window.__lrCorteHistorial).toLocaleDateString('es-AR')+' (¿sin señal?). Ventas, cierres y todo lo demás van completos.\n\n¿Descargar el respaldo igual, sin ese historial viejo?').then(function(ok){ if(ok) descargarBackup(true); });
+    });
+    return;
+  }
   try {
     var data = collectAllData();
     var json = JSON.stringify(data, null, 2);
@@ -18680,7 +18749,7 @@ function collectAllData() {
     consumos:    JSON.stringify(getConsumos()),
     egresos:     JSON.stringify(getEgresos()),
     fiados:      JSON.stringify(getFiados()),
-    movimientos: JSON.stringify(getMovimientos()),
+    movimientos: JSON.stringify(getMovimientosTodos()),
     stock:       JSON.stringify(getStockAlerts()),
     stockInv:    JSON.stringify(getStockInv()),
     productos:   JSON.stringify(PRODUCTS),
@@ -18699,7 +18768,7 @@ function collectAllData() {
     retirosCaja:      JSON.stringify(getRetirosCaja()),
     liquidezCfg:      JSON.stringify(getLiquidezCfg()),
     catsCustom:       JSON.stringify(ALL_CATS),
-    logCatalogo:      JSON.stringify(getLogCatalogo()),
+    logCatalogo:      JSON.stringify(getLogCatalogoTodos()),
     semanasColchon:   String(getSemanasColchonPedido())
   };
 }
@@ -19112,115 +19181,6 @@ function compactarAlmacenamiento() {
     }
     actualizarStorageStatus();
   });
-}
-
-// ── ARCHIVAR VENTAS/CIERRES/MOVIMIENTOS VIEJOS ──────────────────────────────
-var _archivarPlan = null;
-
-function abrirArchivarModal() {
-  var primerDiaMes = new Date();
-  primerDiaMes.setDate(1);
-  document.getElementById('archivarFecha').value = fechaLocalStr(primerDiaMes);
-  document.getElementById('archivarPreview').style.display = 'none';
-  _archivarPlan = null;
-  document.getElementById('archivarOverlay').classList.add('open');
-}
-function cerrarArchivarModal() {
-  document.getElementById('archivarOverlay').classList.remove('open');
-}
-
-function previsualizarArchivado() {
-  var fechaVal = document.getElementById('archivarFecha').value;
-  if(!fechaVal){ showToast('Elegí una fecha',true); return; }
-  var corte = new Date(fechaVal+'T00:00:00');
-
-  var ventas    = VENTAS;
-  var cierres   = getCierres();
-  var movs      = getMovimientos();
-
-  var ventasViejas  = ventas.filter(function(v){ return new Date(v.fecha) < corte; });
-  var ventasNuevas  = ventas.filter(function(v){ return new Date(v.fecha) >= corte; });
-  var cierresViejos = cierres.filter(function(c){ return new Date(c.fecha) < corte; });
-  var cierresNuevos = cierres.filter(function(c){ return new Date(c.fecha) >= corte; });
-  var movsViejos    = movs.filter(function(m){ return new Date(m.fecha) < corte; });
-  var movsNuevos    = movs.filter(function(m){ return new Date(m.fecha) >= corte; });
-
-  var kbAntes = (JSON.stringify(ventasViejas).length + JSON.stringify(cierresViejos).length + JSON.stringify(movsViejos).length) / 1024;
-
-  _archivarPlan = {
-    corte: corte,
-    ventasViejas: ventasViejas, ventasNuevas: ventasNuevas,
-    cierresViejos: cierresViejos, cierresNuevos: cierresNuevos,
-    movsViejos: movsViejos, movsNuevos: movsNuevos
-  };
-
-  var totalRegistros = ventasViejas.length + cierresViejos.length + movsViejos.length;
-  var txt = document.getElementById('archivarPreviewTexto');
-  var btn = document.getElementById('archivarConfirmarBtn');
-
-  if(totalRegistros===0){
-    txt.innerHTML = '<span style="color:var(--gray)">No hay nada anterior a esa fecha para archivar.</span>';
-    btn.style.display = 'none';
-  } else {
-    txt.innerHTML =
-      '💰 '+ventasViejas.length+' ventas<br>'+
-      '📋 '+cierresViejos.length+' cierres<br>'+
-      '📊 '+movsViejos.length+' movimientos<br>'+
-      '<b style="color:var(--gold)">≈ '+Math.round(kbAntes)+' KB se liberarían</b>';
-    btn.style.display = 'block';
-  }
-  document.getElementById('archivarPreview').style.display = 'block';
-}
-
-function confirmarArchivado() {
-  if(!_archivarPlan) return;
-  var p = _archivarPlan;
-
-  // Armar el archivo de historial con lo que se va a sacar del sistema activo
-  var archivo = {
-    generado: new Date().toISOString(),
-    hastaFecha: p.corte.toISOString(),
-    ventas: p.ventasViejas,
-    cierres: p.cierresViejos,
-    movimientos: p.movsViejos
-  };
-
-  try {
-    var json = JSON.stringify(archivo, null, 2);
-    var blob = new Blob([json], {type: 'application/json'});
-    var url  = URL.createObjectURL(blob);
-    var a    = document.createElement('a');
-    var fechaTxt = p.corte.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/[/]/g,'-');
-    a.href     = url;
-    a.download = 'LimayRock_historico_hasta_'+fechaTxt+'.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch(e){
-    showToast('⚠️ No se pudo generar el archivo — no se tocó nada',true);
-    return;
-  }
-
-  var kbAntes = medirStorageTotalKB();
-
-  try {
-    saveVentas(p.ventasNuevas);
-    saveCierres(p.cierresNuevos);
-    saveMovimientos(p.movsNuevos);
-  } catch(e){
-    showToast('⚠️ Se descargó el archivo pero hubo un problema al liberar el espacio — avisame',true);
-    return;
-  }
-
-  var kbDespues = medirStorageTotalKB();
-  var liberado = Math.max(0, Math.round(kbAntes-kbDespues));
-
-  VENTAS = p.ventasNuevas;
-  cerrarArchivarModal();
-  showToast('✅ Archivado — se liberaron '+liberado+' KB. El archivo se descargó a tu carpeta de descargas.');
-  actualizarStorageStatus();
-  _archivarPlan = null;
 }
 
 function updateFSAStatus(estado) {
