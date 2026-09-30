@@ -10951,6 +10951,9 @@ function anularCorreccionCierre(idx, i) {
       if(cor.refId){
         saveRetirosCaja(getRetirosCaja().filter(function(r){ return r.id !== cor.refId; }));
         saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+        // Estos guardados no borran de la nube: se borra acá explícitamente.
+        borrarRegistroEnNube('retirosCaja', cor.refId);
+        borrarMovimientosEnNube(cor.refId);
       }
     } else if(cor.tipo === 'egreso'){
       real.arqueo.egresosEfectivo = (real.arqueo.egresosEfectivo||0) - cor.monto;
@@ -10959,6 +10962,7 @@ function anularCorreccionCierre(idx, i) {
       if(cor.refId){
         saveEgresos(getEgresos().filter(function(e){ return e.id !== cor.refId; }));
         saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+        borrarMovimientosEnNube(cor.refId); // el guardado de movimientos no borra de la nube
       }
     } else if(cor.tipo === 'transferencia'){
       var netEfectivo = (cor.hacia==='Efectivo'?cor.monto:0) - (cor.desde==='Efectivo'?cor.monto:0);
@@ -10970,6 +10974,9 @@ function anularCorreccionCierre(idx, i) {
       if(cor.refId){
         saveTransferCuentas(getTransferCuentas().filter(function(t){ return t.id !== cor.refId; }));
         saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+        // Estos guardados no borran de la nube: se borra acá explícitamente.
+        borrarRegistroEnNube('transferCuentas', cor.refId);
+        borrarMovimientosEnNube(cor.refId);
       }
     } else if(cor.tipo === 'venta'){
       real.total = (real.total||0) - cor.monto;
@@ -13393,6 +13400,7 @@ function eliminarEgreso(id) {
     var movs = getMovimientos();
     var movsSinEste = movs.filter(function(m){ return m.id!==id; });
     if(movsSinEste.length !== movs.length) saveMovimientos(movsSinEste);
+    borrarMovimientosEnNube(id); // el guardado de movimientos no borra: se borra acá
     renderEgresos();
   });
 }
@@ -16880,6 +16888,42 @@ function cargarTodoHistorialViejo() {
 function getMovimientosTodos() { return (window.__lrHistorialViejo.movimientos || []).concat(getMovimientos()); }
 function getLogCatalogoTodos() { return (window.__lrHistorialViejo.logCatalogo || []).concat(getLogCatalogo()); }
 function getStockMovsTodos()   { return (window.__lrHistorialViejo.stockMovs || []).concat(getStockMovs()); }
+
+// ── BORRAR DE LA NUBE ────────────────────────────────────────────────────────
+// Los guardados de movimientos, retiros de caja y transferencias solo AGREGAN
+// o actualizan (nunca borran lo que falta en la lista, a propósito: así una
+// lista incompleta jamás puede borrar historial). Por eso, cuando algo SÍ se
+// tiene que eliminar (un egreso borrado, una corrección de cierre anulada),
+// sacarlo de la lista no alcanzaba: quedaba en la nube y volvía a aparecer —
+// y un retiro o una transferencia seguían contando en la Liquidez. Esto borra
+// puntualmente esos registros, buscándolos en la nube (incluso si son más
+// viejos que lo que el equipo tiene cargado).
+function borrarEnNubePorCampo(coleccion, campo, valor) {
+  if(!window.__lrDB || !coleccion || valor === null || valor === undefined) return Promise.resolve(0);
+  var col = window.__lrDB.collection(coleccion);
+  var borrados = [];
+  if(campo === 'id') borrados.push(col.doc(String(valor)).delete());
+  return col.where(campo, '==', valor).get().then(function(snap){
+    snap.forEach(function(doc){ borrados.push(doc.ref.delete()); });
+    return Promise.all(borrados).then(function(){ return borrados.length; });
+  });
+}
+// Movimientos ligados a una operación: el propio (id) y los que la referencian (refId).
+function borrarMovimientosEnNube(id) {
+  var col = window.__lrCOL && window.__lrCOL.movimientos;
+  return Promise.all([borrarEnNubePorCampo(col, 'id', id), borrarEnNubePorCampo(col, 'refId', id)])
+    .catch(function(e){
+      console.error('No se pudo borrar el movimiento en la nube', id, e);
+      if(typeof showToast === 'function') showToast('⚠️ No se pudo borrar el movimiento asociado en la nube — probá de nuevo con señal', true);
+    });
+}
+function borrarRegistroEnNube(claveCol, id) {
+  var col = window.__lrCOL && window.__lrCOL[claveCol];
+  return borrarEnNubePorCampo(col, 'id', id).catch(function(e){
+    console.error('No se pudo borrar en la nube', claveCol, id, e);
+    if(typeof showToast === 'function') showToast('⚠️ No se pudo borrar el registro en la nube — probá de nuevo con señal', true);
+  });
+}
 
 function getMovimientos() { return (window.__lrSync && window.__lrSync.movimientosListos && Array.isArray(window.__lrMovimientosCache)) ? window.__lrMovimientosCache : []; }
 function saveMovimientos(m) { window.__lrMovimientosCache = m; if(window.__lrSaveMovimientos) window.__lrSaveMovimientos(m); }
