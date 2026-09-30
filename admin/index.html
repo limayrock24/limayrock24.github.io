@@ -328,14 +328,7 @@
       var tiempos = window.__lrTiemposCarga || (window.__lrTiemposCarga = {});
       for(var kT in s){ if(/List(o|a)s$/.test(kT) && s[kT] && !tiempos[kT]) tiempos[kT] = Math.round(performance.now()); }
       if(!tiempos._pantalla && cargaEsencialLista(s)) tiempos._pantalla = Math.round(performance.now());
-      if(!tiempos._completa && window.__lrCargaCompleta && window.__lrCargaCompleta()){
-        tiempos._completa = Math.round(performance.now());
-        // App de Admin: apenas termina de abrir, traer en segundo plano las
-        // ventas anteriores al corte, así los reportes ya las tienen.
-        if(window.__lrEsPanelAdmin && window.__lrCargarVentasViejas){
-          setTimeout(function(){ window.__lrCargarVentasViejas().then(function(){ tiempos._ventasViejas = Math.round(performance.now()); }).catch(function(){}); }, 3000);
-        }
-      }
+      if(!tiempos._completa && window.__lrCargaCompleta && window.__lrCargaCompleta()) tiempos._completa = Math.round(performance.now());
     }catch(eT){}
     // El panel de repartidor (/delivery/) es la MISMA app que el panel de
     // venta/admin, pero solo muestra pedidos: no usa ventas, cierres, stock,
@@ -573,9 +566,9 @@
         if(porDoc[id].clave === entrada.clave){ mapa[entrada.clave] = porDoc[id].clon; break; }
       }
     }
-    function procesar(cambios){
+    return function(snap){
       var reordenar = false, nuevos = [];
-      cambios.forEach(function(ch){
+      snap.docChanges().forEach(function(ch){
         var docId = ch.doc.id;
         var previo = porDoc[docId];
         if(ch.type === 'removed'){
@@ -616,17 +609,7 @@
       var copiaMapa = {};
       for(var k in mapa) copiaMapa[k] = mapa[k];
       return { lista: orden.slice(), mapa: copiaMapa };
-    }
-    var fn = function(snap){ return procesar(snap.docChanges()); };
-    // Suma documentos traídos aparte (ej: ventas anteriores al corte de la
-    // escucha en vivo) como si hubieran llegado por la escucha: quedan en la
-    // lista Y en el mapa de comparación, así los guardados no los reescriben.
-    fn.inyectar = function(datos, docIdDe){
-      return procesar(datos.map(function(d){
-        return { type:'added', doc:{ id: docIdDe ? docIdDe(d) : claveDe(d), data: function(){ return d; } } };
-      }));
     };
-    return fn;
   }
 
   // Red de seguridad para guardados: si la promesa de escritura a Firestore
@@ -1019,50 +1002,9 @@
     return Promise.all(promesas);
   };
   // Escucha en vivo de ventas.
-  // ── VENTAS: en vivo solo las recientes ──────────────────────────────────
-  // Con casi 13.000 ventas, cada equipo tardaba muchísimo en ponerse al día
-  // (en el celular, minutos). Ahora se escuchan en vivo solo las ventas desde
-  // el corte: lo más viejo entre hace 35 días y desde cuándo cuenta la
-  // Liquidez (su "configTs", que se recuerda en el equipo; si todavía no se
-  // conoce, se toman 150 días para ir a lo seguro). Las anteriores siguen
-  // intactas en la nube (el guardado de ventas nunca borra) y se traen aparte
-  // con __lrCargarVentasViejas() antes de cualquier pantalla que pueda
-  // necesitarlas (ver switchTab / esperarVentasViejas).
-  (function(){
-    var DIA = 24*60*60*1000, desdeLiq = NaN;
-    try{ desdeLiq = Date.parse(localStorage.getItem('lr_liq_configTs') || ''); }catch(e){}
-    var porLiquidez = isFinite(desdeLiq) ? desdeLiq - DIA : Date.now() - 150*DIA;
-    window.__lrCorteVentas = Math.min(Date.now() - 35*DIA, porLiquidez);
-  })();
-  var incVentas = crearListaIncremental();
-  window.__lrVentasViejasListas = false;
-  var _cargandoVentasViejas = null;
-  window.__lrCargarVentasViejas = function(){
-    if(window.__lrVentasViejasListas) return Promise.resolve();
-    if(_cargandoVentasViejas) return _cargandoVentasViejas;
-    _cargandoVentasViejas = window.__lrDB.collection(window.__lrCOL.ventas)
-      .where('id','<',window.__lrCorteVentas).get().then(function(snap){
-        var datos = [];
-        snap.forEach(function(doc){ datos.push(doc.data()); });
-        var r = incVentas.inyectar(datos);
-        window.VENTAS = r.lista;
-        window.__lrSync.ultimoVentasSnapshot = r.mapa;
-        // Si vino de la copia del equipo (sin señal), puede estar incompleto:
-        // se usa lo que hay, pero se vuelve a intentar desde la nube.
-        if(snap.metadata && snap.metadata.fromCache){
-          _cargandoVentasViejas = null;
-          throw new Error('historial de ventas desde la copia del equipo (sin señal)');
-        }
-        window.__lrVentasViejasListas = true;
-        _cargandoVentasViejas = null;
-        return datos.length;
-      }, function(e){ _cargandoVentasViejas = null; throw e; });
-    return _cargandoVentasViejas;
-  };
-
   // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
   // independiente de cada venta, para que mutar la lista no lo afecte).
-  window.__lrDB.collection(window.__lrCOL.ventas).where('id','>=',window.__lrCorteVentas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
+  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
     // Si solo cambió el "de dónde vino" (copia del equipo → nube) no hay
     // documentos nuevos: se anota y listo, sin rearmar nada.
     window.__lrVentasDesdeNube = !snap.metadata.fromCache;
@@ -1072,7 +1014,7 @@
     window.__lrSync.ultimoVentasSnapshot = mapa;
     window.__lrSync.ventasListos = true;
     ocultarCargaSiListo();
-  }; })(incVentas), function(err){
+  }; })(crearListaIncremental()), function(err){
     console.error('Error sincronizando ventas:', err);
     window.__lrSync.ventasListos = true;
     ocultarCargaSiListo();
@@ -1895,21 +1837,6 @@
   window.__lrDB.collection(window.__lrCOL.config).doc('liquidez').onSnapshot(function(doc){
     window.__lrLiquidezCfgCache = doc.exists ? doc.data() : null;
     window.__lrSync.liquidezListos = true;
-    // Se recuerda desde cuándo cuenta la Liquidez para el corte de ventas en
-    // vivo del próximo arranque. Si ya cuenta desde ANTES del corte de ahora
-    // (ej: primera vez en este equipo con otro valor), se traen las ventas
-    // viejas para que Mercado Pago/Transferencias den bien.
-    try{
-      var cfgTs = window.__lrLiquidezCfgCache && window.__lrLiquidezCfgCache.configTs;
-      if(cfgTs){
-        localStorage.setItem('lr_liq_configTs', cfgTs);
-        if(Date.parse(cfgTs) < window.__lrCorteVentas && window.__lrCargarVentasViejas){
-          window.__lrCargarVentasViejas().then(function(){
-            if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')) renderDashboard();
-          }).catch(function(){});
-        }
-      }
-    }catch(eLq){}
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando liquidez:', err); window.__lrSync.liquidezListos = true; ocultarCargaSiListo(); });
 
@@ -8180,32 +8107,6 @@ function esperarCargaCompleta(fn) {
   }, 250);
 }
 
-// Espera a que llegue el historial de ventas anterior al corte de la escucha
-// en vivo (ver __lrCorteVentas) y recién ahí ejecuta fn. Todas las pantallas
-// del admin salvo el Inicio (reportes, rentabilidad, auditoría, cierres,
-// exportaciones…) pueden mirar fechas viejas, así que pasan por acá. En la
-// app de Admin se trae solo en segundo plano apenas abre, así que casi
-// siempre ya está. Sin señal: se avisa y se sigue con lo que hay.
-function esperarVentasViejas(fn) {
-  if(!window.__lrCargarVentasViejas || window.__lrVentasViejasListas){ fn(); return; }
-  if(window.__lrVentasViejasFallo && Date.now() - window.__lrVentasViejasFallo < 60000){ fn(); return; }
-  window.__lrEsperandoCargaCompleta = true;
-  var ov = document.getElementById('lrLoadingOverlay');
-  if(ov) ov.style.display = 'flex';
-  showToast('⏳ Trayendo el historial de ventas…');
-  window.__lrCargarVentasViejas().then(function(){
-    window.__lrEsperandoCargaCompleta = false;
-    if(ov) ov.style.display = 'none';
-    fn();
-  }, function(){
-    window.__lrEsperandoCargaCompleta = false;
-    window.__lrVentasViejasFallo = Date.now();
-    if(ov) ov.style.display = 'none';
-    showToast('⚠️ No se pudo traer el historial de ventas anterior al '+new Date(window.__lrCorteVentas).toLocaleDateString('es-AR')+' (¿sin señal?) — en los reportes puede faltar lo de antes de esa fecha', true);
-    fn();
-  });
-}
-
 function openAdmin() {
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
   // historial completo: si todavía está llegando, se espera.
@@ -8228,9 +8129,7 @@ function openAdmin() {
   // Las demás se dibujan al entrar a cada una (switchTab).
   var paneActivo = document.querySelector('#adminOverlay .tab-pane.active');
   var tabActiva = paneActivo ? paneActivo.id.replace('pane-','') : 'dashboard';
-  var dibujarActiva = function(){ try { renderPestanaAdmin(tabActiva); } catch(e) { console.error('render de '+tabActiva+' falló:', e); } };
-  // Fuera del Inicio, la pestaña puede mirar ventas viejas: se espera el historial.
-  if(tabActiva !== 'dashboard') esperarVentasViejas(dibujarActiva); else dibujarActiva();
+  try { renderPestanaAdmin(tabActiva); } catch(e) { console.error('render de '+tabActiva+' falló:', e); }
 }
 
 // Redibuja la pestaña del admin que se abre. Cubre las que antes se armaban
@@ -8266,13 +8165,6 @@ function abrirAdminSinTurno() {
   openAdmin();
 }
 function switchTab(tab) {
-  // Fuera del Inicio, las pantallas pueden mirar ventas anteriores al corte de
-  // la escucha en vivo: primero se asegura el historial (ver esperarVentasViejas).
-  if(tab !== 'dashboard' && window.__lrCargarVentasViejas && !window.__lrVentasViejasListas &&
-     !(window.__lrVentasViejasFallo && Date.now() - window.__lrVentasViejasFallo < 60000)){
-    esperarVentasViejas(function(){ switchTab(tab); });
-    return;
-  }
   cerrarTodosLosOverlays();
   var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
@@ -17000,8 +16892,7 @@ function cargarHistorialViejo(clave) {
   return _lrCargandoHistorialViejo[clave];
 }
 function cargarTodoHistorialViejo() {
-  return Promise.all([cargarHistorialViejo('movimientos'), cargarHistorialViejo('logCatalogo'), cargarHistorialViejo('stockMovs'),
-    window.__lrCargarVentasViejas ? window.__lrCargarVentasViejas() : null]);
+  return Promise.all([cargarHistorialViejo('movimientos'), cargarHistorialViejo('logCatalogo'), cargarHistorialViejo('stockMovs')]);
 }
 // Solo para MOSTRAR o exportar (nunca para guardar): lo viejo, si ya se
 // cargó, más lo reciente.
@@ -19203,9 +19094,7 @@ function mostrarDiagnosticoCarga() {
   }).sort(function(a,b){ return b.kb - a.kb; });
   var totalKb = filas.reduce(function(s,f){ return s+f.kb; },0);
   var html = '<div style="font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">🩺 DIAGNÓSTICO DE CARGA</div>'+
-    '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Pantalla lista a los <b style="color:var(--white)">'+seg(t._pantalla)+'</b> · todo cargado a los <b style="color:var(--white)">'+seg(t._completa)+'</b> · total en memoria ≈ <b style="color:var(--white)">'+(totalKb>=1024?(totalKb/1024).toFixed(1)+' MB':totalKb+' KB')+'</b>'+
-    '<br>Ventas en vivo desde el <b style="color:var(--white)">'+(window.__lrCorteVentas?new Date(window.__lrCorteVentas).toLocaleDateString('es-AR'):'—')+'</b> · historial anterior: <b style="color:var(--white)">'+(window.__lrVentasViejasListas?('cargado'+(t._ventasViejas?' a los '+seg(t._ventasViejas):'')):'todavía no')+'</b>'+
-    ' · datos '+((window.__lrVentasDesdeNube===true && window.__lrSesionesDesdeNube===true)?'<b style="color:var(--green)">confirmados por la nube</b>':'<b style="color:var(--gold)">sin confirmar todavía</b>')+'</div>'+
+    '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Pantalla lista a los <b style="color:var(--white)">'+seg(t._pantalla)+'</b> · todo cargado a los <b style="color:var(--white)">'+seg(t._completa)+'</b> · total en memoria ≈ <b style="color:var(--white)">'+(totalKb>=1024?(totalKb/1024).toFixed(1)+' MB':totalKb+' KB')+'</b></div>'+
     '<table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
     '<tr style="color:var(--gray);text-align:left"><th style="padding:4px">Colección</th><th style="padding:4px;text-align:right">Registros</th><th style="padding:4px;text-align:right">Peso</th><th style="padding:4px">Desde</th><th style="padding:4px;text-align:right">Llegó</th></tr>'+
     filas.map(function(f){
