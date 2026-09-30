@@ -4254,8 +4254,11 @@ body.night-on{background:#080005}
 
       </div>
       <!-- HISTORIAL COMPLETO -->
-      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase">📋 Historial de consumos del local</div>
-      <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:400px;overflow-y:auto" id="consumosList"></div>
+      <div onclick="toggleConsumosHist()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:8px;background:var(--card)">
+        <span style="font-family:'Oswald',sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">📋 Historial de consumos del local <span id="consumosHistCant" style="color:var(--gray);letter-spacing:0;font-size:.78rem"></span></span>
+        <span class="drop-arrow" id="consumosHistFlecha" style="font-size:.9rem">▾</span>
+      </div>
+      <div style="display:none;border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:400px;overflow-y:auto;margin-bottom:8px" id="consumosList"></div>
       <div class="section-export-bar">
         <button class="sec-exp-btn csv" onclick="exportarConsumosCSV()">⬇ CSV</button>
         <button class="sec-exp-btn pdf" onclick="exportarConsumosPDF()">📄 PDF</button>
@@ -11788,18 +11791,22 @@ function renderConsumos() {
       var hist = negocio.slice().reverse().map(function(c){
         var fecha=new Date(c.fecha).toLocaleDateString('es-AR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
         var prods=(c.items && c.items.length) ? c.items.map(function(i){return (i.name||'?')+'×'+(i.qty||1);}).join(', ') : '<span style="color:var(--gray);font-style:italic">sin detalle de productos</span>';
-        return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:.72rem;padding:4px 0 4px 10px;border-left:2px solid var(--border);color:var(--gray)">'+
-          '<span>'+fecha+' · <span style="color:var(--light)">'+prods+'</span> · <span style="color:var(--red)">'+fmt(c.total)+'</span></span>'+
-          '<button onclick="event.stopPropagation();eliminarConsumoMov('+c.id+')" style="background:none;border:none;color:rgba(204,0,0,.5);font-size:.8rem;cursor:pointer;padding:0 6px;line-height:1;flex-shrink:0" title="Eliminar este consumo">🗑</button>'+
+        return '<div style="display:flex;align-items:center;gap:12px;padding:9px 6px 9px 12px;border-left:3px solid rgba(204,0,0,.45);border-bottom:1px solid var(--border);margin-bottom:2px">'+
+          '<span style="font-size:.78rem;color:var(--gray);white-space:nowrap;min-width:118px">'+fecha+'</span>'+
+          '<span style="flex:1;font-size:.9rem;color:var(--light);line-height:1.35">'+prods+'</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--red);white-space:nowrap">'+fmt(c.total)+'</span>'+
+          '<button onclick="event.stopPropagation();eliminarConsumoMov('+c.id+')" style="background:none;border:none;color:rgba(204,0,0,.6);font-size:1rem;cursor:pointer;padding:0 6px;line-height:1;flex-shrink:0" title="Eliminar este consumo">🗑</button>'+
         '</div>';
       }).join('');
+      // Queda abierto/cerrado como estaba aunque se vuelva a dibujar al llegar datos
+      var negAbierto = window._negocioDropAbierto !== false;
       negocioEl.innerHTML =
-        '<div style="border:1px solid rgba(204,0,0,.3);border-radius:6px;padding:8px 10px">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="document.getElementById(\'negocioDrop\').classList.toggle(\'open\');this.querySelector(\'.drop-arrow\').classList.toggle(\'open\')">'+
-            '<span style="font-family:Oswald,sans-serif;font-size:.85rem;color:var(--white)">🏪 Limay Rock</span>'+
-            '<span style="display:flex;align-items:center;gap:6px"><span style="font-size:.68rem;color:var(--gray)">'+negocio.length+' consumos</span> · <span style="font-family:Oswald,sans-serif;color:var(--red)">'+fmt(totalNegocio)+'</span> <span class="drop-arrow">▾</span></span>'+
+        '<div style="border:1px solid rgba(204,0,0,.3);border-radius:6px;padding:12px 14px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window._negocioDropAbierto=document.getElementById(\'negocioDrop\').classList.toggle(\'open\');this.querySelector(\'.drop-arrow\').classList.toggle(\'open\')">'+
+            '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--white)">🏪 Limay Rock</span>'+
+            '<span style="display:flex;align-items:center;gap:8px"><span style="font-size:.8rem;color:var(--gray)">'+negocio.length+' consumos</span> · <span style="font-family:Oswald,sans-serif;font-size:1.2rem;color:var(--red)">'+fmt(totalNegocio)+'</span> <span class="drop-arrow'+(negAbierto?' open':'')+'" style="font-size:.9rem">▾</span></span>'+
           '</div>'+
-          '<div class="consumo-dropdown" id="negocioDrop">'+hist+'</div>'+
+          '<div class="consumo-dropdown'+(negAbierto?' open':'')+'" id="negocioDrop" style="max-height:440px">'+hist+'</div>'+
         '</div>';
     }
   }
@@ -11929,10 +11936,22 @@ function renderConsumos() {
 var _consumosHistTodos = [];
 var _consumosHistMostrados = 30;
 
+// El historial de consumos del local arranca cerrado; se abre tocando el título.
+function toggleConsumosHist() {
+  window._consumosHistAbierto = !window._consumosHistAbierto;
+  renderConsumosHistorial();
+}
+
 function renderConsumosHistorial() {
   var listEl = document.getElementById('consumosList');
   if(!listEl) return;
   var todos = _consumosHistTodos;
+  var cantEl = document.getElementById('consumosHistCant');
+  if(cantEl) cantEl.textContent = '('+todos.length+')';
+  var flechaEl = document.getElementById('consumosHistFlecha');
+  if(flechaEl) flechaEl.classList.toggle('open', !!window._consumosHistAbierto);
+  listEl.style.display = window._consumosHistAbierto ? 'block' : 'none';
+  if(!window._consumosHistAbierto) return;
   if(!todos.length){
     listEl.innerHTML='<div style="padding:12px;color:var(--gray);font-size:.78rem">Sin consumos aún</div>';
     return;
