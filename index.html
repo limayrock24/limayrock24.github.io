@@ -22287,8 +22287,18 @@ function renderConsumosEmp() {
   var selMes = document.getElementById('consumosMesFiltro');
   if(!grid) return;
 
-  var consumos = getConsumos();
   var emps = getEmpleados().map(function(e){ return e.nombre; });
+  // Solo consumos de personas: los del local (Limay Rock) están en Dinero →
+  // Consumos del local, y CEFHAS ya no se usa. De alguien que ya no está en
+  // el equipo (perfil borrado) se muestran solo si le quedan consumos sin
+  // descontar, para no perder esa deuda.
+  var pendientePorNombre = {};
+  getConsumos().forEach(function(c){ if(!c.saldado && c.empleado) pendientePorNombre[c.empleado] = true; });
+  var consumos = getConsumos().filter(function(c){
+    if(c.tipo === 'negocio' || c.tipo === 'cefhas') return false;
+    if(emps.indexOf(c.empleado) === -1 && !pendientePorNombre[c.empleado]) return false;
+    return true;
+  });
 
   // Poblar selectores
   if(selEmp && selEmp.options.length <= 1) {
@@ -22354,7 +22364,8 @@ function renderConsumosEmp() {
     var arrow = document.createElement('span');
     arrow.textContent = '▼';
     arrow.style.cssText = 'color:var(--gray);font-size:.72rem;transition:transform .2s';
-    header.innerHTML = '<div style="font-family:Oswald,sans-serif;font-size:.9rem;color:var(--gold)">👤 '+emp+'</div>';
+    header.innerHTML = '<div style="font-family:Oswald,sans-serif;font-size:.9rem;color:var(--gold)">👤 '+emp+
+      (emps.indexOf(emp) === -1 ? ' <span style="font-family:Barlow,sans-serif;font-size:.68rem;color:var(--gray)">(ya no está en el equipo · tiene consumos sin descontar)</span>' : '')+'</div>';
     header.appendChild(arrow);
 
     var body = document.createElement('div');
