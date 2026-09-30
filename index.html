@@ -8419,7 +8419,7 @@ function clearVentasRango() {
   renderVentas();
 }
 
-var _filtroMedioVenta = null; // null | 'Efectivo' | 'Transferencia' | 'Débito' | 'Egresos'
+var _filtroMedioVenta = null; // null | 'Efectivo' | 'Transferencia' | 'Débito' | 'Egresos' | 'Diurno' | 'Nocturno' | 'Mixto'
 
 function selFiltroMedioVenta(medio) {
   _filtroMedioVenta = (_filtroMedioVenta === medio) ? null : medio;
@@ -8556,13 +8556,13 @@ function renderVentas() {
       '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">Efectivo + Transfer. + Posnet neto · '+ventasReales.length+' ventas'+(cobroFiadosPeriodo>0?' · incluye '+fmt(cobroFiadosPeriodo)+' de cobro de fiados':'')+(cargasPeriodo.length>0?' · incluye '+cargasPeriodo.length+' carga(s) virtual(es), ganancia '+fmt(gananciaCargasPeriodo):'')+' · tocá para ver todo</div>'+
     '</div>'+
     // Diurnas / Nocturnas
-    '<div class="reporte-box">'+
-      '<div class="rlbl">☀️ Diurnas</div>'+
+    '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Diurno'?'border-color:var(--gold);background:rgba(245,194,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Diurno\')">'+
+      '<div class="rlbl">☀️ Diurnas'+(_filtroMedioVenta==='Diurno'?' ▲':'')+'</div>'+
       '<div class="rval" style="color:var(--gold)">'+fmt(totalDiurnas)+'</div>'+
       '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+diurnas.length+' ventas</div>'+
     '</div>'+
-    '<div class="reporte-box">'+
-      '<div class="rlbl">🌙 Nocturnas</div>'+
+    '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Nocturno'?'border-color:var(--red);background:rgba(204,0,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Nocturno\')">'+
+      '<div class="rlbl">🌙 Nocturnas'+(_filtroMedioVenta==='Nocturno'?' ▲':'')+'</div>'+
       '<div class="rval" style="color:var(--red)">'+fmt(totalNocturnas)+'</div>'+
       '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+nocturnas.length+' ventas</div>'+
     '</div>'+
@@ -8586,8 +8586,8 @@ function renderVentas() {
       '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+egresosPeriodo.length+' pago'+(egresosPeriodo.length!==1?'s':'')+'</div>'+
     '</div>'+
     (mixtas.length>0?
-      '<div class="reporte-box">'+
-        '<div class="rlbl">💰 Pagos mixtos</div>'+
+      '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Mixto'?'border-color:var(--gold);background:rgba(245,194,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Mixto\')">'+
+        '<div class="rlbl">💰 Pagos mixtos'+(_filtroMedioVenta==='Mixto'?' ▲':'')+'</div>'+
         '<div class="rval" style="font-size:1.1rem;color:var(--gold)">'+mixtas.length+' ventas</div>'+
       '</div>':'')+
     // Margen bruto del período — mismo cálculo que en Rentabilidad, para
@@ -8645,8 +8645,14 @@ function renderVentas() {
     });
   }
 
+  // Filtro por turno (tarjetas Diurnas / Nocturnas) y por pago mixto
+  if(_filtroMedioVenta === 'Diurno' || _filtroMedioVenta === 'Nocturno'){
+    filtradas = filtradas.filter(function(v){ return v.turno === _filtroMedioVenta; });
+  } else if(_filtroMedioVenta === 'Mixto'){
+    filtradas = filtradas.filter(function(v){ return v.medio === 'Mixto'; });
+  }
   // Filtro por medio de pago (Efectivo / Transferencia / Débito) — contempla ventas mixtas
-  if(_filtroMedioVenta && _filtroMedioVenta!=='Egresos'){
+  else if(_filtroMedioVenta && _filtroMedioVenta!=='Egresos'){
     var claveMixto = _filtroMedioVenta==='Efectivo' ? 'efectivo' : _filtroMedioVenta==='Transferencia' ? 'transferencia' : 'debito';
     filtradas = filtradas.filter(function(v){
       if(v.medio === _filtroMedioVenta) return true;
