@@ -10387,6 +10387,31 @@ function resolverStock(i) {
 }
 
 // ── CIERRES EN ADMIN ───────────────────────────────────────────────────────
+function selCierresPeriodo(p) {
+  window._cierresPeriodo = p;
+  if(p === 'rango' && !window._cierresDesde){
+    // Arranca con el mes en curso, para no mostrar la lista vacía
+    var h = new Date();
+    window._cierresDesde = fechaLocalStr(new Date(h.getFullYear(), h.getMonth(), 1));
+    window._cierresHasta = fechaLocalStr(h);
+  }
+  renderCierres();
+}
+// {desde, hasta} según el período elegido en Cierres, o null si es "Todo".
+function rangoFiltroCierres() {
+  var p = window._cierresPeriodo || 'todo';
+  if(p === 'todo') return null;
+  if(p === 'rango'){
+    var d = window._cierresDesde, h = window._cierresHasta;
+    if(!d && !h) return null;
+    return {
+      desde: d ? new Date(d+'T00:00:00') : new Date(2000,0,1),
+      hasta: h ? new Date(h+'T23:59:59') : new Date(2099,0,1)
+    };
+  }
+  return getFechasRango(p);
+}
+
 function renderCierres() {
   var el = document.getElementById('pane-cierres');
   if(!el) return;
@@ -10405,14 +10430,59 @@ function renderCierres() {
   if(filtroActual) html += '<span style="font-size:.75rem;color:var(--gold);font-family:Oswald,sans-serif">Mostrando: '+filtroActual+'</span>';
   html += '</div>';
 
-  // Aplicar filtro
+  // Filtro por período (mismos períodos que Ventas y Rentabilidad: "esta
+  // semana" es desde el lunes) o por un rango de fechas elegido a mano. Se
+  // combina con el filtro de empleado. La fecha que cuenta es la del cierre
+  // (la misma que se muestra en cada tarjeta).
+  var periodo = window._cierresPeriodo || 'todo';
+  var btnPer = function(k, txt){
+    return '<button class="rent-period-btn'+(periodo===k?' active':'')+'" onclick="selCierresPeriodo(\''+k+'\')">'+txt+'</button>';
+  };
+  html += '<div class="rent-period" style="margin-bottom:8px">'+
+    btnPer('hoy','Hoy')+btnPer('semana','Esta semana')+btnPer('mes','Este mes')+btnPer('rango','Rango de fechas')+btnPer('todo','Todo')+
+  '</div>';
+  if(periodo === 'rango'){
+    var inpSt = 'background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:6px 8px;font-size:.8rem';
+    html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:.78rem;color:var(--gray)">'+
+      'Desde <input type="date" value="'+(window._cierresDesde||'')+'" onchange="window._cierresDesde=this.value;renderCierres()" style="'+inpSt+'">'+
+      'hasta <input type="date" value="'+(window._cierresHasta||'')+'" onchange="window._cierresHasta=this.value;renderCierres()" style="'+inpSt+'">'+
+    '</div>';
+  }
+
+  // Aplicar filtros
   if(filtroActual) cierres = cierres.filter(function(c){ return c.empleado === filtroActual; });
+  var rangoCierres = rangoFiltroCierres();
+  if(rangoCierres){
+    cierres = cierres.filter(function(c){
+      var fc = new Date(c.horaFin || c.fecha);
+      return fc >= rangoCierres.desde && fc <= rangoCierres.hasta;
+    });
+  }
+  // Lo que se ve es lo que se exporta (CSV / PDF).
+  window.__lrCierresFiltrados = cierres.slice();
 
   if(!cierres.length){
-    html += '<div style="text-align:center;padding:30px;color:var(--gray);font-size:.8rem">Sin cierres registrados aún</div>';
+    html += '<div style="text-align:center;padding:30px;color:var(--gray);font-size:.8rem">'+
+      ((filtroActual || rangoCierres) ? 'No hay cierres con estos filtros' : 'Sin cierres registrados aún')+'</div>';
     el.innerHTML = html;
     return;
   }
+
+  // Resumen de lo filtrado: cuántos cierres, cuánto se vendió y cómo dio la
+  // caja (faltantes y sobrantes por separado, para no compensar uno con otro).
+  var totVendido = 0, totFaltante = 0, totSobrante = 0, nFalt = 0, nSobr = 0;
+  cierres.forEach(function(c){
+    totVendido += (c.total || 0);
+    var dif = (c.arqueo && !c.automatico) ? (c.arqueo.diferencia || 0) : 0;
+    if(dif < 0){ totFaltante += dif; nFalt++; }
+    else if(dif > 0){ totSobrante += dif; nSobr++; }
+  });
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Cierres</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white)">'+cierres.length+'</div></div>'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Total vendido</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green)">'+fmt(totVendido)+'</div></div>'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Faltantes</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--red)">'+(nFalt?fmt(totFaltante)+' <span style="font-size:.7rem;color:var(--gray)">('+nFalt+')</span>':'—')+'</div></div>'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Sobrantes</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+(nSobr?'+'+fmt(totSobrante)+' <span style="font-size:.7rem;color:var(--gray)">('+nSobr+')</span>':'—')+'</div></div>'+
+  '</div>';
 
   // Ventas.filter() de la ficha completa se guarda solo con medio+total (compactado),
   // así que para reconstruir el detalle uno-por-uno usamos la lista global de Ventas,
@@ -27592,7 +27662,8 @@ function exportarStockPDF() {
 
 // CIERRES
 function exportarCierresCSV() {
-  var cierres=getCierres();
+  // Exporta lo que se está viendo (filtros de empleado y fechas aplicados)
+  var cierres=(window.__lrCierresFiltrados || getCierres()).slice().reverse();
   var rows=['Empleado,Turno,Fecha,Hora,Cant.Ventas,Total'];
   cierres.forEach(function(c){
     var d=new Date(c.fecha);
@@ -27603,7 +27674,8 @@ function exportarCierresCSV() {
 }
 
 function exportarCierresPDF() {
-  var cierres=getCierres();
+  // Exporta lo que se está viendo (filtros de empleado y fechas aplicados)
+  var cierres=(window.__lrCierresFiltrados || getCierres()).slice().reverse();
   var rows=cierres.map(function(c){
     var d=new Date(c.fecha);
     return '<tr><td>'+c.empleado+'</td><td>'+c.turno+'</td><td>'+d.toLocaleDateString('es-AR')+'</td>'+
