@@ -8197,6 +8197,9 @@ function abrirAdminSinTurno() {
 }
 function switchTab(tab) {
   cerrarTodosLosOverlays();
+  // Cierres arranca siempre en "Hoy" cada vez que se entra desde otra pantalla
+  var paneCierresPrev = document.getElementById('pane-cierres');
+  if(tab==='cierres' && !(paneCierresPrev && paneCierresPrev.classList.contains('active'))) window._cierresPeriodo = 'hoy';
   var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
@@ -10492,7 +10495,7 @@ function selCierresPeriodo(p) {
 }
 // {desde, hasta} según el período elegido en Cierres, o null si es "Todo".
 function rangoFiltroCierres() {
-  var p = window._cierresPeriodo || 'todo';
+  var p = window._cierresPeriodo || 'hoy';
   if(p === 'todo') return null;
   if(p === 'rango'){
     var d = window._cierresDesde, h = window._cierresHasta;
@@ -10527,7 +10530,7 @@ function renderCierres() {
   // semana" es desde el lunes) o por un rango de fechas elegido a mano. Se
   // combina con el filtro de empleado. La fecha que cuenta es la del cierre
   // (la misma que se muestra en cada tarjeta).
-  var periodo = window._cierresPeriodo || 'todo';
+  var periodo = window._cierresPeriodo || 'hoy';
   var btnPer = function(k, txt){
     return '<button class="rent-period-btn'+(periodo===k?' active':'')+'" onclick="selCierresPeriodo(\''+k+'\')">'+txt+'</button>';
   };
