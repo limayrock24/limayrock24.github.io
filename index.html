@@ -8419,7 +8419,35 @@ function clearVentasRango() {
   renderVentas();
 }
 
-var _filtroMedioVenta = null; // null | 'Efectivo' | 'Transferencia' | 'Débito' | 'Egresos' | 'Diurno' | 'Nocturno' | 'Mixto'
+var _filtroMedioVenta = null; // null | 'Efectivo' | 'Transferencia' | 'Débito' | 'Egresos' | 'Diurno' | 'Nocturno' | 'Mixto' | 'Recargas'
+
+// Fila de una recarga en la lista de Ventas (admin), con su botón Anular.
+function filaRecargaVentas(c) {
+  var row = document.createElement('div');
+  var hora = new Date(c.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  var turnoColor = c.turno==='Nocturno' ? 'color:var(--red)' : 'color:var(--gold)';
+  var tach = c.anulada ? 'text-decoration:line-through;opacity:.55;' : '';
+  row.innerHTML =
+    '<div class="venta-row" style="cursor:default;flex-direction:column;align-items:stretch;padding:8px 10px;border-left:3px solid var(--gold);background:rgba(245,194,0,.04)">'+
+      '<div style="display:grid;grid-template-columns:40px 1fr auto auto auto auto;gap:6px;align-items:center;'+tach+'">'+
+        '<span class="hora">'+hora+'</span>'+
+        '<span style="font-size:.76rem;color:var(--gold);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📱 Recarga '+(c.tipo||'')+'</span>'+
+        '<span style="font-size:.72rem;'+turnoColor+'">'+String(c.turno||'').slice(0,3)+' · '+(c.empleado||'—')+'</span>'+
+        '<span style="font-size:.72rem;color:#3498DB;white-space:nowrap">'+(c.medio||'—')+'</span>'+
+        '<span class="monto" style="white-space:nowrap">'+fmt(c.montoCobrado||0)+'</span>'+
+        '<span></span>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px">'+
+        '<span style="font-size:.66rem;color:var(--gray)">'+
+          (c.anulada
+            ? '❌ Anulada por '+(c.anuladaPor||'—')+(c.anuladaTs?' · '+new Date(c.anuladaTs).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'')
+            : 'Mercado Pago −'+fmt(c.montoMP||0)+' · ganancia '+fmt(c.ganancia||0))+
+        '</span>'+
+        '<button class="anular-btn" style="font-size:.62rem;padding:1px 8px'+(c.anulada?';opacity:.3':'')+'" '+(c.anulada?'disabled':'onclick="anularCargaVirtual('+c.id+',false)"')+'>'+(c.anulada?'✕ Anulada':'Anular')+'</button>'+
+      '</div>'+
+    '</div>';
+  return row;
+}
 
 function selFiltroMedioVenta(medio) {
   _filtroMedioVenta = (_filtroMedioVenta === medio) ? null : medio;
@@ -8585,6 +8613,25 @@ function renderVentas() {
       '<div class="rval" style="font-size:1.1rem;color:var(--red)">'+fmt(totalEgresosPeriodo)+'</div>'+
       '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+egresosPeriodo.length+' pago'+(egresosPeriodo.length!==1?'s':'')+'</div>'+
     '</div>'+
+    // Recargas del período (sin los "cambio de efectivo"): total cobrado al
+    // cliente y ganancia. Tocándola, la lista muestra solo las recargas.
+    (function(){
+      var recs = cargasPeriodo.filter(function(c){ return c.tipo !== 'cambio-efectivo'; });
+      // Anuladas del mismo período: no suman, pero la tarjeta sigue a mano para verlas
+      var nAnuladas = getCargasVirtualesTodas().filter(function(c){
+        if(!c.anulada || c.tipo === 'cambio-efectivo') return false;
+        var fc = fechaLocalStr(new Date(c.fecha));
+        return _ventasRangoActivo ? (eDesdeStr && eHastaStr && fc>=eDesdeStr && fc<=eHastaStr) : fc===eFechaStr;
+      }).length;
+      if(!recs.length && !nAnuladas && _filtroMedioVenta !== 'Recargas') return '';
+      var cobrado = recs.reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
+      var gan = recs.reduce(function(s,c){ return s+(c.ganancia||0); },0);
+      return '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Recargas'?'border-color:var(--gold);background:rgba(245,194,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Recargas\')">'+
+        '<div class="rlbl">📱 Recargas'+(_filtroMedioVenta==='Recargas'?' ▲':'')+'</div>'+
+        '<div class="rval" style="font-size:1.1rem;color:var(--gold)">'+fmt(cobrado)+'</div>'+
+        '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+recs.length+' recarga'+(recs.length===1?'':'s')+' · ganancia '+fmt(gan)+(nAnuladas?' · '+nAnuladas+' anulada'+(nAnuladas===1?'':'s'):'')+'</div>'+
+      '</div>';
+    })()+
     (mixtas.length>0?
       '<div class="reporte-box" style="cursor:pointer;'+(_filtroMedioVenta==='Mixto'?'border-color:var(--gold);background:rgba(245,194,0,.1)':'')+'" onclick="selFiltroMedioVenta(\'Mixto\')">'+
         '<div class="rlbl">💰 Pagos mixtos'+(_filtroMedioVenta==='Mixto'?' ▲':'')+'</div>'+
@@ -8661,12 +8708,31 @@ function renderVentas() {
     });
   }
 
-  if(!filtradas.length){
-    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem;font-family:Oswald,sans-serif">Sin ventas en este período</div>';
+  // Recargas del mismo período, mezcladas con las ventas por hora (incluidas
+  // las anuladas, que se ven tachadas). Se envuelven en {__recarga} para no
+  // agregarles nada a los objetos reales (se guardan en la nube tal cual).
+  var fRec = _filtroMedioVenta;
+  var recargasLista = (fRec==='Mixto' || fRec==='Débito') ? [] : getCargasVirtualesTodas().filter(function(c){
+    if(c.tipo === 'cambio-efectivo') return false;
+    var fd = new Date(c.fecha);
+    if(esModoRango){ if(!(fd>=desdeD2 && fd<=hastaD2)) return false; }
+    else if(fd.toDateString() !== fechaFiltro) return false;
+    if(_filtroTurno && c.turno !== _filtroTurno) return false;
+    if(fRec==='Diurno' || fRec==='Nocturno') return c.turno === fRec;
+    if(fRec==='Efectivo' || fRec==='Transferencia') return c.medio === fRec;
+    return true;
+  });
+  if(fRec === 'Recargas') filtradas = [];
+  var combinados = filtradas.concat(recargasLista.map(function(c){ return {__recarga:c, fecha:c.fecha}; }))
+    .sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
+
+  if(!combinados.length){
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem;font-family:Oswald,sans-serif">'+(fRec==='Recargas'?'Sin recargas en este período':'Sin ventas en este período')+'</div>';
     return;
   }
   list.innerHTML='';
-  filtradas.forEach(function(v){
+  combinados.forEach(function(v){
+    if(v.__recarga){ list.appendChild(filaRecargaVentas(v.__recarga)); return; }
     var row=document.createElement('div');
     var hora      = new Date(v.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     var turnoColor= v.turno==='Nocturno'?'color:var(--red)':'color:var(--gold)';
@@ -12368,6 +12434,9 @@ function anularCargaVirtual(id, rehacer) {
     } else {
       showToast('✅ Recarga anulada');
     }
+    // Si se anuló desde el admin, refrescar la pantalla de Ventas
+    var pv = document.getElementById('pane-ventas');
+    if(pv && pv.classList.contains('active') && typeof renderVentas === 'function') renderVentas();
   });
 }
 
