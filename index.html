@@ -1832,6 +1832,18 @@
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando liquidez:', err); window.__lrSync.liquidezListos = true; ocultarCargaSiListo(); });
 
+  // Conceptos de egreso que se sacaron de las sugerencias (ver
+  // getConceptosPrevios). Es solo la lista de sugerencias: los egresos ya
+  // cargados no se tocan. Va en la nube para que se oculten en todos los equipos.
+  window.__lrConceptosOcultosCache = [];
+  window.__lrDB.collection(window.__lrCOL.config).doc('conceptosOcultos').onSnapshot(function(doc){
+    window.__lrConceptosOcultosCache = (doc.exists && Array.isArray(doc.data().lista)) ? doc.data().lista : [];
+  }, function(err){ console.error('Error sincronizando conceptos ocultos:', err); });
+  window.__lrSaveConceptosOcultos = function(lista){
+    window.__lrConceptosOcultosCache = lista;
+    return window.__lrDB.collection(window.__lrCOL.config).doc('conceptosOcultos').set({lista: lista});
+  };
+
   window.__lrSaveLiquidezCfg = function(cfg){
     window.__lrDB.collection(window.__lrCOL.config).doc('liquidez').set(limpiarUndefined(cfg)).catch(function(e){
       console.error('Error guardando liquidez', e);
@@ -12902,7 +12914,55 @@ function getConceptosPrevios(cat) {
   var conceptos = {};
   egresos.filter(function(e){ return (e.categoria||'proveedor') === cat; })
     .forEach(function(e){ if(e.prov) conceptos[e.prov] = true; });
-  return Object.keys(conceptos).sort();
+  var ocultos = window.__lrConceptosOcultosCache || [];
+  return Object.keys(conceptos).filter(function(c){ return ocultos.indexOf(claveConceptoOculto(cat, c)) === -1; }).sort();
+}
+function claveConceptoOculto(cat, c) { return (cat||'')+'|'+c; }
+
+// ✕ en una sugerencia: la saca de la lista (en todos los equipos). Los egresos
+// ya cargados con ese concepto quedan como están. Si más adelante se vuelve a
+// registrar un egreso con ese concepto, vuelve a aparecer solo.
+function ocultarConceptoSugerido(c) {
+  var cat = document.getElementById('eCategoria') ? document.getElementById('eCategoria').value : '';
+  askConfirm('¿Sacar "'+c+'" de las sugerencias?\n\nLos egresos ya cargados con ese concepto no se tocan.').then(function(ok){
+    if(!ok) return;
+    var lista = (window.__lrConceptosOcultosCache || []).slice();
+    var k = claveConceptoOculto(cat, c);
+    if(lista.indexOf(k) === -1) lista.push(k);
+    if(window.__lrSaveConceptosOcultos) window.__lrSaveConceptosOcultos(lista).catch(function(){ showToast('⚠️ No se pudo guardar en la nube — probá de nuevo con señal', true); });
+    else window.__lrConceptosOcultosCache = lista;
+    showToast('✅ "'+c+'" ya no aparece en las sugerencias');
+    abrirConceptoDropdown();
+  });
+}
+
+// ✎ en una sugerencia: se edita ahí mismo en la lista (ver filtrarConceptosSugeridos)
+var _conceptoEditando = null;
+function editarConceptoSugerido(c) { _conceptoEditando = c; abrirConceptoDropdown(); }
+function cancelarEdicionConcepto() { _conceptoEditando = null; abrirConceptoDropdown(); }
+// Cambia el nombre del concepto también en los egresos anteriores de esa
+// categoría, así los reportes los agrupan bien (ej: corregir un error de tipeo).
+function guardarEdicionConcepto(viejo) {
+  var inp = document.getElementById('eConceptoEditInput');
+  var nuevo = inp ? inp.value.trim() : '';
+  var cat = document.getElementById('eCategoria') ? document.getElementById('eCategoria').value : '';
+  if(!nuevo){ showToast('Escribí el nombre nuevo', true); return; }
+  if(nuevo === viejo){ cancelarEdicionConcepto(); return; }
+  var afectados = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === cat && e.prov === viejo; });
+  askConfirm('Cambiar "'+viejo+'" por "'+nuevo+'".\n\nSe actualiza en '+afectados.length+' egreso'+(afectados.length===1?'':'s')+' ya cargado'+(afectados.length===1?'':'s')+' (solo el nombre; montos y fechas no cambian).').then(function(ok){
+    if(!ok) return;
+    var egresos = getEgresos();
+    egresos.forEach(function(e){
+      if((e.categoria||'proveedor') !== cat || e.prov !== viejo) return;
+      e.prov = nuevo;
+      if(e.proveedor === viejo) e.proveedor = nuevo;
+    });
+    window.__lrEgresosCache = egresos;
+    guardarOperacionProtegida('Egresos', getEgresos, 'Concepto "'+viejo+'" → "'+nuevo+'"');
+    _conceptoEditando = null;
+    if(typeof renderEgresos === 'function') renderEgresos();
+    abrirConceptoDropdown();
+  });
 }
 
 var _conceptoDropOpen = false;
@@ -12942,8 +13002,40 @@ function filtrarConceptosSugeridos() {
   } else {
     matches.forEach(function(c){
       var div = document.createElement('div');
-      div.style.cssText = 'padding:9px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.05)';
-      div.textContent = c;
+      div.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px 6px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.05)';
+      if(_conceptoEditando === c){
+        // Edición en el lugar
+        div.style.cursor = 'default';
+        var inpE = document.createElement('input');
+        inpE.type = 'text'; inpE.id = 'eConceptoEditInput'; inpE.value = c;
+        inpE.style.cssText = 'flex:1;background:var(--dark);border:1px solid var(--gold);color:var(--white);border-radius:4px;padding:5px 8px;font-size:.82rem';
+        inpE.onclick = function(ev){ ev.stopPropagation(); };
+        inpE.onkeydown = function(ev){ if(ev.key==='Enter') guardarEdicionConcepto(c); if(ev.key==='Escape') cancelarEdicionConcepto(); };
+        var bOk = document.createElement('button');
+        bOk.textContent = 'Guardar';
+        bOk.style.cssText = 'background:var(--green);color:var(--black);border:none;border-radius:4px;padding:5px 10px;font-size:.72rem;cursor:pointer';
+        bOk.onclick = function(ev){ ev.stopPropagation(); guardarEdicionConcepto(c); };
+        var bNo = document.createElement('button');
+        bNo.textContent = 'Cancelar';
+        bNo.style.cssText = 'background:none;color:var(--gray);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:.72rem;cursor:pointer';
+        bNo.onclick = function(ev){ ev.stopPropagation(); cancelarEdicionConcepto(); };
+        div.appendChild(inpE); div.appendChild(bOk); div.appendChild(bNo);
+        lista.appendChild(div);
+        setTimeout(function(){ inpE.focus(); inpE.select(); }, 0);
+        return;
+      }
+      var txt = document.createElement('span');
+      txt.style.flex = '1';
+      txt.textContent = c;
+      var bEd = document.createElement('button');
+      bEd.textContent = '✎'; bEd.title = 'Editar el nombre';
+      bEd.style.cssText = 'background:none;border:1px solid var(--border);color:var(--gold);border-radius:4px;padding:2px 8px;font-size:.75rem;cursor:pointer';
+      bEd.onclick = function(ev){ ev.stopPropagation(); editarConceptoSugerido(c); };
+      var bX = document.createElement('button');
+      bX.textContent = '✕'; bX.title = 'Sacar de las sugerencias';
+      bX.style.cssText = 'background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:2px 8px;font-size:.75rem;cursor:pointer';
+      bX.onclick = function(ev){ ev.stopPropagation(); ocultarConceptoSugerido(c); };
+      div.appendChild(txt); div.appendChild(bEd); div.appendChild(bX);
       div.onmouseover = function(){ this.style.background='rgba(245,194,0,.08)'; };
       div.onmouseout  = function(){ this.style.background=''; };
       div.onclick = function(){ seleccionarConcepto(c); };
@@ -13030,6 +13122,12 @@ function registrarEgreso() {
     var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
     if(!concepto){ showToast('Ingresá el concepto',true); return; }
     prov = concepto;
+    // Si se había sacado de las sugerencias y se vuelve a usar, vuelve a aparecer
+    var kOculto = claveConceptoOculto(cat, concepto);
+    var ocultosAct = window.__lrConceptosOcultosCache || [];
+    if(ocultosAct.indexOf(kOculto) !== -1 && window.__lrSaveConceptosOcultos){
+      window.__lrSaveConceptosOcultos(ocultosAct.filter(function(k){ return k !== kOculto; })).catch(function(){});
+    }
   }
 
   var fecha = document.getElementById('eFecha').value;
