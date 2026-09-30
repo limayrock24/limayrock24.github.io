@@ -1023,17 +1023,15 @@
   // Con casi 13.000 ventas, cada equipo tardaba muchísimo en ponerse al día
   // (en el celular, minutos). Ahora se escuchan en vivo solo las ventas desde
   // el corte: lo más viejo entre hace 35 días y desde cuándo cuenta la
-  // Liquidez (su "configTs", que se recuerda en el equipo). Si todavía no se
-  // conoce (primera vez en este equipo), 35 días: cuando llega la config de
-  // Liquidez y cuenta desde antes, se traen solas las ventas viejas y hasta
-  // entonces el dashboard muestra ⏳ en Mercado Pago y Total. Las anteriores siguen
+  // Liquidez (su "configTs", que se recuerda en el equipo; si todavía no se
+  // conoce, se toman 150 días para ir a lo seguro). Las anteriores siguen
   // intactas en la nube (el guardado de ventas nunca borra) y se traen aparte
   // con __lrCargarVentasViejas() antes de cualquier pantalla que pueda
   // necesitarlas (ver switchTab / esperarVentasViejas).
   (function(){
     var DIA = 24*60*60*1000, desdeLiq = NaN;
     try{ desdeLiq = Date.parse(localStorage.getItem('lr_liq_configTs') || ''); }catch(e){}
-    var porLiquidez = isFinite(desdeLiq) ? desdeLiq - DIA : Date.now() - 35*DIA;
+    var porLiquidez = isFinite(desdeLiq) ? desdeLiq - DIA : Date.now() - 150*DIA;
     window.__lrCorteVentas = Math.min(Date.now() - 35*DIA, porLiquidez);
   })();
   var incVentas = crearListaIncremental();
@@ -20171,12 +20169,6 @@ function renderDashboard() {
     // tarjetas que Dinero → Liquidez (Efectivo en Caja / Efectivo Afuera /
     // Mercado Pago / Total), para no tener dos formas distintas de mostrar
     // la misma plata.
-    // Si la Liquidez cuenta desde antes del corte de ventas en vivo y el
-    // historial todavía no llegó, Mercado Pago y el Total darían de menos:
-    // se muestra ⏳ hasta tenerlo (se trae solo, ver liquidez en la nube).
-    var cfgLiqV = (typeof getLiquidezCfg==='function') ? getLiquidezCfg() : {};
-    var liqIncompleta = !!(cfgLiqV && cfgLiqV.configTs && window.__lrCorteVentas &&
-      Date.parse(cfgLiqV.configTs) < window.__lrCorteVentas && !window.__lrVentasViejasListas);
     var totalLiqVivo = (isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0) +
                         (isFinite(liqVivo.efectivoFuera)?liqVivo.efectivoFuera:0) +
                         (isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0);
@@ -20191,11 +20183,11 @@ function renderDashboard() {
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Mercado Pago</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+(liqIncompleta?'⏳':fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0))+'</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center;border:1px solid var(--border)">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🏦 Total</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+(liqIncompleta?'⏳':fmt(totalLiqVivo))+'</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalLiqVivo)+'</div>'+
         '</div>'+
       '</div>';
 
