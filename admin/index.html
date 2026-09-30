@@ -1004,7 +1004,11 @@
   // Escucha en vivo de ventas.
   // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
   // independiente de cada venta, para que mutar la lista no lo afecte).
-  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot((function(inc){ return function(snap){
+  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
+    // Si solo cambió el "de dónde vino" (copia del equipo → nube) no hay
+    // documentos nuevos: se anota y listo, sin rearmar nada.
+    window.__lrVentasDesdeNube = !snap.metadata.fromCache;
+    if(window.__lrSync.ventasListos && !snap.docChanges().length) return;
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.VENTAS = lista;
     window.__lrSync.ultimoVentasSnapshot = mapa;
@@ -1849,7 +1853,11 @@
   // IMPORTANTE: es una COLECCIÓN (un documento por empleado), no uno solo —
   // así, si hay más de un turno abierto al mismo tiempo (vos y un empleado,
   // o dos empleados), no se pisan los datos entre ellos.
-  window.__lrDB.collection('sesionesActivas').onSnapshot(function(snap){
+  // includeMetadataChanges: para enterarse de cuándo el dato pasa de "copia
+  // guardada en este equipo" a "confirmado por la nube" (ver renderDashboard:
+  // mientras no está confirmado, no se muestra un turno como si fuera actual).
+  window.__lrDB.collection('sesionesActivas').onSnapshot({includeMetadataChanges:true}, function(snap){
+    window.__lrSesionesDesdeNube = !snap.metadata.fromCache;
     var mapa = {};
     snap.forEach(function(doc){ mapa[doc.id] = doc.data(); });
     window.__lrSesionesActivasCache = mapa;
@@ -20167,8 +20175,21 @@ function renderDashboard() {
   var margenHoy = calcularMargenBrutoDeVentas(ventasHoy);
   var pctMargenHoy = margenHoy.revConCosto>0 ? (margenHoy.margenBruto/margenHoy.revConCosto*100) : 0;
 
+  // Datos todavía sin confirmar por la nube: al abrir, el equipo muestra la
+  // copia que tenía guardada (puede ser de horas atrás) mientras se pone al
+  // día. Un turno ya cerrado podía verse como abierto durante minutos, así
+  // que hasta que la nube confirme NO se muestra ningún turno, y se avisa que
+  // los montos pueden estar atrasados.
+  if(window.__lrSesionesDesdeNube !== true){
+    turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--gold);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gold);font-size:.85rem">⏳ Confirmando con el local cuál es el turno en curso…</div>';
+    avisoTurnoFantasma = '';
+  }
+  var avisoSinConfirmar = (window.__lrVentasDesdeNube !== true || window.__lrSesionesDesdeNube !== true)
+    ? '<div style="background:rgba(245,194,0,.12);border:1px solid var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:10px;color:var(--gold);font-size:.78rem">⏳ Poniéndose al día con el local — ventas y saldos pueden estar atrasados unos minutos. Se actualiza solo.</div>'
+    : '';
+
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
-  el.innerHTML = (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
+  el.innerHTML = avisoSinConfirmar + (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full centrado','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
