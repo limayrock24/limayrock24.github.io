@@ -3914,7 +3914,6 @@ body.night-on{background:#080005}
     <!-- Subbarra de Equipo: el personal y todo lo que lo involucra. -->
     <div id="subtabsEquipo" class="subnav-bar" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
       <button class="ftbtn" id="se-empleados" onclick="switchTab('empleados')">👥 Empleados</button>
-      <button class="ftbtn" id="se-consumos"  onclick="switchTab('consumos')">🏪 Consumos del local</button>
       <button class="ftbtn" id="se-mensajes"  onclick="switchTab('mensajes')">💬 Mensajes</button>
     </div>
 
@@ -3924,6 +3923,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sd-ventas"       onclick="switchTab('ventas')">📊 Ventas</button>
       <button class="ftbtn" id="sd-cierres"      onclick="switchTab('cierres')">⏹ Cierres</button>
       <button class="ftbtn" id="sd-egresos"      onclick="switchTab('egresos')">💸 Egresos</button>
+      <button class="ftbtn" id="sd-consumos"     onclick="switchTab('consumos')">🏪 Consumos del local</button>
       <button class="ftbtn" id="sd-rentabilidad" onclick="switchTab('rentabilidad')">📈 Rentabilidad</button>
       <button class="ftbtn" id="sd-movimientos"  onclick="switchTab('movimientos')">📋 Movimientos</button>
     </div>
@@ -8245,7 +8245,7 @@ function switchTab(tab) {
   if(btnGrupoC) btnGrupoC.classList.toggle('active', esClientes);
 
   // Sección Dinero: control del efectivo y resultados del negocio.
-  var pantallasDinero = ['ventas','cierres','egresos','rentabilidad','movimientos'];
+  var pantallasDinero = ['ventas','cierres','egresos','consumos','rentabilidad','movimientos'];
   var esDinero = pantallasDinero.indexOf(tab) !== -1;
 
   var subD = document.getElementById('subtabsDinero');
@@ -8260,7 +8260,7 @@ function switchTab(tab) {
   if(btnGrupoD) btnGrupoD.classList.toggle('active', esDinero);
 
   // Sección Equipo: el personal y lo que lo involucra.
-  var pantallasEquipo = ['empleados','consumos','mensajes'];
+  var pantallasEquipo = ['empleados','mensajes'];
   var esEquipo = pantallasEquipo.indexOf(tab) !== -1;
 
   var subE = document.getElementById('subtabsEquipo');
@@ -11652,27 +11652,22 @@ function setupOpButtons() {
     if(el) el.remove();
   });
 
-  if(currentEmp && currentEmp.rol === 'admin') {
-    // Admin: consumo admin (abre selector con admins + CEFHAS)
-    var btn1 = document.createElement('button');
-    btn1.className = 'op-btn'; btn1.id = 'op-propio';
-    btn1.innerHTML = '👤 Consumo admin';
-    btn1.onclick = function(){ tipoOp='admin-consumo'; openAdminSel(); };
-    opBtns.appendChild(btn1);
-  } else {
-    // Empleado: consumo personal + consumo de admin
+  // Ya no hay "Consumo admin" (con su selector de admins / CEFHAS / Limay
+  // Rock): el consumo del admin se carga como consumo de empleado y CEFHAS
+  // ya no se usa. Queda solo el consumo del local, directo.
+  if(!(currentEmp && currentEmp.rol === 'admin')) {
+    // Empleado: su consumo personal
     var btn1 = document.createElement('button');
     btn1.className = 'op-btn'; btn1.id = 'op-empleado';
     btn1.innerHTML = '🧾 Mi consumo';
     btn1.onclick = function(){ selOpEmpleado(); };
     opBtns.appendChild(btn1);
-
-    var btn2 = document.createElement('button');
-    btn2.className = 'op-btn'; btn2.id = 'op-admin';
-    btn2.innerHTML = '👤 Consumo admin';
-    btn2.onclick = function(){ tipoOp='admin-consumo'; openAdminSel(); };
-    opBtns.appendChild(btn2);
   }
+  var btnLocal = document.createElement('button');
+  btnLocal.className = 'op-btn'; btnLocal.id = 'op-admin';
+  btnLocal.innerHTML = '🏪 Consumo del local';
+  btnLocal.onclick = function(){ registrarConsumoDelLocal(); };
+  opBtns.appendChild(btnLocal);
 
   // Fiado: disponible para todos
   var btnF = document.createElement('button');
@@ -15656,6 +15651,17 @@ function closeAdminSel() {
   document.getElementById('adminSelOverlay').classList.remove('open');
   // Si se canceló, resetear
   if(tipoOp==='admin-consumo') resetOpButtons();
+}
+
+// Uso interno del local (yerba, papel, regalos): lo que hay en el carrito se
+// registra al costo como consumo de Limay Rock, previa confirmación.
+function registrarConsumoDelLocal() {
+  if(!cart.length){ showToast('El carrito está vacío',true); return; }
+  var resumen = cart.map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
+  askConfirm('Registrar como CONSUMO DEL LOCAL (uso interno, no es venta):\n\n'+resumen+'\n\nSe descuenta del stock al costo. ¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    registrarConsumoAdmin({nombre:'Limay Rock'}, false, true);
+  });
 }
 
 function registrarConsumoAdmin(emp, esCefhas, esNegocio) {
