@@ -12886,7 +12886,8 @@ function poblarSelectProveedoresEgreso() {
   var current = sel.value;
   var options = '<option value="">— Elegí —</option>'+
     provs.map(function(p){ return '<option value="'+p.nombre.replace(/"/g,'&quot;')+'">'+p.nombre+'</option>'; }).join('')+
-    '<option value="__otro__">Otro (alquiler, sueldos, servicios...)</option>'+
+    // (Ya no se ofrece "Otro (alquiler, sueldos, servicios...)": para eso
+    // están las categorías Sueldos / Servicios / Otros del selector de arriba.)
     '<option value="__nuevo__">+ Agregar proveedor nuevo</option>';
   sel.innerHTML = options;
   if(current && Array.from(sel.options).some(function(o){return o.value===current;})) sel.value = current;
