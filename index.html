@@ -27052,7 +27052,9 @@ function saveMensajesPunt(m) { window.__lrMensajesPuntCache = m; if(window.__lrS
 function renderMensajesPanel() {
   var sel = document.getElementById('mpEmpleado');
   if(sel){
-    sel.innerHTML = getEmpleados().map(function(e){ return '<option value="'+e.nombre+'">'+e.nombre+'</option>'; }).join('');
+    // Los de delivery no reciben mensajes (no abren turno en el panel de venta)
+    sel.innerHTML = getEmpleados().filter(function(e){ return !empEsDelivery(e); })
+      .map(function(e){ return '<option value="'+e.nombre+'">'+e.nombre+'</option>'; }).join('');
   }
 
   var hoyStr = fechaLocalStr();
@@ -27172,7 +27174,10 @@ function actualizarBotonesDestMomento() {
 }
 function renderMprogEmpleadosList() {
   var el = document.getElementById('mprogEmpleadosList');
-  el.innerHTML = getEmpleados().map(function(e){
+  // Sin los de delivery (salvo que un mensaje viejo ya los tuviera elegidos)
+  el.innerHTML = getEmpleados().filter(function(e){
+    return !empEsDelivery(e) || _mprogDestElegidos.indexOf(e.nombre)!==-1;
+  }).map(function(e){
     var checked = _mprogDestElegidos.indexOf(e.nombre)!==-1 ? 'checked' : '';
     return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:.8rem;color:var(--white);cursor:pointer">'+
       '<input type="checkbox" '+checked+' onchange="toggleMprogEmpleado(\''+e.nombre.replace(/'/g,"\\'")+'\')"> '+e.nombre+
