@@ -1928,11 +1928,29 @@
   // Reintento periódico: mientras haya un turno abierto en este dispositivo, se
   // vuelve a publicar su estado cada dos minutos. Así, si una escritura falló o
   // el registro se perdió, se recompone solo sin que nadie tenga que notarlo.
+  var _lrTickSesion = 0;
   setInterval(function(){
     try{
       if(typeof currentEmp === 'undefined' || !currentEmp || !currentEmp.turnoInicio) return;
       if(typeof esModoDelivery === 'function' && esModoDelivery()) return;
       if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
+      // Una vez por minuto, preguntarle a la NUBE (no a la copia local) si el
+      // turno figura. Pasó que un turno abierto estuvo 43 minutos sin figurar
+      // en el panel admin aunque las ventas sí subían. Si falta, se vuelve a
+      // publicar y queda anotado en el mismo registro (reparaciones), para
+      // poder ver después cuántas veces pasó y cuándo.
+      _lrTickSesion++;
+      if(_lrTickSesion % 2 !== 0) return;
+      var nombreTurno = currentEmp.nombre;
+      window.__lrDB.collection('sesionesActivas').doc(idSeguro(nombreTurno)).get({source:'server'})
+        .then(function(d){
+          if(d.exists) return;
+          if(typeof currentEmp === 'undefined' || !currentEmp || currentEmp.nombre !== nombreTurno || !currentEmp.turnoInicio) return;
+          window.__lrSesionReparaciones = (window.__lrSesionReparaciones||0) + 1;
+          window.__lrSesionUltimaReparacion = new Date().toISOString();
+          console.warn('El turno no figuraba en la nube — se vuelve a publicar');
+          guardarSesionActiva();
+        }).catch(function(){ /* sin conexión: se reintenta en el próximo minuto */ });
     }catch(e){}
   }, 30000);   // cada 30 segundos: el panel de admin tiene que enterarse rápido
   // Publicar el turno también al volver a la pantalla del local. Si la netbook
@@ -7104,7 +7122,9 @@ function guardarSesionActiva() {
       turno: (typeof turnoActual==='function') ? turnoActual() : '',
       turnoInicio: currentEmp.turnoInicio,
       rol: currentEmp.rol || 'empleado',
-      efectivoInicial: currentEmp.efectivoInicial || 0
+      efectivoInicial: currentEmp.efectivoInicial || 0,
+      reparaciones: window.__lrSesionReparaciones || 0,
+      ultimaReparacion: window.__lrSesionUltimaReparacion || null
     });
   }
 }
@@ -7114,6 +7134,15 @@ function limpiarSesionActiva(nombre) {
   // detectada como interrumpida).
   if(!nombre || (currentEmp && currentEmp.nombre === nombre)) {
     localStorage.removeItem(SK_SESION_ACTIVA);
+  } else {
+    // Turno viejo guardado en ESTE equipo que se acaba de cerrar solo: hay que
+    // borrarlo también de acá. Si no, cada vez que se abría el sistema en este
+    // equipo se volvía a "cerrar" el mismo turno, se generaba otro cierre
+    // automático y se borraba de la nube el turno en curso de esa persona.
+    try{
+      var locGuardada = JSON.parse(localStorage.getItem(SK_SESION_ACTIVA)||'null');
+      if(locGuardada && locGuardada.nombre === nombre) localStorage.removeItem(SK_SESION_ACTIVA);
+    }catch(e){}
   }
   // Limpiar también la copia en memoria AL INSTANTE — el aviso a Firebase
   // (abajo) tarda unos milisegundos en confirmarse, y si alguien intenta
@@ -7170,8 +7199,14 @@ function getSesionActivaGuardada() {
 function cerrarTurnoInterrumpido(sesion, motivo) {
   var turnoInicio2 = sesion.turnoInicio ? new Date(sesion.turnoInicio) : new Date();
   // Buscar la última venta de ese empleado después del inicio de turno, como mejor estimación de hora de fin
+  // Tope de 16 horas: un turno no puede durar más. Sin este tope, un turno
+  // viejo que quedó guardado en algún equipo se "cerraba" semanas después
+  // sumando TODAS las ventas de esa persona desde entonces (pasó: un cierre
+  // automático con 305 ventas).
+  var topeTurno2 = new Date(turnoInicio2.getTime() + 16*3600000);
   var ventasDeEsteTurno = VENTAS.filter(function(v){
-    return v.empleado===sesion.nombre && new Date(v.fecha) >= turnoInicio2;
+    var fv = new Date(v.fecha);
+    return v.empleado===sesion.nombre && fv >= turnoInicio2 && fv <= topeTurno2;
   });
   var ultimaActividad = turnoInicio2;
   ventasDeEsteTurno.forEach(function(v){
@@ -7293,7 +7328,17 @@ function chequearSesionInterrumpida() {
     // Quedó de un día anterior: se cierra solo, sin bloquear el uso de hoy
     var ok = cerrarTurnoInterrumpido(sesion, 'Turno de más de 16 horas sin cerrar, cerrado automáticamente al reabrir el sistema');
     if(ok){
-      limpiarSesionActiva(sesion.nombre);
+      // Si en la nube esa persona tiene OTRO turno (uno nuevo, en curso), no
+      // se toca: solo se borra la copia vieja guardada en este equipo.
+      var enNube = window.__lrSesionesActivasCache && window.__lrSesionesActivasCache[String(sesion.nombre).replace(/\//g,'-')];
+      if(enNube && enNube.turnoInicio && enNube.turnoInicio !== sesion.turnoInicio){
+        try{
+          var locVieja = JSON.parse(localStorage.getItem(SK_SESION_ACTIVA)||'null');
+          if(locVieja && locVieja.nombre === sesion.nombre) localStorage.removeItem(SK_SESION_ACTIVA);
+        }catch(e){}
+      } else {
+        limpiarSesionActiva(sesion.nombre);
+      }
     } else {
       // No se pudo guardar (posible falta de espacio) — no borramos la sesión guardada,
       // así no se pierde el rastro del turno. Se reintentará la próxima vez que se abra el sistema.
