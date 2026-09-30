@@ -10562,8 +10562,10 @@ function renderCierres() {
   var cierres = getCierres().slice().reverse();
 
   // Filtro por empleado
-  var emps = getEmpleados().map(function(e){ return e.nombre; });
+  // Sin los de delivery: no abren turno en el panel de venta, no tienen cierres
   var filtroActual = (window._cierresFiltroEmp || '');
+  var emps = getEmpleados().filter(function(e){ return !empEsDelivery(e) || e.nombre === filtroActual; })
+    .map(function(e){ return e.nombre; });
 
   var html = '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">⏹ Historial de cierres de turno</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
