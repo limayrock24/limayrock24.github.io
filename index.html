@@ -14505,6 +14505,26 @@ function toggleHorasSoloPendientes() {
   renderHoras();
 }
 
+// ── PAGO ESPECIAL DE UN TURNO (feriado / día no laborable) ──────────────────
+// Desde Equipo → Horas, el admin puede marcar un turno para que se pague x1,5 o
+// x2. Se guarda en el cierre (campo multiplicador; sin campo = x1). El turno
+// cuenta entero, aunque cruce la medianoche. Las horas trabajadas no cambian:
+// lo que cambia es cuántas horas se PAGAN (Liquidación y PDF).
+function multTurno(c) { var m = Number(c && c.multiplicador); return (m === 1.5 || m === 2) ? m : 1; }
+function minutosPagados(c) { return Math.round((c.durMinutos||0) * multTurno(c)); }
+function textoMult(m) { return m === 2 ? 'x2' : (m === 1.5 ? 'x1,5' : 'x1'); }
+function setMultiplicadorTurno(empleado, fechaISO, valor) {
+  var cierres = getCierres();
+  var c = cierres.find(function(x){ return x.empleado===empleado && x.fecha===fechaISO; });
+  if(!c) return;
+  var m = Number(valor);
+  if(m === 1.5 || m === 2) c.multiplicador = m; else delete c.multiplicador;
+  saveCierres(cierres);
+  showToast(m === 2 || m === 1.5 ? '🎉 Turno de '+empleado+' se paga '+textoMult(m) : 'Turno de '+empleado+' vuelve a pago normal');
+  renderHoras();
+  if(typeof renderLiquidacion === 'function') renderLiquidacion();
+}
+
 function toggleTurnoPagado(empleado, fechaISO) {
   var cierres = getCierres();
   var c = cierres.find(function(x){ return x.empleado===empleado && x.fecha===fechaISO; });
@@ -14575,13 +14595,20 @@ function renderHoras() {
       var ff   = c.horaFin   ? new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
       var fecha= new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
       var dur  = c.durMinutos ? Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':'') : '—';
+      var mT = multTurno(c);
       return '<div class="turno-row" style="'+(c.pagado?'opacity:.5':'')+'">'+
         '<span class="turno-fecha">'+fecha+'</span>'+
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
-        '<span class="turno-duracion">'+dur+'</span>'+
+        '<span class="turno-duracion">'+dur+(mT>1?' <span style="background:rgba(245,194,0,.18);color:var(--gold);border-radius:3px;padding:0 4px;font-size:.62rem;white-space:nowrap">🎉 '+textoMult(mT)+'</span>':'')+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+'</span>'+
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
           '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
+          // Pago del turno: x1 normal, x1,5 o x2 (feriado / día no laborable)
+          '<select title="Pago del turno (feriado / día no laborable)" onchange="setMultiplicadorTurno(\''+nombre.replace(/'/g,"\\'")+'\',\''+c.fecha+'\',this.value)" style="background:var(--dark);border:1px solid '+(mT>1?'var(--gold)':'var(--border)')+';color:'+(mT>1?'var(--gold)':'var(--gray)')+';border-radius:3px;padding:1px 2px;font-size:.66rem;cursor:pointer">'+
+            '<option value="1"'+(mT===1?' selected':'')+'>Pago x1</option>'+
+            '<option value="1.5"'+(mT===1.5?' selected':'')+'>Pago x1,5</option>'+
+            '<option value="2"'+(mT===2?' selected':'')+'>Pago x2</option>'+
+          '</select>'+
           '<label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Marcar como pagado">'+
             '<input type="checkbox" '+(c.pagado?'checked':'')+' onchange="toggleTurnoPagado(\''+nombre.replace(/'/g,"\\'")+'\',\''+c.fecha+'\')" style="width:15px;height:15px;accent-color:var(--green);cursor:pointer">'+
             '<span style="font-size:.62rem;color:'+(c.pagado?'var(--green)':'var(--gray)')+'">'+(c.pagado?'✓ Pagado':'Pagar')+'</span>'+
@@ -14681,8 +14708,10 @@ function renderLiquidacion() {
     var d = new Date(c.fecha);
     return d >= rangoLiq.desde && d <= rangoLiq.hasta;
   }).forEach(function(c){
-    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0,turnos:0,ventas:0,totalVentas:0};
+    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0,minPagos:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
     empData[c.empleado].totalMin    += c.durMinutos||0;
+    empData[c.empleado].minPagos    += minutosPagados(c);
+    if(multTurno(c) > 1) empData[c.empleado].turnosEsp.push(c);
     empData[c.empleado].turnos      += 1;
     empData[c.empleado].ventas      += c.cantVentas||0;
     empData[c.empleado].totalVentas += c.total||0;
@@ -14716,10 +14745,13 @@ function renderLiquidacion() {
 
   grid.innerHTML='';
   empsSinAdmin.forEach(function(emp){
-    var d    = empData[emp.nombre]||{totalMin:0,turnos:0,ventas:0,totalVentas:0};
+    var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
     var horas= d.totalMin/60;
     var valorHora = parseFloat(emp.valorHora)||0;
-    var sueldo = Math.round(horas * valorHora);
+    // Se paga por las horas "pagas": los turnos marcados x1,5 / x2 valen más
+    var sueldo = Math.round((d.minPagos/60) * valorHora);
+    var fmtHM = function(min){ return Math.floor(min/60)+'h '+(min%60>0?Math.round(min%60)+'m':'0m'); };
+    var hayEsp = d.turnosEsp.length > 0;
     var consumo= consEmp[emp.nombre]||0;
     var faltante = faltEmp[emp.nombre]||0;
     var neto   = sueldo - consumo - faltante;
@@ -14753,6 +14785,12 @@ function renderLiquidacion() {
       '<div style="'+(abierta?'':'display:none')+'">'+
       '<div class="liq-rows">'+
         '<div class="liq-row"><span class="liq-lbl">⏱ Horas trabajadas</span><span class="liq-val">'+Math.floor(horas)+'h '+(d.totalMin%60>0?d.totalMin%60+'m':'0m')+'</span></div>'+
+        (hayEsp ?
+          '<div class="liq-row"><span class="liq-lbl">🎉 Turnos con pago especial</span><span class="liq-val" style="color:var(--gold);text-align:right">'+
+            d.turnosEsp.map(function(c){ return new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+textoMult(multTurno(c))+' ('+fmtHM(c.durMinutos||0)+')'; }).join(' · ')+
+          '</span></div>'+
+          '<div class="liq-row"><span class="liq-lbl">💼 Horas a pagar</span><span class="liq-val">'+fmtHM(d.minPagos)+'</span></div>'
+        : '')+
         '<div class="liq-row" style="align-items:center">'+
           '<span class="liq-lbl">💵 Valor hora</span>'+
           '<span style="display:flex;align-items:center;gap:4px">'+
@@ -14847,7 +14885,8 @@ function exportarLiquidacionPDF(nombre) {
   var misCierres = cierres.filter(function(c){ var d=new Date(c.fecha); return c.empleado===nombre && d>=rango.desde && d<=rango.hasta; });
   var totalMin   = misCierres.reduce(function(s,c){return s+(c.durMinutos||0);},0);
   var horas      = totalMin/60;
-  var sueldo     = Math.round(horas*valorHora);
+  var minPagos   = misCierres.reduce(function(s,c){return s+minutosPagados(c);},0);
+  var sueldo     = Math.round((minPagos/60)*valorHora);
   var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+c.total;},0);
   var faltante   = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
     .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
@@ -14858,13 +14897,15 @@ function exportarLiquidacionPDF(nombre) {
     var ff=c.horaFin?new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var dur=c.durMinutos?Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':''):'—';
     var difTxt = (c.arqueo && c.arqueo.diferencia<0) ? ' · <span style="color:#CC0000">faltante $'+Number(Math.abs(c.arqueo.diferencia)).toLocaleString('es-AR')+(c.arqueo.faltanteSaldado?' (ya descontado)':'')+'</span>' : '';
-    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
+    var mP = multTurno(c);
+    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
   }).join('');
 
   var contenido=
     '<h3 style="font-size:14px;margin-bottom:12px">Período: '+periodoTxt+'</h3>'+
     '<div class="kpis">'+
       '<div class="kpi"><div class="l">Horas trabajadas</div><div class="v">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
+      (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar (con feriados)</div><div class="v">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">Valor hora</div><div class="v">$'+Number(valorHora).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Sueldo bruto</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e74c3c">$'+Number(consumo).toLocaleString('es-AR')+'</div></div>'+
@@ -14872,7 +14913,7 @@ function exportarLiquidacionPDF(nombre) {
       '<div class="kpi"><div class="l">A PAGAR</div><div class="v" style="color:#CC0000;font-size:18px">$'+Number(neto).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Detalle de turnos</h3>'+
-    '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Duración</th><th>Ventas</th></tr></thead><tbody>'+turnosRows+'</tbody></table>';
+    '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Duración</th><th>Pago</th><th>Ventas</th></tr></thead><tbody>'+turnosRows+'</tbody></table>';
 
   abrirVentanaPDF('Liquidación — '+nombre, contenido);
 }
@@ -14891,6 +14932,7 @@ function exportarPDFEmpleado(nombre) {
     .sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
   var totalMin   = misCierres.reduce(function(s,c){return s+(c.durMinutos||0);},0);
   var horas      = totalMin/60;
+  var minPagos   = misCierres.reduce(function(s,c){return s+minutosPagados(c);},0);
 
   var misConsumos = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado' && c.empleado===nombre && d>=rango.desde && d<=rango.hasta; })
     .sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
@@ -14901,7 +14943,8 @@ function exportarPDFEmpleado(nombre) {
     var fi=c.horaInicio?new Date(c.horaInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var ff=c.horaFin?new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var dur=c.durMinutos?Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':''):'—';
-    return '<tr><td>'+fecha+'</td><td>'+c.turno+'</td><td>'+fi+'</td><td>'+ff+'</td><td>'+dur+'</td></tr>';
+    var mP = multTurno(c);
+    return '<tr><td>'+fecha+'</td><td>'+c.turno+'</td><td>'+fi+'</td><td>'+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+(mP>1?'🎉 '+textoMult(mP):'Normal')+'</td></tr>';
   }).join('');
 
   var consumosRows = misConsumos.map(function(c){
@@ -14915,10 +14958,11 @@ function exportarPDFEmpleado(nombre) {
     '<div class="kpis">'+
       '<div class="kpi"><div class="l">Turnos trabajados</div><div class="v">'+misCierres.length+'</div></div>'+
       '<div class="kpi"><div class="l">Horas totales</div><div class="v" style="color:#27ae60">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
+      (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar (con feriados)</div><div class="v" style="color:#b8860b">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">Total consumido</div><div class="v" style="color:#e74c3c">$'+Number(totalConsumo).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de turnos</h3>'+
-    (turnosRows ? '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Duración</th></tr></thead><tbody>'+turnosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin turnos registrados este período.</div>')+
+    (turnosRows ? '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Duración</th><th>Pago</th></tr></thead><tbody>'+turnosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin turnos registrados este período.</div>')+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de consumos</h3>'+
     (consumosRows ? '<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th></tr></thead><tbody>'+consumosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin consumos registrados este período.</div>')+
     '<p style="font-size:11px;color:#888;margin-top:16px">Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste. Cualquier diferencia, avisale a tu encargado.</p>';
