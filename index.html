@@ -11654,16 +11654,9 @@ function setupOpButtons() {
   });
 
   // Ya no hay "Consumo admin" (con su selector de admins / CEFHAS / Limay
-  // Rock): el consumo del admin se carga como consumo de empleado y CEFHAS
-  // ya no se usa. Queda solo el consumo del local, directo.
-  if(!(currentEmp && currentEmp.rol === 'admin')) {
-    // Empleado: su consumo personal
-    var btn1 = document.createElement('button');
-    btn1.className = 'op-btn'; btn1.id = 'op-empleado';
-    btn1.innerHTML = '🧾 Mi consumo';
-    btn1.onclick = function(){ selOpEmpleado(); };
-    opBtns.appendChild(btn1);
-  }
+  // Rock) ni "Mi consumo": cualquier consumo de una persona (empleado o
+  // admin) se carga desde "Consumo de empleado", eligiendo su nombre. CEFHAS
+  // ya no se usa. Queda el consumo del local, directo.
   var btnLocal = document.createElement('button');
   btnLocal.className = 'op-btn'; btnLocal.id = 'op-admin';
   btnLocal.innerHTML = '🏪 Consumo del local';
