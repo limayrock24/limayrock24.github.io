@@ -190,9 +190,20 @@
   window.__lrDB.settings({ experimentalAutoDetectLongPolling: true });
   // Persistencia offline: si se corta el wifi un rato, el sistema sigue andando
   // con lo último sincronizado y se pone al día solo cuando vuelve la conexión.
-  window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
-    console.warn('Persistencia offline no disponible:', e.code);
-  });
+  //
+  // SOLO en el panel de venta (la netbook del local), que es el que tiene que
+  // seguir vendiendo sin internet. En el panel de Admin (/admin/ — la compu
+  // de la oficina y el celular) NO: con la copia guardada en el equipo, al
+  // abrir mostraba primero datos de horas atrás (ej: un turno ya cerrado
+  // como si siguiera abierto, ventas y saldos viejos) y tardaba minutos en
+  // ponerse al día. Sin esa copia, el admin muestra siempre lo que hay en la
+  // nube en ese momento.
+  window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
+  if(!window.__lrEsPanelAdmin){
+    window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
+      console.warn('Persistencia offline no disponible:', e.code);
+    });
+  }
 
   // Recuperación de un cambio de catálogo que quedó sin confirmar de una
   // sesión anterior (ej: se cerró la pestaña, se cortó la luz, o el
@@ -20020,7 +20031,12 @@ function renderDashboard() {
   // Lemon/Mercado Pago (esas cuentas no se "abren" por turno, se calculan
   // solas con la misma lógica que ya usa la pantalla de Liquidez).
   var sesionesVivas = window.__lrSesionesActivasCache || {};
-  var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){ return sesionesVivas[n] && sesionesVivas[n].turnoInicio; });
+  // Mismo criterio que el resto del sistema: una sesión de más de 16 horas ya
+  // no puede ser un turno en curso (es un resto de un cierre que no terminó).
+  var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){
+    var sv = sesionesVivas[n];
+    return sv && sv.turnoInicio && (Date.now() - new Date(sv.turnoInicio).getTime()) < 16*3600000;
+  });
 
   // NO se inventa un turno a partir de las ventas.
   //
