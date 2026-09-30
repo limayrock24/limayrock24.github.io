@@ -190,20 +190,13 @@
   window.__lrDB.settings({ experimentalAutoDetectLongPolling: true });
   // Persistencia offline: si se corta el wifi un rato, el sistema sigue andando
   // con lo último sincronizado y se pone al día solo cuando vuelve la conexión.
-  //
-  // SOLO en el panel de venta (la netbook del local), que es el que tiene que
-  // seguir vendiendo sin internet. En el panel de Admin (/admin/ — la compu
-  // de la oficina y el celular) NO: con la copia guardada en el equipo, al
-  // abrir mostraba primero datos de horas atrás (ej: un turno ya cerrado
-  // como si siguiera abierto, ventas y saldos viejos) y tardaba minutos en
-  // ponerse al día. Sin esa copia, el admin muestra siempre lo que hay en la
-  // nube en ese momento.
+  // Va en TODOS los paneles, admin incluido: sin esta copia el admin tenía que
+  // bajar todo de internet antes de mostrar nada y en el celular no terminaba
+  // de abrir (se probó el 30/9 y se volvió atrás).
   window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
-  if(!window.__lrEsPanelAdmin){
-    window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
-      console.warn('Persistencia offline no disponible:', e.code);
-    });
-  }
+  window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
+    console.warn('Persistencia offline no disponible:', e.code);
+  });
 
   // Recuperación de un cambio de catálogo que quedó sin confirmar de una
   // sesión anterior (ej: se cerró la pestaña, se cortó la luz, o el
