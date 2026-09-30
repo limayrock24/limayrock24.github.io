@@ -10457,31 +10457,51 @@ function renderCierres() {
       return fc >= rangoCierres.desde && fc <= rangoCierres.hasta;
     });
   }
+  // Cómo dio la caja de un cierre: negativo = faltante, positivo = sobrante.
+  // Los cierres automáticos no tienen conteo real, así que no cuentan.
+  var difCierre = function(c){ return (c.arqueo && !c.automatico) ? (c.arqueo.diferencia || 0) : 0; };
+  var filtroCaja = window._cierresFiltroCaja || '';
+
+  // Resumen de lo filtrado: cuántos cierres, cuánto se vendió y cómo dio la
+  // caja (faltantes y sobrantes por separado, para no compensar uno con otro).
+  // (Se calcula ANTES del filtro de faltantes/sobrantes, así las tarjetas
+  // siguen mostrando los totales del período aunque se esté filtrando.)
+  var totVendido = 0, totFaltante = 0, totSobrante = 0, nFalt = 0, nSobr = 0;
+  cierres.forEach(function(c){
+    totVendido += (c.total || 0);
+    var dif = difCierre(c);
+    if(dif < 0){ totFaltante += dif; nFalt++; }
+    else if(dif > 0){ totSobrante += dif; nSobr++; }
+  });
+  // Tarjetas de Faltantes / Sobrantes: tocándolas se filtra la lista a esos
+  // cierres (y se vuelve a tocar para quitar el filtro).
+  var tarjCaja = function(tipo, titulo, color, valor){
+    var activa = filtroCaja === tipo;
+    return '<div onclick="window._cierresFiltroCaja=(window._cierresFiltroCaja===\''+tipo+'\'?\'\':\''+tipo+'\');renderCierres()" title="Tocá para ver solo estos cierres" '+
+      'style="flex:1;min-width:120px;cursor:pointer;background:'+(activa?'rgba(255,255,255,.08)':'var(--card)')+';border:'+(activa?'2px solid '+color:'1px solid var(--border)')+';border-radius:6px;padding:8px 10px;text-align:center">'+
+      '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">'+titulo+(activa?' ✕':' ▾')+'</div>'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:'+color+'">'+valor+'</div></div>';
+  };
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Cierres</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white)">'+cierres.length+'</div></div>'+
+    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Total vendido</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green)">'+fmt(totVendido)+'</div></div>'+
+    tarjCaja('faltante','Faltantes','var(--red)', nFalt?fmt(totFaltante)+' <span style="font-size:.7rem;color:var(--gray)">('+nFalt+')</span>':'—')+
+    tarjCaja('sobrante','Sobrantes','var(--gold)', nSobr?'+'+fmt(totSobrante)+' <span style="font-size:.7rem;color:var(--gray)">('+nSobr+')</span>':'—')+
+  '</div>';
+
+  if(filtroCaja === 'faltante') cierres = cierres.filter(function(c){ return difCierre(c) < 0; });
+  else if(filtroCaja === 'sobrante') cierres = cierres.filter(function(c){ return difCierre(c) > 0; });
+  if(filtroCaja) html += '<div style="font-size:.75rem;color:var(--gold);font-family:Oswald,sans-serif;margin:-4px 0 10px">Mostrando solo los cierres con '+(filtroCaja==='faltante'?'faltante':'sobrante')+' · <span onclick="window._cierresFiltroCaja=\'\';renderCierres()" style="text-decoration:underline;cursor:pointer">ver todos</span></div>';
+
   // Lo que se ve es lo que se exporta (CSV / PDF).
   window.__lrCierresFiltrados = cierres.slice();
 
   if(!cierres.length){
     html += '<div style="text-align:center;padding:30px;color:var(--gray);font-size:.8rem">'+
-      ((filtroActual || rangoCierres) ? 'No hay cierres con estos filtros' : 'Sin cierres registrados aún')+'</div>';
+      ((filtroActual || rangoCierres || filtroCaja) ? 'No hay cierres con estos filtros' : 'Sin cierres registrados aún')+'</div>';
     el.innerHTML = html;
     return;
   }
-
-  // Resumen de lo filtrado: cuántos cierres, cuánto se vendió y cómo dio la
-  // caja (faltantes y sobrantes por separado, para no compensar uno con otro).
-  var totVendido = 0, totFaltante = 0, totSobrante = 0, nFalt = 0, nSobr = 0;
-  cierres.forEach(function(c){
-    totVendido += (c.total || 0);
-    var dif = (c.arqueo && !c.automatico) ? (c.arqueo.diferencia || 0) : 0;
-    if(dif < 0){ totFaltante += dif; nFalt++; }
-    else if(dif > 0){ totSobrante += dif; nSobr++; }
-  });
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'+
-    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Cierres</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white)">'+cierres.length+'</div></div>'+
-    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Total vendido</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green)">'+fmt(totVendido)+'</div></div>'+
-    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Faltantes</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--red)">'+(nFalt?fmt(totFaltante)+' <span style="font-size:.7rem;color:var(--gray)">('+nFalt+')</span>':'—')+'</div></div>'+
-    '<div style="flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center"><div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">Sobrantes</div><div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+(nSobr?'+'+fmt(totSobrante)+' <span style="font-size:.7rem;color:var(--gray)">('+nSobr+')</span>':'—')+'</div></div>'+
-  '</div>';
 
   // Ventas.filter() de la ficha completa se guarda solo con medio+total (compactado),
   // así que para reconstruir el detalle uno-por-uno usamos la lista global de Ventas,
