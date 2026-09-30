@@ -14712,9 +14712,12 @@ function renderLiquidacion() {
     var d = new Date(c.fecha);
     return d >= rangoLiq.desde && d <= rangoLiq.hasta;
   }).forEach(function(c){
-    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0,minPagos:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
+    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
     empData[c.empleado].totalMin    += c.durMinutos||0;
-    empData[c.empleado].minPagos    += minutosPagados(c);
+    // Turnos ya tildados como pagados en Horas (adelantos a pedido del
+    // empleado): cuentan como trabajados pero no se vuelven a pagar.
+    if(c.pagado){ empData[c.empleado].minAdelantado += minutosPagados(c); empData[c.empleado].turnosAdel += 1; }
+    else empData[c.empleado].minPagos += minutosPagados(c);
     if(multTurno(c) > 1) empData[c.empleado].turnosEsp.push(c);
     empData[c.empleado].turnos      += 1;
     empData[c.empleado].ventas      += c.cantVentas||0;
@@ -14749,13 +14752,14 @@ function renderLiquidacion() {
 
   grid.innerHTML='';
   empsSinAdmin.forEach(function(emp){
-    var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
+    var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0};
     var horas= d.totalMin/60;
     var valorHora = parseFloat(emp.valorHora)||0;
     // Se paga por las horas "pagas": los turnos marcados x1,5 / x2 valen más
     var sueldo = Math.round((d.minPagos/60) * valorHora);
     var fmtHM = function(min){ return Math.floor(min/60)+'h '+(min%60>0?Math.round(min%60)+'m':'0m'); };
     var hayEsp = d.turnosEsp.length > 0;
+    var hayAdel = d.turnosAdel > 0;
     var consumo= consEmp[emp.nombre]||0;
     var faltante = faltEmp[emp.nombre]||0;
     var neto   = sueldo - consumo - faltante;
@@ -14792,9 +14796,10 @@ function renderLiquidacion() {
         (hayEsp ?
           '<div class="liq-row"><span class="liq-lbl">🎉 Turnos con pago especial</span><span class="liq-val" style="color:var(--gold);text-align:right">'+
             d.turnosEsp.map(function(c){ return new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+textoMult(multTurno(c))+' ('+fmtHM(c.durMinutos||0)+')'; }).join(' · ')+
-          '</span></div>'+
-          '<div class="liq-row"><span class="liq-lbl">💼 Horas a pagar</span><span class="liq-val">'+fmtHM(d.minPagos)+'</span></div>'
+          '</span></div>'
         : '')+
+        (hayAdel ? '<div class="liq-row"><span class="liq-lbl">✓ Ya adelantado</span><span class="liq-val" style="color:var(--green)">'+fmtHM(d.minAdelantado)+' ('+d.turnosAdel+' turno'+(d.turnosAdel===1?'':'s')+')</span></div>' : '')+
+        ((hayEsp || hayAdel) ? '<div class="liq-row"><span class="liq-lbl">💼 Horas a pagar</span><span class="liq-val">'+fmtHM(d.minPagos)+'</span></div>' : '')+
         '<div class="liq-row" style="align-items:center">'+
           '<span class="liq-lbl">💵 Valor hora</span>'+
           '<span style="display:flex;align-items:center;gap:4px">'+
@@ -14810,9 +14815,11 @@ function renderLiquidacion() {
         (faltante>0?'<div class="liq-row"><span class="liq-lbl">🔴 Faltantes de caja</span><span class="liq-val egr">−'+fmt(faltante)+'</span></div>':'')+
       '</div>'+
       '<div class="liq-neto">'+
-        '<span class="liq-neto-lbl">A pagar este mes</span>'+
+        '<span class="liq-neto-lbl">A pagar</span>'+
         '<span class="liq-neto-val">'+(valorHora>0?fmt(neto):'—')+'</span>'+
       '</div>'+
+      ((valorHora>0 && (d.minPagos>0 || consumo>0 || faltante>0)) ?
+        '<button class="btn-liq-saldar" style="background:var(--green);color:var(--black);border-color:var(--green);font-weight:700" onclick="registrarPagoLiquidacion(\''+nomEsc+'\')">💵 Registrar pago de la liquidación ('+fmt(neto)+')</button>' : '')+
       (consumo>0 ? '<button class="btn-liq-saldar" onclick="marcarConsumosSaldados(\''+emp.nombre+'\')">✓ Marcar consumos como descontados</button>' : '')+
       (faltante>0 ? '<button class="btn-liq-saldar" style="border-color:rgba(204,0,0,.4);color:var(--red)" onclick="marcarFaltantesSaldados(\''+emp.nombre+'\')">✓ Marcar faltantes como descontados</button>' : '')+
       '</div>';
@@ -14838,10 +14845,12 @@ function marcarConsumosSaldados(nombreEmp) {
   askConfirm('¿Marcás los consumos de '+nombreEmp+' como ya descontados del sueldo?').then(function(ok){
     if(!ok) return;
     var consumos = getConsumos();
-    var ahora = new Date();
-    var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    // Mismo período que muestra la tarjeta (antes marcaba siempre solo el mes
+    // en curso, y con otro período elegido quedaban consumos sin marcar).
+    var rangoC = getRangoLiquidacion();
     consumos.forEach(function(c){
-      if(c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && new Date(c.fecha)>=inicioMes){
+      var dc = new Date(c.fecha);
+      if(c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && dc>=rangoC.desde && dc<=rangoC.hasta){
         c.saldado = true;
         c.fechaSaldado = new Date().toISOString();
       }
@@ -14849,6 +14858,51 @@ function marcarConsumosSaldados(nombreEmp) {
     saveConsumos(consumos);
     showToast('✅ Consumos de '+nombreEmp+' marcados como descontados');
     renderLiquidacion();
+  });
+}
+
+// Un solo paso al pagarle a un empleado: marca como pagados sus turnos del
+// período (los no adelantados) y deja descontados sus consumos y faltantes
+// de caja del período — exactamente lo que se ve en su tarjeta. No mueve
+// plata de la caja: solo deja registrado que la liquidación ya se pagó.
+function registrarPagoLiquidacion(nombreEmp) {
+  var rango = getRangoLiquidacion();
+  var enRango = function(f){ var d = new Date(f); return d>=rango.desde && d<=rango.hasta; };
+  var emp = getEmpleados().find(function(e){ return e.nombre===nombreEmp; });
+  var valorHora = emp ? (parseFloat(emp.valorHora)||0) : 0;
+  var cierres = getCierres(), consumos = getConsumos();
+  var turnos = cierres.filter(function(c){ return c.empleado===nombreEmp && !c.pagado && enRango(c.fecha); });
+  var cons = consumos.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && enRango(c.fecha); });
+  var falt = cierres.filter(function(c){ return c.empleado===nombreEmp && c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado && enRango(c.fecha); });
+  var minPago = turnos.reduce(function(s,c){ return s+minutosPagados(c); },0);
+  var sueldo = Math.round((minPago/60)*valorHora);
+  var totCons = cons.reduce(function(s,c){ return s+(c.total||0); },0);
+  var totFalt = falt.reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
+  var neto = sueldo - totCons - totFalt;
+  var txt = 'Registrar el pago de la liquidación de '+nombreEmp+':\n\n'+
+    '• '+turnos.length+' turno'+(turnos.length===1?'':'s')+' ('+Math.floor(minPago/60)+'h '+Math.round(minPago%60)+'m a pagar) → sueldo '+fmt(sueldo)+'\n'+
+    (cons.length ? '• Consumos a descontar: −'+fmt(totCons)+'\n' : '')+
+    (falt.length ? '• Faltantes de caja: −'+fmt(totFalt)+'\n' : '')+
+    '\nTOTAL PAGADO: '+fmt(neto)+'\n\nLos turnos quedan como pagados y los consumos/faltantes como descontados. ¿Confirmás?';
+  askConfirm(txt).then(function(ok){
+    if(!ok) return;
+    var ahoraISO = new Date().toISOString();
+    var idsT = {}; turnos.forEach(function(c){ idsT[c.fecha] = true; });
+    var idsF = {}; falt.forEach(function(c){ idsF[c.fecha] = true; });
+    cierres.forEach(function(c){
+      if(c.empleado !== nombreEmp) return;
+      if(idsT[c.fecha]){ c.pagado = true; c.fechaPagado = ahoraISO; }
+      if(idsF[c.fecha] && c.arqueo){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; }
+    });
+    saveCierres(cierres);
+    if(cons.length){
+      var idsC = {}; cons.forEach(function(c){ idsC[c.id] = true; });
+      consumos.forEach(function(c){ if(idsC[c.id]){ c.saldado = true; c.fechaSaldado = ahoraISO; } });
+      saveConsumos(consumos);
+    }
+    showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')');
+    renderLiquidacion();
+    if(typeof renderHoras === 'function') renderHoras();
   });
 }
 
@@ -14889,7 +14943,9 @@ function exportarLiquidacionPDF(nombre) {
   var misCierres = cierres.filter(function(c){ var d=new Date(c.fecha); return c.empleado===nombre && d>=rango.desde && d<=rango.hasta; });
   var totalMin   = misCierres.reduce(function(s,c){return s+(c.durMinutos||0);},0);
   var horas      = totalMin/60;
-  var minPagos   = misCierres.reduce(function(s,c){return s+minutosPagados(c);},0);
+  // Los turnos ya pagados (adelantados) no se vuelven a pagar
+  var minPagos   = misCierres.reduce(function(s,c){return s+(c.pagado?0:minutosPagados(c));},0);
+  var minAdel    = misCierres.reduce(function(s,c){return s+(c.pagado?minutosPagados(c):0);},0);
   var sueldo     = Math.round((minPagos/60)*valorHora);
   var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+c.total;},0);
   var faltante   = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
@@ -14902,14 +14958,15 @@ function exportarLiquidacionPDF(nombre) {
     var dur=c.durMinutos?Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':''):'—';
     var difTxt = (c.arqueo && c.arqueo.diferencia<0) ? ' · <span style="color:#CC0000">faltante $'+Number(Math.abs(c.arqueo.diferencia)).toLocaleString('es-AR')+(c.arqueo.faltanteSaldado?' (ya descontado)':'')+'</span>' : '';
     var mP = multTurno(c);
-    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
+    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+(c.pagado?' <span style="color:#27ae60">(ya pagado)</span>':'')+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
   }).join('');
 
   var contenido=
     '<h3 style="font-size:14px;margin-bottom:12px">Período: '+periodoTxt+'</h3>'+
     '<div class="kpis">'+
       '<div class="kpi"><div class="l">Horas trabajadas</div><div class="v">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
-      (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar (con feriados)</div><div class="v">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
+      (minAdel>0 ? '<div class="kpi"><div class="l">Ya adelantado</div><div class="v" style="color:#27ae60">'+Math.floor(minAdel/60)+'h '+(minAdel%60>0?Math.round(minAdel%60)+'m':'')+'</div></div>' : '')+
+      (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar</div><div class="v">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">Valor hora</div><div class="v">$'+Number(valorHora).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Sueldo bruto</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e74c3c">$'+Number(consumo).toLocaleString('es-AR')+'</div></div>'+
