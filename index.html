@@ -14724,10 +14724,11 @@ function renderLiquidacion() {
     var faltante = faltEmp[emp.nombre]||0;
     var neto   = sueldo - consumo - faltante;
 
-    // Repartidores (o con acceso solo a Delivery): no se liquidan por horas de
-    // caja. Se ocultan salvo que en el período hayan hecho algún turno en la
-    // caja o tengan consumos/faltantes, para no dejar afuera nada a pagar.
-    if(typeof empEsDelivery === 'function' && empEsDelivery(emp) && !d.turnos && !consumo && !faltante) return;
+    // Solo quien trabajó horas en el período (repartidores incluidos: si no
+    // hicieron turnos de caja, no aparecen). Excepción: si no trabajó pero
+    // tiene consumos o faltantes pendientes, se muestra igual para no dejar
+    // afuera nada a descontar.
+    if(!d.turnos && !consumo && !faltante) return;
 
     // Tarjeta plegada: se ve el encabezado (nombre, turnos, horas y a pagar) y
     // el detalle se despliega tocándolo, igual que en Horas.
@@ -14776,7 +14777,7 @@ function renderLiquidacion() {
     grid.appendChild(card);
   });
   if(!grid.children.length){
-    grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">No hay empleados para liquidar en este período</div>';
+    grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">Nadie trabajó horas en este período</div>';
   }
 }
 
