@@ -14657,6 +14657,12 @@ function exportarHorasPDF() {
 }
 
 // ── LIQUIDACIÓN ─────────────────────────────────────────────────────────────
+function toggleLiqEmp(nombre) {
+  window._liqAbiertos = window._liqAbiertos || {};
+  window._liqAbiertos[nombre] = !window._liqAbiertos[nombre];
+  renderLiquidacion();
+}
+
 function renderLiquidacion() {
   var cierres  = getCierres();
   var consumos = getConsumos();
@@ -14718,21 +14724,32 @@ function renderLiquidacion() {
     var faltante = faltEmp[emp.nombre]||0;
     var neto   = sueldo - consumo - faltante;
 
+    // Repartidores (o con acceso solo a Delivery): no se liquidan por horas de
+    // caja. Se ocultan salvo que en el período hayan hecho algún turno en la
+    // caja o tengan consumos/faltantes, para no dejar afuera nada a pagar.
+    if(typeof empEsDelivery === 'function' && empEsDelivery(emp) && !d.turnos && !consumo && !faltante) return;
+
+    // Tarjeta plegada: se ve el encabezado (nombre, turnos, horas y a pagar) y
+    // el detalle se despliega tocándolo, igual que en Horas.
+    var abierta = !!(window._liqAbiertos && window._liqAbiertos[emp.nombre]);
+    var nomEsc = emp.nombre.replace(/'/g,"\\'");
     var card = document.createElement('div');
     card.className = 'liquidacion-card';
     card.innerHTML=
-      '<div class="liq-header">'+
+      '<div class="liq-header" onclick="toggleLiqEmp(\''+nomEsc+'\')" style="cursor:pointer;'+(abierta?'':'margin-bottom:0')+'">'+
         '<div>'+
-          '<div class="liq-nombre">'+emp.nombre+'</div>'+
+          '<div class="liq-nombre"><span style="display:inline-block;width:16px;color:var(--gold)">'+(abierta?'▾':'▸')+'</span>'+emp.nombre+'</div>'+
           '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+
             d.turnos+' turnos · '+Math.floor(horas)+'h '+(d.totalMin%60>0?d.totalMin%60+'m':'')+ ' trabajadas'+
+            (!abierta ? ' · <span style="color:var(--gold)">a pagar '+(valorHora>0?fmt(neto):'—')+'</span>' : '')+
           '</div>'+
         '</div>'+
-        '<div style="display:flex;gap:6px;flex-shrink:0">'+
+        '<div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">'+
           '<button class="btn-liq-pdf" style="background:var(--gray)" onclick="exportarPDFEmpleado(this.dataset.emp)" data-emp="'+emp.nombre+'" title="Para mandarle al empleado — sin sueldo">📄 Para él/ella</button>'+
           '<button class="btn-liq-pdf" onclick="exportarLiquidacionPDF(this.dataset.emp)" data-emp="'+emp.nombre+'">📄 PDF</button>'+
         '</div>'+
       '</div>'+
+      '<div style="'+(abierta?'':'display:none')+'">'+
       '<div class="liq-rows">'+
         '<div class="liq-row"><span class="liq-lbl">⏱ Horas trabajadas</span><span class="liq-val">'+Math.floor(horas)+'h '+(d.totalMin%60>0?d.totalMin%60+'m':'0m')+'</span></div>'+
         '<div class="liq-row" style="align-items:center">'+
@@ -14754,9 +14771,13 @@ function renderLiquidacion() {
         '<span class="liq-neto-val">'+(valorHora>0?fmt(neto):'—')+'</span>'+
       '</div>'+
       (consumo>0 ? '<button class="btn-liq-saldar" onclick="marcarConsumosSaldados(\''+emp.nombre+'\')">✓ Marcar consumos como descontados</button>' : '')+
-      (faltante>0 ? '<button class="btn-liq-saldar" style="border-color:rgba(204,0,0,.4);color:var(--red)" onclick="marcarFaltantesSaldados(\''+emp.nombre+'\')">✓ Marcar faltantes como descontados</button>' : '');
+      (faltante>0 ? '<button class="btn-liq-saldar" style="border-color:rgba(204,0,0,.4);color:var(--red)" onclick="marcarFaltantesSaldados(\''+emp.nombre+'\')">✓ Marcar faltantes como descontados</button>' : '')+
+      '</div>';
     grid.appendChild(card);
   });
+  if(!grid.children.length){
+    grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">No hay empleados para liquidar en este período</div>';
+  }
 }
 
 function setValorHoraEmpleado(nombre, valor) {
