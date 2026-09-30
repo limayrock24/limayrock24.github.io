@@ -3224,7 +3224,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .recep-toggle-switch.on::after{left:22px}
 
 
-.receg-medio-btn{background:var(--card);border:1.5px solid var(--border);color:var(--gray);border-radius:5px;padding:8px 6px;font-family:'Oswald',sans-serif;font-size:.72rem;cursor:pointer;letter-spacing:.5px;transition:all .15s}
+.receg-medio-btn{background:var(--card);border:1.5px solid var(--border);color:var(--gray);border-radius:5px;padding:6px 6px;font-family:'Oswald',sans-serif;font-size:.95rem;line-height:1.2;cursor:pointer;letter-spacing:.5px;transition:all .15s}
 .receg-medio-btn.active{background:var(--green);color:var(--black);border-color:var(--green)}
 .receg-medio-btn:active{opacity:.8}
 .recep-pin-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:1001;align-items:center;justify-content:center}
@@ -4307,9 +4307,9 @@ body.night-on{background:#080005}
           <label>Medio de pago</label>
           <input type="hidden" id="eMedio" value="Efectivo">
           <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="receg-medio-btn" id="em-MercadoPago" onclick="selEgMedio('MercadoPago')" style="flex:1">💳 Mercado Pago</button>
             <button class="receg-medio-btn active" id="em-Efectivo" onclick="selEgMedio('Efectivo')" style="flex:1">💵 Efectivo</button>
             <button class="receg-medio-btn" id="em-Mixto" onclick="selEgMedio('Mixto')" style="flex:1">⚡ Mixto</button>
-            <button class="receg-medio-btn" id="em-MercadoPago" onclick="selEgMedio('MercadoPago')" style="flex:1">💳 Mercado Pago</button>
           </div>
         </div>
         <div id="eMixtoWrap" style="display:none;margin-top:8px">
@@ -6588,16 +6588,16 @@ body.night-on{background:#080005}
     <div class="arqueo-field">
       <label>Desde</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
-        <button type="button" class="pago-btn" id="tcDesdeEfectivo" onclick="selTransferCuenta('desde','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
         <button type="button" class="pago-btn" id="tcDesdeMercadoPago" onclick="selTransferCuenta('desde','MercadoPago')" style="flex:1;min-width:90px">💳 Mercado Pago</button>
+        <button type="button" class="pago-btn" id="tcDesdeEfectivo" onclick="selTransferCuenta('desde','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
       </div>
     </div>
     <div style="text-align:center;font-size:1.1rem;color:var(--gray);margin:6px 0">↓</div>
     <div class="arqueo-field">
       <label>Hacia</label>
       <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
-        <button type="button" class="pago-btn" id="tcHaciaEfectivo" onclick="selTransferCuenta('hacia','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
         <button type="button" class="pago-btn" id="tcHaciaMercadoPago" onclick="selTransferCuenta('hacia','MercadoPago')" style="flex:1;min-width:90px">💳 Mercado Pago</button>
+        <button type="button" class="pago-btn" id="tcHaciaEfectivo" onclick="selTransferCuenta('hacia','Efectivo')" style="flex:1;min-width:90px">💵 Efectivo</button>
       </div>
     </div>
     <div class="arqueo-field" style="margin-top:10px">
@@ -23774,9 +23774,9 @@ function initRecepEgresos() {
     '<div class="field"><label>Monto ($)</label><input type="text" inputmode="numeric" id="recEgMonto" placeholder="0" oninput="formatMontoInput(this)"></div>'+
     '<div class="field"><label>Medio de pago</label>'+
       '<div style="display:flex;gap:8px;margin-top:4px">'+
+        '<button class="receg-medio-btn" id="recegm-MercadoPago" onclick="selRecEgMedio(\'MercadoPago\')" style="flex:1">💳 Mercado Pago</button>'+
         '<button class="receg-medio-btn active" id="recegm-Efectivo" onclick="selRecEgMedio(\'Efectivo\')" style="flex:1">💵 Efectivo</button>'+
         '<button class="receg-medio-btn" id="recegm-Mixto" onclick="selRecEgMedio(\'Mixto\')" style="flex:1">⚡ Mixto</button>'+
-        '<button class="receg-medio-btn" id="recegm-MercadoPago" onclick="selRecEgMedio(\'MercadoPago\')" style="flex:1">💳 Mercado Pago</button>'+
       '</div>'+
       '<input type="hidden" id="recEgMedio" value="Efectivo">'+
     '</div>'+
