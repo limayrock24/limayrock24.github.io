@@ -331,11 +331,6 @@
       if(!tiempos._pantalla && cargaEsencialLista(s)) tiempos._pantalla = Math.round(performance.now());
       if(!tiempos._completa && window.__lrCargaCompleta && window.__lrCargaCompleta()){
         tiempos._completa = Math.round(performance.now());
-        // App de Admin: apenas termina de abrir, traer en segundo plano las
-        // ventas anteriores al corte, así los reportes ya las tienen.
-        if(window.__lrEsPanelAdmin && window.__lrCargarVentasViejas){
-          setTimeout(function(){ window.__lrCargarVentasViejas().then(function(){ tiempos._ventasViejas = Math.round(performance.now()); }).catch(function(){}); }, 3000);
-        }
       }
     }catch(eT){}
     // El panel de repartidor (/delivery/) es la MISMA app que el panel de
@@ -538,6 +533,10 @@
   // días; lo anterior sigue intacto en la nube y se pide aparte, solo cuando
   // una pantalla lo necesita (ver cargarHistorialViejo).
   window.__lrCorteHistorial = Date.now() - 35*24*60*60*1000;
+  // Movimientos es el más pesado de los tres (uno por cada venta): en vivo solo
+  // los últimos 3 días, que es lo que usa el Inicio (turno en curso y hoy). La
+  // pantalla de Movimientos trae aparte solo el período que se elige.
+  window.__lrCorteMovimientos = Date.now() - 3*24*60*60*1000;
 
   // ── Sincronización incremental de colecciones ─────────────────────────────
   // Antes, cada aviso de la nube (por ejemplo, una venta nueva hecha en otro
@@ -1038,30 +1037,36 @@
     window.__lrCorteVentas = Math.min(Date.now() - 35*DIA, porLiquidez);
   })();
   var incVentas = crearListaIncremental();
-  window.__lrVentasViejasListas = false;
-  var _cargandoVentasViejas = null;
-  window.__lrCargarVentasViejas = function(){
-    if(window.__lrVentasViejasListas) return Promise.resolve();
-    if(_cargandoVentasViejas) return _cargandoVentasViejas;
-    _cargandoVentasViejas = window.__lrDB.collection(window.__lrCOL.ventas)
-      .where('id','<',window.__lrCorteVentas).get().then(function(snap){
-        var datos = [];
-        snap.forEach(function(doc){ datos.push(doc.data()); });
-        var r = incVentas.inyectar(datos);
-        window.VENTAS = r.lista;
-        window.__lrSync.ultimoVentasSnapshot = r.mapa;
-        // Si vino de la copia del equipo (sin señal), puede estar incompleto:
-        // se usa lo que hay, pero se vuelve a intentar desde la nube.
-        if(snap.metadata && snap.metadata.fromCache){
-          _cargandoVentasViejas = null;
-          throw new Error('historial de ventas desde la copia del equipo (sin señal)');
-        }
-        window.__lrVentasViejasListas = true;
-        _cargandoVentasViejas = null;
-        return datos.length;
-      }, function(e){ _cargandoVentasViejas = null; throw e; });
-    return _cargandoVentasViejas;
+  // Desde cuándo ya se tienen las ventas (en vivo + traídas aparte).
+  window.__lrVentasDesde = window.__lrCorteVentas;
+  window.__lrVentasViejasListas = false; // true = se tiene TODO el historial
+  var _cargandoVentas = null;
+  // Trae SOLO el tramo que falta entre desdeTs y lo que ya se tiene (0 = todo),
+  // y lo suma a la misma lista y mapa de la escucha en vivo.
+  window.__lrCargarVentasDesde = function(desdeTs){
+    desdeTs = Math.max(0, desdeTs || 0);
+    if(desdeTs >= window.__lrVentasDesde) return Promise.resolve(0);
+    if(_cargandoVentas) return _cargandoVentas.then(function(){ return window.__lrCargarVentasDesde(desdeTs); }, function(){ return window.__lrCargarVentasDesde(desdeTs); });
+    var hasta = window.__lrVentasDesde;
+    var q = window.__lrDB.collection(window.__lrCOL.ventas).where('id','<',hasta);
+    if(desdeTs > 0) q = q.where('id','>=',desdeTs);
+    _cargandoVentas = q.get().then(function(snap){
+      var datos = [];
+      snap.forEach(function(doc){ datos.push(doc.data()); });
+      var r = incVentas.inyectar(datos);
+      window.VENTAS = r.lista;
+      window.__lrSync.ultimoVentasSnapshot = r.mapa;
+      _cargandoVentas = null;
+      // Si vino de la copia del equipo (sin señal), puede estar incompleto: se
+      // usa lo que hay, pero no se da por completo (se reintenta la próxima).
+      if(snap.metadata && snap.metadata.fromCache) throw new Error('historial de ventas desde la copia del equipo (sin señal)');
+      window.__lrVentasDesde = desdeTs;
+      if(desdeTs === 0) window.__lrVentasViejasListas = true;
+      return datos.length;
+    }, function(e){ _cargandoVentas = null; throw e; });
+    return _cargandoVentas;
   };
+  window.__lrCargarVentasViejas = function(){ return window.__lrCargarVentasDesde(0); };
 
   // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
   // independiente de cada venta, para que mutar la lista no lo afecte).
@@ -1459,7 +1464,7 @@
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
   // préstamos, etc. Usado sobre todo para Rentabilidad).
-  window.__lrDB.collection(window.__lrCOL.movimientos).where('id','>=',window.__lrCorteHistorial).onSnapshot((function(inc){ return function(snap){
+  window.__lrDB.collection(window.__lrCOL.movimientos).where('id','>=',window.__lrCorteMovimientos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
@@ -1906,8 +1911,8 @@
       var cfgTs = window.__lrLiquidezCfgCache && window.__lrLiquidezCfgCache.configTs;
       if(cfgTs){
         localStorage.setItem('lr_liq_configTs', cfgTs);
-        if(Date.parse(cfgTs) < window.__lrCorteVentas && window.__lrCargarVentasViejas){
-          window.__lrCargarVentasViejas().then(function(){
+        if(Date.parse(cfgTs) < window.__lrVentasDesde && window.__lrCargarVentasDesde){
+          window.__lrCargarVentasDesde(Date.parse(cfgTs) - 24*60*60*1000).then(function(){
             if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')) renderDashboard();
           }).catch(function(){});
         }
@@ -8233,7 +8238,7 @@ function openAdmin() {
   var tabActiva = paneActivo ? paneActivo.id.replace('pane-','') : 'dashboard';
   var dibujarActiva = function(){ try { renderPestanaAdmin(tabActiva); } catch(e) { console.error('render de '+tabActiva+' falló:', e); } };
   // Fuera del Inicio, la pestaña puede mirar ventas viejas: se espera el historial.
-  if(tabActiva !== 'dashboard') esperarVentasViejas(dibujarActiva); else dibujarActiva();
+  if(TABS_CON_VENTAS_HISTORICAS.indexOf(tabActiva) !== -1) esperarVentasViejas(dibujarActiva); else dibujarActiva();
 }
 
 // Redibuja la pestaña del admin que se abre. Cubre las que antes se armaban
@@ -8268,10 +8273,16 @@ function abrirAdminSinTurno() {
   window.__lrAdminSinTurno = true;
   openAdmin();
 }
+// Pantallas que pueden mirar ventas de cualquier fecha (reportes, cierres,
+// rentabilidad, auditoría, sueldos, clientes). Solo estas esperan el historial
+// completo de ventas; el resto (productos, stock, pedidos, egresos, consumos,
+// movimientos, delivery…) no usa ventas viejas y abre al instante.
+var TABS_CON_VENTAS_HISTORICAS = ['ventas','cierres','rentabilidad','reportes','auditoria','empleados','horas','liquidacion','fiados','consignacion','puntos','sorteos'];
+
 function switchTab(tab) {
   // Fuera del Inicio, las pantallas pueden mirar ventas anteriores al corte de
   // la escucha en vivo: primero se asegura el historial (ver esperarVentasViejas).
-  if(tab !== 'dashboard' && window.__lrCargarVentasViejas && !window.__lrVentasViejasListas &&
+  if(TABS_CON_VENTAS_HISTORICAS.indexOf(tab) !== -1 && window.__lrCargarVentasViejas && !window.__lrVentasViejasListas &&
      !(window.__lrVentasViejasFallo && Date.now() - window.__lrVentasViejasFallo < 60000)){
     esperarVentasViejas(function(){ switchTab(tab); });
     return;
@@ -16977,23 +16988,38 @@ var SK_MOVS = 'lr_movimientos';
 // Se guarda APARTE de la lista en vivo: los guardados (registrarMovimiento,
 // etc.) siguen trabajando solo con lo reciente, así nunca reescriben lo viejo.
 window.__lrHistorialViejo = {};
+// Desde qué momento ya se tiene cada colección (lo en vivo + lo traído aparte).
+window.__lrHistorialDesde = {};
 var _lrCargandoHistorialViejo = {};
-function cargarHistorialViejo(clave) {
+function _lrCorteDe(clave) { return clave === 'movimientos' ? window.__lrCorteMovimientos : window.__lrCorteHistorial; }
+// desdeTs: desde cuándo hace falta (0 u omitido = todo). Trae solo el tramo que
+// falta entre desdeTs y lo que ya se tiene, así elegir "este mes" no baja años.
+function cargarHistorialViejo(clave, desdeTs) {
   var nombres = { movimientos: window.__lrCOL && window.__lrCOL.movimientos, logCatalogo: window.__lrCOL && window.__lrCOL.logCatalogo, stockMovs: 'stockMovsHistorial' };
-  if(window.__lrHistorialViejo[clave]) return Promise.resolve(window.__lrHistorialViejo[clave]);
-  if(!window.__lrDB || !nombres[clave] || !window.__lrCorteHistorial) return Promise.resolve([]);
-  if(_lrCargandoHistorialViejo[clave]) return _lrCargandoHistorialViejo[clave];
-  var corte = window.__lrCorteHistorial;
-  _lrCargandoHistorialViejo[clave] = window.__lrDB.collection(nombres[clave]).get({source:'server'}).then(function(snap){
-    var lista = [];
+  desdeTs = desdeTs || 0;
+  var corte = _lrCorteDe(clave);
+  if(!window.__lrDB || !nombres[clave] || !corte) return Promise.resolve([]);
+  var tengoDesde = (window.__lrHistorialDesde[clave] !== undefined) ? window.__lrHistorialDesde[clave] : corte;
+  if(desdeTs >= tengoDesde) return Promise.resolve(window.__lrHistorialViejo[clave] || []);
+  if(_lrCargandoHistorialViejo[clave]) return _lrCargandoHistorialViejo[clave].then(function(){ return cargarHistorialViejo(clave, desdeTs); });
+  var col = window.__lrDB.collection(nombres[clave]);
+  // Todo: se trae la colección entera y se filtra (incluye registros viejos con
+  // id que no es número). Un tramo: consulta por rango de id (= fecha).
+  var consulta = desdeTs === 0 ? col.get({source:'server'})
+    : col.where('id','>=',desdeTs).where('id','<',tengoDesde).get({source:'server'});
+  _lrCargandoHistorialViejo[clave] = consulta.then(function(snap){
+    var yaTengo = {};
+    (window.__lrHistorialViejo[clave] || []).forEach(function(d){ yaTengo[String(d.id)] = true; });
+    var lista = (window.__lrHistorialViejo[clave] || []).slice();
     snap.forEach(function(doc){
       var d = doc.data();
-      // Lo que NO trae la escucha en vivo: id anterior al corte, o un id que
-      // no es número (registros muy viejos o importados).
-      if(!(typeof d.id === 'number' && d.id >= corte)) lista.push(d);
+      if(typeof d.id === 'number' && d.id >= corte) return; // eso llega en vivo
+      if(yaTengo[String(d.id)]) return;
+      lista.push(d);
     });
     lista.sort(function(a,b){ return (Number(a.id)||0) - (Number(b.id)||0); });
     window.__lrHistorialViejo[clave] = lista;
+    window.__lrHistorialDesde[clave] = desdeTs;
     delete _lrCargandoHistorialViejo[clave];
     return lista;
   }, function(err){
@@ -17213,17 +17239,18 @@ function renderMovimientos() {
 
   // Si el período elegido arranca antes del corte de la escucha en vivo, hace
   // falta lo anterior: se pide al servidor una vez y se vuelve a dibujar.
-  if(window.__lrCorteHistorial && desdeDate.getTime() < window.__lrCorteHistorial){
-    if(!window.__lrHistorialViejo.movimientos){
-      var listaCarg = document.getElementById('movCardsList');
-      if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.78rem">⏳ Trayendo movimientos anteriores…</div>';
-      cargarHistorialViejo('movimientos').then(function(){ renderMovimientos(); }, function(){
-        if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--red);font-size:.78rem">No se pudieron traer los movimientos anteriores (¿sin señal?). <span onclick="renderMovimientos()" style="text-decoration:underline;cursor:pointer">Reintentar</span></div>';
-      });
-      return;
-    }
-    movs = getMovimientosTodos();
+  var desdeNecesario = desdeDate.getFullYear() <= 2020 ? 0 : desdeDate.getTime();
+  var tengoMovsDesde = (window.__lrHistorialDesde.movimientos !== undefined) ? window.__lrHistorialDesde.movimientos : window.__lrCorteMovimientos;
+  if(window.__lrCorteMovimientos && desdeNecesario < tengoMovsDesde){
+    var listaCarg = document.getElementById('movCardsList');
+    if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.78rem">⏳ Trayendo movimientos anteriores…</div>';
+    cargarHistorialViejo('movimientos', desdeNecesario).then(function(){ renderMovimientos(); }, function(){
+      if(listaCarg) listaCarg.innerHTML = '<div style="padding:16px;text-align:center;color:var(--red);font-size:.78rem">No se pudieron traer los movimientos anteriores (¿sin señal?). <span onclick="renderMovimientos()" style="text-decoration:underline;cursor:pointer">Reintentar</span></div>';
+    });
+    return;
   }
+  // Lo traído aparte (si hay) + lo en vivo; el filtro de fechas de abajo recorta.
+  if(window.__lrHistorialViejo.movimientos) movs = getMovimientosTodos();
 
   var filtrados = movs.filter(function(m){
     var f = new Date(m.fecha);
@@ -19207,7 +19234,7 @@ function mostrarDiagnosticoCarga() {
   var totalKb = filas.reduce(function(s,f){ return s+f.kb; },0);
   var html = '<div style="font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">🩺 DIAGNÓSTICO DE CARGA</div>'+
     '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Pantalla lista a los <b style="color:var(--white)">'+seg(t._pantalla)+'</b> · todo cargado a los <b style="color:var(--white)">'+seg(t._completa)+'</b> · total en memoria ≈ <b style="color:var(--white)">'+(totalKb>=1024?(totalKb/1024).toFixed(1)+' MB':totalKb+' KB')+'</b>'+
-    '<br>Ventas en vivo desde el <b style="color:var(--white)">'+(window.__lrCorteVentas?new Date(window.__lrCorteVentas).toLocaleDateString('es-AR'):'—')+'</b> · historial anterior: <b style="color:var(--white)">'+(window.__lrVentasViejasListas?('cargado'+(t._ventasViejas?' a los '+seg(t._ventasViejas):'')):'todavía no')+'</b>'+
+    '<br>Ventas en vivo desde el <b style="color:var(--white)">'+(window.__lrCorteVentas?new Date(window.__lrCorteVentas).toLocaleDateString('es-AR'):'—')+'</b> · en memoria desde el <b style="color:var(--white)">'+(window.__lrVentasViejasListas?'inicio (todo)':(window.__lrVentasDesde?new Date(window.__lrVentasDesde).toLocaleDateString('es-AR'):'—'))+'</b>'+
     ' · datos '+((window.__lrVentasDesdeNube===true && window.__lrSesionesDesdeNube===true)?'<b style="color:var(--green)">confirmados por la nube</b>':'<b style="color:var(--gold)">sin confirmar todavía</b>')+'</div>'+
     '<table style="width:100%;border-collapse:collapse;font-size:.72rem">'+
     '<tr style="color:var(--gray);text-align:left"><th style="padding:4px">Colección</th><th style="padding:4px;text-align:right">Registros</th><th style="padding:4px;text-align:right">Peso</th><th style="padding:4px">Desde</th><th style="padding:4px;text-align:right">Llegó</th></tr>'+
@@ -20177,7 +20204,7 @@ function renderDashboard() {
     // se muestra ⏳ hasta tenerlo (se trae solo, ver liquidez en la nube).
     var cfgLiqV = (typeof getLiquidezCfg==='function') ? getLiquidezCfg() : {};
     var liqIncompleta = !!(cfgLiqV && cfgLiqV.configTs && window.__lrCorteVentas &&
-      Date.parse(cfgLiqV.configTs) < window.__lrCorteVentas && !window.__lrVentasViejasListas);
+      Date.parse(cfgLiqV.configTs) < window.__lrVentasDesde);
     var totalLiqVivo = (isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0) +
                         (isFinite(liqVivo.efectivoFuera)?liqVivo.efectivoFuera:0) +
                         (isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0);
