@@ -12232,7 +12232,11 @@ function registrarIngresoCaja() {
 
 // ── CARGA VIRTUAL (recarga de celular / DirecTV con Posnet de Mercado Pago) ──
 var SK_CARGAS_VIRTUALES = 'lr_cargas_virtuales';
-function getCargasVirtuales() { return (window.__lrSync && window.__lrSync.cargasVirtualesListos && Array.isArray(window.__lrCargasVirtualesCache)) ? window.__lrCargasVirtualesCache : []; }
+// Todas, incluidas las anuladas (para guardar y para el respaldo).
+function getCargasVirtualesTodas() { return (window.__lrSync && window.__lrSync.cargasVirtualesListos && Array.isArray(window.__lrCargasVirtualesCache)) ? window.__lrCargasVirtualesCache : []; }
+// Las que cuentan: una recarga anulada (ver anularCargaVirtual) queda guardada
+// como registro, pero no suma en cierres, Liquidez, Rentabilidad ni reportes.
+function getCargasVirtuales() { return getCargasVirtualesTodas().filter(function(c){ return !c.anulada; }); }
 function saveCargasVirtuales(c) { window.__lrCargasVirtualesCache = c; if(window.__lrSaveCargasVirtuales) window.__lrSaveCargasVirtuales(c); }
 
 var _cvTipo = null;
@@ -12293,9 +12297,10 @@ function registrarCargaVirtual() {
   if(!montoCobrado || montoCobrado<=0){ showToast('Ingresá el monto que le cobrás al cliente',true); return; }
 
   var ganancia = montoCobrado - montoMP;
-  var cargas = getCargasVirtuales();
+  var cargas = getCargasVirtualesTodas();
+  var idCarga = Date.now();
   cargas.push({
-    id: Date.now(),
+    id: idCarga,
     fecha: new Date().toISOString(),
     tipo: _cvTipo,
     montoMP: montoMP,
@@ -12310,11 +12315,60 @@ function registrarCargaVirtual() {
   registrarOperacion('carga-virtual',
     [{name: 'Carga '+_cvTipo+' ('+_cvMedio+')', qty:1, precio:montoCobrado, subtotal:montoCobrado}],
     montoCobrado, currentEmp?currentEmp.nombre:'Admin',
-    'Carga virtual · MP -'+fmt(montoMP)+' · Ganancia '+fmt(ganancia));
+    'Carga virtual · MP -'+fmt(montoMP)+' · Ganancia '+fmt(ganancia), 0, idCarga);
 
   cerrarCargaVirtualModal();
-  guardarOperacionProtegida('CargasVirtuales', getCargasVirtuales, 'Carga virtual (ganancia '+fmt(ganancia)+')');
+  guardarOperacionProtegida('CargasVirtuales', getCargasVirtualesTodas, 'Carga virtual (ganancia '+fmt(ganancia)+')');
   autoSaveNow();
+}
+
+// ── ANULAR UNA RECARGA ──────────────────────────────────────────────────────
+// Si una recarga se cargó mal, se anula desde el panel de venta (botón de
+// anular las últimas). No se borra: queda marcada como anulada (quién y
+// cuándo) y deja de contar en todos lados — cierres, Liquidez, Mercado Pago,
+// Rentabilidad y reportes usan getCargasVirtuales(), que ya las excluye. El
+// movimiento que generó también queda marcado como anulado.
+// rehacer: abre la carga con los mismos datos, para corregir y volver a cargar.
+function anularCargaVirtual(id, rehacer) {
+  var c = getCargasVirtualesTodas().find(function(x){ return x.id === id; });
+  if(!c || c.anulada) return;
+  var txt = 'Recarga '+c.tipo+' de '+fmt(c.montoCobrado)+' ('+c.medio+').\n\n'+
+    (rehacer ? 'Se va a anular y se abre de nuevo con los mismos datos para corregirla.' : 'Se va a anular: deja de contar en la caja y en Mercado Pago.')+'\n\n¿Seguimos?';
+  askConfirm(txt).then(function(ok){
+    if(!ok) return;
+    c.anulada = true;
+    c.anuladaTs = new Date().toISOString();
+    c.anuladaPor = currentEmp ? currentEmp.nombre : 'Admin';
+    window.__lrCargasVirtualesCache = getCargasVirtualesTodas();
+    guardarOperacionProtegida('CargasVirtuales', getCargasVirtualesTodas, 'Recarga anulada');
+
+    // Marcar su movimiento: por refId (recargas nuevas) o, en las anteriores
+    // a este cambio, por tipo + monto + hora.
+    var movs = getMovimientos(), tc = new Date(c.fecha).getTime(), tocado = false;
+    movs.forEach(function(m){
+      if(m.anulada || m.tipo !== 'carga-virtual') return;
+      var coincide = (m.refId === c.id) || (!m.refId && m.total === c.montoCobrado && Math.abs(new Date(m.fecha).getTime() - tc) < 10000);
+      if(!coincide || tocado) return;
+      m.anulada = true;
+      m.resumen = '❌ ANULADA · ' + (m.resumen || '');
+      tocado = true;
+    });
+    if(tocado) saveMovimientos(movs);
+    autoSaveNow();
+
+    if(rehacer){
+      abrirCargaVirtualModal();
+      selCargaVirtualTipo(c.tipo);
+      selCargaVirtualMedio(c.medio);
+      var iMP = document.getElementById('cvMontoMP'), iCo = document.getElementById('cvMontoCobrado');
+      if(iMP){ iMP.value = String(c.montoMP); formatMontoInput(iMP); }
+      if(iCo){ iCo.value = String(c.montoCobrado); formatMontoInput(iCo); }
+      calcCargaVirtualGanancia();
+      showToast('↻ Recarga anulada — corregí los datos y volvé a cargarla');
+    } else {
+      showToast('✅ Recarga anulada');
+    }
+  });
 }
 
 // ── PRÉSTAMOS (plata que entra/sale del local pero no es venta ni gasto operativo) ──
@@ -16393,7 +16447,7 @@ function confirmarCambioEfectivo(){
 
     // La comisión entra como ganancia del turno
     if(com > 0){
-      var cargas = getCargasVirtuales();
+      var cargas = getCargasVirtualesTodas(); // lista completa: las anuladas también se conservan
       cargas.push({
         id: Date.now()+1,
         fecha: new Date().toISOString(),
@@ -18947,7 +19001,7 @@ function collectAllData() {
     mensajesPunt:     JSON.stringify(getMensajesPunt()),
     prestamos:        JSON.stringify(getPrestamos()),
     transferCuentas:  JSON.stringify(getTransferCuentas()),
-    cargasVirtuales:  JSON.stringify(getCargasVirtuales()),
+    cargasVirtuales:  JSON.stringify(getCargasVirtualesTodas()), // incluye anuladas (quedan como registro)
     retirosCaja:      JSON.stringify(getRetirosCaja()),
     liquidezCfg:      JSON.stringify(getLiquidezCfg()),
     catsCustom:       JSON.stringify(ALL_CATS),
@@ -24587,6 +24641,11 @@ function abrirAnularUltimas() {
     return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs;
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,5);
 
+  // Recargas del turno (sin los "cambio de efectivo", que no son recargas)
+  var recargasTurno = getCargasVirtuales().filter(function(c){
+    return c.tipo !== 'cambio-efectivo' && new Date(c.fecha).getTime() >= inicioTs;
+  }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,5);
+
   var ov = document.getElementById('anularUltimasOverlay');
   if(!ov){
     ov = document.createElement('div');
@@ -24594,8 +24653,8 @@ function abrirAnularUltimas() {
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2350;display:flex;align-items:center;justify-content:center;padding:16px';
     ov.innerHTML =
       '<div style="background:var(--surface);border-radius:10px;padding:18px;width:440px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column">'+
-        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:4px">↩ Anular una venta</div>'+
-        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:12px">Últimas 5 ventas de tu turno. Al anular, el stock vuelve y la plata se descuenta.</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:4px">↩ Anular una venta o recarga</div>'+
+        '<div style="font-size:.7rem;color:var(--gray);margin-bottom:12px">Últimas 5 ventas y 5 recargas de tu turno. Al anular una venta, el stock vuelve y la plata se descuenta; al anular una recarga, deja de contar en la caja y en Mercado Pago.</div>'+
         '<div id="anularUltimasLista" style="flex:1;overflow-y:auto"></div>'+
         '<button onclick="cerrarAnularUltimas()" style="width:100%;margin-top:12px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
       '</div>';
@@ -24604,12 +24663,31 @@ function abrirAnularUltimas() {
   ov.style.display = 'flex';
 
   var lista = document.getElementById('anularUltimasLista');
+  var htmlRecargas = recargasTurno.length ?
+    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin:4px 0 8px">📱 Recargas de tu turno</div>'+
+    recargasTurno.map(function(c){
+      var hora = new Date(c.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      return '<div style="border:1px solid rgba(245,194,0,.35);border-radius:7px;padding:12px;margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:.8rem;color:var(--light);line-height:1.4">Recarga '+c.tipo+' · cobrado '+c.medio+'</div>'+
+            '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+hora+' · Mercado Pago -'+fmt(c.montoMP)+' · ganancia '+fmt(c.ganancia)+'</div>'+
+          '</div>'+
+          '<div style="font-family:Oswald,sans-serif;color:var(--gold);white-space:nowrap">'+fmt(c.montoCobrado)+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:7px;margin-top:10px">'+
+          '<button onclick="cerrarAnularUltimas();anularCargaVirtual('+c.id+',true)" style="flex:1;background:var(--gold);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;font-weight:700;letter-spacing:.5px;cursor:pointer">↻ Anular y rehacer</button>'+
+          '<button onclick="cerrarAnularUltimas();anularCargaVirtual('+c.id+',false)" style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:.5px;cursor:pointer">✕ Solo anular</button>'+
+        '</div>'+
+      '</div>';
+    }).join('') : '';
+
   if(!delTurno.length){
-    lista.innerHTML = '<div style="text-align:center;color:var(--gray);padding:26px;font-size:.85rem">Todavía no hiciste ventas en este turno</div>';
+    lista.innerHTML = '<div style="text-align:center;color:var(--gray);padding:26px;font-size:.85rem">Todavía no hiciste ventas en este turno</div>' + htmlRecargas;
     return;
   }
 
-  lista.innerHTML = delTurno.map(function(v){
+  lista.innerHTML = (recargasTurno.length ? '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin:0 0 8px">🛒 Ventas de tu turno</div>' : '') + delTurno.map(function(v){
     var hora = new Date(v.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     var prods = (v.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
     return '<div style="border:1px solid var(--border);border-radius:7px;padding:12px;margin-bottom:8px">'+
@@ -24625,7 +24703,7 @@ function abrirAnularUltimas() {
         '<button onclick="anularDesdeVenta('+v.id+')" style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:.5px;cursor:pointer">✕ Solo anular</button>'+
       '</div>'+
     '</div>';
-  }).join('');
+  }).join('') + (htmlRecargas ? '<div style="height:6px"></div>'+htmlRecargas : '');
 }
 
 function cerrarAnularUltimas(){
