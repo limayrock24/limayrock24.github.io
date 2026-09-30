@@ -3915,7 +3915,7 @@ body.night-on{background:#080005}
     <!-- Subbarra de Equipo: el personal y todo lo que lo involucra. -->
     <div id="subtabsEquipo" class="subnav-bar" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
       <button class="ftbtn" id="se-empleados" onclick="switchTab('empleados')">👥 Empleados</button>
-      <button class="ftbtn" id="se-consumos"  onclick="switchTab('consumos')">🧾 Consumos</button>
+      <button class="ftbtn" id="se-consumos"  onclick="switchTab('consumos')">🏪 Consumos del local</button>
       <button class="ftbtn" id="se-mensajes"  onclick="switchTab('mensajes')">💬 Mensajes</button>
     </div>
 
@@ -4224,12 +4224,20 @@ body.night-on{background:#080005}
     </div>
     <!-- CONSUMOS -->
     <div class="tab-pane" id="pane-consumos">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <span onclick="switchTab('empleados');selEmpTab('consumos')" style="font-size:.74rem;color:var(--gold);text-decoration:underline;cursor:pointer">Ver consumos de empleados →</span>
+      </div>
       <!-- LIMAY ROCK (uso interno del negocio) -->
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--red);margin-bottom:4px;text-transform:uppercase">🏪 Para Limay Rock</div>
       <div style="font-size:.68rem;color:var(--gray);margin-bottom:8px">Uso interno del negocio: yerba para los mates, papel higiénico, o regalos a proveedores/clientes. Descuenta del stock, no genera deuda con nadie.</div>
       <div id="saldosNegocio"></div>
       <hr style="border-color:var(--border);margin:12px 0">
 
+      <!-- Admin propio, empleados y CEFHAS ya no se muestran acá: los consumos
+           de empleados (incluido el admin) están en Empleados → Consumos, y
+           CEFHAS ya no se usa. Se dejan ocultos (no borrados) porque el
+           código que los dibuja los sigue buscando. -->
+      <div style="display:none">
       <!-- ADMIN PROPIO -->
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase">👤 Consumo propio (admin)</div>
       <div id="saldosAdmin"></div>
@@ -4245,8 +4253,9 @@ body.night-on{background:#080005}
       <div id="saldosCefhas"></div>
       <hr style="border-color:var(--border);margin:12px 0">
 
+      </div>
       <!-- HISTORIAL COMPLETO -->
-      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase">📋 Historial completo</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase">📋 Historial de consumos del local</div>
       <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;max-height:400px;overflow-y:auto" id="consumosList"></div>
       <div class="section-export-bar">
         <button class="sec-exp-btn csv" onclick="exportarConsumosCSV()">⬇ CSV</button>
@@ -11921,7 +11930,8 @@ function renderConsumos() {
   }
 
   // ── Historial completo (con paginación "ver más") ──
-  _consumosHistTodos = consumos.slice().reverse();
+  // Solo los del local (uso interno): los de empleados están en Empleados → Consumos
+  _consumosHistTodos = consumos.filter(function(c){ return c.tipo === 'negocio'; }).reverse();
   _consumosHistMostrados = 30;
   renderConsumosHistorial();
 }
@@ -11941,7 +11951,8 @@ function renderConsumosHistorial() {
   listEl.innerHTML = visibles.map(function(c){
     var fecha=new Date(c.fecha).toLocaleDateString('es-AR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
     var items=(c.items && c.items.length) ? c.items.map(function(i){return (i.name||'?')+'×'+(i.qty||1);}).join(', ') : 'sin detalle';
-    var badge = c.tipo==='cefhas'  ? '<span class="consumo-badge" style="background:#7B2D8B">🏋️ CEFHAS</span>'
+    var badge = c.tipo==='negocio' ? '<span class="consumo-badge" style="background:var(--red)">🏪 Limay Rock</span>'
+              : c.tipo==='cefhas'  ? '<span class="consumo-badge" style="background:#7B2D8B">🏋️ CEFHAS</span>'
               : c.tipo==='propio'  ? '<span class="consumo-badge propio">👤 '+c.empleado+'</span>'
               : '<span class="consumo-badge empleado">🧾 '+c.empleado+'</span>';
     return '<div class="consumo-row">'+badge+'<span style="font-size:.74rem;color:var(--light)">'+items+'</span><span style="font-size:.66rem;color:var(--gray)">'+fecha+'</span><span class="consumo-monto">'+fmt(c.total)+'</span></div>';
