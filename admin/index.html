@@ -14558,10 +14558,14 @@ function renderHoras() {
   // Agrupar por empleado
   var empData = {};
   enPeriodo.forEach(function(c){
-    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0, pagadoMin:0, pendienteMin:0, turnos:[]};
+    if(!empData[c.empleado]) empData[c.empleado]={totalMin:0, pagosMin:0, pagadoMin:0, pendienteMin:0, turnos:[]};
     empData[c.empleado].totalMin += c.durMinutos || 0;
-    if(c.pagado) empData[c.empleado].pagadoMin += c.durMinutos || 0;
-    else empData[c.empleado].pendienteMin += c.durMinutos || 0;
+    // Pagado / pendiente se cuentan en horas A PAGAR: un turno marcado x2 ya
+    // suma el doble (ver multTurno). El total grande sigue siendo lo trabajado.
+    var minPago = minutosPagados(c);
+    empData[c.empleado].pagosMin += minPago;
+    if(c.pagado) empData[c.empleado].pagadoMin += minPago;
+    else empData[c.empleado].pendienteMin += minPago;
     empData[c.empleado].turnos.push(c);
   });
 
@@ -14571,7 +14575,7 @@ function renderHoras() {
   }
 
   function fmtMin(min){
-    var h = Math.floor(min/60), m = min%60;
+    var h = Math.floor(min/60), m = Math.round(min%60);
     return h+'h '+(m>0?m+'m':'');
   }
 
@@ -14624,6 +14628,7 @@ function renderHoras() {
         '</div>'+
         '<div style="text-align:right">'+
           '<div class="horas-emp-total">'+horasStr+'</div>'+
+          (d.pagosMin !== d.totalMin ? '<div style="font-size:.7rem;color:var(--gold);margin-bottom:2px">💼 '+fmtMin(d.pagosMin)+' a pagar (incluye turnos x1,5 / x2)</div>' : '')+
           '<div class="horas-emp-sub" style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">'+
             '<span style="color:var(--green)">✓ '+fmtMin(d.pagadoMin)+' pagado</span>'+
             '<span style="color:var(--gold)">⏳ '+fmtMin(d.pendienteMin)+' pendiente</span>'+
