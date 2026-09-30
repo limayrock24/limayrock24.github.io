@@ -8428,10 +8428,10 @@ function filaRecargaVentas(c) {
   var turnoColor = c.turno==='Nocturno' ? 'color:var(--red)' : 'color:var(--gold)';
   var tach = c.anulada ? 'text-decoration:line-through;opacity:.55;' : '';
   row.innerHTML =
-    '<div class="venta-row" style="cursor:default;flex-direction:column;align-items:stretch;padding:8px 10px;border-left:3px solid var(--gold);background:rgba(245,194,0,.04)">'+
+    '<div class="venta-row" style="cursor:default;flex-direction:column;align-items:stretch;padding:8px 10px">'+
       '<div style="display:grid;grid-template-columns:40px 1fr auto auto auto auto;gap:6px;align-items:center;'+tach+'">'+
         '<span class="hora">'+hora+'</span>'+
-        '<span style="font-size:.76rem;color:var(--gold);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📱 Recarga '+(c.tipo||'')+'</span>'+
+        '<span style="font-size:.76rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📱 Recarga '+(c.tipo||'')+'</span>'+
         '<span style="font-size:.72rem;'+turnoColor+'">'+String(c.turno||'').slice(0,3)+' · '+(c.empleado||'—')+'</span>'+
         '<span style="font-size:.72rem;color:#3498DB;white-space:nowrap">'+(c.medio||'—')+'</span>'+
         '<span class="monto" style="white-space:nowrap">'+fmt(c.montoCobrado||0)+'</span>'+
