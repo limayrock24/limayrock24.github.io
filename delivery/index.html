@@ -40,6 +40,8 @@
   ══════════════════════════════════════════════════════════════════════════
 -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="../lr-identificacion.js?v=1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <style>
@@ -233,6 +235,7 @@ window.__LR_BUILD = "3"; // versión de ESTA página — se bumpea a mano acá (
     appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
   };
   firebase.initializeApp(firebaseConfig);
+  if(window.__lrIniciarIdentificacion) window.__lrIniciarIdentificacion('delivery');
   window.__LR_VAPID_KEY = 'BKS5tsioZVEPGlRsN2GWo5sPATLMy5q0gtDXZFyduvrGphxtXfUwh8cLJnu3vxcEcLEWqiedefZQrBsgLJDIqgk';
 
   window.__lrDB = firebase.firestore();
