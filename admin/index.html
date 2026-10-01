@@ -2,6 +2,8 @@
 <!-- ═══════════════ FIREBASE — Limay Rock ═══════════════ -->
 <script>document.write('<script src="../imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="../lr-identificacion.js?v=1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
@@ -86,6 +88,9 @@
     appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
   };
   firebase.initializeApp(firebaseConfig);
+  // Identificación del equipo (ver lr-identificacion.js): tiene que ir antes
+  // de que arranque cualquier escucha de la nube.
+  if(window.__lrIniciarIdentificacion) window.__lrIniciarIdentificacion(location.pathname.indexOf('/admin/') !== -1 ? 'admin' : 'venta');
 
   // ── NOTIFICACIONES PUSH ───────────────────────────────────────────────────
   // Clave pública de Firebase para notificaciones web. No es un secreto: va en
