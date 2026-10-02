@@ -18,6 +18,10 @@
 (function(){
   var CUENTA_SUGERIDA = { venta: 'local@limayrock.app', admin: 'admin@limayrock.app', delivery: 'delivery@limayrock.app' };
   var NOMBRE_PANEL = { venta: 'Panel de venta', admin: 'Panel admin', delivery: 'Panel de delivery' };
+  // Etapa 2: paneles cuya parte de la base ya está cerrada. En esos, un equipo
+  // sin identificar NO puede funcionar (la nube le rechazaría todo y quedaría
+  // vendiendo sin guardar), así que se pide la identificación obligatoria.
+  var BASE_CERRADA = { venta: true, admin: true, delivery: false };
 
   function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
@@ -64,15 +68,25 @@
     }
     diferir(firebase.firestore.Query.prototype);
     diferir(firebase.firestore.DocumentReference.prototype);
-    // Red de seguridad: si la identificación no responde en 8 s, se arranca
-    // igual (en esta etapa la base todavía está abierta).
-    setTimeout(arrancarPendientes, 8000);
+    var cerrada = !!BASE_CERRADA[panel];
+    window.__lrIdentObligatoria = cerrada;
+    // Red de seguridad (solo con la base abierta): si la identificación no
+    // responde en 8 s, se arranca igual.
+    if(!cerrada) setTimeout(arrancarPendientes, 8000);
 
     auth.onAuthStateChanged(function(user){
       window.__lrUsuario = user ? user.email : null;
-      arrancarPendientes();
+      if(user || !cerrada){
+        // Si las escuchas ya habían arrancado sin identificación (no debería
+        // pasar con la base cerrada), se recarga para que arranquen bien.
+        if(user && cerrada && listo && window.__lrArrancoSinUsuario){ location.reload(); return; }
+        if(!user) window.__lrArrancoSinUsuario = true;
+        arrancarPendientes();
+      }
       pintarAviso();
       registrarDispositivo();
+      // Base cerrada y equipo sin identificar: identificación obligatoria.
+      if(!user && cerrada) abrirVentanaCuandoSePueda();
     });
 
     // Se vuelve a registrar cada 30 minutos, para saber qué equipos siguen en uso.
@@ -144,12 +158,23 @@
     document.getElementById('lrIdentPass').value = '';
     document.getElementById('lrIdentNombre').value = leer('lr_dispositivo_nombre') || '';
     document.getElementById('lrIdentError').style.display = 'none';
+    // Con la base cerrada no se puede saltear: sin identificar, este panel
+    // no puede leer ni guardar nada.
+    var obligatoria = !!window.__lrIdentObligatoria && !window.__lrUsuario;
+    document.getElementById('lrIdentCancelar').style.display = obligatoria ? 'none' : 'block';
+    if(obligatoria) document.getElementById('lrIdentSub').textContent = (NOMBRE_PANEL[window.__lrPanel] || 'Este panel') + ' · este equipo tiene que identificarse para poder funcionar';
     ov.style.display = 'flex';
     setTimeout(function(){ document.getElementById('lrIdentPass').focus(); }, 50);
   }
   window.__lrAbrirIdentificacion = abrirVentana;
 
+  function abrirVentanaCuandoSePueda(){
+    if(document.getElementById('lrIdentOverlay')) abrirVentana();
+    else document.addEventListener('DOMContentLoaded', function(){ setTimeout(abrirVentana, 0); });
+  }
+
   function cerrarVentana(){
+    if(window.__lrIdentObligatoria && !window.__lrUsuario) return;
     var ov = document.getElementById('lrIdentOverlay');
     if(ov) ov.style.display = 'none';
   }
@@ -168,7 +193,8 @@
     if(!nombre){ mostrarError('Poné un nombre para este equipo (ej: Netbook del local).'); return; }
     var btn = document.getElementById('lrIdentBtn');
     btn.disabled = true; btn.textContent = 'Identificando…';
-    window.__lrAuth.signInWithEmailAndPassword(email, pass).then(function(){
+    window.__lrAuth.signInWithEmailAndPassword(email, pass).then(function(cred){
+      if(cred && cred.user) window.__lrUsuario = cred.user.email;
       guardar('lr_dispositivo_nombre', nombre);
       cerrarVentana();
       registrarDispositivo();
