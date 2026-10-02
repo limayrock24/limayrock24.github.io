@@ -15052,9 +15052,12 @@ function exportarLiquidacionPDF(nombre) {
   abrirVentanaPDF('Liquidación — '+nombre, contenido);
 }
 
-// PDF para el empleado — solo horas (turno por turno) y consumos, sin sueldo ni valor hora.
-// Pensado para mandárselo y que corrobore que está todo bien cargado.
+// PDF para el empleado — horas (turno por turno), consumos, valor de su hora y
+// lo que le corresponde cobrar. Pensado para mandárselo y que corrobore que
+// está todo bien cargado.
 function exportarPDFEmpleado(nombre) {
+  var empObj    = getEmpleados().find(function(e){ return e.nombre===nombre; });
+  var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
   var cierres   = getCierres();
   var consumos  = getConsumos();
   var rango     = getRangoLiquidacion();
@@ -15078,6 +15081,15 @@ function exportarPDFEmpleado(nombre) {
     .sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
   var totalConsumo = misConsumos.reduce(function(s,c){ return s+c.total; },0);
 
+  // Lo que le corresponde cobrar: mismas cuentas que la liquidación del admin
+  // (horas a cobrar × valor hora, menos consumos y faltantes sin descontar).
+  var sueldo = Math.round((minACobrar/60)*valorHora);
+  var consumoADescontar = misConsumos.filter(function(c){ return !c.saldado; }).reduce(function(s,c){ return s+c.total; },0);
+  var faltanteADescontar = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
+    .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
+  var totalACobrar = sueldo - consumoADescontar - faltanteADescontar;
+  var $f = function(n){ return '$'+Number(n).toLocaleString('es-AR'); };
+
   var turnosRows = misCierres.map(function(c){
     var fecha=new Date(c.fecha).toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});
     var fi=c.horaInicio?new Date(c.horaInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
@@ -15090,7 +15102,7 @@ function exportarPDFEmpleado(nombre) {
   var consumosRows = misConsumos.map(function(c){
     var fecha=new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
     var prods=(c.items&&c.items.length)?c.items.map(function(i){return (i.name||'?')+' ×'+(i.qty||1);}).join(', '):'—';
-    return '<tr><td>'+fecha+'</td><td>'+prods+'</td><td>$'+Number(c.total).toLocaleString('es-AR')+'</td></tr>';
+    return '<tr'+(c.saldado?' style="color:#999"':'')+'><td>'+fecha+'</td><td>'+prods+'</td><td>$'+Number(c.total).toLocaleString('es-AR')+'</td><td>'+(c.saldado?'<span style="color:#27ae60">✓ Ya descontado</span>':'A descontar')+'</td></tr>';
   }).join('');
 
   var contenido=
@@ -15102,12 +15114,20 @@ function exportarPDFEmpleado(nombre) {
       '<div class="kpi"><div class="l">Horas a cobrar</div><div class="v" style="color:#b8860b">'+txtHs(minACobrar)+'</div></div>'+
       '<div class="kpi"><div class="l">Total consumido</div><div class="v" style="color:#e74c3c">$'+Number(totalConsumo).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
+    '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Lo que te corresponde cobrar</h3>'+
+    '<table style="max-width:460px"><tbody>'+
+      '<tr><td>Valor de tu hora</td><td style="text-align:right">'+$f(valorHora)+'</td></tr>'+
+      '<tr><td>Horas a cobrar ('+txtHs(minACobrar)+' × '+$f(valorHora)+')</td><td style="text-align:right">'+$f(sueldo)+'</td></tr>'+
+      (consumoADescontar>0 ? '<tr><td>Consumos a descontar</td><td style="text-align:right;color:#e74c3c">− '+$f(consumoADescontar)+'</td></tr>' : '')+
+      (faltanteADescontar>0 ? '<tr><td>Faltantes de caja a descontar</td><td style="text-align:right;color:#e74c3c">− '+$f(faltanteADescontar)+'</td></tr>' : '')+
+      '<tr><td><b>TOTAL A COBRAR</b></td><td style="text-align:right;font-weight:bold;font-size:15px;color:#CC0000">'+$f(totalACobrar)+'</td></tr>'+
+    '</tbody></table>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de turnos</h3>'+
     (turnosRows ? '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Duración</th><th>Pago</th><th>Estado</th></tr></thead><tbody>'+turnosRows+'</tbody></table>'+
       (hayEspecial ? '<p style="font-size:11px;color:#888;margin-top:6px">Los turnos 🎉 x1,5 / x2 (feriados o días especiales) suman su duración multiplicada: por ejemplo, 8 h en x2 cuentan como 16 h.</p>' : '')
       : '<div style="color:#888;font-size:12px">Sin turnos registrados este período.</div>')+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de consumos</h3>'+
-    (consumosRows ? '<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th></tr></thead><tbody>'+consumosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin consumos registrados este período.</div>')+
+    (consumosRows ? '<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th><th>Estado</th></tr></thead><tbody>'+consumosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin consumos registrados este período.</div>')+
     '<p style="font-size:11px;color:#888;margin-top:16px">Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste. Cualquier diferencia, avisale a tu encargado.</p>';
 
   abrirVentanaPDF('Horas y consumos — '+nombre, contenido);
