@@ -15064,9 +15064,15 @@ function exportarPDFEmpleado(nombre) {
 
   var misCierres = cierres.filter(function(c){ var d=new Date(c.fecha); return c.empleado===nombre && d>=rango.desde && d<=rango.hasta; })
     .sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
+  // Horas que valen: las de los turnos x1,5 / x2 cuentan con su valor. Los
+  // turnos que ya se pagaron (marcados en Horas) se muestran aparte y no
+  // entran en lo que falta cobrar.
   var totalMin   = misCierres.reduce(function(s,c){return s+(c.durMinutos||0);},0);
-  var horas      = totalMin/60;
-  var minPagos   = misCierres.reduce(function(s,c){return s+minutosPagados(c);},0);
+  var minValen   = misCierres.reduce(function(s,c){return s+minutosPagados(c);},0);
+  var minYaPagos = misCierres.reduce(function(s,c){return s+(c.pagado?minutosPagados(c):0);},0);
+  var minACobrar = minValen - minYaPagos;
+  var hayEspecial = minValen !== totalMin;
+  var txtHs = function(m){ m = Math.round(m); return Math.floor(m/60)+'h'+(m%60>0?' '+(m%60)+'m':''); };
 
   var misConsumos = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado' && c.empleado===nombre && d>=rango.desde && d<=rango.hasta; })
     .sort(function(a,b){ return new Date(a.fecha)-new Date(b.fecha); });
@@ -15078,7 +15084,7 @@ function exportarPDFEmpleado(nombre) {
     var ff=c.horaFin?new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var dur=c.durMinutos?Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':''):'—';
     var mP = multTurno(c);
-    return '<tr><td>'+fecha+'</td><td>'+c.turno+'</td><td>'+fi+'</td><td>'+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+(mP>1?'🎉 '+textoMult(mP):'Normal')+'</td></tr>';
+    return '<tr'+(c.pagado?' style="color:#999"':'')+'><td>'+fecha+'</td><td>'+c.turno+'</td><td>'+fi+'</td><td>'+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+(mP>1?'🎉 '+textoMult(mP):'Normal')+'</td><td>'+(c.pagado?'<span style="color:#27ae60;font-weight:bold">✓ Ya pagado</span>':'A cobrar')+'</td></tr>';
   }).join('');
 
   var consumosRows = misConsumos.map(function(c){
@@ -15091,12 +15097,15 @@ function exportarPDFEmpleado(nombre) {
     '<h3 style="font-size:14px;margin-bottom:12px">'+nombre+' — Período: '+periodoTxt+'</h3>'+
     '<div class="kpis">'+
       '<div class="kpi"><div class="l">Turnos trabajados</div><div class="v">'+misCierres.length+'</div></div>'+
-      '<div class="kpi"><div class="l">Horas totales</div><div class="v" style="color:#27ae60">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
-      (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar (con feriados)</div><div class="v" style="color:#b8860b">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
+      '<div class="kpi"><div class="l">Horas totales'+(hayEspecial?' (con x1,5 / x2)':'')+'</div><div class="v">'+txtHs(minValen)+'</div></div>'+
+      (minYaPagos > 0 ? '<div class="kpi"><div class="l">Ya pagadas</div><div class="v" style="color:#27ae60">− '+txtHs(minYaPagos)+'</div></div>' : '')+
+      '<div class="kpi"><div class="l">Horas a cobrar</div><div class="v" style="color:#b8860b">'+txtHs(minACobrar)+'</div></div>'+
       '<div class="kpi"><div class="l">Total consumido</div><div class="v" style="color:#e74c3c">$'+Number(totalConsumo).toLocaleString('es-AR')+'</div></div>'+
     '</div>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de turnos</h3>'+
-    (turnosRows ? '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Duración</th><th>Pago</th></tr></thead><tbody>'+turnosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin turnos registrados este período.</div>')+
+    (turnosRows ? '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Duración</th><th>Pago</th><th>Estado</th></tr></thead><tbody>'+turnosRows+'</tbody></table>'+
+      (hayEspecial ? '<p style="font-size:11px;color:#888;margin-top:6px">Los turnos 🎉 x1,5 / x2 (feriados o días especiales) suman su duración multiplicada: por ejemplo, 8 h en x2 cuentan como 16 h.</p>' : '')
+      : '<div style="color:#888;font-size:12px">Sin turnos registrados este período.</div>')+
     '<h3 style="font-size:13px;color:#CC0000;margin:16px 0 8px">Detalle de consumos</h3>'+
     (consumosRows ? '<table><thead><tr><th>Fecha</th><th>Productos</th><th>Monto</th></tr></thead><tbody>'+consumosRows+'</tbody></table>' : '<div style="color:#888;font-size:12px">Sin consumos registrados este período.</div>')+
     '<p style="font-size:11px;color:#888;margin-top:16px">Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste. Cualquier diferencia, avisale a tu encargado.</p>';
