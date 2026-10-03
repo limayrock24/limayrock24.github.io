@@ -5035,8 +5035,8 @@ body.night-on{background:#080005}
       <div class="rent-period">
         <button class="rent-period-btn" id="dp-hoy" onclick="selPeriodoDelivery('hoy')">Hoy</button>
         <button class="rent-period-btn" id="dp-semana" onclick="selPeriodoDelivery('semana')">Esta semana</button>
-        <button class="rent-period-btn" id="dp-mes" onclick="selPeriodoDelivery('mes')">Este mes</button>
-        <button class="rent-period-btn active" id="dp-todo" onclick="selPeriodoDelivery('todo')">Todo</button>
+        <button class="rent-period-btn active" id="dp-mes" onclick="selPeriodoDelivery('mes')">Este mes</button>
+        <button class="rent-period-btn" id="dp-todo" onclick="selPeriodoDelivery('todo')">Todo</button>
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin:8px 0 14px;flex-wrap:wrap">
         <label style="font-size:.7rem;color:var(--gray);font-family:Oswald,sans-serif">Período manual:</label>
@@ -12207,6 +12207,7 @@ function cerrarPedidoWebEntregado(id) {
       var x = pedidos.find(function(y){ return y.id===id; });
       if(!x) return;
       if(repartidor){ x.repartidor = repartidor; if(!x.tomadoEn) x.tomadoEn = x.cobradoEn || x.fecha; }
+      recuperarVentaDePedido(x);
       x.estado = 'resuelto';
       x.estadoDelivery = 'entregado';
       if(!x.entregadoEn) x.entregadoEn = new Date().toISOString();
@@ -12253,6 +12254,24 @@ function elegirRepartidorPedido(p, alElegir) {
   });
 }
 
+// Si un pedido perdió el vínculo con su venta (pasó cuando el celular del
+// cliente lo reenvió y lo pisó), se busca la venta: la que tiene el mismo
+// envío cobrado y se hizo dentro de las 3 horas siguientes al pedido.
+function recuperarVentaDePedido(x) {
+  if(x.ventaId || !x.envio) return;
+  var desde = new Date(x.fecha).getTime(), hasta = desde + 3*3600000;
+  var yaUsadas = {};
+  getPedidosWeb().forEach(function(o){ if(o.ventaId) yaUsadas[o.ventaId] = true; });
+  var candidatas = VENTAS.filter(function(v){
+    var t = new Date(v.fecha).getTime();
+    return !v.anulada && v.delivery === x.envio && t >= desde && t <= hasta && !yaUsadas[v.id];
+  });
+  if(candidatas.length === 1){
+    x.ventaId = candidatas[0].id;
+    if(!x.pagoConfirmado){ x.pagoConfirmado = true; x.cobradoEn = candidatas[0].fecha; x.cobradoPor = candidatas[0].empleado; }
+  }
+}
+
 // Corregir el repartidor de un pedido ya entregado (por ejemplo, si se perdió).
 function cambiarRepartidorPedido(id) {
   var p = getPedidosWeb().find(function(x){ return x.id===id; });
@@ -12263,6 +12282,7 @@ function cambiarRepartidorPedido(id) {
     if(!x) return;
     if(rep){ x.repartidor = rep; if(!x.tomadoEn) x.tomadoEn = x.cobradoEn || x.fecha; }
     else { delete x.repartidor; }
+    recuperarVentaDePedido(x);
     savePedidosWeb(pedidos);
     showToast(rep ? '🛵 Pedido de '+x.nombre+' asignado a '+rep : 'Pedido de '+x.nombre+' sin repartidor');
     refrescarVistasPedidosWeb();
@@ -27755,7 +27775,7 @@ function mostrarMensajesAlCerrar() {
   }
 }
 
-var _periodoDelivery = 'todo';
+var _periodoDelivery = 'mes';
 
 function selPeriodoDelivery(p) {
   _periodoDelivery = p;
@@ -28247,20 +28267,59 @@ function renderDeliveryPanel() {
     return;
   }
 
-  listEl.innerHTML = '';
-  deliveries.slice().reverse().forEach(function(d){
-    var fecha = new Date(d.fecha);
-    var fechaStr = fecha.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'});
-    var horaStr  = fecha.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    var row = document.createElement('div');
-    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.05);font-size:.82rem';
-    row.innerHTML=
-      '<span style="color:var(--gray);min-width:70px">'+fechaStr+' '+horaStr+'</span>'+
-      '<span style="color:var(--light)">'+d.empleado+'</span>'+
-      '<span style="font-size:.72rem;color:var(--gray)">'+d.turno+'</span>'+
-      '<span style="font-family:Oswald,sans-serif;color:#E74C3C">'+fmt(d.monto)+'</span>';
-    listEl.appendChild(row);
+  // Qué repartidor llevó cada delivery: se busca el pedido del catálogo
+  // vinculado a esa venta. Los deliveries cargados a mano en el mostrador
+  // (pedidos por teléfono) no tienen pedido web, así que no lo tienen.
+  var repPorVenta = {};
+  getPedidosWeb().forEach(function(p){
+    if(p.ventaId && !p.anulado) repPorVenta[p.ventaId] = p.repartidor || '';
   });
+
+  // Agrupado por día, cada día en una barra desplegable (abierto solo hoy, o
+  // los que se hayan abierto a mano).
+  var abiertos = window._delivDiasAbiertos || (window._delivDiasAbiertos = {});
+  var claveHoy = fechaLocalStr(new Date());
+  var grupos = {}, orden = [];
+  deliveries.slice().sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).forEach(function(d){
+    var clave = fechaLocalStr(new Date(d.fecha));
+    if(!grupos[clave]){ grupos[clave] = []; orden.push(clave); }
+    grupos[clave].push(d);
+  });
+
+  listEl.innerHTML = orden.map(function(clave){
+    var items = grupos[clave];
+    var totalDia = items.reduce(function(s,d){ return s+(d.monto||0); },0);
+    var abierto = (clave in abiertos) ? abiertos[clave] : (clave === claveHoy);
+    var fechaTxt = clave === claveHoy ? 'Hoy' : new Date(clave+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'2-digit'});
+    fechaTxt = fechaTxt.charAt(0).toUpperCase()+fechaTxt.slice(1);
+    var filas = !abierto ? '' : items.map(function(d){
+      var horaStr = new Date(d.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      var rep = repPorVenta[d.ventaId || d.id];
+      var repTxt = rep ? '🛵 '+rep
+        : (rep === '' ? '<span style="color:var(--gold)">🛵 sin repartidor asignado</span>' : '<span style="color:var(--gray)">🛵 — (cargado a mano)</span>');
+      var esNoche = /noct/i.test(d.turno||'');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid rgba(255,255,255,.05)">'+
+        '<div style="min-width:0">'+
+          '<div style="font-size:.84rem;color:var(--white)">'+horaStr+' · '+repTxt+'</div>'+
+          '<div style="font-size:.72rem;color:var(--gray);margin-top:2px">Turno de '+(d.empleado||'—')+' · '+(esNoche?'🌙 ':'☀️ ')+(d.turno||'—')+'</div>'+
+        '</div>'+
+        '<span style="font-family:Oswald,sans-serif;color:#E74C3C;white-space:nowrap">'+fmt(d.monto)+'</span>'+
+      '</div>';
+    }).join('');
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">'+
+      '<div onclick="toggleDiaDelivery(\''+clave+'\','+(abierto?'false':'true')+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;cursor:pointer">'+
+        '<span style="font-family:Oswald,sans-serif;font-size:.86rem;color:var(--white)">'+fechaTxt+'</span>'+
+        '<span style="display:flex;align-items:center;gap:8px;font-size:.76rem;color:var(--gray)">'+items.length+' envío'+(items.length===1?'':'s')+' · <b style="font-family:Oswald,sans-serif;color:#E74C3C;font-size:.86rem">'+fmt(totalDia)+'</b> <span style="display:inline-block;transition:transform .15s;'+(abierto?'transform:rotate(180deg)':'')+'">▾</span></span>'+
+      '</div>'+
+      filas+
+    '</div>';
+  }).join('');
+}
+
+function toggleDiaDelivery(clave, abrir) {
+  window._delivDiasAbiertos = window._delivDiasAbiertos || {};
+  window._delivDiasAbiertos[clave] = abrir;
+  renderDeliveryPanel();
 }
 
 // ── EXPORTACIONES POR SECCIÓN ──────────────────────────────────────────────
