@@ -667,6 +667,28 @@ setInterval(function(){
   }
 }, 60000);
 
+// Guarda un pedido NUEVO sin pisar nunca uno que ya existe.
+//
+// Antes se usaba un guardado común, que reemplaza el documento entero. Con
+// mala señal (pasó con un pedido de zona rural), el celular del cliente
+// reenviaba el pedido casi una hora después y lo dejaba como recién hecho:
+// se borraba el cobro, el repartidor y la entrega, y volvía a aparecer como
+// disponible. Ahora se guarda solo si todavía no existe; si ya está, no se toca.
+function guardarPedidoNuevo(pedido, intento){
+  intento = intento || 0;
+  var ref = db.collection('pedidosWeb').doc(idSeguro(String(pedido.id)));
+  db.runTransaction(function(t){
+    return t.get(ref).then(function(doc){
+      if(doc.exists) return; // ya llegó al local: no se vuelve a escribir
+      t.set(ref, pedido);
+    });
+  }).catch(function(e){
+    console.error('Error guardando pedido web (intento '+(intento+1)+')', e);
+    // Sin conexión: se reintenta solo, cada vez más espaciado, durante ~1 hora.
+    if(intento < 12) setTimeout(function(){ guardarPedidoNuevo(pedido, intento+1); }, Math.min(5000*Math.pow(2, intento), 300000));
+  });
+}
+
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
@@ -1901,9 +1923,7 @@ function confirmarPedido(){
     estado: 'pendiente',
     origen: 'catalogo-web'
   };
-  db.collection('pedidosWeb').doc(idSeguro(String(pedidoId))).set(pedido).catch(function(e){
-    console.error('Error guardando pedido web', e);
-  });
+  guardarPedidoNuevo(pedido);
 
   // Mensaje pensado para que el local pueda leerlo de un vistazo a las 3 de la
   // mañana: primero QUÉ pidió, después A DÓNDE va y CÓMO paga, que es lo que

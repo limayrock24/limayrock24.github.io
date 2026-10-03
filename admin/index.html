@@ -8091,6 +8091,9 @@ function doConfirmarVenta2() {
     puntosGanados: puntosResult.puntos || 0,
     anulada: false
   };
+  // Si es un pedido del catálogo, la venta queda vinculada al pedido desde el
+  // primer guardado (antes se anotaba después de guardar y no llegaba a la nube).
+  if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
   // Republicar el estado del turno junto con la venta. Si por cualquier motivo
