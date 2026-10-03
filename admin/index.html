@@ -10070,7 +10070,7 @@ function doConfirmarVenta() {
     // pedido sabe con qué venta se cobró. Sin esto, anular la venta dejaba el
     // pedido dado por cobrado y entregado, inflando los números del delivery.
     venta.pedidoWebId = _pedidoWebEnCarrito;
-    marcarPedidoWebCobrado(_pedidoWebEnCarrito, venta.id);
+    marcarPedidoWebCobrado(_pedidoWebEnCarrito, venta.id, delivery);
     _pedidoWebEnCarrito = null;
   }
 
@@ -10091,10 +10091,20 @@ function doConfirmarVenta() {
 
 // Marca un pedido web como cobrado y listo para que el repartidor lo retire.
 // Se dispara solo al confirmar la venta desde el carrito.
-function marcarPedidoWebCobrado(id, ventaId){
+function marcarPedidoWebCobrado(id, ventaId, envioCobrado){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p || p.pagoConfirmado) return;
+  // Si en el local se cobró otro envío que el que calculó el catálogo, el
+  // pedido queda con el monto real (es lo que cobra el repartidor), y se
+  // guarda el original para que se vea que cambió.
+  if(typeof envioCobrado === 'number' && envioCobrado !== (p.envio||0)){
+    if(p.envioOriginal === undefined) p.envioOriginal = p.envio || 0;
+    var subtotalProd = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
+    p.envio = envioCobrado;
+    p.total = subtotalProd + envioCobrado;
+    p.envioCambiadoPor = currentEmp ? currentEmp.nombre : 'Local';
+  }
   p.pagoConfirmado = true;
   p.cobradoEn = new Date().toISOString();
   p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
@@ -12191,16 +12201,69 @@ function cerrarPedidoWebEntregado(id) {
     : '⚠️ El pedido de '+p.nombre+' ('+fmt(p.total)+') no figura cobrado en el sistema. Si ya lo cobraste, revisá que la venta esté cargada. ¿Lo marcás igual como entregado y terminado?';
   askConfirm(msg).then(function(ok){
     if(!ok) return;
+    var cerrar = function(repartidor){
+      var pedidos = getPedidosWeb();
+      var x = pedidos.find(function(y){ return y.id===id; });
+      if(!x) return;
+      if(repartidor){ x.repartidor = repartidor; if(!x.tomadoEn) x.tomadoEn = x.cobradoEn || x.fecha; }
+      x.estado = 'resuelto';
+      x.estadoDelivery = 'entregado';
+      if(!x.entregadoEn) x.entregadoEn = new Date().toISOString();
+      x.cerradoAMano = true;
+      x.cerradoPor = currentEmp ? currentEmp.nombre : 'Admin';
+      savePedidosWeb(pedidos);
+      showToast('✓ Pedido de '+x.nombre+' marcado como entregado'+(x.repartidor?' por '+x.repartidor:''));
+      refrescarVistasPedidosWeb();
+    };
+    // Sin repartidor asignado (se perdió o nunca se tomó): se pregunta quién
+    // lo llevó, así le cuenta en su historial y en lo que cobra.
+    if(p.repartidor) cerrar(null);
+    else elegirRepartidorPedido(p, cerrar);
+  });
+}
+
+// Ventanita para elegir qué repartidor llevó un pedido.
+function elegirRepartidorPedido(p, alElegir) {
+  var reps = getEmpleados().filter(function(e){ return empEsDelivery(e); });
+  var ov = document.getElementById('elegirRepOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'elegirRepOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;width:100%;max-width:360px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:var(--white);margin-bottom:4px">🛵 ¿Quién llevó el pedido?</div>'+
+    '<div style="font-size:.76rem;color:var(--gray);margin-bottom:12px">'+p.nombre+' · '+fmt(p.total)+(p.envio?' · envío '+fmt(p.envio):'')+'</div>'+
+    reps.map(function(e, i){
+      return '<button data-i="'+i+'" style="display:block;width:100%;margin-bottom:6px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:10px;font-size:.88rem;text-align:left;cursor:pointer">'+e.nombre+'</button>';
+    }).join('')+
+    '<button data-i="-1" style="display:block;width:100%;margin-bottom:6px;background:transparent;border:1px dashed var(--border);color:var(--gray);border-radius:6px;padding:10px;font-size:.82rem;text-align:left;cursor:pointer">Nadie (lo retiró el cliente)</button>'+
+    '<button data-x="1" style="display:block;width:100%;margin-top:4px;background:transparent;border:none;color:var(--gray);padding:8px;font-size:.78rem;cursor:pointer">Cancelar</button>'+
+  '</div>';
+  ov.style.display = 'flex';
+  ov.querySelectorAll('button').forEach(function(b){
+    b.onclick = function(){
+      ov.style.display = 'none';
+      if(b.getAttribute('data-x')) return;
+      var i = parseInt(b.getAttribute('data-i'), 10);
+      alElegir(i >= 0 ? reps[i].nombre : null);
+    };
+  });
+}
+
+// Corregir el repartidor de un pedido ya entregado (por ejemplo, si se perdió).
+function cambiarRepartidorPedido(id) {
+  var p = getPedidosWeb().find(function(x){ return x.id===id; });
+  if(!p) return;
+  elegirRepartidorPedido(p, function(rep){
     var pedidos = getPedidosWeb();
     var x = pedidos.find(function(y){ return y.id===id; });
     if(!x) return;
-    x.estado = 'resuelto';
-    x.estadoDelivery = 'entregado';
-    if(!x.entregadoEn) x.entregadoEn = new Date().toISOString();
-    x.cerradoAMano = true;
-    x.cerradoPor = currentEmp ? currentEmp.nombre : 'Admin';
+    if(rep){ x.repartidor = rep; if(!x.tomadoEn) x.tomadoEn = x.cobradoEn || x.fecha; }
+    else { delete x.repartidor; }
     savePedidosWeb(pedidos);
-    showToast('✓ Pedido de '+x.nombre+' marcado como entregado');
+    showToast(rep ? '🛵 Pedido de '+x.nombre+' asignado a '+rep : 'Pedido de '+x.nombre+' sin repartidor');
     refrescarVistasPedidosWeb();
   });
 }
@@ -25622,8 +25685,10 @@ function armarEntregadosHoyHtml(lista){
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;background:rgba(46,204,113,.06);border:1px solid rgba(46,204,113,.22);border-radius:6px;margin-bottom:6px">'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:.8rem;color:var(--light)">'+p.nombre+'</div>'+
-          '<div style="font-size:.65rem;color:var(--gray)">'+h+' · lo llevó '+(p.repartidor||'—')+'</div>'+
+          '<div style="font-size:.65rem;color:var(--gray)">'+h+' · lo llevó '+(p.repartidor||'<span style="color:var(--gold)">nadie asignado</span>')+
+            (p.envioOriginal !== undefined ? ' · envío '+fmt(p.envio)+' <span style="color:var(--gold)">(era '+fmt(p.envioOriginal)+')</span>' : '')+'</div>'+
         '</div>'+
+        '<button onclick="cambiarRepartidorPedido('+p.id+')" title="Corregir quién lo llevó" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 7px;font-size:.62rem;cursor:pointer;white-space:nowrap">🛵 '+(p.repartidor?'Cambiar':'Asignar')+'</button>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--green);white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>';
     }).join('')+
