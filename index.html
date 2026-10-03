@@ -845,6 +845,22 @@
   // del inventario solo lo quitaba de la lista en pantalla, la nube lo seguía
   // teniendo, y a la siguiente sincronización volvía a aparecer. Era lo que
   // hacía que el limpiador de productos fantasma no tuviera efecto real.
+  // Descuento de stock por venta/consumo/fiado: se manda a la nube "restá N"
+  // (no "ahora hay X"). Antes se escribía el número final calculado en este
+  // equipo; si ese dato estaba atrasado aunque sea unos segundos, una venta
+  // pisaba a la otra y una de las dos no se descontaba (pasó con dos ventas de
+  // Bombón Dos Corazones seguidas: quedó 1 en vez de 0). Restando, se
+  // descuentan siempre todas, lleguen en el orden que lleguen.
+  window.__lrDescontarStockNube = function(deltas){
+    var col = window.__lrDB.collection(window.__lrCOL.inventario);
+    return Promise.all(Object.keys(deltas).map(function(nombre){
+      var cant = deltas[nombre];
+      if(!cant) return Promise.resolve();
+      return col.doc(idSeguro(nombre)).update({ stock: firebase.firestore.FieldValue.increment(-cant) })
+        .catch(function(e){ console.error('Error descontando stock', nombre, e); });
+    }));
+  };
+
   window.__lrSaveStockInv = function(inv, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoInventarioSnapshot || {};
@@ -8804,7 +8820,8 @@ function renderVentas() {
     var row=document.createElement('div');
     var hora      = new Date(v.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     var turnoColor= v.turno==='Nocturno'?'color:var(--red)':'color:var(--gold)';
-    var medioTexto= (v.medio==='Mixto'&&v.mixto ? '💰 Mixto' : v.medio) + (v.recargo>0?' <span style="color:var(--gray)">(+'+fmt(v.recargo)+')</span>':'');
+    var medioTexto= (v.medio==='Mixto'&&v.mixto ? '💰 Mixto' : v.medio) + (v.recargo>0?' <span style="color:var(--gray)">(+'+fmt(v.recargo)+')</span>':'') +
+      (v.delivery>0 ? ' <span style="color:#E74C3C;font-weight:700" title="Venta con delivery">🛵 '+fmt(v.delivery)+'</span>' : '');
     var netoFila  = v.total - (v.recargo||0);
 
     // Resumen de productos para mostrar en la fila
@@ -25300,7 +25317,7 @@ function abrirAnularUltimas() {
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:.8rem;color:var(--light);line-height:1.4">'+prods+'</div>'+
-          '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+hora+' · '+(v.medio||'—')+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+hora+' · '+(v.medio||'—')+(v.delivery>0?' · <span style="color:#E74C3C;font-weight:700">🛵 Delivery '+fmt(v.delivery)+'</span>':'')+'</div>'+
         '</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);white-space:nowrap">'+fmt(v.total)+'</div>'+
       '</div>'+
@@ -29320,8 +29337,10 @@ function descontarStock(items, tipoMov) {
   var tipo    = tipoMov || 'venta';
   var resp    = currentEmp ? currentEmp.nombre : '—';
 
+  var deltas  = {}; // nombre → cantidad a restar en la nube
   function descontarUnProd(nombre, cant) {
     if(!inv[nombre]) return;
+    deltas[nombre] = (deltas[nombre]||0) + cant;
     inv[nombre].stock = Math.max(0, inv[nombre].stock - cant);
     if(inv[nombre].stock <= inv[nombre].minimo){
       var alerts   = getStockAlerts();
@@ -29358,9 +29377,15 @@ function descontarStock(items, tipoMov) {
   });
   var etiquetaTipo = {venta:'Venta', consumo:'Consumo', fiado:'Fiado', consignacion:'Consignación'}[tipo] || 'Descuento de stock';
   window.__lrStockInvCache = inv;
-  // Silencioso: la venta ya muestra su propio aviso; el del stock solo aparece
-  // si no hay señal o falla.
-  guardarOperacionProtegida('StockInv', getStockInv, etiquetaTipo+' — '+items.length+' producto(s)', true);
+  if(window.__lrDescontarStockNube){
+    // Restando en la nube (ver __lrDescontarStockNube). Sin conexión queda
+    // en la cola de la nube y se manda solo al volver la señal.
+    window.__lrDescontarStockNube(deltas);
+  } else {
+    // Silencioso: la venta ya muestra su propio aviso; el del stock solo aparece
+    // si no hay señal o falla.
+    guardarOperacionProtegida('StockInv', getStockInv, etiquetaTipo+' — '+items.length+' producto(s)', true);
+  }
   if(alertas.length) updateStockNotif();
 }
 
