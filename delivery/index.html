@@ -721,7 +721,8 @@ function renderPanelRepartidor() {
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
-      (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio)+
+      ((p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
+        (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : '')+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
@@ -829,7 +830,7 @@ function renderHistorialRepartidor(){
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)">'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
-          '<div style="font-size:.66rem;color:var(--gray)">'+hora+(p.envio>0?' · envío '+fmt(p.envio):' · sin envío')+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray)">'+hora+(p.envio>0?' · envío '+fmt(p.envio):' · sin envío')+(p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(ajustado, antes '+fmt(p.envioOriginal)+')</span>' : '')+'</div>'+
         '</div>'+
         '<div style="font-family:Oswald,sans-serif;color:#22c55e;white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>';
