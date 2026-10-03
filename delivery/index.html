@@ -314,6 +314,9 @@ window.__LR_BUILD = "5"; // versión de ESTA página — se bumpea a mano acá (
         salirModoDelivery();
       } else {
         pintarEstadoDisponible();
+        // Por si el administrador le sacó o le devolvió la vista de pedidos.
+        var ovR = document.getElementById('repartidorOverlay');
+        if(ovR && ovR.style.display === 'flex' && typeof renderPanelRepartidor === 'function') renderPanelRepartidor();
       }
     }
     window.__lrSync.ultimoEmpleadosSnapshot = mapa;
@@ -440,7 +443,8 @@ window.__LR_BUILD = "5"; // versión de ESTA página — se bumpea a mano acá (
 
 function _modoDeliveryActual(){ return window.__lrModoDelivery || 'auto'; }
 function repartidoresDisponibles(){
-  return (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery && e.disponibleDelivery; });
+  // Los que tienen "No ve pedidos" no cuentan para abrir el catálogo.
+  return (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery && e.disponibleDelivery && !e.sinPedidos; });
 }
 function sincronizarDeliveryConDisponibles(){
   if(!window.__lrDeliveryConfigListo) return;
@@ -553,7 +557,7 @@ function activarNotifsRepartidor(){
     if(btn){ btn.textContent = '🔔 Activar avisos'; btn.disabled = false; }
     return;
   }
-  window.__lrActivarNotificaciones('repartidor', currentEmp ? currentEmp.nombre : '').then(function(){
+  window.__lrActivarNotificaciones((currentEmp && currentEmp.sinPedidos) ? 'repartidor-bloqueado' : 'repartidor', currentEmp ? currentEmp.nombre : '').then(function(){
     if(btn){ btn.textContent = '🔔 Avisos activados'; btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)'; }
     window.__lrEscucharNotifsEnVivo();
     showToast('✅ Este dispositivo va a recibir avisos');
@@ -646,7 +650,7 @@ function abrirPanelRepartidor() {
   var saludo = document.getElementById('repartidorSaludo');
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
-  restaurarEstadoNotificaciones('repartidor', currentEmp.nombre, 'btnNotifRepartidor');
+  restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
   pintarEstadoDisponible();
   setFiltroRepartidor('libres');
   document.getElementById('repartidorOverlay').style.display = 'flex';
@@ -681,8 +685,10 @@ function renderPanelRepartidor() {
 
   if(_repFiltro === 'historial'){ renderHistorialRepartidor(); return; }
 
+  // Si el administrador le sacó la vista de pedidos, no ve los disponibles
+  // (solo los que ya había tomado, para poder terminarlos).
   var lista = (_repFiltro === 'libres')
-    ? todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; })
+    ? (currentEmp.sinPedidos ? [] : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; }))
     : todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; });
 
   if(!lista.length){
@@ -862,6 +868,7 @@ function tomarPedido(id) {
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p) return;
   if(p.repartidor){ showToast('Ese pedido ya lo tomó '+p.repartidor, true); renderPanelRepartidor(); return; }
+  if(currentEmp.sinPedidos){ showToast('No hay pedidos disponibles ahora mismo', true); renderPanelRepartidor(); return; }
   p.repartidor = currentEmp.nombre;
   p.estadoDelivery = 'aceptado';
   p.tomadoEn = new Date().toISOString();
