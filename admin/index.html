@@ -12319,6 +12319,11 @@ function cancelarPedidoWeb(id) {
   }
   askConfirm('¿Cancelás el pedido de '+p.nombre+' ('+fmt(p.total)+')? Deja de aparecer como pendiente para el local y los repartidores. No se cobra ni se descuenta stock.').then(function(ok){
     if(!ok) return;
+    elegirMotivoCancelacion(p, function(motivo){ cancelarPedidoWebConMotivo(id, motivo); });
+  });
+}
+function cancelarPedidoWebConMotivo(id, motivo) {
+  (function(){
     var pedidos = getPedidosWeb();
     var x = pedidos.find(function(y){ return y.id===id; });
     if(!x) return;
@@ -12328,12 +12333,84 @@ function cancelarPedidoWeb(id) {
     x.listoParaRetirar = false;
     x.anuladoEn = new Date().toISOString();
     x.anuladoPor = currentEmp ? currentEmp.nombre : 'Admin';
-    x.motivoAnulacion = 'Cancelado por el local';
+    x.motivoAnulacion = motivo || 'Sin motivo';
     savePedidosWeb(pedidos);
-    showToast('❌ Pedido de '+x.nombre+' cancelado');
+    showToast('❌ Pedido de '+x.nombre+' cancelado'+(motivo?' ('+motivo+')':''));
     refrescarVistasPedidosWeb();
+  })();
+}
+
+// Motivo de la cancelación (opcional): sirve para ver después por qué se
+// pierden pedidos. Se puede elegir uno, escribir otro, o seguir sin motivo.
+function elegirMotivoCancelacion(p, alElegir) {
+  var motivos = ['Demora', 'Sin stock', 'El cliente canceló', 'El cliente no respondió', 'Fuera de zona'];
+  var ov = document.getElementById('motivoCancelOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'motivoCancelOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov);
+  }
+  var btn = 'display:block;width:100%;margin-bottom:6px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:10px;font-size:.88rem;text-align:left;cursor:pointer';
+  ov.innerHTML = '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;width:100%;max-width:360px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:var(--white);margin-bottom:4px">❌ ¿Por qué se cancela? <span style="color:var(--gray);font-size:.75rem">(opcional)</span></div>'+
+    '<div style="font-size:.76rem;color:var(--gray);margin-bottom:12px">'+p.nombre+' · '+fmt(p.total)+'</div>'+
+    motivos.map(function(m, i){ return '<button data-i="'+i+'" style="'+btn+'">'+m+'</button>'; }).join('')+
+    '<input id="motivoCancelOtro" placeholder="Otro motivo (escribilo acá)" style="width:100%;box-sizing:border-box;margin:2px 0 6px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:10px;font-size:.85rem">'+
+    '<button data-otro="1" style="'+btn+';border-color:rgba(204,0,0,.5)">Cancelar con ese motivo</button>'+
+    '<button data-sin="1" style="display:block;width:100%;margin-top:4px;background:transparent;border:1px dashed var(--border);color:var(--gray);border-radius:6px;padding:10px;font-size:.82rem;cursor:pointer">Cancelar sin motivo</button>'+
+  '</div>';
+  ov.style.display = 'flex';
+  ov.querySelectorAll('button').forEach(function(b){
+    b.onclick = function(){
+      var motivo = null;
+      if(b.getAttribute('data-i') !== null) motivo = motivos[parseInt(b.getAttribute('data-i'),10)];
+      else if(b.getAttribute('data-otro')){
+        motivo = (document.getElementById('motivoCancelOtro').value||'').trim();
+        if(!motivo){ showToast('Escribí el motivo, o tocá "Cancelar sin motivo"', true); return; }
+      }
+      ov.style.display = 'none';
+      alElegir(motivo);
+    };
   });
 }
+
+// ── Aviso de pedido trabado ──────────────────────────────────────────────
+// Cada minuto se revisan los pedidos en curso: si uno lleva más de 15 min
+// sin que lo tome un repartidor, o más de 45 min tomado sin entregarse, se
+// avisa (una sola vez por pedido y por situación). En el panel admin sale el
+// cartel de avisos; en el panel de venta, un aviso en pantalla.
+var LR_TRABADO_SIN_REPARTIDOR_MIN = 15;
+var LR_TRABADO_EN_CAMINO_MIN = 45;
+function chequearPedidosTrabados() {
+  try{
+    if(!(window.__lrSync && window.__lrSync.pedidosWebListos)) return;
+    var avisados = window._lrTrabadosAvisados || (window._lrTrabadosAvisados = {});
+    var ahora = Date.now();
+    getPedidosWeb().forEach(function(p){
+      if(p.anulado || p.estado === 'resuelto' || p.estadoDelivery === 'entregado') return;
+      var desdePedido = (ahora - new Date(p.fecha).getTime()) / 60000;
+      if(desdePedido > 12*60) return; // pedidos viejos olvidados: no avisar cada vez
+      var clave = null, texto = null;
+      if(!p.repartidor && desdePedido >= LR_TRABADO_SIN_REPARTIDOR_MIN){
+        clave = p.id+'|sinRep';
+        texto = '⏰ El pedido de <b>'+p.nombre+'</b> ('+fmt(p.total)+') lleva '+Math.round(desdePedido)+' min y <b>ningún repartidor lo tomó</b>.';
+      } else if(p.repartidor && p.tomadoEn){
+        var enCamino = (ahora - new Date(p.tomadoEn).getTime()) / 60000;
+        if(enCamino >= LR_TRABADO_EN_CAMINO_MIN){
+          clave = p.id+'|enCamino';
+          texto = '⏰ El pedido de <b>'+p.nombre+'</b> lo tiene <b>'+p.repartidor+'</b> hace '+Math.round(enCamino)+' min y todavía no figura entregado.';
+        }
+      }
+      if(!clave || avisados[clave]) return;
+      avisados[clave] = true;
+      var enAdmin = window.__lrAdminSinTurno || (document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open'));
+      if(enAdmin && typeof mostrarNotifAdmin === 'function') mostrarNotifAdmin(texto, '🛵');
+      else if(typeof showToast === 'function') showToast(texto.replace(/<[^>]+>/g,''), true);
+    });
+  }catch(e){ console.error('Error revisando pedidos trabados', e); }
+}
+setInterval(chequearPedidosTrabados, 60000);
 
 // Promociones mostradas en el catálogo público
 function getPromos() { return (window.__lrSync && window.__lrSync.promosListos && Array.isArray(window.__lrPromosCache)) ? window.__lrPromosCache : []; }
@@ -28281,6 +28358,8 @@ function renderDeliveryPanel() {
       '</div>'+
     '</div>';
 
+  resEl.innerHTML += armarResumenRepartidores(rango);
+
   if(!deliveries.length) {
     listEl.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.82rem">Sin deliveries en este período</div>';
     return;
@@ -28289,9 +28368,9 @@ function renderDeliveryPanel() {
   // Qué repartidor llevó cada delivery: se busca el pedido del catálogo
   // vinculado a esa venta. Los deliveries cargados a mano en el mostrador
   // (pedidos por teléfono) no tienen pedido web, así que no lo tienen.
-  var repPorVenta = {};
+  var repPorVenta = {}, pedPorVenta = {};
   getPedidosWeb().forEach(function(p){
-    if(p.ventaId && !p.anulado) repPorVenta[p.ventaId] = p.repartidor || '';
+    if(p.ventaId && !p.anulado){ repPorVenta[p.ventaId] = p.repartidor || ''; pedPorVenta[p.ventaId] = p; }
   });
 
   // Agrupado por día, cada día en una barra desplegable (abierto solo hoy, o
@@ -28317,6 +28396,10 @@ function renderDeliveryPanel() {
       var repTxt = rep ? '🛵 '+rep
         : (rep === '' ? '<span style="color:var(--gold)">🛵 sin repartidor asignado</span>' : '<span style="color:var(--gray)">🛵 — (cargado a mano)</span>');
       var esNoche = /noct/i.test(d.turno||'');
+      var ped = pedPorVenta[d.ventaId || d.id];
+      var mins = ped ? minutosEntrega(ped) : null;
+      if(mins !== null) repTxt += ' <span style="color:var(--gray);font-size:.74rem">· ⏱ '+Math.round(mins)+' min</span>';
+      if(ped && ped.pagadoRepartidor) repTxt += ' <span style="color:var(--green);font-size:.7rem">· ✓ pagado</span>';
       return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid rgba(255,255,255,.05)">'+
         '<div style="min-width:0">'+
           '<div style="font-size:.84rem;color:var(--white)">'+horaStr+' · '+repTxt+'</div>'+
@@ -28333,6 +28416,83 @@ function renderDeliveryPanel() {
       filas+
     '</div>';
   }).join('');
+}
+
+// Resumen por repartidor del período elegido: cuántos pedidos entregó, cuánto
+// tardó en promedio, y cuánto se le debe pagar de envíos (los que todavía no
+// se le pagaron), con un botón para registrar el pago. También los pedidos
+// cancelados y por qué.
+function pedidosEntregadosEnRango(rango) {
+  return getPedidosWeb().filter(function(p){
+    if(p.anulado || p.estadoDelivery !== 'entregado' || !p.repartidor) return false;
+    var f = new Date(p.entregadoEn || p.fecha);
+    return f >= rango.desde && f <= rango.hasta;
+  });
+}
+function minutosEntrega(p) {
+  if(!p.entregadoEn || !p.fecha) return null;
+  var m = (new Date(p.entregadoEn) - new Date(p.fecha)) / 60000;
+  return (m > 0 && m < 8*60) ? m : null; // descarta datos raros (pedidos cerrados a mano días después)
+}
+function armarResumenRepartidores(rango) {
+  var porRep = {};
+  pedidosEntregadosEnRango(rango).forEach(function(p){
+    var r = porRep[p.repartidor] || (porRep[p.repartidor] = {cant:0, envios:0, mins:[], pendCant:0, pendMonto:0});
+    r.cant++; r.envios += (p.envio||0);
+    var m = minutosEntrega(p); if(m !== null) r.mins.push(m);
+    if(!p.pagadoRepartidor){ r.pendCant++; r.pendMonto += (p.envio||0); }
+  });
+  var cancelados = getPedidosWeb().filter(function(p){
+    if(!p.anulado) return false;
+    var f = new Date(p.anuladoEn || p.fecha);
+    return f >= rango.desde && f <= rango.hasta;
+  });
+  var nombres = Object.keys(porRep).sort(function(a,b){ return porRep[b].cant - porRep[a].cant; });
+  if(!nombres.length && !cancelados.length) return '';
+
+  var html = '<div style="background:var(--card);border:1px solid rgba(46,204,113,.35);border-radius:8px;padding:12px 14px;margin-top:12px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--green);text-transform:uppercase;margin-bottom:4px">🛵 Repartidores del período</div>'+
+    '<div style="font-size:.7rem;color:var(--gray);margin-bottom:8px">El repartidor cobra el envío de cada pedido que entrega. "A pagar" son los envíos que todavía no le pagaste.</div>';
+  html += nombres.map(function(n){
+    var r = porRep[n];
+    var prom = r.mins.length ? Math.round(r.mins.reduce(function(s,x){ return s+x; },0) / r.mins.length) : null;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,.06);flex-wrap:wrap">'+
+      '<div style="min-width:0">'+
+        '<div style="font-size:.9rem;color:var(--white);font-weight:600">'+n+'</div>'+
+        '<div style="font-size:.72rem;color:var(--gray);margin-top:2px">'+r.cant+' entrega'+(r.cant===1?'':'s')+' · envíos '+fmt(r.envios)+(prom!==null?' · ⏱ promedio '+prom+' min':'')+'</div>'+
+      '</div>'+
+      (r.pendMonto > 0
+        ? '<div style="text-align:right"><div style="font-size:.7rem;color:var(--gray)">A pagar ('+r.pendCant+')</div>'+
+            '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+fmt(r.pendMonto)+'</div>'+
+            '<button onclick="registrarPagoRepartidor(\''+n.replace(/'/g,"\\'")+'\')" style="margin-top:4px;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:5px 10px;font-family:Oswald,sans-serif;font-size:.68rem;font-weight:700;cursor:pointer">💵 Registrar pago</button></div>'
+        : '<div style="font-size:.76rem;color:var(--green)">✓ Al día</div>')+
+    '</div>';
+  }).join('');
+  if(cancelados.length){
+    var porMotivo = {};
+    cancelados.forEach(function(p){ var m = p.motivoAnulacion || 'Sin motivo'; if(m === 'Cancelado por el local') m = 'Sin motivo'; porMotivo[m] = (porMotivo[m]||0)+1; });
+    html += '<div style="padding-top:9px;border-top:1px solid rgba(255,255,255,.06);font-size:.76rem;color:var(--gray)">❌ <b style="color:var(--white)">'+cancelados.length+' cancelado'+(cancelados.length===1?'':'s')+'</b> · '+
+      Object.keys(porMotivo).sort(function(a,b){ return porMotivo[b]-porMotivo[a]; }).map(function(m){ return m+' ('+porMotivo[m]+')'; }).join(' · ')+'</div>';
+  }
+  return html + '</div>';
+}
+function registrarPagoRepartidor(nombre) {
+  var rango = getRangoDelivery();
+  var aPagar = pedidosEntregadosEnRango(rango).filter(function(p){ return p.repartidor === nombre && !p.pagadoRepartidor && (p.envio||0) > 0; });
+  if(!aPagar.length){ showToast('No hay envíos pendientes de pagar a '+nombre+' en este período'); return; }
+  var monto = aPagar.reduce(function(s,p){ return s+(p.envio||0); },0);
+  askConfirm('¿Registrás que le pagaste '+fmt(monto)+' a '+nombre+' por '+aPagar.length+' envío'+(aPagar.length===1?'':'s')+' del período elegido? Quedan marcados como pagados.').then(function(ok){
+    if(!ok) return;
+    var ids = {}; aPagar.forEach(function(p){ ids[p.id] = true; });
+    var pedidos = getPedidosWeb();
+    var ahora = new Date().toISOString();
+    pedidos.forEach(function(p){
+      if(ids[p.id]){ p.pagadoRepartidor = true; p.pagadoRepartidorEn = ahora; p.pagadoRepartidorPor = currentEmp ? currentEmp.nombre : 'Admin'; }
+    });
+    savePedidosWeb(pedidos);
+    showToast('💵 Pago a '+nombre+' registrado: '+fmt(monto));
+    renderDeliveryPanel();
+  });
 }
 
 function toggleDiaDelivery(clave, abrir) {
