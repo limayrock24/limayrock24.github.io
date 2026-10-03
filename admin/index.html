@@ -12157,6 +12157,9 @@ function enviarDatosCobro(id) {
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(mensajeConfirmacionPedido(p)), '_blank');
 }
 
+// Ya no tiene botón: marcaba el pedido como cobrado SIN registrar la venta
+// (no descontaba stock ni sumaba la plata). Un pedido se cobra cargándolo al
+// carrito. Se deja la función por compatibilidad.
 function confirmarCobroPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
@@ -25786,7 +25789,7 @@ function abrirDeliveryPendModal() {
           '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
           (p.pagoConfirmado
             ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
-            : '<button onclick="confirmarCobroPedido('+p.id+')" style="flex:1;min-width:110px;background:transparent;border:1.5px solid var(--green);color:var(--green);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
+            : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
           (p.estado === 'cargado'
             ? '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">Volver a cargar</button>'
             : '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>')+
@@ -28233,7 +28236,7 @@ function renderDeliveryPanel() {
               (p.pagoConfirmado
                 ? '<div style="margin-top:4px;font-size:.65rem;color:var(--green)">✓ Cobrado</div>'
                 : '<button onclick="enviarDatosCobro('+p.id+')" style="margin-top:4px;background:#25D366;color:#052e16;border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
-                  '<button onclick="confirmarCobroPedido('+p.id+')" style="margin-top:4px;margin-left:4px;background:var(--green);color:var(--black);border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💰 Confirmar cobro</button>')+
+                  '<div style="margin-top:4px;font-size:.62rem;color:var(--gold)">⏳ Se cobra cargándolo al carrito en el panel de venta</div>')+
               '<div style="margin-top:4px">'+
                 '<button onclick="cerrarPedidoWebEntregado('+p.id+')" style="margin-left:4px;background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Entregado</button>'+
                 '<button onclick="cancelarPedidoWeb('+p.id+')" style="margin-left:4px;background:none;border:1px solid rgba(204,0,0,.5);color:var(--red);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">❌ Cancelar</button>'+
