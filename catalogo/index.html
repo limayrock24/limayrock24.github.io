@@ -713,23 +713,19 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
 });
 
 // Fotos del mapa viejo por nombre (imagenes-productos.js): sus rutas son
-// relativas a la carpeta catalogo/ ("imagenes/x.jpg"). Si el catálogo se abre
-// desde otra dirección (por ejemplo limayrock.com.ar, que lo muestra en la raíz
-// del dominio), esa ruta relativa apuntaba a una carpeta que no existe y las
-// fotos salían rotas. Se arma la dirección a partir de dónde se cargó
-// imagenes-productos.js (que está en la raíz del sitio, al lado de catalogo/).
-var _baseFotosMapa = null;
+// relativas a la carpeta catalogo/ ("imagenes/x.jpg"). Abierto desde
+// limayrock.com.ar (que pasa por un intermediario y muestra el catálogo en la
+// raíz del dominio) esas rutas no llegaban a los archivos y las fotos no se
+// veían. Se piden siempre a la dirección original del sitio, donde están los
+// archivos, se entre por donde se entre.
+var BASE_FOTOS_MAPA = 'https://limayrock24.github.io/catalogo/';
 function fotoDelMapa(nombre){
   var r = (window.IMAGENES_PRODUCTOS || {})[nombre];
   if(!r) return null;
-  if(/^(https?:|data:|\/)/.test(r)) return r;
-  if(_baseFotosMapa === null){
-    try{
-      var sc = document.querySelector('script[src*="imagenes-productos.js"]');
-      _baseFotosMapa = sc ? new URL('catalogo/', sc.src).href : '';
-    }catch(e){ _baseFotosMapa = ''; }
-  }
-  return _baseFotosMapa + r;
+  if(/^(https?:|data:)/.test(r)) return r;
+  // Probando en una compu local, se usa la copia local.
+  if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return new URL(r, location.href.replace(/[^\/]*$/, '')).href;
+  return BASE_FOTOS_MAPA + r.replace(/^\//, '');
 }
 
 db.collection('productos').onSnapshot(function(snap){
