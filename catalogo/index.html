@@ -712,6 +712,26 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   chequearListo();
 });
 
+// Fotos del mapa viejo por nombre (imagenes-productos.js): sus rutas son
+// relativas a la carpeta catalogo/ ("imagenes/x.jpg"). Si el catálogo se abre
+// desde otra dirección (por ejemplo limayrock.com.ar, que lo muestra en la raíz
+// del dominio), esa ruta relativa apuntaba a una carpeta que no existe y las
+// fotos salían rotas. Se arma la dirección a partir de dónde se cargó
+// imagenes-productos.js (que está en la raíz del sitio, al lado de catalogo/).
+var _baseFotosMapa = null;
+function fotoDelMapa(nombre){
+  var r = (window.IMAGENES_PRODUCTOS || {})[nombre];
+  if(!r) return null;
+  if(/^(https?:|data:|\/)/.test(r)) return r;
+  if(_baseFotosMapa === null){
+    try{
+      var sc = document.querySelector('script[src*="imagenes-productos.js"]');
+      _baseFotosMapa = sc ? new URL('catalogo/', sc.src).href : '';
+    }catch(e){ _baseFotosMapa = ''; }
+  }
+  return _baseFotosMapa + r;
+}
+
 db.collection('productos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
@@ -948,7 +968,7 @@ function renderList(){
       // Prioridad: foto propia del producto (imgUrl, subida desde el admin) >
       // mapa viejo por nombre (imagenes-productos.js). Si imgUrl es
       // explícitamente null, es que la sacaron a propósito — no volver al mapa viejo.
-      var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
+      var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : fotoDelMapa(p.name));
       var imgHtml = imgSrc ? '<img class="prod-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">' : '';
       var ctrlHtml = sinStock
         ? '<span class="sin-stock-tag">Sin stock</span>'
@@ -976,7 +996,7 @@ function renderList(){
         var sinStock = (p.name in STOCK) && STOCK[p.name] <= 0;
         var cant = CARRITO[p.name] ? CARRITO[p.name].cantidad : 0;
         var precioMostrar = PRECIO_NOCTURNO ? p.precioNoc : p.precio;
-        var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
+        var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : fotoDelMapa(p.name));
         var imgHtml = imgSrc
           ? '<img class="imperdible-thumb" src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(p.name)+'\')" style="cursor:pointer;'+(sinStock?'opacity:.35':'')+'">'
           : '<div class="imperdible-thumb-placeholder">FOTO<br>PRODUCTO</div>';
@@ -1256,7 +1276,7 @@ function abrirGrupoDestSelector(nombreGrupo){
     // Misma prioridad que el resto del catálogo: foto propia del producto
     // (imgUrl) por sobre el mapa viejo por nombre, salvo que se haya sacado
     // a propósito (imgUrl === null).
-    var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : IMAGENES_PRODUCTOS[p.name]);
+    var imgSrc = p.imgUrl ? p.imgUrl : (p.imgUrl === null ? null : fotoDelMapa(p.name));
     var imgHtml = imgSrc
       ? '<img src="'+imgSrc+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(imgSrc)+'\',\''+escJs(nombreProd)+'\')" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:zoom-in;'+(sinStock?'opacity:.4':'')+'">'
       : '<div style="width:44px;height:44px;border-radius:6px;background:rgba(255,255,255,.06);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.9rem">📷</div>';
