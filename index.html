@@ -18468,8 +18468,8 @@ function generarPDFPedido() {
         '<div class="kpi"><div class="l">Bultos</div><div class="v">'+totBultos+'</div></div>'+
         '<div class="kpi"><div class="l">Unidades sueltas</div><div class="v">'+totUnid+'</div></div>'+
       '</div>'+
-      (DATOS_LOCAL_PEDIDO.titular || DATOS_LOCAL_PEDIDO.cuit ? '<p style="color:#333;font-size:12px;font-family:Arial,sans-serif;margin:0 0 6px">'+
-        [DATOS_LOCAL_PEDIDO.titular ? 'Titular: '+DATOS_LOCAL_PEDIDO.titular : '', DATOS_LOCAL_PEDIDO.cuit ? 'CUIT: '+DATOS_LOCAL_PEDIDO.cuit : ''].filter(Boolean).join('  ·  ')+'</p>' : '')+
+      '<p data-destacado="1" style="color:#111;font-size:14px;font-weight:bold;font-family:Arial,sans-serif;margin:0 0 8px">'+
+        [DATOS_LOCAL_PEDIDO.nombre, DATOS_LOCAL_PEDIDO.direccion, DATOS_LOCAL_PEDIDO.cuit ? 'CUIT: '+DATOS_LOCAL_PEDIDO.cuit : ''].filter(Boolean).join('  ·  ')+'</p>'+
       secciones+
     '</div>';
 
@@ -18482,7 +18482,7 @@ function generarPDFPedido() {
 
 // ── PEDIDO GUARDADO (minimizar / corregir) ──────────────────────────────────
 // Datos del local que salen en el PDF del pedido (vacíos = no salen).
-var DATOS_LOCAL_PEDIDO = { titular: '', cuit: '' };
+var DATOS_LOCAL_PEDIDO = { nombre: 'Limay Rock', direccion: 'Pascual Puente 774 - Senillosa', cuit: '20-43339489-6' };
 // Un pedido a medias queda guardado en este equipo hasta generarlo (máx. 1
 // día); uno ya generado se puede corregir durante 15 minutos.
 var LR_PEDIDO_EDITAR_MIN = 15;
@@ -29064,10 +29064,12 @@ function descargarPDFReal() {
 
       } else if(el.tagName === 'P'){
         saltoDePaginaSiHaceFalta(10);
-        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(130,130,130);
+        var destacado = el.hasAttribute('data-destacado');
+        if(destacado){ doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20,20,20); }
+        else { doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(130,130,130); }
         var lineas = doc.splitTextToSize(el.textContent.trim(), pageWidth-marginX*2);
         doc.text(lineas, marginX, y);
-        y += lineas.length*4 + 4;
+        y += lineas.length*(destacado?5.5:4) + 4;
       }
     });
 
