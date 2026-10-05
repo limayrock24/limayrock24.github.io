@@ -6348,7 +6348,7 @@ body.night-on{background:#080005}
 <div class="arqueo-modal" id="armarPedidoOverlay" style="z-index:730">
   <div class="arqueo-box" style="text-align:left;max-width:460px">
     <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
-    <div class="sub">Escribí la cantidad que estás pidiendo de cada producto. Los que dejes en blanco no van a salir en el PDF.</div>
+    <div class="sub">Cargá de cada producto cuántos <b>bultos</b> (cerrados) y/o cuántas <b>unidades</b> sueltas pedís. Los que dejes en blanco no salen en el PDF.</div>
     <input type="text" id="armarPedidoBuscar" placeholder="Buscar producto..." oninput="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin:8px 0">
     <select id="armarPedidoCategoria" onchange="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin-bottom:8px"></select>
     <div id="armarPedidoLista" style="max-height:360px;overflow-y:auto"></div>
@@ -18308,52 +18308,108 @@ function renderArmarPedidoLista(term) {
     return;
   }
 
+  var estiloInput = 'width:62px;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:7px 4px;color:var(--white);font-family:Oswald,sans-serif;font-size:.95rem;text-align:center;outline:none';
+  var estiloEtiq = 'display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.58rem;letter-spacing:1px;text-transform:uppercase';
   lista.innerHTML = productos.map(function(pn){
     var stock = inv[pn] ? inv[pn].stock : 0;
-    var cant = _armarPedidoCantidades[pn] || '';
+    var cant = _armarPedidoCantidades[pn] || {};
     var pnEsc = pn.replace(/'/g,"\\'");
+    var idSafe = pnEsc.replace(/[^a-zA-Z0-9]/g,'_');
     var datos = calcularDatosPedido(pn, inv, ventas4sem, _armarPedidoProv.diaPedido, _armarPedidoProv.diaEntrega, semanasColchon);
     var sugHtml = datos.sugerido>0
-      ? '<div onclick="usarSugeridoPedido(\''+pnEsc+'\','+datos.sugerido+')" title="Tocá para usar esta cantidad" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.72rem;color:var(--green);white-space:nowrap;text-align:center;min-width:56px">📦 '+datos.sugerido+'<div style="font-size:.58rem;color:var(--gray);font-family:Barlow,sans-serif">sugerido</div></div>'
-      : '<div style="font-size:.68rem;color:var(--gray);min-width:56px;text-align:center">✓ OK</div>';
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.06);gap:10px">'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:.82rem;color:var(--white)">'+pn+'</div>'+
-        '<div style="font-size:.64rem;color:var(--gray)">Tenés: '+stock+'</div>'+
+      ? '<div onclick="usarSugeridoPedido(\''+pnEsc+'\','+datos.sugerido+')" title="Tocá para cargar esta cantidad en unidades" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.74rem;color:var(--green);white-space:nowrap">📦 Sugerido: '+datos.sugerido+' u.<div style="font-size:.58rem;color:var(--gray);font-family:Barlow,sans-serif">tocá para usarlo</div></div>'
+      : '<div style="font-size:.68rem;color:var(--gray)">✓ Stock OK</div>';
+    var cargado = (parseFloat(cant.b)>0 || parseFloat(cant.u)>0);
+    return '<div id="armPedFila_'+idSafe+'" style="padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.06);border-left:3px solid '+(cargado?'var(--green)':'transparent')+'">'+
+      '<div style="font-size:.84rem;color:var(--white)">'+pn+'</div>'+
+      '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:5px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.64rem;color:var(--gray);margin-bottom:3px">Tenés: '+stock+'</div>'+
+          sugHtml+
+        '</div>'+
+        '<label style="'+estiloEtiq+';color:var(--gold)">Bultos'+
+          '<input type="number" inputmode="numeric" min="0" placeholder="—" value="'+(cant.b||'')+'" id="armPedB_'+idSafe+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',\'b\',this.value)" style="'+estiloInput+';border-color:rgba(244,180,0,.45)">'+
+        '</label>'+
+        '<label style="'+estiloEtiq+';color:var(--light)">Unid.'+
+          '<input type="number" inputmode="numeric" min="0" placeholder="—" value="'+(cant.u||'')+'" id="armPedU_'+idSafe+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',\'u\',this.value)" style="'+estiloInput+'">'+
+        '</label>'+
       '</div>'+
-      sugHtml+
-      '<input type="number" min="0" placeholder="0" value="'+cant+'" id="armPedInput_'+pnEsc.replace(/[^a-zA-Z0-9]/g,'_')+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',this.value)" '+
-        'style="width:64px;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:7px;color:var(--white);font-family:Oswald,sans-serif;font-size:.9rem;text-align:center;outline:none">'+
     '</div>';
   }).join('');
 }
 
+function idFilaPedido(nombre) { return nombre.replace(/'/g,"\\'").replace(/[^a-zA-Z0-9]/g,'_'); }
+
 function usarSugeridoPedido(nombre, sugerido) {
-  _armarPedidoCantidades[nombre] = String(sugerido);
-  var inputId = 'armPedInput_'+nombre.replace(/'/g,"\\'").replace(/[^a-zA-Z0-9]/g,'_');
-  var input = document.getElementById(inputId);
+  var input = document.getElementById('armPedU_'+idFilaPedido(nombre));
   if(input) input.value = sugerido;
+  actualizarCantidadPedido(nombre, 'u', String(sugerido));
 }
 
-function actualizarCantidadPedido(nombre, val) {
-  var n = parseFloat(val);
-  if(n>0) _armarPedidoCantidades[nombre] = val;
-  else delete _armarPedidoCantidades[nombre];
+// tipo: 'b' = bultos cerrados, 'u' = unidades sueltas
+function actualizarCantidadPedido(nombre, tipo, val) {
+  var c = _armarPedidoCantidades[nombre] || {};
+  if(parseFloat(val)>0) c[tipo] = String(parseFloat(val)); else delete c[tipo];
+  if(c.b || c.u) _armarPedidoCantidades[nombre] = c; else delete _armarPedidoCantidades[nombre];
+  var fila = document.getElementById('armPedFila_'+idFilaPedido(nombre));
+  if(fila) fila.style.borderLeftColor = (c.b || c.u) ? 'var(--green)' : 'transparent';
 }
 
 function generarPDFPedido() {
   var nombres = Object.keys(_armarPedidoCantidades);
   if(!nombres.length){ showToast('Cargá al menos una cantidad',true); return; }
 
-  nombres.sort(function(a,b){ return a.localeCompare(b,'es'); });
-  var filas = nombres.map(function(n){
-    return '<tr><td>'+n+'</td><td style="text-align:center;font-family:Oswald,sans-serif;font-size:14px">'+_armarPedidoCantidades[n]+'</td></tr>';
+  // Agrupado por categoría y en orden alfabético, para que el proveedor lo
+  // cargue en orden y sin saltearse nada. La cantidad va a la IZQUIERDA y
+  // separada en bultos / unidades, así no se confunde una cosa con la otra.
+  var porCat = {};
+  var totBultos = 0, totUnid = 0;
+  nombres.forEach(function(n){
+    var p = PRODUCTS.find(function(pr){ return pr.name===n; });
+    var cat = (p && p.cat) || 'Otros';
+    (porCat[cat] = porCat[cat] || []).push({ nombre:n, codigo:(p && p.codigo) || '', c:_armarPedidoCantidades[n] });
+    totBultos += parseFloat(_armarPedidoCantidades[n].b)||0;
+    totUnid   += parseFloat(_armarPedidoCantidades[n].u)||0;
+  });
+  var hayCodigos = nombres.some(function(n){ var p = PRODUCTS.find(function(pr){ return pr.name===n; }); return p && p.codigo; });
+
+  var celdaCant = function(v, color){
+    return v ? '<td style="text-align:center;font-family:Oswald,sans-serif;font-size:16px;font-weight:700;color:'+color+'">'+v+'</td>'
+             : '<td style="text-align:center;color:#bbb">—</td>';
+  };
+  var numero = 0;
+  var secciones = Object.keys(porCat).sort(function(a,b){ return a.localeCompare(b,'es'); }).map(function(cat){
+    var items = porCat[cat].sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); });
+    var filas = items.map(function(it){
+      numero++;
+      return '<tr>'+
+        '<td style="text-align:center;color:#999;width:26px">'+numero+'</td>'+
+        celdaCant(it.c.b, '#b8860b')+
+        celdaCant(it.c.u, '#111')+
+        '<td style="font-size:13px">'+it.nombre+'</td>'+
+        (hayCodigos ? '<td style="font-size:10px;color:#777;white-space:nowrap">'+(it.codigo||'')+'</td>' : '')+
+      '</tr>';
+    }).join('');
+    return '<h3 style="font-size:14px;margin:18px 0 6px;color:#CC0000;font-family:Arial,sans-serif;letter-spacing:.5px">'+cat+'</h3>'+
+      '<table data-pedido="1" style="width:100%"><thead><tr>'+
+        '<th style="text-align:center;width:26px">#</th>'+
+        '<th style="text-align:center;width:70px">BULTOS</th>'+
+        '<th style="text-align:center;width:70px">UNID.</th>'+
+        '<th>PRODUCTO</th>'+
+        (hayCodigos ? '<th>CÓDIGO</th>' : '')+
+      '</tr></thead><tbody>'+filas+'</tbody></table>';
   }).join('');
 
   var contenido =
-    '<div style="max-width:480px;margin:0 auto;background:#fff;border:1px solid #ddd;box-shadow:0 2px 8px rgba(0,0,0,.08);border-radius:6px;padding:20px 18px">'+
-      '<h3 style="font-size:14px;margin-bottom:12px">Proveedor: '+_armarPedidoProv.nombre+'</h3>'+
-      '<table style="width:100%"><thead><tr><th>Producto</th><th style="text-align:center;width:70px">Cantidad</th></tr></thead><tbody>'+filas+'</tbody></table>'+
+    '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #ddd;box-shadow:0 2px 8px rgba(0,0,0,.08);border-radius:6px;padding:20px 18px">'+
+      '<div class="kpis">'+
+        '<div class="kpi"><div class="l">Proveedor</div><div class="v">'+_armarPedidoProv.nombre+'</div></div>'+
+        '<div class="kpi"><div class="l">Productos</div><div class="v">'+nombres.length+'</div></div>'+
+        '<div class="kpi"><div class="l">Bultos</div><div class="v">'+totBultos+'</div></div>'+
+        '<div class="kpi"><div class="l">Unidades sueltas</div><div class="v">'+totUnid+'</div></div>'+
+      '</div>'+
+      '<p style="color:#555;font-size:12px;font-family:Arial,sans-serif;margin:0 0 6px">BULTOS = bulto cerrado, como viene de fábrica. UNID. = unidades sueltas. Si un producto tiene las dos, son las dos cosas.</p>'+
+      secciones+
     '</div>';
 
   abrirVentanaPDF('Pedido — '+_armarPedidoProv.nombre, contenido);
@@ -18491,10 +18547,27 @@ function renderPedidos() {
     rowsCont.id = 'pedRows_'+idSafe;
     body.appendChild(rowsCont);
 
+    // La lista de productos va plegada detrás de una barrita: con proveedores
+    // grandes (ej. Jaguar) había que bajar hasta el final para llegar al botón.
+    var listaPlegable = document.createElement('div');
+    listaPlegable.style.display = 'none';
+    while(body.firstChild) listaPlegable.appendChild(body.firstChild);
+    var barraLista = document.createElement('div');
+    barraLista.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;color:var(--light);background:rgba(255,255,255,.02)';
+    barraLista.innerHTML = '<span>📋 Ver productos ('+prodsVisibles.length+')</span><span>▼</span>';
+    barraLista.onclick = function(ev){
+      ev.stopPropagation();
+      var abierta = listaPlegable.style.display !== 'none';
+      listaPlegable.style.display = abierta ? 'none' : 'block';
+      barraLista.lastChild.textContent = abierta ? '▼' : '▲';
+    };
+
     var footerBtn = document.createElement('div');
     footerBtn.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(255,255,255,.05)';
     footerBtn.innerHTML = '<button onclick="event.stopPropagation();'+(esSinProv ? 'abrirArmarPedidoSinProveedor()' : ('abrirArmarPedidoModal(\''+nombre.replace(/'/g,"\\'")+'\')'))+'" style="width:100%;background:none;border:1px solid rgba(46,204,113,.4);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📝 Armar pedido y generar PDF</button>';
     body.appendChild(footerBtn);
+    body.appendChild(barraLista);
+    body.appendChild(listaPlegable);
 
     header.onclick = function(){
       var open = body.style.display!=='none';
@@ -28644,14 +28717,26 @@ function descargarPDFReal() {
           return Array.from(tr.querySelectorAll('td')).map(function(td){ return td.textContent.trim(); });
         });
         if(!filas.length) return;
+        var esPedido = el.hasAttribute('data-pedido');
         doc.autoTable({
           startY: y,
           head: headers.length ? [headers] : undefined,
           body: filas,
           margin: { left:marginX, right:marginX },
-          styles: { fontSize:8, cellPadding:2.2, textColor:[30,30,30] },
+          styles: esPedido ? { fontSize:10.5, cellPadding:2.6, textColor:[30,30,30], valign:'middle' } : { fontSize:8, cellPadding:2.2, textColor:[30,30,30] },
           headStyles: { fillColor:[204,0,0], textColor:255, fontStyle:'bold' },
-          alternateRowStyles: { fillColor:[250,250,250] }
+          alternateRowStyles: { fillColor:[245,245,245] },
+          // Pedido a proveedor: #, BULTOS y UNID. a la izquierda, grandes y centrados.
+          columnStyles: esPedido ? {
+            0: { halign:'center', cellWidth:9, textColor:[150,150,150], fontSize:8.5 },
+            1: { halign:'center', cellWidth:22, fontStyle:'bold', fontSize:13, textColor:[160,110,0] },
+            2: { halign:'center', cellWidth:22, fontStyle:'bold', fontSize:13 },
+            4: { fontSize:8, textColor:[110,110,110], cellWidth:32 }
+          } : {},
+          didParseCell: esPedido ? function(d){
+            if(d.section==='head' && d.column.index<=2) d.cell.styles.halign = 'center';
+            if(d.section==='body' && (d.column.index===1 || d.column.index===2) && d.cell.raw==='—'){ d.cell.styles.textColor = [190,190,190]; d.cell.styles.fontStyle = 'normal'; }
+          } : undefined
         });
         y = doc.lastAutoTable.finalY + 8;
 
