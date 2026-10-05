@@ -23734,7 +23734,10 @@ function selRecepTab(tab) {
     if(btn) btn.classList.toggle('active', t===tab);
     if(pane) pane.classList.toggle('active', t===tab);
   });
-  if(tab==='merc') initRecepMerc();
+  if(tab==='merc'){
+    if(_rmProvActual !== null && getProveedores()[_rmProvActual]) abrirRecepMercProveedor(_rmProvActual);
+    else initRecepMerc();
+  }
   if(tab==='precios') initRecepCatalogo();
   if(tab==='egresos') initRecepEgresos();
 }
@@ -23813,6 +23816,7 @@ function abrirRecepMercProveedor(idx) {
     '</div>'+
     '<div id="rmItemsList">'+itemsHtml+'</div>'+
     '<button class="rm-add-prod-btn" onclick="mostrarBuscadorRmProd('+idx+')">+ Agregar producto de este proveedor</button>'+
+    '<button class="rm-add-prod-btn" onclick="crearProductoDesdeRecep()">✚ Crear producto nuevo (no está en el sistema)</button>'+
     '<div id="rmAddProdBox"></div>'+
     '<button class="rm-confirm-btn" onclick="confirmarRecepcionMerc('+idx+')">✓ Confirmar recepción</button>';
   restaurarBorradorRecep(prov);
@@ -24550,6 +24554,33 @@ function abrirRecepProdModal(idx) {
 
 function closeRecepProdModal() {
   document.getElementById('recepProdOverlay').classList.remove('open');
+  window._rmCrearDesdeRecep = false;
+}
+
+// Crear un producto que todavía no existe sin salir de la recepción: al
+// guardarlo se suma al proveedor y a la lista, con todo lo ya cargado intacto,
+// y queda listo para ponerle la cantidad (en el orden de la boleta).
+function crearProductoDesdeRecep() {
+  guardarBorradorRecep();
+  abrirRecepProdModal(null);
+  window._rmCrearDesdeRecep = true;
+}
+function agregarNuevoARecep(nombre) {
+  var provs = getProveedores();
+  var prov = provs[_rmProvActual];
+  if(!prov) return;
+  if(!prov.productos) prov.productos = [];
+  if(prov.productos.indexOf(nombre) === -1) prov.productos.push(nombre);
+  saveProveedores(provs);
+  abrirRecepMercProveedor(_rmProvActual);
+  var i = prov.productos.indexOf(nombre);
+  var inp = document.getElementById('rmCant'+i);
+  if(inp){
+    var fila = document.getElementById('rmItem'+i);
+    if(fila) fila.scrollIntoView({block:'center'});
+    setTimeout(function(){ inp.focus(); }, 150);
+  }
+  showToast('✅ '+nombre+' agregado a la recepción — poné la cantidad');
 }
 
 // ── Cálculo en vivo para producto EXISTENTE ────────────────────────────────
@@ -24685,8 +24716,10 @@ function guardarRecepNuevo() {
   ], _recepEmp?_recepEmp.nombre:'Admin');
   saveLocal('✅ '+nombre+' agregado y confirmado en la nube');
   filterAll();
+  var volverARecep = window._rmCrearDesdeRecep && _rmProvActual !== null;
   closeRecepProdModal();
   renderRecepCatalogo();
+  if(volverARecep) agregarNuevoARecep(nombre);
 }
 
 // ── Registrar ingreso de mercadería ────────────────────────────────────────
