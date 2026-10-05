@@ -200,6 +200,28 @@
   // bajar todo de internet antes de mostrar nada y en el celular no terminaba
   // de abrir (se probó el 30/9 y se volvió atrás).
   window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
+  // Modo rápido del celu (solo el panel admin abierto desde un celular): las
+  // ventas y los movimientos, que son lo que más pesa, se traen desde el 1 del
+  // mes anterior en vez de todo el historial. En el celu bajar todo tardaba
+  // mucho. Con el botón "Cargar historial completo" se trae todo (dura hasta
+  // cerrar la pestaña). En la compu y en el panel de venta no cambia nada.
+  window.__lrModoLiviano = false;
+  window.__lrCorteLiviano = 0;
+  window.__lrEsCelu = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  (function(){
+    var pidioTodo = false;
+    try{ pidioTodo = sessionStorage.getItem('lr_historial_completo') === '1'; }catch(e){}
+    if(window.__lrEsPanelAdmin && window.__lrEsCelu && !pidioTodo){
+      var h = new Date();
+      window.__lrCorteLiviano = new Date(h.getFullYear(), h.getMonth() - 1, 1).getTime();
+      window.__lrModoLiviano = true;
+    }
+  })();
+  // Arma la consulta de una colección grande respetando el modo rápido.
+  window.__lrConsultaHistorial = function(nombreCol){
+    var ref = window.__lrDB.collection(nombreCol);
+    return window.__lrModoLiviano ? ref.where('id', '>=', window.__lrCorteLiviano) : ref;
+  };
   window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
     console.warn('Persistencia offline no disponible:', e.code);
   });
@@ -1017,7 +1039,7 @@
   // Escucha en vivo de ventas.
   // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
   // independiente de cada venta, para que mutar la lista no lo afecte).
-  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
+  window.__lrConsultaHistorial(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
     // Si solo cambió el "de dónde vino" (copia del equipo → nube) no hay
     // documentos nuevos: se anota y listo, sin rearmar nada.
     window.__lrVentasDesdeNube = !snap.metadata.fromCache;
@@ -1411,7 +1433,7 @@
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
   // préstamos, etc. Usado sobre todo para Rentabilidad).
-  window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot((function(inc){ return function(snap){
+  window.__lrConsultaHistorial(window.__lrCOL.movimientos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
@@ -3940,6 +3962,7 @@ body.night-on{background:#080005}
       <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
       <button class="btn btn-admin" onclick="closeAdmin()" style="padding:6px 11px;font-size:.72rem">✕ Cerrar</button>
     </div>
+    <div id="lrModoCeluBar" style="display:none;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:rgba(244,180,0,.08);border:1px solid rgba(244,180,0,.35);border-radius:6px;padding:7px 10px;margin:4px 0 10px;font-size:.74rem;color:var(--gray)"></div>
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('dashboard')">🏠 Inicio</button>
       <button class="tab-btn" id="btnGrupoDinero" onclick="switchTab('ventas')">💰 Dinero</button>
@@ -19585,6 +19608,10 @@ function iniciarBackupAutomatico() {
 }
 
 function descargarBackupSilencioso() {
+  // Admin en el celu: no se respalda solo (en modo rápido no está todo el
+  // historial, y al cargarlo completo tarda en llegar). Los respaldos
+  // automáticos los hace la compu; desde el celu se puede bajar a mano.
+  if(window.__lrModoLiviano || (window.__lrEsPanelAdmin && window.__lrEsCelu)) return;
   // No armar un respaldo con el historial a medio llegar: se reintenta en un
   // rato (ver ocultarCargaSiListo).
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ setTimeout(descargarBackupSilencioso, 15000); return; }
@@ -19612,6 +19639,7 @@ function descargarBackupSilencioso() {
 
 // ── BACKUP MANUAL ─────────────────────────────────────────────────────────
 function descargarBackup() {
+  if(window.__lrModoLiviano){ avisarModoLiviano('hacer el backup'); return; }
   try {
     var data = collectAllData();
     var json = JSON.stringify(data, null, 2);
@@ -20109,6 +20137,40 @@ function compactarAlmacenamiento() {
   });
 }
 
+// ── MODO RÁPIDO DEL CELU ──────────────────────────────────────────────────
+// Ver __lrModoLiviano (arriba, junto a la conexión con la nube).
+function avisarModoLiviano(accion) {
+  showToast('📱 Para '+accion+' primero tocá "Cargar historial completo" (arriba del Inicio).', true);
+}
+function cargarHistorialCompleto() {
+  if(!confirm('Se va a cargar todo el historial de ventas y movimientos.\n\nEn el celu puede tardar un rato. ¿Seguimos?')) return;
+  try{ sessionStorage.setItem('lr_historial_completo', '1'); }catch(e){}
+  location.reload();
+}
+function volverModoRapido() {
+  try{ sessionStorage.removeItem('lr_historial_completo'); }catch(e){}
+  location.reload();
+}
+function pintarModoCeluBar() {
+  var bar = document.getElementById('lrModoCeluBar');
+  if(!bar) return;
+  var btn = 'background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:5px 9px;font-size:.72rem;cursor:pointer;white-space:nowrap';
+  if(window.__lrModoLiviano){
+    var d = new Date(window.__lrCorteLiviano);
+    bar.innerHTML = '<span>📱 <b style="color:var(--white)">Modo celu:</b> ventas y movimientos desde el '+d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+'</span>'+
+      '<button type="button" onclick="cargarHistorialCompleto()" style="'+btn+'">📚 Cargar historial completo</button>';
+    bar.style.display = 'flex';
+  } else if(window.__lrEsPanelAdmin && window.__lrEsCelu){
+    bar.innerHTML = '<span>📚 <b style="color:var(--white)">Historial completo cargado</b></span>'+
+      '<button type="button" onclick="volverModoRapido()" style="'+btn+'">📱 Volver a modo rápido</button>';
+    bar.style.display = 'flex';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarModoCeluBar);
+else pintarModoCeluBar();
+
 // ── ARCHIVAR VENTAS/CIERRES/MOVIMIENTOS VIEJOS ──────────────────────────────
 var _archivarPlan = null;
 
@@ -20125,6 +20187,7 @@ function cerrarArchivarModal() {
 }
 
 function previsualizarArchivado() {
+  if(window.__lrModoLiviano){ avisarModoLiviano('archivar'); return; }
   var fechaVal = document.getElementById('archivarFecha').value;
   if(!fechaVal){ showToast('Elegí una fecha',true); return; }
   var corte = new Date(fechaVal+'T00:00:00');
@@ -20169,6 +20232,7 @@ function previsualizarArchivado() {
 
 function confirmarArchivado() {
   if(!_archivarPlan) return;
+  if(window.__lrModoLiviano){ avisarModoLiviano('archivar'); return; }
   var p = _archivarPlan;
 
   // Armar el archivo de historial con lo que se va a sacar del sistema activo
