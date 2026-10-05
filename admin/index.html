@@ -3351,6 +3351,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 /* Armar pedido: en el celu es una lista; en la compu, pantalla completa con
    tarjetas tipo catálogo (con foto) en varias columnas. */
 .arm-ped-foto{display:none}
+#armarPedidoOverlay .arqueo-box{max-height:94vh;overflow-y:auto}
 @media (min-width: 900px){
   #armarPedidoOverlay{align-items:center}
   #armarPedidoOverlay .arqueo-box{max-width:1500px !important;width:96vw;height:94vh;border-radius:12px;display:flex;flex-direction:column;padding:20px 24px}
@@ -6370,8 +6371,12 @@ body.night-on{background:#080005}
 
 <div class="arqueo-modal" id="armarPedidoOverlay" style="z-index:730">
   <div class="arqueo-box" style="text-align:left;max-width:460px">
-    <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
+      <button type="button" onclick="minimizarArmarPedido()" title="Minimizar: el pedido queda guardado y lo retomás cuando quieras" style="flex-shrink:0;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:6px 12px;font-family:'Oswald',sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">➖ Minimizar</button>
+    </div>
     <div class="sub">Cargá de cada producto cuántos <b>bultos</b> (cerrados) y/o cuántas <b>unidades</b> sueltas pedís. Los que dejes en blanco no salen en el PDF.</div>
+    <div id="armarPedidoAviso" style="display:none;background:rgba(244,180,0,.1);border:1px solid rgba(244,180,0,.4);border-radius:6px;padding:8px 10px;margin:0 0 10px;font-size:.78rem;color:var(--light)"></div>
     <div id="armarPedidoContador" style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--green);margin:-6px 0 4px"></div>
     <div class="arm-ped-filtros">
     <input type="text" id="armarPedidoBuscar" placeholder="Buscar producto..." oninput="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin:8px 0">
@@ -6380,7 +6385,7 @@ body.night-on{background:#080005}
     <div id="armarPedidoLista" style="max-height:360px;overflow-y:auto"></div>
     <div class="arm-ped-acciones">
     <button class="arqueo-confirm" onclick="generarPDFPedido()" style="margin-top:14px">📄 Generar PDF con lo cargado</button>
-    <button onclick="document.getElementById('armarPedidoOverlay').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cerrar</button>
+    <button onclick="minimizarArmarPedido()" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cerrar</button>
     </div>
   </div>
 </div>
@@ -18266,6 +18271,11 @@ function abrirArmarPedidoModal(nombreProv, productosOverride) {
 
   _armarPedidoProv = prov;
   _armarPedidoCantidades = {};
+  // Si había un pedido de este proveedor a medias (o generado hace menos de
+  // 15 min), se recupera tal cual para seguirlo o corregirlo.
+  var borrador = leerBorradoresPedido()[nombreProv];
+  if(borrador && borrador.c) _armarPedidoCantidades = JSON.parse(JSON.stringify(borrador.c));
+  pintarAvisoBorradorPedido(borrador);
 
   document.getElementById('armarPedidoTitulo').textContent = '📝 Armar pedido — '+nombreProv;
   document.getElementById('armarPedidoBuscar').value = '';
@@ -18288,6 +18298,7 @@ function abrirArmarPedidoModal(nombreProv, productosOverride) {
   renderArmarPedidoLista('');
   pintarContadorPedido();
   document.getElementById('armarPedidoOverlay').classList.add('open');
+  pintarPildoraPedido();
 }
 
 // Botón "Armar pedido" del grupo especial "Sin proveedor asignado" — no es
@@ -18388,6 +18399,7 @@ function actualizarCantidadPedido(nombre, tipo, val) {
     fila.classList.toggle('cargado', !!(c.b || c.u));
   }
   pintarContadorPedido();
+  guardarBorradorPedido();
 }
 
 function pintarContadorPedido() {
@@ -18452,13 +18464,124 @@ function generarPDFPedido() {
         '<div class="kpi"><div class="l">Bultos</div><div class="v">'+totBultos+'</div></div>'+
         '<div class="kpi"><div class="l">Unidades sueltas</div><div class="v">'+totUnid+'</div></div>'+
       '</div>'+
-      '<p style="color:#555;font-size:12px;font-family:Arial,sans-serif;margin:0 0 6px">BULTOS = bulto cerrado, como viene de fábrica. UNID. = unidades sueltas. Si un producto tiene las dos, son las dos cosas.</p>'+
+      (DATOS_LOCAL_PEDIDO.titular || DATOS_LOCAL_PEDIDO.cuit ? '<p style="color:#333;font-size:12px;font-family:Arial,sans-serif;margin:0 0 6px">'+
+        [DATOS_LOCAL_PEDIDO.titular ? 'Titular: '+DATOS_LOCAL_PEDIDO.titular : '', DATOS_LOCAL_PEDIDO.cuit ? 'CUIT: '+DATOS_LOCAL_PEDIDO.cuit : ''].filter(Boolean).join('  ·  ')+'</p>' : '')+
       secciones+
     '</div>';
 
   abrirVentanaPDF('Pedido — '+_armarPedidoProv.nombre, contenido);
   document.getElementById('armarPedidoOverlay').classList.remove('open');
+  // Queda guardado 15 minutos por si hay que corregirlo y volver a generarlo.
+  guardarBorradorPedido(true);
+  pintarPildoraPedido();
 }
+
+// ── PEDIDO GUARDADO (minimizar / corregir) ──────────────────────────────────
+// Datos del local que salen en el PDF del pedido (vacíos = no salen).
+var DATOS_LOCAL_PEDIDO = { titular: '', cuit: '' };
+// Un pedido a medias queda guardado en este equipo hasta generarlo (máx. 1
+// día); uno ya generado se puede corregir durante 15 minutos.
+var LR_PEDIDO_EDITAR_MIN = 15;
+var LR_PEDIDO_BORRADOR_HS = 24;
+function leerBorradoresPedido() {
+  var b = {};
+  try{ b = JSON.parse(localStorage.getItem('lr_pedido_borradores') || '{}') || {}; }catch(e){ b = {}; }
+  var ahora = Date.now(), cambio = false;
+  Object.keys(b).forEach(function(k){
+    var x = b[k];
+    var vencido = !x || !x.c || !Object.keys(x.c).length ||
+      (x.gen ? (ahora - x.gen > LR_PEDIDO_EDITAR_MIN*60000) : (ahora - (x.ts||0) > LR_PEDIDO_BORRADOR_HS*3600000));
+    if(vencido){ delete b[k]; cambio = true; }
+  });
+  if(cambio) escribirBorradoresPedido(b);
+  return b;
+}
+function escribirBorradoresPedido(b) {
+  try{ localStorage.setItem('lr_pedido_borradores', JSON.stringify(b)); }catch(e){}
+}
+function guardarBorradorPedido(recienGenerado) {
+  if(!_armarPedidoProv) return;
+  var b = leerBorradoresPedido();
+  var nombre = _armarPedidoProv.nombre;
+  if(!Object.keys(_armarPedidoCantidades).length){ delete b[nombre]; escribirBorradoresPedido(b); return; }
+  var previo = b[nombre] || {};
+  b[nombre] = { c: JSON.parse(JSON.stringify(_armarPedidoCantidades)), ts: Date.now(), gen: recienGenerado ? Date.now() : (previo.gen || null) };
+  escribirBorradoresPedido(b);
+}
+function descartarBorradorPedido(nombre) {
+  var b = leerBorradoresPedido();
+  delete b[nombre];
+  escribirBorradoresPedido(b);
+}
+function pintarAvisoBorradorPedido(borrador) {
+  var el = document.getElementById('armarPedidoAviso');
+  if(!el) return;
+  if(!borrador || !borrador.c){ el.style.display = 'none'; return; }
+  var txt;
+  if(borrador.gen){
+    var resta = Math.max(1, Math.ceil((LR_PEDIDO_EDITAR_MIN*60000 - (Date.now()-borrador.gen))/60000));
+    txt = '📄 Este pedido ya lo generaste. Podés corregirlo y volver a generar el PDF — queda guardado '+resta+' min más.';
+  } else {
+    txt = '↩️ Seguís con el pedido que habías dejado a medias.';
+  }
+  el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>'+txt+'</span>'+
+    '<button type="button" onclick="empezarPedidoDeCero()" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:5px 9px;font-size:.72rem;cursor:pointer;white-space:nowrap">🗑 Empezar de cero</button></div>';
+  el.style.display = 'block';
+}
+function empezarPedidoDeCero() {
+  if(!_armarPedidoProv) return;
+  if(!confirm('¿Borrar todo lo cargado en este pedido y empezar de cero?')) return;
+  descartarBorradorPedido(_armarPedidoProv.nombre);
+  _armarPedidoCantidades = {};
+  pintarAvisoBorradorPedido(null);
+  filtrarArmarPedidoLista();
+  pintarContadorPedido();
+}
+function minimizarArmarPedido() {
+  guardarBorradorPedido();
+  document.getElementById('armarPedidoOverlay').classList.remove('open');
+  pintarPildoraPedido();
+  var n = Object.keys(_armarPedidoCantidades).length;
+  if(n && typeof showToast === 'function') showToast('📝 Pedido guardado — retomalo desde el botón de abajo a la derecha');
+}
+function retomarPedido(nombre) {
+  if(nombre === 'Sin proveedor asignado') abrirArmarPedidoSinProveedor();
+  else abrirArmarPedidoModal(nombre);
+}
+function descartarPedidoDesdePildora(nombre) {
+  if(!confirm('¿Descartar el pedido de '+nombre+'? Se borra todo lo cargado.')) return;
+  descartarBorradorPedido(nombre);
+  pintarPildoraPedido();
+}
+// Botoncito flotante con los pedidos a medias de este equipo.
+function pintarPildoraPedido() {
+  var cont = document.getElementById('lrPildoraPedido');
+  if(!cont){
+    cont = document.createElement('div');
+    cont.id = 'lrPildoraPedido';
+    cont.style.cssText = 'position:fixed;right:12px;bottom:72px;z-index:720;display:none;flex-direction:column;gap:6px;align-items:flex-end';
+    document.body.appendChild(cont);
+  }
+  var abierto = document.getElementById('armarPedidoOverlay') && document.getElementById('armarPedidoOverlay').classList.contains('open');
+  var b = leerBorradoresPedido();
+  var pendientes = Object.keys(b).filter(function(k){ return !b[k].gen; });
+  // Con el carrito abierto (vendiendo) se esconde, para no tapar el cobro.
+  var carritoAbierto = !!document.querySelector('#cartPanel.open, #cartPanel2.open');
+  if(abierto || carritoAbierto || !pendientes.length){ cont.style.display = 'none'; return; }
+  var html = pendientes.map(function(nombre){
+    var n = Object.keys(b[nombre].c).length;
+    var nEsc = nombre.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return '<div style="display:flex;align-items:stretch;background:#1d1d1d;border:1.5px solid var(--gold);border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.5);overflow:hidden">'+
+      '<button type="button" onclick="retomarPedido(\''+nEsc+'\')" style="background:none;border:none;color:var(--gold);padding:9px 14px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer">📝 Pedido '+nombre+' · '+n+' prod. — Retomar</button>'+
+      '<button type="button" onclick="descartarPedidoDesdePildora(\''+nEsc+'\')" title="Descartar este pedido" style="background:none;border:none;border-left:1px solid rgba(244,180,0,.3);color:var(--gray);padding:0 12px;cursor:pointer;font-size:.85rem">✕</button>'+
+    '</div>';
+  }).join('');
+  if(cont.__html !== html){ cont.innerHTML = html; cont.__html = html; }
+  cont.style.display = 'flex';
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarPildoraPedido);
+else pintarPildoraPedido();
+setInterval(pintarPildoraPedido, 1500);
 
 // Filtro por categoría dentro de cada tarjeta desplegable de Pedidos (para
 // verlo directo en pantalla grande, sin tener que abrir "Armar pedido").
