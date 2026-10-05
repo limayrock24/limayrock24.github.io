@@ -6221,7 +6221,10 @@ body.night-on{background:#080005}
       <h2>📦 Recepción</h2>
       <div class="re-emp" id="recepEmpNombre">—</div>
     </div>
-    <button class="btn btn-admin" onclick="closeRecepScreen()" style="padding:6px 14px;font-size:.75rem">✕ Salir</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button type="button" onclick="minimizarRecepcion()" title="Minimizar: lo cargado queda guardado y seguís después" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">➖ Minimizar</button>
+      <button class="btn btn-admin" onclick="closeRecepScreen()" style="padding:6px 14px;font-size:.75rem">✕ Salir</button>
+    </div>
   </div>
   <div class="recep-tabs">
     <div class="recep-tab-btn active" id="rt-egresos" onclick="selRecepTab('egresos')">💸 Pagos</div>
@@ -19671,7 +19674,7 @@ function agregarFilaRmProd(prod, idx) {
   div.innerHTML =
     '<div class="rin">'+prod.name+'</div>'+
     '<div class="rm-stock"><span class="lbl">Stock</span><span class="val">'+stockActual+'</span></div>'+
-    '<input type="number" id="rmCant'+idx+'" placeholder="0" min="0" inputmode="numeric">';
+    '<input type="number" id="rmCant'+idx+'" placeholder="0" min="0" inputmode="numeric" oninput="rmCantCambio('+idx+')">';
   list.appendChild(div);
 }
 
@@ -19729,6 +19732,7 @@ function confirmarRecepQty() {
   var totalPrevio = parseFloat(qtyInp.value) || 0;
   var totalNuevo = totalPrevio + cantidad;
   qtyInp.value = totalNuevo;
+  rmCantCambio(_recepQtyIdx);
 
   var fila = document.getElementById('rmItem'+_recepQtyIdx);
   if(fila) fila.scrollIntoView({block:'center', behavior:'smooth'});
@@ -23615,6 +23619,110 @@ function closeRecepScreen() {
   document.getElementById('recepScreen').classList.remove('open');
   _recepEmp = null;
   _rmProvActual = null;
+  _recepMinimizada = false;
+  pintarPildoraRecep();
+}
+
+// ── RECEPCIÓN: minimizar y guardar lo cargado ──────────────────────────────
+// Minimizar esconde la pantalla de Recepción sin perder nada (se vende normal
+// y después se retoma). Además, lo cargado de cada proveedor queda guardado en
+// el equipo hasta confirmar (máx. 1 día): si se sale, se recarga la página o
+// se vuelve a la lista, al entrar de nuevo a ese proveedor se recupera.
+var _recepMinimizada = false;
+var _rmOrden = [];   // productos en el orden en que se fueron cargando
+function minimizarRecepcion() {
+  document.getElementById('recepScreen').classList.remove('open');
+  _recepMinimizada = true;
+  pintarPildoraRecep();
+  showToast('📦 Recepción minimizada — retomala desde el botón de abajo a la derecha');
+}
+function retomarRecepcion() {
+  _recepMinimizada = false;
+  document.getElementById('recepScreen').classList.add('open');
+  pintarPildoraRecep();
+}
+function pintarPildoraRecep() {
+  var el = document.getElementById('lrPildoraRecep');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'lrPildoraRecep';
+    el.style.cssText = 'position:fixed;right:12px;bottom:124px;z-index:720;display:none';
+    document.body.appendChild(el);
+  }
+  var carritoAbierto = !!document.querySelector('#cartPanel.open, #cartPanel2.open');
+  if(!_recepMinimizada || carritoAbierto){ el.style.display = 'none'; return; }
+  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  var n = 0;
+  document.querySelectorAll('#rmItemsList input[type=number]').forEach(function(i){ if(parseFloat(i.value)>0) n++; });
+  var html = '<button type="button" onclick="retomarRecepcion()" style="background:#1d1d1d;border:1.5px solid var(--green);color:var(--green);border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.5);padding:9px 16px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer">📦 Recepción'+(prov?' '+prov.nombre:'')+(n?' · '+n+' prod.':'')+' — Retomar</button>';
+  if(el.__html !== html){ el.innerHTML = html; el.__html = html; }
+  el.style.display = 'block';
+}
+setInterval(pintarPildoraRecep, 1500);
+
+function leerBorradoresRecep() {
+  var b = {};
+  try{ b = JSON.parse(localStorage.getItem('lr_recep_borradores') || '{}') || {}; }catch(e){ b = {}; }
+  var ahora = Date.now(), cambio = false;
+  Object.keys(b).forEach(function(k){
+    if(!b[k] || !b[k].cant || !Object.keys(b[k].cant).length || ahora - (b[k].ts||0) > 24*3600000){ delete b[k]; cambio = true; }
+  });
+  if(cambio) escribirBorradoresRecep(b);
+  return b;
+}
+function escribirBorradoresRecep(b) {
+  try{ localStorage.setItem('lr_recep_borradores', JSON.stringify(b)); }catch(e){}
+}
+// Se llama cada vez que cambia la cantidad de un producto en la lista.
+function rmCantCambio(i) {
+  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  if(!prov) return;
+  var nombre = (prov.productos||[])[i];
+  var inp = document.getElementById('rmCant'+i);
+  if(!nombre || !inp) return;
+  var pos = _rmOrden.indexOf(nombre);
+  if(parseFloat(inp.value) > 0){ if(pos === -1) _rmOrden.push(nombre); }
+  else if(pos !== -1) _rmOrden.splice(pos, 1);
+  guardarBorradorRecep();
+}
+function guardarBorradorRecep() {
+  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  if(!prov) return;
+  var cant = {};
+  (prov.productos||[]).forEach(function(nombre, i){
+    var inp = document.getElementById('rmCant'+i);
+    var v = inp ? parseFloat(inp.value) : 0;
+    if(v > 0) cant[nombre] = v;
+  });
+  var b = leerBorradoresRecep();
+  if(Object.keys(cant).length) b[prov.nombre] = { cant: cant, orden: _rmOrden.filter(function(n){ return cant[n]; }), ts: Date.now() };
+  else delete b[prov.nombre];
+  escribirBorradoresRecep(b);
+}
+// Al abrir un proveedor: si había una recepción a medias, se recupera.
+function restaurarBorradorRecep(prov) {
+  _rmOrden = [];
+  var aviso = document.getElementById('rmAvisoBorrador');
+  var bor = leerBorradoresRecep()[prov.nombre];
+  if(!bor){ if(aviso) aviso.style.display = 'none'; return; }
+  (prov.productos||[]).forEach(function(nombre, i){
+    var inp = document.getElementById('rmCant'+i);
+    if(inp && bor.cant[nombre]) inp.value = bor.cant[nombre];
+  });
+  _rmOrden = (bor.orden||[]).filter(function(n){ return bor.cant[n]; });
+  Object.keys(bor.cant).forEach(function(n){ if(_rmOrden.indexOf(n) === -1) _rmOrden.push(n); });
+  if(aviso){
+    aviso.innerHTML = '↩️ Se recuperó la recepción que había quedado a medias ('+_rmOrden.length+' producto'+(_rmOrden.length!==1?'s':'')+').'+
+      ' <button type="button" onclick="descartarBorradorRecep()" style="margin-left:6px;background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">🗑 Empezar de cero</button>';
+    aviso.style.display = 'block';
+  }
+}
+function descartarBorradorRecep() {
+  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  if(!prov) return;
+  if(!confirm('¿Borrar todo lo cargado en esta recepción y empezar de cero?')) return;
+  var b = leerBorradoresRecep(); delete b[prov.nombre]; escribirBorradoresRecep(b);
+  abrirRecepMercProveedor(_rmProvActual);
 }
 
 function selRecepTab(tab) {
@@ -23658,8 +23766,11 @@ function renderRecepMercSelector() {
     '<div style="font-size:.78rem;color:var(--gray);margin-bottom:12px">Elegí el proveedor que está entregando mercadería</div>'+
     '<div class="rm-prov-grid">'+
       provs.map(function(p,i){
+        var aMedias = leerBorradoresRecep()[p.nombre];
         return '<div class="rm-prov-btn" onclick="abrirRecepMercProveedor('+i+')">🚚 '+p.nombre+
-          '<div class="sub">'+(p.productos||[]).length+' productos</div></div>';
+          '<div class="sub">'+(p.productos||[]).length+' productos</div>'+
+          (aMedias ? '<div class="sub" style="color:var(--gold)">📝 a medias: '+Object.keys(aMedias.cant).length+' cargados</div>' : '')+
+          '</div>';
       }).join('')+
     '</div>';
 }
@@ -23678,7 +23789,7 @@ function abrirRecepMercProveedor(idx) {
     return '<div class="rm-item" id="rmItem'+i+'" data-nombre="'+p.name.toLowerCase().replace(/"/g,'&quot;')+'" data-codigo="'+((p.codigo||'')+'').toLowerCase()+'">'+
       '<div class="rin">'+p.name+(p.codigo?'<div style="font-size:.6rem;color:var(--gray)">'+p.codigo+'</div>':'')+'</div>'+
       '<div class="rm-stock"><span class="lbl">Stock</span><span class="val">'+stockActual+'</span></div>'+
-      '<input type="number" id="rmCant'+i+'" placeholder="0" min="0" inputmode="numeric">'+
+      '<input type="number" id="rmCant'+i+'" placeholder="0" min="0" inputmode="numeric" oninput="rmCantCambio('+i+')">'+
     '</div>';
   }).join('');
 
@@ -23687,6 +23798,7 @@ function abrirRecepMercProveedor(idx) {
       '<div class="title">🚚 '+prov.nombre+'</div>'+
       '<button class="rm-back" onclick="initRecepMerc()">← Volver</button>'+
     '</div>'+
+    '<div id="rmAvisoBorrador" style="display:none;margin:0 12px 8px;background:rgba(244,180,0,.1);border:1px solid rgba(244,180,0,.4);border-radius:6px;padding:8px 10px;font-size:.74rem;color:var(--light)"></div>'+
     '<div style="font-size:.68rem;color:var(--gold);padding:0 12px 8px">📟 Escaneá cada producto, o buscalo por nombre o código acá abajo</div>'+
     // Buscador: con proveedores de muchos productos, encontrar uno a mano en
     // la lista completa era imposible. Filtra por nombre o por código.
@@ -23702,6 +23814,7 @@ function abrirRecepMercProveedor(idx) {
     '<button class="rm-add-prod-btn" onclick="mostrarBuscadorRmProd('+idx+')">+ Agregar producto de este proveedor</button>'+
     '<div id="rmAddProdBox"></div>'+
     '<button class="rm-confirm-btn" onclick="confirmarRecepcionMerc('+idx+')">✓ Confirmar recepción</button>';
+  restaurarBorradorRecep(prov);
 }
 
 // Filtra la lista de productos del proveedor por nombre o código, sin perder
@@ -23880,6 +23993,12 @@ function confirmarRecepcionMerc(provIdx) {
     showToast('Ingresá al menos una cantidad recibida',true);
     return;
   }
+  // En el orden en que el empleado los fue cargando (el de la boleta), no en
+  // el de la lista del proveedor — así se controla renglón por renglón.
+  var posCarga = function(n){ var k = _rmOrden.indexOf(n); return k === -1 ? 1e9 : k; };
+  movItems = movItems.map(function(it, k){ it._k = k; return it; })
+    .sort(function(a,b){ return (posCarga(a.nombre) - posCarga(b.nombre)) || (a._k - b._k); })
+    .map(function(it){ delete it._k; return it; });
 
   window.__lrStockInvCache = inv;
   guardarOperacionProtegida('StockInv', getStockInv, 'Recepción de '+prov.nombre+' — '+movItems.length+' producto'+(movItems.length>1?'s':''));
@@ -23900,6 +24019,8 @@ function confirmarRecepcionMerc(provIdx) {
   saveMovimientos(movs);
   autoSaveNow();
 
+  var bRecep = leerBorradoresRecep(); delete bRecep[prov.nombre]; escribirBorradoresRecep(bRecep);
+  _rmOrden = [];
   initRecepMerc();
 }
 
