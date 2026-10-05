@@ -3348,6 +3348,29 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .arqueo-box{background:var(--surface);border-radius:12px 12px 0 0;padding:22px;width:100%;max-width:480px;animation:up .25s ease}
 .arqueo-box h3{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
 .arqueo-box .sub{font-size:.72rem;color:var(--gray);margin-bottom:16px}
+/* Armar pedido: en el celu es una lista; en la compu, pantalla completa con
+   tarjetas tipo catálogo (con foto) en varias columnas. */
+.arm-ped-foto{display:none}
+@media (min-width: 900px){
+  #armarPedidoOverlay{align-items:center}
+  #armarPedidoOverlay .arqueo-box{max-width:1500px !important;width:96vw;height:94vh;border-radius:12px;display:flex;flex-direction:column;padding:20px 24px}
+  #armarPedidoOverlay .arqueo-box h3{font-size:1.25rem}
+  #armarPedidoOverlay .arqueo-box .sub{font-size:.85rem;margin-bottom:10px}
+  .arm-ped-filtros{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+  .arm-ped-filtros input,.arm-ped-filtros select{margin:0 0 10px !important;font-size:.95rem !important;padding:11px 14px !important}
+  #armarPedidoLista{max-height:none !important;flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-content:start;padding:2px 4px 4px 2px}
+  .arm-ped-fila{display:flex;flex-direction:column;border:1px solid var(--border) !important;border-radius:8px;background:var(--card);padding:10px !important}
+  .arm-ped-fila.cargado{border:2px solid var(--green) !important;background:rgba(46,204,113,.09)}
+  .arm-ped-fila .arm-ped-nombre{font-size:.92rem !important;min-height:2.5em;line-height:1.25}
+  .arm-ped-fila input{width:100% !important;font-size:1.15rem !important;padding:9px 4px !important}
+  .arm-ped-fila label{flex:1}
+  .arm-ped-fila .arm-ped-ctrl{flex-wrap:wrap;margin-top:auto !important;padding-top:6px}
+  .arm-ped-fila .arm-ped-info{flex:1 0 100% !important;margin-bottom:4px}
+  .arm-ped-foto{display:flex;align-items:center;justify-content:center;width:100%;height:120px;object-fit:contain;background:#fff;border-radius:6px;margin-bottom:8px;font-size:2.2rem}
+  .arm-ped-acciones{display:flex;gap:10px;align-items:center}
+  .arm-ped-acciones button{margin-top:12px !important;width:auto !important;flex:1}
+  .arm-ped-acciones button:first-child{flex:2}
+}
 .arqueo-esperado{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;text-align:center}
 .arqueo-esperado .lbl{font-size:.65rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;font-family:'Oswald',sans-serif}
 .arqueo-esperado .val{font-family:'Oswald',sans-serif;font-size:1.6rem;color:var(--gold);font-weight:700;margin-top:4px}
@@ -6349,11 +6372,16 @@ body.night-on{background:#080005}
   <div class="arqueo-box" style="text-align:left;max-width:460px">
     <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
     <div class="sub">Cargá de cada producto cuántos <b>bultos</b> (cerrados) y/o cuántas <b>unidades</b> sueltas pedís. Los que dejes en blanco no salen en el PDF.</div>
+    <div id="armarPedidoContador" style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--green);margin:-6px 0 4px"></div>
+    <div class="arm-ped-filtros">
     <input type="text" id="armarPedidoBuscar" placeholder="Buscar producto..." oninput="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin:8px 0">
     <select id="armarPedidoCategoria" onchange="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin-bottom:8px"></select>
+    </div>
     <div id="armarPedidoLista" style="max-height:360px;overflow-y:auto"></div>
+    <div class="arm-ped-acciones">
     <button class="arqueo-confirm" onclick="generarPDFPedido()" style="margin-top:14px">📄 Generar PDF con lo cargado</button>
     <button onclick="document.getElementById('armarPedidoOverlay').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cerrar</button>
+    </div>
   </div>
 </div>
 
@@ -18258,6 +18286,7 @@ function abrirArmarPedidoModal(nombreProv, productosOverride) {
   }
 
   renderArmarPedidoLista('');
+  pintarContadorPedido();
   document.getElementById('armarPedidoOverlay').classList.add('open');
 }
 
@@ -18320,10 +18349,12 @@ function renderArmarPedidoLista(term) {
       ? '<div onclick="usarSugeridoPedido(\''+pnEsc+'\','+datos.sugerido+')" title="Tocá para cargar esta cantidad en unidades" style="cursor:pointer;font-family:Oswald,sans-serif;font-size:.74rem;color:var(--green);white-space:nowrap">📦 Sugerido: '+datos.sugerido+' u.<div style="font-size:.58rem;color:var(--gray);font-family:Barlow,sans-serif">tocá para usarlo</div></div>'
       : '<div style="font-size:.68rem;color:var(--gray)">✓ Stock OK</div>';
     var cargado = (parseFloat(cant.b)>0 || parseFloat(cant.u)>0);
-    return '<div id="armPedFila_'+idSafe+'" style="padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.06);border-left:3px solid '+(cargado?'var(--green)':'transparent')+'">'+
-      '<div style="font-size:.84rem;color:var(--white)">'+pn+'</div>'+
-      '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:5px">'+
-        '<div style="flex:1;min-width:0">'+
+    var foto = imgProducto(pn);
+    return '<div class="arm-ped-fila'+(cargado?' cargado':'')+'" id="armPedFila_'+idSafe+'" style="padding:9px 6px;border-bottom:1px solid rgba(255,255,255,.06);border-left:3px solid '+(cargado?'var(--green)':'transparent')+'">'+
+      (foto ? '<img class="arm-ped-foto" loading="lazy" src="'+foto+'" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div class="arm-ped-foto">📦</div>')+
+      '<div class="arm-ped-nombre" style="font-size:.84rem;color:var(--white)">'+pn+'</div>'+
+      '<div class="arm-ped-ctrl" style="display:flex;align-items:flex-end;gap:8px;margin-top:5px">'+
+        '<div class="arm-ped-info" style="flex:1;min-width:0">'+
           '<div style="font-size:.64rem;color:var(--gray);margin-bottom:3px">Tenés: '+stock+'</div>'+
           sugHtml+
         '</div>'+
@@ -18352,7 +18383,20 @@ function actualizarCantidadPedido(nombre, tipo, val) {
   if(parseFloat(val)>0) c[tipo] = String(parseFloat(val)); else delete c[tipo];
   if(c.b || c.u) _armarPedidoCantidades[nombre] = c; else delete _armarPedidoCantidades[nombre];
   var fila = document.getElementById('armPedFila_'+idFilaPedido(nombre));
-  if(fila) fila.style.borderLeftColor = (c.b || c.u) ? 'var(--green)' : 'transparent';
+  if(fila){
+    fila.style.borderLeftColor = (c.b || c.u) ? 'var(--green)' : 'transparent';
+    fila.classList.toggle('cargado', !!(c.b || c.u));
+  }
+  pintarContadorPedido();
+}
+
+function pintarContadorPedido() {
+  var el = document.getElementById('armarPedidoContador');
+  if(!el) return;
+  var nombres = Object.keys(_armarPedidoCantidades);
+  var b = 0, u = 0;
+  nombres.forEach(function(n){ b += parseFloat(_armarPedidoCantidades[n].b)||0; u += parseFloat(_armarPedidoCantidades[n].u)||0; });
+  el.textContent = nombres.length ? ('✓ '+nombres.length+' producto'+(nombres.length!==1?'s':'')+' cargado'+(nombres.length!==1?'s':'')+' · '+b+' bulto'+(b!==1?'s':'')+' · '+u+' unid.') : '';
 }
 
 function generarPDFPedido() {
