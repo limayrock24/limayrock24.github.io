@@ -181,7 +181,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "6"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "7"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -622,6 +622,9 @@ function loginDelivery(){
   abrirPanelRepartidor();
 }
 document.addEventListener('keydown', function(e){
+  // Con la ventana "Identificar este equipo" abierta, el teclado es de ella.
+  var identOv = document.getElementById('lrIdentOverlay');
+  if(identOv && identOv.style.display === 'flex') return;
   var ov = document.getElementById('deliveryLoginOverlay');
   if(!ov || ov.style.display !== 'flex') return;
   if(/^[0-9]$/.test(e.key)) dlPinPress(e.key);

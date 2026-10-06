@@ -30732,6 +30732,12 @@ document.addEventListener('keydown', function(ev) {
   var key = ev.key;
   var isDigit = /^[0-9]$/.test(key);
 
+  // Ventana "Identificar este equipo" abierta: el teclado es de ella. Sin
+  // esto, el PIN de atrás se quedaba con los números y el borrar, y no se
+  // podía escribir ni corregir la contraseña.
+  var identOv = document.getElementById('lrIdentOverlay');
+  if(identOv && identOv.style.display === 'flex') return;
+
   // Si hay un input/textarea con foco, dejar que escriba normalmente
   // excepto en el PIN de login y admin (que no tienen inputs de texto)
   var tag = document.activeElement ? document.activeElement.tagName : '';
