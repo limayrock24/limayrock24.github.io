@@ -1044,6 +1044,8 @@
   // medida que se acumulaban más ventas. Sin este parámetro, se revisa todo
   // como siempre (modo seguro, para archivado/restauración masiva).
   window.__lrSaveVentas = function(lista, idsTocados){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos((Array.isArray(idsTocados) ? lista.filter(function(x){ return x && idsTocados.map(String).indexOf(String(x.id)) !== -1; }) : lista), window.__lrSync.ultimoVentasSnapshot, window.__lrSync.ventasListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoVentasSnapshot || {};
     var filtroTocados = null;
@@ -1079,6 +1081,8 @@
   });
 
   window.__lrSaveCierres = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoCierresSnapshot, window.__lrSync.cierresListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoCierresSnapshot || {};
     var vistos = {};
@@ -1152,6 +1156,8 @@
   }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando egresos:', err); window.__lrSync.egresosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveEgresos = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoEgresosSnapshot, window.__lrSync.egresosListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoEgresosSnapshot || {};
     var vistos = {};
@@ -1269,6 +1275,8 @@
   }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando préstamos:', err); window.__lrSync.prestamosListos = true; ocultarCargaSiListo(); });
 
   window.__lrSavePrestamos = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoPrestamosSnapshot, window.__lrSync.prestamosListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoPrestamosSnapshot || {};
     lista.forEach(function(p){
@@ -1293,6 +1301,8 @@
   }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando transferencias:', err); window.__lrSync.transferCuentasListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveTransferCuentas = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoTransferCuentasSnapshot, window.__lrSync.transferCuentasListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoTransferCuentasSnapshot || {};
     lista.forEach(function(t){
@@ -1317,6 +1327,8 @@
   }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando cargas virtuales:', err); window.__lrSync.cargasVirtualesListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCargasVirtuales = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoCargasVirtualesSnapshot, window.__lrSync.cargasVirtualesListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoCargasVirtualesSnapshot || {};
     lista.forEach(function(c){
@@ -1938,6 +1950,7 @@
     });
     window.__lrSesionActivaCache = vigentes.length ? vigentes[0] : null;
     window.__lrSesionesVigentes = vigentes;
+    if(typeof pintarCajaEquipo === 'function') try{ pintarCajaEquipo(); }catch(e){}
     window.__lrSync.sesionActivaListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -2019,6 +2032,8 @@
   }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando retiros de caja:', err); window.__lrSync.retirosCajaListos = true; ocultarCargaSiListo(); });
 
   window.__lrSaveRetirosCaja = function(lista){
+    // Registros nuevos: quedan marcados con la caja (puesto) donde se hicieron.
+    if(typeof etiquetarCajaNuevos === 'function') etiquetarCajaNuevos(lista, window.__lrSync.ultimoRetirosCajaSnapshot, window.__lrSync.retirosCajaListos);
     var __promesas = [];
     var prev = window.__lrSync.ultimoRetirosCajaSnapshot || {};
     lista.forEach(function(r){
@@ -3625,6 +3640,7 @@ body.night-on{background:#080005}
 <div id="loginScreen" class="hidden">
   <img src="/logo.png" alt="Limay Rock Drugstore">
   <div class="login-sub" style="margin-top:-4px">Sistema de Ventas</div>
+  <div id="loginCajaEquipo" style="display:none;margin-top:6px;font-family:'Oswald',sans-serif;font-size:.95rem;letter-spacing:2px;color:var(--gold);border:1px solid var(--gold);border-radius:20px;padding:3px 14px"></div>
   <div class="pin-dots" style="margin:16px 0">
     <div class="pin-dot" id="ld0"></div><div class="pin-dot" id="ld1"></div>
     <div class="pin-dot" id="ld2"></div><div class="pin-dot" id="ld3"></div>
@@ -6545,6 +6561,10 @@ body.night-on{background:#080005}
       <label>Nota (opcional)</label>
       <input type="text" id="retiroNota" placeholder="Ej: guardé en caja fuerte, llevé al banco..." style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none">
     </div>
+    <div class="arqueo-field" id="retiroCajaRow" style="margin-top:10px;display:none">
+      <label>¿De qué caja?</label>
+      <select id="retiroCaja" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1rem"><option value="1">Caja 1</option><option value="2">Caja 2</option></select>
+    </div>
     <button class="arqueo-confirm" onclick="registrarRetiroCaja()" style="margin-top:14px">✓ Registrar retiro</button>
     <button onclick="document.getElementById('retiroModal').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>
   </div>
@@ -6835,6 +6855,10 @@ body.night-on{background:#080005}
     <div class="arqueo-field" style="margin-top:10px">
       <label>Nota (opcional)</label>
       <input type="text" id="ingresoNota" placeholder="Ej: devolví parte del retiro del martes para pagar proveedores" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none">
+    </div>
+    <div class="arqueo-field" id="ingresoCajaRow" style="margin-top:10px;display:none">
+      <label>¿De qué caja?</label>
+      <select id="ingresoCaja" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1rem"><option value="1">Caja 1</option><option value="2">Caja 2</option></select>
     </div>
     <button class="arqueo-confirm" onclick="registrarIngresoCaja()" style="margin-top:14px;background:var(--green)">✓ Registrar ingreso</button>
     <button onclick="document.getElementById('ingresoModal').classList.remove('open')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>
@@ -7238,6 +7262,59 @@ setInterval(function(){
 // ── RECUPERACIÓN DE TURNOS INTERRUMPIDOS ────────────────────────────────
 // El turno activo se guarda en disco apenas arranca, para poder recuperarlo
 // si la netbook se apaga, se cuelga, o se cierra el sistema sin pasar por "Cerrar turno".
+// ── CAJAS (puestos de venta) ─────────────────────────────────────────────
+// El local puede tener más de un puesto de venta, cada uno con su compu y su
+// cajón de plata. Cada equipo se marca una vez como "Caja 1" o "Caja 2"
+// (desde el panel admin, en ese mismo equipo). Todo movimiento de plata que
+// se crea en un equipo queda etiquetado con su caja (campo "caja"), y el
+// efectivo de cada turno/cierre se calcula SOLO con los movimientos de su
+// caja. Lo que no tiene caja (todo lo anterior a esto) cuenta como Caja 1,
+// así que con un solo puesto todo funciona igual que siempre.
+var SK_CAJA_EQUIPO = 'lr_caja_equipo';
+function cajaEquipo(){
+  try{ return parseInt(localStorage.getItem(SK_CAJA_EQUIPO), 10) === 2 ? 2 : 1; }catch(e){ return 1; }
+}
+function cajaDe(r){ return (r && Number(r.caja) === 2) ? 2 : 1; }
+function cajaTurnoActual(){
+  return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.caja) ? (Number(currentEmp.caja) === 2 ? 2 : 1) : cajaEquipo();
+}
+// ¿Se usa más de una caja? (para no mostrar "Caja 1" cuando hay un solo puesto)
+function hayVariasCajas(){
+  if(cajaEquipo() === 2) return true;
+  var ses = window.__lrSesionesVigentes || [];
+  if(ses.some(function(s){ return cajaDe(s) === 2; })) return true;
+  return getCierres().some(function(c){ return cajaDe(c) === 2; });
+}
+// Etiqueta con la caja SOLO los registros nuevos (los que todavía no están en
+// la nube). Lo ya guardado nunca se re-etiqueta.
+function etiquetarCajaNuevos(lista, previo, listos){
+  if(!listos || !Array.isArray(lista)) return;
+  var c = (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio) ? cajaTurnoActual() : cajaEquipo();
+  lista.forEach(function(r){
+    if(!r || typeof r !== 'object' || r.caja != null) return;
+    if(previo && previo[String(r.id)]) return;
+    r.caja = c;
+  });
+}
+function elegirCajaEquipo(n){
+  try{ localStorage.setItem(SK_CAJA_EQUIPO, String(n === 2 ? 2 : 1)); }catch(e){}
+  if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio && !currentEmp._cajaFijada){
+    currentEmp.caja = (n === 2 ? 2 : 1);
+    guardarSesionActiva();
+  }
+  pintarCajaEquipo();
+  showToast('🖥 Este equipo ahora es la Caja ' + (n === 2 ? 2 : 1));
+  if(typeof renderDashboard === 'function') renderDashboard();
+}
+function pintarCajaEquipo(){
+  var el = document.getElementById('empActual');
+  if(el && typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio){
+    el.textContent = (hayVariasCajas() ? 'Caja ' + cajaTurnoActual() + ' · ' : '') + currentEmp.nombre + ' · ' + turnoActual();
+  }
+  var lc = document.getElementById('loginCajaEquipo');
+  if(lc){ lc.textContent = '🖥 Caja ' + cajaEquipo(); lc.style.display = hayVariasCajas() ? '' : 'none'; }
+}
+
 var SK_SESION_ACTIVA = 'lr_sesion_activa';
 function guardarSesionActiva() {
   if(!currentEmp) return;
@@ -7249,6 +7326,7 @@ function guardarSesionActiva() {
       turnoInicio: currentEmp.turnoInicio,
       rol: currentEmp.rol || 'empleado',
       efectivoInicial: currentEmp.efectivoInicial || 0,
+      caja: cajaTurnoActual(),
       reparaciones: window.__lrSesionReparaciones || 0,
       ultimaReparacion: window.__lrSesionUltimaReparacion || null
     });
@@ -7324,6 +7402,7 @@ function getSesionActivaGuardada() {
 // con los datos que hay disponibles (sin conteo real de caja, porque el empleado no está).
 function cerrarTurnoInterrumpido(sesion, motivo) {
   var turnoInicio2 = sesion.turnoInicio ? new Date(sesion.turnoInicio) : new Date();
+  var miCaja = cajaDe(sesion);
   // Buscar la última venta de ese empleado después del inicio de turno, como mejor estimación de hora de fin
   // Tope de 16 horas: un turno no puede durar más. Sin este tope, un turno
   // viejo que quedó guardado en algún equipo se "cerraba" semanas después
@@ -7332,7 +7411,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
   var topeTurno2 = new Date(turnoInicio2.getTime() + 16*3600000);
   var ventasDeEsteTurno = VENTAS.filter(function(v){
     var fv = new Date(v.fecha);
-    return v.empleado===sesion.nombre && fv >= turnoInicio2 && fv <= topeTurno2;
+    return v.empleado===sesion.nombre && cajaDe(v)===miCaja && fv >= turnoInicio2 && fv <= topeTurno2;
   });
   var ultimaActividad = turnoInicio2;
   ventasDeEsteTurno.forEach(function(v){
@@ -7347,15 +7426,15 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
     if(!(e.medio==='Efectivo'||e.medio==='Mixto')) return false;
     if(!e.ts) return false;
     var et = new Date(e.ts);
-    return et>=turnoInicio2 && et<=ahoraFin2;
+    return et>=turnoInicio2 && et<=ahoraFin2 && cajaDe(e)===miCaja;
   }).reduce(function(s,e){return s+getEgresoEfectivo(e);},0);
   var retirosSoloTurno = getRetirosCaja().filter(function(r){
     var fr = new Date(r.fecha);
-    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo!=='ingreso';
+    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo!=='ingreso' && cajaDe(r)===miCaja;
   }).reduce(function(s,r){return s+r.monto;},0);
   var ingresosSoloTurno = getRetirosCaja().filter(function(r){
     var fr = new Date(r.fecha);
-    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo==='ingreso';
+    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo==='ingreso' && cajaDe(r)===miCaja;
   }).reduce(function(s,r){return s+r.monto;},0);
   var ventasEfec = 0;
   ventasDeEsteTurno.filter(function(v){ return !v.anulada; }).forEach(function(v){
@@ -7366,7 +7445,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
   ventasEfec += getCargasVirtuales().filter(function(c){
     if(c.medio !== 'Efectivo') return false;
     var fc = new Date(c.fecha);
-    return fc>=turnoInicio2 && fc<=ahoraFin2;
+    return fc>=turnoInicio2 && fc<=ahoraFin2 && cajaDe(c)===miCaja;
   }).reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
   // Mismo criterio que el arqueo manual: las transferencias entre cuentas y los
   // préstamos en efectivo mueven la caja y hay que contemplarlos, si no la
@@ -7374,7 +7453,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
   var transfNetoEfec2 = 0;
   (typeof getTransferCuentas === 'function' ? getTransferCuentas() : []).forEach(function(t){
     var ft = new Date(t.fecha);
-    if(!(ft>=turnoInicio2 && ft<=ahoraFin2)) return;
+    if(!(ft>=turnoInicio2 && ft<=ahoraFin2) || cajaDe(t)!==miCaja) return;
     if(t.desde === 'Efectivo') transfNetoEfec2 -= (t.monto||0);
     if(t.hacia === 'Efectivo') transfNetoEfec2 += (t.monto||0);
   });
@@ -7382,7 +7461,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
   (typeof getPrestamos === 'function' ? getPrestamos() : []).forEach(function(p){
     if(p.medio !== 'Efectivo') return;
     var fp = new Date(p.fecha);
-    if(!(fp>=turnoInicio2 && fp<=ahoraFin2)) return;
+    if(!(fp>=turnoInicio2 && fp<=ahoraFin2) || cajaDe(p)!==miCaja) return;
     if(p.tipo === 'prestamo' || p.tipo === 'devolucion-recibida') prestNetoEfec2 += (p.monto||0);
     if(p.tipo === 'devolucion' || p.tipo === 'prestamo-dado') prestNetoEfec2 -= (p.monto||0);
   });
@@ -7393,6 +7472,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
   var cierres = getCierres();
   cierres.push({
     empleado:   sesion.nombre,
+    caja:       miCaja,
     turno:      turnoActual(),
     horaInicio: sesion.turnoInicio,
     horaFin:    ahoraFin2.toISOString(),
@@ -7505,7 +7585,9 @@ function retomarSesionInterrumpida() {
   currentEmp = sesion;
   refrescarPermisosCurrentEmp();
   document.getElementById('loginScreen').classList.add('hidden');
+  if(!currentEmp.caja) currentEmp.caja = cajaEquipo();
   document.getElementById('empActual').textContent = currentEmp.nombre+' · '+turnoActual();
+  pintarCajaEquipo();
   var rBtn=document.getElementById('btnRetiroCaja'); if(rBtn) rBtn.style.display=(currentEmp&&currentEmp.rol==='admin'?'':'none');
   startSessionTimer();
   cart=[]; pagoSel=null; tipoOp='venta';
@@ -7550,6 +7632,7 @@ function initLogin() {
   if(chequearSesionInterrumpida()) return;
   // Siempre mostrar la pantalla de login al llamar esta función
   document.getElementById('loginScreen').classList.remove('hidden');
+  if(typeof pintarCajaEquipo==='function') pintarCajaEquipo();
 }
 
 function lpp(d) {
@@ -8203,6 +8286,7 @@ function doConfirmarVenta2() {
     fecha: new Date().toISOString(),
     empleado: currentEmp ? currentEmp.nombre : '—',
     turno: turnoActual(),
+    caja: cajaTurnoActual(),
     medio: medioFinal,
     mixto: mixData || null,
     subtotal: subtotal,
@@ -10149,6 +10233,7 @@ function doConfirmarVenta() {
     fecha: new Date().toISOString(),
     empleado: currentEmp ? currentEmp.nombre : '—',
     turno: turnoActual(),
+    caja: cajaTurnoActual(),
     medio: medioFinal,
     mixto: mixData || null,
     subtotal: subtotal,
@@ -10397,7 +10482,7 @@ function htmlEstadoPedidoWeb(p) {
     h += fila('var(--gold)', '⏳ Ningún repartidor lo tomó todavía'+(p.liberadoEn?' (un repartidor lo soltó a las '+hh(p.liberadoEn)+')':''));
   }
   if(p.pagoConfirmado) h += fila('var(--green)', '💰 Cobrado'+(p.cobradoEn?' a las '+hh(p.cobradoEn):''));
-  else if(p.estado === 'cargado') h += fila('var(--gold)', '🛒 Cargado al carrito del local — falta confirmar el cobro');
+  else if(p.estado === 'cargado') h += fila('var(--gold)', '🛒 Cargado al carrito'+(p.cargadoCaja && hayVariasCajas() ? ' de la Caja '+p.cargadoCaja : ' del local')+' — falta confirmar el cobro');
   else h += fila('var(--gray)', '💳 Sin cobrar — se cobra cargándolo al carrito en el panel de venta');
   if(p.estadoDelivery === 'entregado') h += fila('var(--green)', '✅ Entregado'+(p.entregadoEn?' a las '+hh(p.entregadoEn):''));
   return '<div style="margin-top:6px;padding:6px 8px;background:rgba(255,255,255,.03);border-left:2px solid '+(p.repartidor?'var(--green)':'var(--gold)')+';border-radius:3px">'+h+'</div>';
@@ -10549,9 +10634,12 @@ function confirmarEfectivoInicial() {
   _empPendiente = null;
   currentEmp.turnoInicio = new Date().toISOString();
   currentEmp.efectivoInicial = monto;
+  currentEmp.caja = cajaEquipo();
 
   document.getElementById('loginScreen').classList.add('hidden');
+  if(!currentEmp.caja) currentEmp.caja = cajaEquipo();
   document.getElementById('empActual').textContent = currentEmp.nombre+' · '+turnoActual();
+  pintarCajaEquipo();
   var rBtn=document.getElementById('btnRetiroCaja'); if(rBtn) rBtn.style.display=(currentEmp&&currentEmp.rol==='admin'?'':'none');
   startSessionTimer();
   cart=[]; pagoSel=null; tipoOp='venta';
@@ -10607,7 +10695,21 @@ function getEfectivoEsperadoTurno() {
   // Los retiros NO se restan del esperado: el dinero sigue siendo del local
 }
 
+// Con dos cajas, el retiro / ingreso pregunta de qué cajón sale o entra
+// (por defecto, la caja de este equipo o del turno abierto acá).
+function prepararSelectorCaja(pre){
+  var row = document.getElementById(pre+'CajaRow'), sel = document.getElementById(pre+'Caja');
+  if(!row || !sel) return;
+  row.style.display = hayVariasCajas() ? '' : 'none';
+  sel.value = String(cajaTurnoActual());
+}
+function cajaElegida(pre){
+  var row = document.getElementById(pre+'CajaRow'), sel = document.getElementById(pre+'Caja');
+  if(row && sel && row.style.display !== 'none') return parseInt(sel.value, 10) === 2 ? 2 : 1;
+  return cajaTurnoActual();
+}
 function abrirRetiroModal() {
+  prepararSelectorCaja('retiro');
   var m = document.getElementById('retiroModal');
   if(m){ m.classList.add('open'); setTimeout(function(){ var i=document.getElementById('retiroMonto'); if(i){i.value='';i.focus();} },150); }
 }
@@ -10617,12 +10719,13 @@ function abrirArqueoModal() {
   var turnoInicio = currentEmp.turnoInicio ? new Date(currentEmp.turnoInicio) : new Date(new Date().setHours(0,0,0,0));
   var ahora = new Date();
   var inicial = (currentEmp && currentEmp.efectivoInicial) ? currentEmp.efectivoInicial : 0;
+  var miCaja = cajaTurnoActual();
 
   // Ventas en efectivo del turno (solo entre turnoInicio y ahora)
   var ventasTurno = VENTAS.filter(function(v){
     if(v.anulada) return false;
     var fv = new Date(v.fecha);
-    return fv>=turnoInicio && fv<=ahora;
+    return fv>=turnoInicio && fv<=ahora && cajaDe(v)===miCaja;
   });
   var ventasEfec = 0;
   ventasTurno.forEach(function(v){
@@ -10636,7 +10739,7 @@ function abrirArqueoModal() {
   ventasEfec += getCargasVirtuales().filter(function(c){
     if(c.medio !== 'Efectivo') return false;
     var fc = new Date(c.fecha);
-    return fc>=turnoInicio && fc<=ahora;
+    return fc>=turnoInicio && fc<=ahora && cajaDe(c)===miCaja;
   }).reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
 
   // Egresos en efectivo con ts dentro del turno
@@ -10644,13 +10747,13 @@ function abrirArqueoModal() {
     if(!(e.medio==='Efectivo'||e.medio==='Mixto')) return false;
     if(!e.ts) return false;
     var et = new Date(e.ts);
-    return et>=turnoInicio && et<=ahora;
+    return et>=turnoInicio && et<=ahora && cajaDe(e)===miCaja;
   }).reduce(function(s,e){return s+getEgresoEfectivo(e);},0);
 
   // Retiros del turno — solo informativo, NO restan del esperado
   var retirosCaja = getRetirosCaja().filter(function(r){
     var fr = new Date(r.fecha);
-    return fr>=turnoInicio && fr<=ahora;
+    return fr>=turnoInicio && fr<=ahora && cajaDe(r)===miCaja;
   }).reduce(function(s,r){return s+montoNetoRetiro(r);},0);
 
   // Transferencias entre cuentas hechas durante el turno.
@@ -10663,7 +10766,7 @@ function abrirArqueoModal() {
   var transferNetoEfec = 0;
   (typeof getTransferCuentas === 'function' ? getTransferCuentas() : []).forEach(function(t){
     var ft = new Date(t.fecha);
-    if(!(ft>=turnoInicio && ft<=ahora)) return;
+    if(!(ft>=turnoInicio && ft<=ahora) || cajaDe(t)!==miCaja) return;
     if(t.desde === 'Efectivo') transferNetoEfec -= (t.monto||0);
     if(t.hacia === 'Efectivo') transferNetoEfec += (t.monto||0);
   });
@@ -10673,7 +10776,7 @@ function abrirArqueoModal() {
   (typeof getPrestamos === 'function' ? getPrestamos() : []).forEach(function(p){
     if(p.medio !== 'Efectivo') return;
     var fp = new Date(p.fecha);
-    if(!(fp>=turnoInicio && fp<=ahora)) return;
+    if(!(fp>=turnoInicio && fp<=ahora) || cajaDe(p)!==miCaja) return;
     // Entra plata: alguien te presta, o te devuelven lo que prestaste
     if(p.tipo === 'prestamo' || p.tipo === 'devolucion-recibida') prestamosNetoEfec += (p.monto||0);
     // Sale plata: devolvés un préstamo, o le prestás a alguien
@@ -10719,13 +10822,14 @@ function confirmarArqueoYCerrar() {
   var cierres = getCierres();
   var turnoInicio2 = currentEmp.turnoInicio ? new Date(currentEmp.turnoInicio) : new Date(new Date().setHours(0,0,0,0));
   var ahoraFin2 = new Date();
+  var miCaja = cajaTurnoActual();
   // Ventas del turno: entre turnoInicio y ahora (no por empleado ni por día)
   // Los fiados NO se cuentan acá — esa plata todavía no ingresó, se ve aparte en Fiados.
   var ventasTurno = VENTAS.filter(function(v){
     if(v.anulada) return false;
     if(v.fiadoCarga) return false;
     var fv = new Date(v.fecha);
-    return fv>=turnoInicio2 && fv<=ahoraFin2;
+    return fv>=turnoInicio2 && fv<=ahoraFin2 && cajaDe(v)===miCaja;
   });
   // Sin el recargo del Posnet: esa parte se la lleva la comisión, no ingresa.
   var totalTurno = ventasTurno.reduce(function(s,v){ return s + (v.total - (v.recargo||0)); },0);
@@ -10735,16 +10839,16 @@ function confirmarArqueoYCerrar() {
     if(!(e.medio==='Efectivo'||e.medio==='Mixto')) return false;
     if(!e.ts) return false;
     var et = new Date(e.ts);
-    return et>=turnoInicio2 && et<=ahoraFin2;
+    return et>=turnoInicio2 && et<=ahoraFin2 && cajaDe(e)===miCaja;
   }).reduce(function(s,e){return s+getEgresoEfectivo(e);},0);
   // Retiros e ingresos del turno, por separado (para mostrarlos discriminados en el historial)
   var retirosSoloTurno = getRetirosCaja().filter(function(r){
     var fr = new Date(r.fecha);
-    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo!=='ingreso';
+    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo!=='ingreso' && cajaDe(r)===miCaja;
   }).reduce(function(s,r){return s+r.monto;},0);
   var ingresosSoloTurno = getRetirosCaja().filter(function(r){
     var fr = new Date(r.fecha);
-    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo==='ingreso';
+    return fr>=turnoInicio2 && fr<=ahoraFin2 && r.tipo==='ingreso' && cajaDe(r)===miCaja;
   }).reduce(function(s,r){return s+r.monto;},0);
   // Ventas en efectivo del turno
   var ventasEfec = 0;
@@ -10756,7 +10860,7 @@ function confirmarArqueoYCerrar() {
   ventasEfec += getCargasVirtuales().filter(function(c){
     if(c.medio !== 'Efectivo') return false;
     var fc = new Date(c.fecha);
-    return fc>=turnoInicio2 && fc<=ahoraFin2;
+    return fc>=turnoInicio2 && fc<=ahoraFin2 && cajaDe(c)===miCaja;
   }).reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
   var ventasEfecBruto = ventasEfec;
   var horaInicio = currentEmp.turnoInicio || new Date().toISOString();
@@ -10764,6 +10868,7 @@ function confirmarArqueoYCerrar() {
   var durMinutos = Math.round((new Date(horaFin) - new Date(horaInicio)) / 60000);
   cierres.push({
     empleado:   currentEmp.nombre,
+    caja:       miCaja,
     turno:      turnoActual(),
     horaInicio: horaInicio,
     horaFin:    horaFin,
@@ -12903,6 +13008,7 @@ function registrarRetiroCaja() {
     monto: monto,
     tipo: 'retiro',
     nota: nota,
+    caja: cajaElegida('retiro'),
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
@@ -12920,6 +13026,7 @@ function registrarRetiroCaja() {
 }
 
 function abrirIngresoModal() {
+  prepararSelectorCaja('ingreso');
   var m = document.getElementById('ingresoModal');
   if(m){ m.classList.add('open'); setTimeout(function(){ var i=document.getElementById('ingresoMonto'); if(i){i.value='';i.focus();} },150); }
 }
@@ -12937,6 +13044,7 @@ function registrarIngresoCaja() {
     monto: monto,
     tipo: 'ingreso',
     nota: nota,
+    caja: cajaElegida('ingreso'),
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
@@ -17528,7 +17636,7 @@ function calcularCambioEfectivo(){
 
   // Avisar si no hay efectivo suficiente en caja para cubrir el cambio: es
   // mejor que el empleado lo sepa antes de comprometerse con el cliente.
-  var efectivoDisponible = (typeof calcularLiquidez==='function') ? calcularLiquidez().efectivoCaja : null;
+  var efectivoDisponible = (typeof calcularLiquidez==='function') ? calcularLiquidez(cajaTurnoActual()).efectivoCaja : null;   // solo el cajón de este puesto
   var alcanza = (efectivoDisponible == null) || (efectivoDisponible >= monto);
 
   el.style.display = 'block';
@@ -18356,6 +18464,7 @@ function registrarOperacion(tipo, items, total, responsable, extra, recargo, ref
     total:       total,
     recargo:     recargo || 0,  // parte del total que es recargo de débito (no es plata "propia")
     responsable: responsable,
+    caja:        cajaTurnoActual(),
     extra:       extra || '',   // medio de pago / nombre cliente / proveedor
     refId:       refId || null, // id real de la venta, para poder detectar después si se anuló
     // Solo lo que realmente se muestra en el detalle expandible (nombre, cantidad, subtotal) —
@@ -22036,6 +22145,16 @@ function renderDashboard() {
     '<button onclick="abrirRetiroModal()" style="background:var(--card);border:1px solid rgba(245,194,0,.4);color:var(--gold);border-radius:6px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">'+
     '💵 Registrar retiro de caja</button></div></div>';
 
+  // En el equipo de venta (no en el link del admin): cuál caja es este equipo.
+  if(location.pathname.indexOf('/admin/') === -1){
+    var cajaEq = cajaEquipo();
+    var bCaja = function(n){ return '<button onclick="elegirCajaEquipo('+n+')" style="background:'+(cajaEq===n?'var(--gold)':'var(--dark)')+';color:'+(cajaEq===n?'var(--black)':'var(--gray)')+';border:1px solid '+(cajaEq===n?'var(--gold)':'var(--border)')+';border-radius:5px;padding:6px 14px;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700;letter-spacing:1px;cursor:pointer">CAJA '+n+'</button>'; };
+    retiroBtn = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;margin-bottom:10px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🖥 Este equipo es la</span>'+bCaja(1)+bCaja(2)+
+      '<span style="font-size:.68rem;color:var(--gray)">Cada puesto de venta con su cajón: las ventas y el efectivo de cada turno se cuentan por caja.</span>'+
+    '</div>' + retiroBtn;
+  }
+
   // Turno abierto en este momento (con reloj en vivo) — para ver desde
   // cualquier dispositivo quién está trabajando, hace cuánto, y qué hay
   // en vivo en cada cuenta — sin que el empleado tenga que cargar nada de
@@ -22047,7 +22166,8 @@ function renderDashboard() {
   var nombresConTurno = Object.keys(sesionesVivas).filter(function(n){
     var sv = sesionesVivas[n];
     return sv && sv.turnoInicio && (Date.now() - new Date(sv.turnoInicio).getTime()) < 16*3600000;
-  });
+  }).sort(function(a, b){ return cajaDe(sesionesVivas[a]) - cajaDe(sesionesVivas[b]); });
+  var variasCajas = hayVariasCajas();
 
   // NO se inventa un turno a partir de las ventas.
   //
@@ -22075,6 +22195,7 @@ function renderDashboard() {
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo en caja</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(isFinite(liqVivo.efectivoCaja)?liqVivo.efectivoCaja:0)+'</div>'+
+          (liqVivo.efectivoPorCaja ? '<div style="font-size:.62rem;color:var(--gray);margin-top:2px">Caja 1 '+fmt(liqVivo.efectivoPorCaja[1])+' · Caja 2 '+fmt(liqVivo.efectivoPorCaja[2])+'</div>' : '')+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💰 Efectivo afuera</div>'+
@@ -22095,7 +22216,9 @@ function renderDashboard() {
       var inicioTs = new Date(sesionViva.turnoInicio).getTime();
       var claveExpandido = 'exp_'+nombreEmp;
 
-      var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs; });
+      var cajaSes = cajaDe(sesionViva);
+      var deSuCaja = function(r){ return !variasCajas || cajaDe(r) === cajaSes; };
+      var ventasTurnoVivo = VENTAS.filter(function(v){ return !v.anulada && !v.fiadoCarga && deSuCaja(v) && new Date(v.fecha).getTime() >= inicioTs; });
       // Se descuenta el recargo del Posnet: esa plata no entra al negocio, se la
       // lleva la comisión. El resumen del día ya lo descontaba, pero el turno en
       // vivo sumaba el total con recargo incluido, así que los dos números no
@@ -22106,7 +22229,7 @@ function renderDashboard() {
       // productos, pero SÍ es plata que entró durante el turno, y es justamente
       // lo que sirve para evaluar si conviene tener a alguien en ese horario.
       var cargasTurnoVivo = getCargasVirtuales().filter(function(cv){
-        return new Date(cv.fecha).getTime() >= inicioTs;
+        return deSuCaja(cv) && new Date(cv.fecha).getTime() >= inicioTs;
       });
       var gananciaCargasTurno = cargasTurnoVivo.reduce(function(s,cv){ return s + (cv.ganancia||0); }, 0);
       // La ganancia de las cargas se suma al monto de ventas del turno: es
@@ -22117,7 +22240,7 @@ function renderDashboard() {
         // Excluir los movimientos internos de descuento de stock por ingrediente
         // de combo — no son ventas en sí, la venta real ya aparece como una sola
         // línea con el total. Mostrarlos acá era ruido (aparecían en $0, repetidos).
-        return new Date(m.fecha).getTime() >= inicioTs && m.tipo !== 'Venta (Combo)';
+        return deSuCaja(m) && new Date(m.fecha).getTime() >= inicioTs && m.tipo !== 'Venta (Combo)';
       })
         .map(function(m){ return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0}; })
         .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
@@ -22147,7 +22270,7 @@ function renderDashboard() {
 
       return '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 16px;margin-bottom:10px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+
-          '<div><span style="color:var(--green);font-weight:700">🟢 Turno abierto</span> — '+
+          '<div>'+(variasCajas ? '<span style="background:var(--gold);color:var(--black);font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px;border-radius:4px;padding:2px 8px;margin-right:6px">CAJA '+cajaSes+'</span>' : '')+'<span style="color:var(--green);font-weight:700">🟢 Turno abierto</span> — '+
           '<b style="color:var(--white)">'+sesionViva.nombre+'</b> · '+(sesionViva.turno||'')+
           ' · desde las '+new Date(sesionViva.turnoInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
           ' · abrió caja con '+fmt(sesionViva.efectivoInicial||0)+
@@ -22159,6 +22282,10 @@ function renderDashboard() {
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
         '</div>'+
+        (variasCajas ? '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
+          '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo que debería haber en la Caja '+cajaSes+'</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(calcularLiquidez(cajaSes).efectivoCaja)+'</span>'+
+        '</div>' : '')+
         '<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap">'+
           '<button onclick="event.stopPropagation();abrirMensajeRapido(\''+nombreEmp.replace(/'/g,"\\'")+'\')" style="background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">💬 Mensaje a '+sesionViva.nombre+'</button>'+
           '<button onclick="window.__lrTurnoVivoExpandido=window.__lrTurnoVivoExpandido||{};window.__lrTurnoVivoExpandido[\''+claveExpandido+'\']=!window.__lrTurnoVivoExpandido[\''+claveExpandido+'\'];renderDashboard();" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
@@ -22169,7 +22296,14 @@ function renderDashboard() {
       '</div>';
     }).join('');
 
-    turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos;
+    var cajasLibres = variasCajas ? [1, 2].filter(function(c){ return !nombresConTurno.some(function(n){ return cajaDe(sesionesVivas[n]) === c; }); }) : [];
+    var tarjetasLibres = cajasLibres.map(function(c){
+      return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<div><span style="background:var(--dark);color:var(--gray);font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px;border-radius:4px;padding:2px 8px;margin-right:6px">CAJA '+c+'</span><span style="color:var(--gray)">⚪ Sin turno abierto</span></div>'+
+        '<div style="font-size:.78rem;color:var(--gray)">Quedó en el cajón: <b style="color:var(--white)">'+fmt(calcularLiquidez(c).efectivoCaja)+'</b></div>'+
+      '</div>';
+    }).join('');
+    turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos + tarjetasLibres;
   } else {
     // Mientras el dato del turno no haya llegado de la nube, se dice que se
     // está consultando. Decir "no hay turno" cuando en realidad todavía no se
@@ -27412,7 +27546,10 @@ function abrirDeliveryPendModal() {
           (p.pagoConfirmado
             ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
             : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
-          (p.estado === 'cargado'
+          (pedidoTrabadoEnOtraCaja(p)
+            ? '<div style="flex:1;min-width:120px;text-align:center;padding:6px;border:1px dashed var(--gold);border-radius:5px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">🔒 Lo está cobrando la Caja '+p.cargadoCaja+(p.cargadoPor?' ('+p.cargadoPor+')':'')+
+                '<div><button onclick="destrabarPedidoWeb('+p.id+')" style="margin-top:4px;background:none;border:none;color:var(--gray);text-decoration:underline;font-size:.62rem;cursor:pointer">Destrabar</button></div></div>'
+            : p.estado === 'cargado'
             ? '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">Volver a cargar</button>'
             : '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>')+
         '</div>'+
@@ -27432,10 +27569,32 @@ function abrirDeliveryPendModal() {
 // cobrado automáticamente cuando se confirme la venta.
 var _pedidoWebEnCarrito = null;
 
+// Con dos cajas: un pedido que otra caja ya cargó al carrito queda trabado
+// acá, para que no se cobre dos veces. Se puede destrabar a mano (por si la
+// otra caja lo cargó y después lo sacó del carrito sin cobrarlo).
+function pedidoTrabadoEnOtraCaja(p){
+  return !!(p && p.estado === 'cargado' && !p.pagoConfirmado && p.cargadoCaja &&
+    hayVariasCajas() && Number(p.cargadoCaja) !== cajaTurnoActual());
+}
+function destrabarPedidoWeb(id){
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p) return;
+  if(!confirm('¿Destrabar el pedido de '+p.nombre+'?\n\nHacelo solo si la Caja '+p.cargadoCaja+' NO lo está cobrando (ya lo sacó del carrito). Si no, se puede cobrar dos veces.')) return;
+  p.estado = 'pendiente';
+  delete p.cargadoCaja;
+  delete p.cargadoPor;
+  savePedidosWeb(pedidos);
+  if(typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
+}
 function cargarPedidoAlCarrito(id) {
   var pedidos = getPedidosWeb();
   var pedido = pedidos.find(function(p){ return p.id===id; });
   if(!pedido) return;
+  if(pedidoTrabadoEnOtraCaja(pedido)){
+    showToast('🔒 Ese pedido lo está cobrando la Caja '+pedido.cargadoCaja, true);
+    return;
+  }
 
   // Avisar si el carrito ya tiene algo cargado: mezclar dos pedidos distintos
   // es la forma más fácil de cobrarle mal a alguien.
@@ -27523,6 +27682,8 @@ function cargarPedidoAlCarrito(id) {
   }
 
   pedido.estado = 'cargado';
+  pedido.cargadoCaja = cajaTurnoActual();
+  pedido.cargadoPor = currentEmp ? currentEmp.nombre : '';
   savePedidosWeb(pedidos);
   document.getElementById('deliveryPendModal').classList.remove('open');
   showToast('🛵 Pedido de '+pedido.nombre+' cargado al carrito');
@@ -31288,7 +31449,18 @@ function saveCierresMes(c) { window.__lrCierresMesCache = c; if(window.__lrSaveC
 // hay que revisar algo puntual; "$NaN" no dice nada y asusta sin necesidad.
 function numOK(n) { n = Number(n); return isNaN(n) ? 0 : n; }
 
-function calcularLiquidez() {
+// Sin argumento: plata de todo el local (con dos cajas, el efectivo en caja es
+// la suma de las dos, y efectivoPorCaja trae cada una). Con 1 o 2: el
+// efectivo en caja de ese puesto solamente (el resto de las cuentas, igual).
+function calcularLiquidez(cajaPedida) {
+  if(cajaPedida !== 1 && cajaPedida !== 2){
+    if(!hayVariasCajas()) return calcularLiquidez(1);
+    var l1 = calcularLiquidez(1), l2 = calcularLiquidez(2);
+    l1.efectivoPorCaja = {1: l1.efectivoCaja, 2: l2.efectivoCaja};
+    l1.efectivoCaja = numOK(l1.efectivoCaja + l2.efectivoCaja);
+    return l1;
+  }
+  var cajaCalc = cajaPedida;
   var cfg = getLiquidezCfg();
   // Usar configTs si existe — filtra solo movimientos DESPUÉS de la última configuración manual
   // (esto rige Lemon Cash y Mercado Pago, que NO se recuentan físicamente en cada turno)
@@ -31299,7 +31471,8 @@ function calcularLiquidez() {
   // Si nadie tiene un turno abierto EN ESTE dispositivo (ej. mirando desde el celu con 0000, sin
   // loguear ningún empleado ahí), se usa el turno activo sincronizado de Firebase como respaldo,
   // y solo si tampoco hay eso, el último saldo configurado manualmente.
-  var sesionParaCalculo = currentEmp || window.__lrSesionActivaCache;
+  var sesionParaCalculo = (currentEmp && cajaTurnoActual() === cajaCalc) ? currentEmp
+    : ((window.__lrSesionesVigentes || []).filter(function(sv){ return cajaDe(sv) === cajaCalc; })[0] || null);
   var efectivoBase, desdeTsEfec;
   if(sesionParaCalculo && sesionParaCalculo.turnoInicio){
     efectivoBase = sesionParaCalculo.efectivoInicial || 0;
@@ -31310,7 +31483,7 @@ function calcularLiquidez() {
     // resultado — lo efectivamente contado (o lo esperado, si fue un
     // cierre automático sin conteo manual) — no de un valor de
     // configuración desactualizado.
-    var cierresOrdenados = getCierres().slice().sort(function(a,b){ return new Date(b.horaFin||b.fecha) - new Date(a.horaFin||a.fecha); });
+    var cierresOrdenados = getCierres().filter(function(c){ return cajaDe(c) === cajaCalc; }).sort(function(a,b){ return new Date(b.horaFin||b.fecha) - new Date(a.horaFin||a.fecha); });
     var ultimoCierre = cierresOrdenados[0];
     if(ultimoCierre && ultimoCierre.arqueo){
       var contadoUltimo = ultimoCierre.arqueo.contado;
@@ -31324,16 +31497,17 @@ function calcularLiquidez() {
   }
 
   var ventas       = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha) >= desdeTs; });
-  var ventasEfecP  = VENTAS.filter(function(v){ return !v.anulada && new Date(v.fecha) >= desdeTsEfec; });
+  var ventasEfecP  = VENTAS.filter(function(v){ return !v.anulada && cajaDe(v) === cajaCalc && new Date(v.fecha) >= desdeTsEfec; });
   var egresos      = getEgresos().filter(function(e){
     var ts = e.ts ? new Date(e.ts) : new Date(e.fecha+'T12:00:00');
     return ts >= desdeTs;
   });
   var egresosEfecP = getEgresos().filter(function(e){
+    if(cajaDe(e) !== cajaCalc) return false;
     var ts = e.ts ? new Date(e.ts) : new Date(e.fecha+'T12:00:00');
     return ts >= desdeTsEfec;
   });
-  var retiros = getRetirosCaja().filter(function(r){ return new Date(r.fecha) >= desdeTsEfec; });
+  var retiros = getRetirosCaja().filter(function(r){ return cajaDe(r) === cajaCalc && new Date(r.fecha) >= desdeTsEfec; });
   // "Efectivo fuera del local" NO se recuenta en cada turno como el de caja — es plata que sigue
   // afuera hasta que se devuelve, así que se acumula desde la última configuración manual (desdeTs),
   // no desde el inicio del turno activo.
@@ -31344,7 +31518,7 @@ function calcularLiquidez() {
   var cargasTodas = getCargasVirtuales();
   var cargasMontoMP = cargasTodas.filter(function(c){ return new Date(c.fecha) >= desdeTs; })
     .reduce(function(s,c){ return s+(c.montoMP||0); },0);
-  var cargasEfectivo = cargasTodas.filter(function(c){ return c.medio==='Efectivo' && new Date(c.fecha) >= desdeTsEfec; })
+  var cargasEfectivo = cargasTodas.filter(function(c){ return c.medio==='Efectivo' && cajaDe(c) === cajaCalc && new Date(c.fecha) >= desdeTsEfec; })
     .reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
   var cargasTransferencia = cargasTodas.filter(function(c){ return c.medio==='Transferencia' && new Date(c.fecha) >= desdeTs; })
     .reduce(function(s,c){ return s+(c.montoCobrado||0); },0);
@@ -31353,7 +31527,7 @@ function calcularLiquidez() {
   // según cómo se movió la plata. Recibido y devolución-recibida SUMAN; devolución y préstamo-dado RESTAN.
   var prestamosTodos = getPrestamos();
   function sumaPrestamos(tipo, medio, desde) {
-    return prestamosTodos.filter(function(p){ return p.tipo===tipo && p.medio===medio && new Date(p.fecha)>=desde; })
+    return prestamosTodos.filter(function(p){ return p.tipo===tipo && p.medio===medio && new Date(p.fecha)>=desde && (medio!=='Efectivo' || cajaDe(p)===cajaCalc); })
       .reduce(function(s,p){ return s+(p.monto||0); },0);
   }
   var prestamosEfectivoNeto = sumaPrestamos('prestamo','Efectivo',desdeTsEfec) - sumaPrestamos('devolucion','Efectivo',desdeTsEfec)
@@ -31363,9 +31537,10 @@ function calcularLiquidez() {
   // Transferencias internas entre cuentas: no son ingreso ni egreso, solo mueven la plata de un lugar a otro.
   var transfersTodas = getTransferCuentas();
   function netoTransferCuenta(cuenta, desde) {
-    var entra = transfersTodas.filter(function(t){ return t.hacia===cuenta && new Date(t.fecha)>=desde; })
+    var deLaCaja = function(t){ return cuenta !== 'Efectivo' || cajaDe(t) === cajaCalc; };
+    var entra = transfersTodas.filter(function(t){ return t.hacia===cuenta && new Date(t.fecha)>=desde && deLaCaja(t); })
       .reduce(function(s,t){ return s+(t.monto||0); },0);
-    var sale  = transfersTodas.filter(function(t){ return t.desde===cuenta && new Date(t.fecha)>=desde; })
+    var sale  = transfersTodas.filter(function(t){ return t.desde===cuenta && new Date(t.fecha)>=desde && deLaCaja(t); })
       .reduce(function(s,t){ return s+(t.monto||0); },0);
     return entra - sale;
   }
