@@ -2391,50 +2391,22 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
 @media(max-width:700px){ .logo-wrap img{width:120px;margin:4px 0} .logo-wrap{padding:0 10px 0 0;align-items:center} }
 /* Los botones bajan un poco para quedar a media altura del logo, en vez de
    pegados al borde superior de la barra. */
-.header-center{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:30px}
-@media(max-width:1100px){ .header-center{margin-top:6px} }
-@media(max-width:700px){ .header-center{margin-top:0;order:3;flex-basis:100%} }
-.header-actions{display:flex;gap:7px;align-items:center;justify-content:center;flex-wrap:wrap}
-.hdr-btn2{background:transparent;border:1px solid var(--c);color:var(--c);border-radius:5px;padding:5px 10px;font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;transition:.12s;white-space:nowrap}
-.hdr-btn2:hover{background:color-mix(in srgb, var(--c) 14%, transparent)}
-.hdr-btn2 .ico{margin-right:5px}
-/* Variante A: grilla de 2 columnas, botones del mismo ancho */
-.hv-a .hdr-accesos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;width:300px}
-.hv-a .hdr-btn2{text-align:center}
-/* Variante B: tarjeta del turno (caja, empleado y accesos en un recuadro) */
-.hv-b .header-right{background:rgba(255,255,255,.035);border:1px solid var(--border);border-radius:10px;padding:8px 10px;gap:6px;align-self:flex-start;margin-top:4px}
-.hv-b .header-count{display:none}
-.hv-b .hdr-accesos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;width:270px;border-top:1px solid var(--border);padding-top:7px}
-.hv-b .hdr-btn2{text-align:center;padding:5px 6px}
-.hv-b .hdr-btn2{background:color-mix(in srgb, var(--c) 10%, transparent)}
-/* Variante C: fichas con ícono grande, una al lado de la otra */
-.hv-c .hdr-accesos{display:flex;gap:5px;justify-content:flex-end}
-.hv-c .hdr-btn2{vertical-align:top;width:70px;height:56px;padding:5px 3px;font-size:.58rem;letter-spacing:.4px;border-radius:7px;white-space:normal;line-height:1.1;text-align:center}
-.hv-c .hdr-btn2 .ico{display:block;margin:0 0 3px;font-size:1.25rem;line-height:1}
-.hv-c .hdr-accesos{display:block;text-align:right}
-@media(max-width:700px){ .hv-a .hdr-accesos{width:100%} }
-#estadoRepartidores{font-family:'Oswald',sans-serif;font-size:.66rem;letter-spacing:1px;padding:5px 10px;border-radius:12px;cursor:pointer}
-/* Pantallas tipo netbook: botones un poco más compactos para que cada fila
-   entre entera sin partirse. */
-@media(max-width:1500px){
-  .header-actions{gap:4px;flex-wrap:nowrap}
+.header-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:28px}
+@media(max-width:1300px){ .header-actions{margin-top:22px} }
+@media(max-width:1100px){ .header-actions{margin-top:16px} }
+@media(max-width:700px){ .header-actions{margin-top:0} }
+/* Con el logo más grande, la barra no se parte: el logo a la izquierda, los
+   botones al medio y la columna de turno siempre arriba a la derecha. */
+@media(min-width:701px){
+  .header-top{flex-wrap:nowrap}
+  .header-actions{flex:1;min-width:0;justify-content:center}
+  .header-right{flex-shrink:0}
+}
+@media(min-width:701px) and (max-width:1500px){
+  .header-actions{gap:4px}
   .header-actions .btn{padding:7px 7px;letter-spacing:.2px;font-size:.68rem !important}
 }
-.header-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-/* Quién está atendiendo y en qué caja: más grande que antes para leerlo de lejos. */
-#badgeEmpleado{display:inline-flex;align-items:center;gap:7px;font-size:.9rem;padding:5px 12px;border-radius:6px;color:var(--light)}
-#empActual{display:inline-flex;align-items:center;gap:7px}
-.hdr-fila-estado{display:flex;align-items:center;gap:6px}
-#badgeEmpleado .emp-nombre{color:var(--white);font-weight:600;letter-spacing:.5px}
-#badgeEmpleado .emp-turno{color:var(--green)}
-#badgeEmpleado .emp-turno::before{content:'· ';color:var(--gray)}
-#badgeEmpleado .emp-nombre,#badgeEmpleado .emp-turno{white-space:nowrap}
-.caja-chip{font-family:'Oswald',sans-serif;font-weight:700;font-size:1rem;letter-spacing:1.5px;padding:2px 10px;border-radius:5px}
-.caja-chip-1{background:var(--gold);color:var(--black)}
-.caja-chip-2{background:#1e90ff;color:var(--white)}
-#badgeEmpleado .caja-chip-1{color:var(--black)}
-#badgeEmpleado .caja-chip-2{color:var(--white)}
-.header-right .session-timer{font-size:.82rem;padding:4px 11px}
+.header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .header-count{font-family:'Oswald',sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;text-transform:uppercase}
 .turno-badge{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:3px 9px;font-size:.68rem;font-family:'Oswald',sans-serif;letter-spacing:1px;color:var(--light);transition:.12s}
 /* Se toca para ver los consumos propios del mes */
@@ -3702,12 +3674,11 @@ body.night-on{background:#080005}
 </div>
 
 <!-- HEADER -->
-<header class="hv-a">
+<header>
   <div class="header-top">
     <div class="logo-wrap">
       <img src="/logo-barra.png" alt="Limay Rock Drugstore">
     </div>
-    <div class="header-center">
     <div class="header-actions">
       <button class="btn btn-night on" id="nightBtn" onclick="toggleNight()" title="Activá el modo nocturno para aplicar precios nocturnos">🌙 Nocturno</button>
       <button class="btn btn-cart" onclick="toggleCart()" id="cartBtn">
@@ -3722,22 +3693,17 @@ body.night-on{background:#080005}
         💬 Mensajes<span id="badgeMensajes" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--red);color:var(--white);border-radius:10px;font-size:.6rem;padding:1px 5px;font-family:Oswald,sans-serif"></span>
       </button>
       <button class="btn btn-admin" onclick="openAdminPin()" style="position:relative">⚙<span class="stock-notif" id="stockNotif" style="display: flex;">2</span></button>
-    </div>    </div>
+    </div>
     <div class="header-right">
       <span class="header-count">⚡ <strong id="totalCount">4 / 716</strong> productos</span>
       <span class="turno-badge" id="badgeEmpleado" onclick="abrirMisConsumos()" title="Ver mis consumos del mes" style="cursor:pointer">👤 <span id="empActual">Martin · Nocturno</span> <span style="opacity:.5;font-size:.85em">▾</span></span>
-      <div class="hdr-fila-estado">
-        <span id="estadoRepartidores" title="Repartidores conectados" style="display:none;" onclick="verRepartidoresConectados()"></span>
-        <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
-      </div>
-      <!-- Accesos del turno: en la esquina derecha, en grilla (antes era una columna larga) -->
-      <div class="hdr-accesos">
-        <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" class="hdr-btn2" style="display:none;--c:var(--gold)"><span class="ico">📦</span><span class="lbl">Recepción</span></button>
-        <button id="btnGoCargaStock" onclick="abrirCargaStock()" class="hdr-btn2" style="display:none;--c:var(--green)"><span class="ico">📋</span><span class="lbl">Cargar Stock</span></button>
-        <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" class="hdr-btn2" style="display:none;--c:var(--green)"><span class="ico">🛵</span><span class="lbl">Delivery <span id="deliveryPendCount">0</span></span></button>
-        <button id="btnGoDelivery" onclick="abrirPanelRepartidor()" class="hdr-btn2" style="display:none;--c:#1e90ff"><span class="ico">🛵</span><span class="lbl">Delivery <span id="btnGoDeliveryCount"></span></span></button>
-        <button id="btnAnularUltimas" onclick="abrirAnularUltimas()" class="hdr-btn2" style="--c:var(--red)"><span class="ico">↩</span><span class="lbl">Anular venta</span></button>
-      </div>
+      <div class="session-timer" id="sessionTimerBadge"><div class="dot"></div><span id="sessionTimerDisplay">00:00</span></div>
+      <button id="btnGoRecepcion" onclick="abrirRecepDesdeApp()" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📦 Recepción</button>
+      <button id="btnAnularUltimas" onclick="abrirAnularUltimas()" style="background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">↩ Anular venta</button>
+      <button id="btnGoDelivery" onclick="abrirPanelRepartidor()" style="display:none;background:transparent;border:1px solid #1e90ff;color:#1e90ff;border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="btnGoDeliveryCount"></span></button>
+      <button id="btnGoCargaStock" onclick="abrirCargaStock()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">📋 Cargar Stock</button>
+      <button id="btnDeliveryPend" onclick="abrirDeliveryPendModal()" style="display:none;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:4px 10px;font-family:'Oswald',sans-serif;font-size:.65rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-left:6px">🛵 Delivery <span id="deliveryPendCount">0</span></button>
+      <span id="estadoRepartidores" title="Repartidores conectados" style="display:none;margin-left:6px;font-family:'Oswald',sans-serif;font-size:.63rem;letter-spacing:1px;padding:4px 9px;border-radius:12px;cursor:pointer" onclick="verRepartidoresConectados()"></span>
     </div>
   </div>
   <div class="controls">
@@ -7387,11 +7353,7 @@ function elegirCajaEquipo(n){
 function pintarCajaEquipo(){
   var el = document.getElementById('empActual');
   if(el && typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio){
-    // "CAJA N" bien grande, para que se vea de lejos en qué caja está cada uno.
-    var nCaja = cajaTurnoActual();
-    var nom = String(currentEmp.nombre||'').replace(/[&<>"]/g, function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]; });
-    el.innerHTML = '<span class="caja-chip caja-chip-'+nCaja+'">CAJA '+nCaja+'</span>' +
-      '<span class="emp-nombre">' + nom + '</span><span class="emp-turno">' + turnoActual() + '</span>';
+    el.textContent = (hayVariasCajas() ? 'Caja ' + cajaTurnoActual() + ' · ' : '') + currentEmp.nombre + ' · ' + turnoActual();
   }
   var lc = document.getElementById('loginCajaEquipo');
   if(lc){ lc.textContent = '🖥 Caja ' + cajaEquipo(); lc.style.display = hayVariasCajas() ? '' : 'none'; }
