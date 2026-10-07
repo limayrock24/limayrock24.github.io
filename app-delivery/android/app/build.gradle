@@ -1,5 +1,8 @@
 apply plugin: 'com.android.application'
 
+// En GitHub se numera solo con cada compilación (para que se pueda actualizar encima)
+def numeroCompilacion = Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+
 android {
     namespace "com.limayrock.delivery"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,9 +10,8 @@ android {
         applicationId "com.limayrock.delivery"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // En GitHub se numera solo con cada compilación (para que se pueda actualizar encima)
-        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
-        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionCode numeroCompilacion
+        versionName "1.0." + numeroCompilacion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
