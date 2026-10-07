@@ -4679,6 +4679,7 @@ body.night-on{background:#080005}
       <label>¿Qué faltó cargar?</label>
       <select id="corrTipo" onchange="cambiarTipoCorreccionCierre()" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-family:Barlow,sans-serif;font-size:.85rem">
         <option value="ingreso">💵 Ingreso de efectivo fuera de caja</option>
+        <option value="retiro">💸 Retiro de efectivo de la caja no registrado</option>
         <option value="egreso">🚚 Pago a proveedor no registrado</option>
         <option value="transferencia">🔄 Cambio entre cuentas no registrado</option>
         <option value="venta">🛒 Venta no registrada (producto)</option>
@@ -11234,6 +11235,8 @@ function renderCierres() {
             cuerpo = '🌅 Efectivo inicial corregido (post-cierre): '+fmt(cor.montoAnterior)+' → <b>'+fmt(cor.montoNuevo)+'</b>';
           } else if(cor.tipo === 'transferencia'){
             cuerpo = '🔄 Cambio no registrado: '+(NOMBRES_CUENTA_TC[cor.desde]||cor.desde)+' → '+(NOMBRES_CUENTA_TC[cor.hacia]||cor.hacia)+': <b>'+fmt(cor.monto)+'</b>';
+          } else if(cor.tipo === 'retiro'){
+            cuerpo = '💸 Retiro de caja no registrado: <b>'+fmt(cor.monto)+'</b>';
           } else if(cor.tipo === 'venta'){
             cuerpo = '🛒 Venta no registrada: '+(cor.cantidad||1)+'× '+(cor.producto||'producto')+' ('+(cor.medio||'Efectivo')+'): <b>'+fmt(cor.monto)+'</b>';
           } else {
@@ -11391,6 +11394,9 @@ function cambiarTipoCorreccionCierre() {
   } else if(tipo === 'transferencia'){
     if(lbl) lbl.textContent = 'Monto ($)';
     if(ayuda) ayuda.textContent = 'Registra un cambio entre cuentas (ej: Mercado Pago → Efectivo) con la fecha de este cierre. Si mueve efectivo hacia o desde la caja, ajusta el esperado y la diferencia de ESTE cierre. Queda anotado quién y cuándo.';
+  } else if(tipo === 'retiro'){
+    if(lbl) lbl.textContent = 'Monto retirado ($)';
+    if(ayuda) ayuda.textContent = 'Registra plata que se sacó de la caja durante este turno y no se anotó (por ejemplo, la retiraste vos). No es un gasto: pasa a "Efectivo afuera", baja el esperado de este cierre y recalcula la diferencia.';
   } else if(tipo === 'venta'){
     if(lbl) lbl.textContent = 'Total cobrado ($)';
     if(ayuda) ayuda.textContent = 'Registra la venta de un producto que salió pero no se cargó — se suma a Ventas y Rentabilidad de ese día y descuenta stock como cualquier venta. Si se cobró en efectivo, también ajusta el esperado y la diferencia de ESTE cierre.';
@@ -11422,6 +11428,10 @@ function guardarCorreccionCierre() {
   if(!real){ showToast('No se pudo ubicar el cierre para corregirlo', true); return; }
 
   var fechaCierre = real.fecha; // ISO completo del cierre — se usa como referencia real del momento
+  // Retiros/ingresos de caja cargados por corrección: van 1 segundo ANTES del
+  // fin del turno. Así cuentan dentro de ese turno y no se vuelven a restar o
+  // sumar al efectivo que quedó en el cajón después del cierre.
+  var fechaDentroTurno = new Date(new Date(real.horaFin || fechaCierre).getTime() - 1000).toISOString();
   var fechaSoloFecha = fechaCierre.slice(0,10); // YYYY-MM-DD, formato que usan los egresos
 
   if(tipo === 'contado') {
@@ -11485,7 +11495,31 @@ function guardarCorreccionCierre() {
   // anularla, se sabe EXACTAMENTE qué borrar/revertir, sin adivinar.
   var refIdCorr = null;
 
-  if(tipo === 'ingreso') {
+  if(tipo === 'retiro') {
+    var retirosR = getRetirosCaja();
+    refIdCorr = Date.now();
+    retirosR.push({
+      id: refIdCorr,
+      monto: monto,
+      tipo: 'retiro',
+      nota: (nota || 'Retiro de caja no registrado') + ' (corrección post-cierre)',
+      empleado: currentEmp ? currentEmp.nombre : 'Admin',
+      caja: cajaDe(real),
+      fecha: fechaDentroTurno
+    });
+    saveRetirosCaja(retirosR);
+
+    if(!real.arqueo) real.arqueo = {esperado:0, contado:0, diferencia:0};
+    real.arqueo.retirosCaja = (real.arqueo.retirosCaja||0) + monto;
+    real.arqueo.esperado = (real.arqueo.esperado||0) - monto;
+    real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+
+    registrarOperacion('retiro',
+      [{name: nota || 'Retiro de caja no registrado', qty:1, precio:monto, subtotal:monto}],
+      monto, currentEmp ? currentEmp.nombre : 'Admin',
+      'Corrección del cierre de '+real.empleado+' ('+new Date(fechaCierre).toLocaleDateString('es-AR')+')',
+      0, refIdCorr);
+  } else if(tipo === 'ingreso') {
     var retiros = getRetirosCaja();
     refIdCorr = Date.now();
     retiros.push({
@@ -11494,7 +11528,8 @@ function guardarCorreccionCierre() {
       tipo: 'ingreso',
       nota: (nota || 'Ingreso de efectivo fuera de caja') + ' (corrección post-cierre)',
       empleado: currentEmp ? currentEmp.nombre : 'Admin',
-      fecha: fechaCierre
+      caja: cajaDe(real),
+      fecha: fechaDentroTurno
     });
     saveRetirosCaja(retiros);
 
@@ -11710,6 +11745,16 @@ function anularCorreccionCierre(idx, i) {
       real.arqueo.efectivoInicial = cor.montoAnterior||0;
       real.arqueo.esperado = (real.arqueo.esperado||0) - deltaIni;
       real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+    } else if(cor.tipo === 'retiro'){
+      real.arqueo.retirosCaja = (real.arqueo.retirosCaja||0) - cor.monto;
+      real.arqueo.esperado = (real.arqueo.esperado||0) + cor.monto;
+      real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
+      if(cor.refId){
+        saveRetirosCaja(getRetirosCaja().filter(function(r){ return r.id !== cor.refId; }));
+        saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
+        borrarRegistroEnNube('retirosCaja', cor.refId);
+        borrarMovimientosEnNube(cor.refId);
+      }
     } else if(cor.tipo === 'ingreso'){
       real.arqueo.ingresosCaja = (real.arqueo.ingresosCaja||0) - cor.monto;
       real.arqueo.esperado = (real.arqueo.esperado||0) - cor.monto;
