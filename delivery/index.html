@@ -182,7 +182,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "13"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "14"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -545,7 +545,8 @@ window.__lrEscucharNotifsEnVivo = function(){
 // así todo lo que se maneja desde el admin sigue funcionando igual.
 function activarNotifsApp(destino, quien){
   var PN;
-  try{ PN = Capacitor.registerPlugin('PushNotifications'); }catch(e){ return Promise.reject(e); }
+  PN = pluginApp('PushNotifications');
+  if(!PN) return Promise.reject(new Error('La app no tiene avisos'));
   return PN.checkPermissions().then(function(p){
     return p.receive === 'granted' ? p : PN.requestPermissions();
   }).then(function(p){
@@ -572,7 +573,7 @@ function activarNotifsApp(destino, quien){
 function restaurarEstadoNotificaciones(destino, quien, btnId){
   if(esAppDelivery()){
     // Versión vieja de la app (sin avisos propios): no se hace nada.
-    if(!(Capacitor.isPluginAvailable && Capacitor.isPluginAvailable('PushNotifications'))) return;
+    if(!(Capacitor.Plugins && Capacitor.Plugins.PushNotifications)) return;
     activarNotifsApp(destino, quien).catch(function(e){
       console.warn('Avisos de la app:', e);
       showToast('🔔 Para que te lleguen los pedidos, permití las notificaciones de la app', true);
@@ -1069,11 +1070,20 @@ function actualizarGPSRepartidor() {
 // aunque el repartidor abra Google Maps o bloquee el celular. En el
 // navegador queda el GPS web (solo con la página abierta).
 var _gpsNativoId = null;
+// Acceso a las funciones del celular desde la página. La app inyecta
+// window.Capacitor con las funciones en Capacitor.Plugins (registerPlugin
+// solo existe si la página trae la librería de Capacitor, que acá no está).
+function pluginApp(nombre) {
+  try{
+    if(!window.Capacitor) return null;
+    if(Capacitor.Plugins && Capacitor.Plugins[nombre]) return Capacitor.Plugins[nombre];
+    if(Capacitor.registerPlugin) return Capacitor.registerPlugin(nombre);
+  }catch(e){}
+  return null;
+}
 function _gpsPluginNativo() {
   try{
-    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.registerPlugin){
-      return window._bgGeoPlugin || (window._bgGeoPlugin = Capacitor.registerPlugin('BackgroundGeolocation'));
-    }
+    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) return pluginApp('BackgroundGeolocation');
   }catch(e){}
   return null;
 }
@@ -1150,7 +1160,7 @@ function enviarUbicacionRepartidor() {
 // nativo del teléfono, directo a la base (mismo campo, mismo pedido).
 function _httpNativo() {
   if(!esAppDelivery()) return null;
-  try{ return window._httpPlugin || (window._httpPlugin = Capacitor.registerPlugin('CapacitorHttp')); }catch(e){ return null; }
+  return pluginApp('CapacitorHttp');
 }
 function enviarUbicacionNativa(http, idDoc, dato) {
   var url = 'https://firestore.googleapis.com/v1/projects/limay-rock-852cb/databases/(default)/documents/pedidosWeb/'+encodeURIComponent(idDoc)+
