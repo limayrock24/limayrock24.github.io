@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791351194";
+window.__LR_BUILD = "1791353625";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -1807,7 +1807,7 @@ function elegirMedioPago(medio){
   if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
 }
 
-var GPS_OBLIGATORIO = false;   // temporal: ubicación opcional (con dirección escrita)
+var GPS_OBLIGATORIO = true;    // false = ubicación opcional (alcanza con escribir la dirección)
 document.addEventListener('DOMContentLoaded', function(){
   if(GPS_OBLIGATORIO) return;
   var a = document.getElementById('avisoGpsObligatorio');
