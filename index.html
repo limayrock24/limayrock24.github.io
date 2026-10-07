@@ -10213,6 +10213,27 @@ function doConfirmarVenta() {
 // Se dispara solo al confirmar la venta desde el carrito.
 // Lo que se sumó o se sacó en el local a un pedido del catálogo (por ejemplo,
 // la clienta pidió más cosas por WhatsApp y el cajero las agregó al carrito).
+// Seguimiento de un pedido web en el panel admin: cuándo llegó, si ya lo
+// tomó un repartidor (quién y a qué hora), si está cobrado y si se entregó.
+function htmlEstadoPedidoWeb(p) {
+  var hh = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : ''; };
+  var min = Math.max(0, Math.round((Date.now() - new Date(p.fecha).getTime())/60000));
+  var hace = min < 60 ? min+' min' : Math.floor(min/60)+' h '+(min%60)+' min';
+  var fila = function(color, txt){ return '<div style="font-size:.72rem;color:'+color+';margin-top:3px">'+txt+'</div>'; };
+  var h = fila('var(--gray)', '📥 Llegó a las '+hh(p.fecha)+' · hace '+hace);
+  if(p.estadoDelivery === 'entregado'){
+    h += fila('var(--green)', '🛵 Lo llevó <b>'+(p.repartidor||'—')+'</b>'+(p.tomadoEn?' (lo tomó '+hh(p.tomadoEn)+')':''));
+  } else if(p.repartidor){
+    h += fila('var(--green)', '🛵 Lo tomó <b>'+p.repartidor+'</b> a las '+hh(p.tomadoEn)+' · en camino');
+  } else {
+    h += fila('var(--gold)', '⏳ Ningún repartidor lo tomó todavía'+(p.liberadoEn?' (un repartidor lo soltó a las '+hh(p.liberadoEn)+')':''));
+  }
+  if(p.pagoConfirmado) h += fila('var(--green)', '💰 Cobrado'+(p.cobradoEn?' a las '+hh(p.cobradoEn):''));
+  else if(p.estado === 'cargado') h += fila('var(--gold)', '🛒 Cargado al carrito del local — falta confirmar el cobro');
+  else h += fila('var(--gray)', '💳 Sin cobrar — se cobra cargándolo al carrito en el panel de venta');
+  if(p.estadoDelivery === 'entregado') h += fila('var(--green)', '✅ Entregado'+(p.entregadoEn?' a las '+hh(p.entregadoEn):''));
+  return '<div style="margin-top:6px;padding:6px 8px;background:rgba(255,255,255,.03);border-left:2px solid '+(p.repartidor?'var(--green)':'var(--gold)')+';border-radius:3px">'+h+'</div>';
+}
 function htmlCambiosPedidoWeb(p, grande) {
   var h = '';
   var fs = grande ? '.8rem' : '.75rem';
@@ -29638,14 +29659,13 @@ function renderDeliveryPanel() {
               htmlCambiosPedidoWeb(p)+
               envioTxt+
               notasTxt+
-              '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+hora+'</div>'+
+              htmlEstadoPedidoWeb(p)+
             '</div>'+
             '<div style="text-align:right">'+
               '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700">'+fmt(p.total)+'</div>'+
               (p.pagoConfirmado
                 ? '<div style="margin-top:4px;font-size:.65rem;color:var(--green)">✓ Cobrado</div>'
-                : '<button onclick="enviarDatosCobro('+p.id+')" style="margin-top:4px;background:#25D366;color:#052e16;border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
-                  '<div style="margin-top:4px;font-size:.62rem;color:var(--gold)">⏳ Se cobra cargándolo al carrito en el panel de venta</div>')+
+                : '<button onclick="enviarDatosCobro('+p.id+')" style="margin-top:4px;background:#25D366;color:#052e16;border:none;border-radius:4px;padding:4px 9px;font-size:.65rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>')+
               '<div style="margin-top:4px">'+
                 '<button onclick="cerrarPedidoWebEntregado('+p.id+')" style="margin-left:4px;background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">✓ Entregado</button>'+
                 '<button onclick="cancelarPedidoWeb('+p.id+')" style="margin-left:4px;background:none;border:1px solid rgba(204,0,0,.5);color:var(--red);border-radius:4px;padding:3px 8px;font-size:.65rem;cursor:pointer">❌ Cancelar</button>'+
