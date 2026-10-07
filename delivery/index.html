@@ -181,7 +181,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "8"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "9"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -734,7 +734,7 @@ function renderPanelRepartidor() {
       ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="font-size:.8rem;margin-top:3px;color:#f87171">➖ Sacado: '+p.itemsQuitados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+'</div>' : '')+
       ((p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
         (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
-        (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : '')+'</div>' : '')+
+        (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+

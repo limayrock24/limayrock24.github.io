@@ -25968,7 +25968,7 @@ function renderPanelRepartidor() {
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
       htmlCambiosPedidoWeb(p)+
       (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio)+
-        (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : '')+'</div>' : '')+
+        (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+
@@ -26832,7 +26832,7 @@ function abrirDeliveryPendModal() {
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
-        (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : '')+
+        (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : (p.zona==='lejos' ? '<div style="font-size:.72rem;color:#f97316;margin-top:2px">🛣️ Zona más lejos'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : ''))+
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
         repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
@@ -29032,8 +29032,11 @@ function renderDeliveryControl() {
 
       '</div>'+
 
-      '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Repartidores</div>'+
-      repHtml+
+      '<div onclick="window._repDelivAbierto=!window._repDelivAbierto;renderDeliveryPanel()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;background:var(--dark);border-radius:6px;padding:10px 12px">'+
+        '<span style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--light);text-transform:uppercase">'+(window._repDelivAbierto?'▼':'▶')+' Repartidores ('+repartidores.length+')</span>'+
+        '<span style="font-size:.7rem;color:'+(disponibles.length?'#22c55e':'var(--gray)')+'">'+disponibles.length+' disponible'+(disponibles.length===1?'':'s')+'</span>'+
+      '</div>'+
+      (window._repDelivAbierto ? '<div style="padding:0 4px">'+repHtml+'</div>' : '')+
     '</div>'+
     renderConfigZonas();
 }
@@ -29048,20 +29051,22 @@ function renderConfigZonas(){
     '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">📍 Zonas de envío</div>'+
     '<div style="font-size:.68rem;color:var(--gray);margin-bottom:12px">El costo se calcula solo según a qué distancia del local está el cliente.</div>'+
 
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
-      '<div style="flex:1;min-width:150px">'+
-        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío urbano</div>'+
-        '<input type="number" value="'+(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+'" min="0" oninput="guardarZonaCfgDemorado(\'costoUrbano\', this.value)" onblur="guardarZonaCfg(\'costoUrbano\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--green);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
-      '</div>'+
-      '<div style="flex:1;min-width:150px">'+
-        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío chacra / rural</div>'+
-        '<input type="number" value="'+(z.costoRural != null ? z.costoRural : 0)+'" min="0" oninput="guardarZonaCfgDemorado(\'costoRural\', this.value)" onblur="guardarZonaCfg(\'costoRural\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
-      '</div>'+
-      '<div style="flex:1;min-width:150px">'+
-        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Radio urbano (km)</div>'+
-        '<input type="number" step="0.1" value="'+(z.radioKm != null ? z.radioKm : 2)+'" min="0.1" oninput="guardarZonaCfgDemorado(\'radioKm\', this.value)" onblur="guardarZonaCfg(\'radioKm\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
-      '</div>'+
-    '</div>'+
+    // Tres escalones según la distancia al local: urbano, chacra y más lejos.
+    (function(){
+      var inp = function(campo, val, color, extra){ return '<input type="number" '+(extra||'')+' value="'+val+'" min="0" oninput="guardarZonaCfgDemorado(\''+campo+'\', this.value)" onblur="guardarZonaCfg(\''+campo+'\', this.value)" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:'+color+';padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'; };
+      var lbl = function(t){ return '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">'+t+'</div>'; };
+      var fila = function(icono, titulo, kmHtml, precioHtml){
+        return '<div style="display:grid;grid-template-columns:minmax(120px,1.2fr) 1fr 1fr;gap:10px;align-items:end;margin-bottom:10px">'+
+          '<div style="font-family:Oswald,sans-serif;font-size:.85rem;color:var(--white);padding-bottom:9px">'+icono+' '+titulo+'</div>'+
+          '<div>'+kmHtml+'</div><div>'+precioHtml+'</div></div>';
+      };
+      var radio = z.radioKm != null ? z.radioKm : 2;
+      var hastaChacra = (z.radioLejosKm != null && z.radioLejosKm > 0) ? z.radioLejosKm : '';
+      return fila('🏘️','Urbano', lbl('Hasta (km)')+inp('radioKm', radio, 'var(--white)', 'step="0.1"'), lbl('Envío $')+inp('costoUrbano', (z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0)), 'var(--green)'))+
+        fila('🚜','Chacra', lbl('Hasta (km)')+inp('radioLejosKm', hastaChacra, 'var(--white)', 'step="0.1" placeholder="sin límite"'), lbl('Envío $')+inp('costoRural', (z.costoRural != null ? z.costoRural : 0), 'var(--gold)'))+
+        fila('🛣️','Más lejos', '<div style="font-size:.74rem;color:var(--gray);padding-bottom:9px">Más de '+(hastaChacra || '—')+' km</div>', lbl('Envío $')+inp('costoLejos', (z.costoLejos != null ? z.costoLejos : ''), '#f97316', 'placeholder="'+(hastaChacra ? 'cargá el monto' : 'poné el km de chacra')+'"'))+
+        '<div style="font-size:.66rem;color:var(--gray);margin:-2px 0 12px">Si dejás vacío el "hasta" de Chacra, todo lo que pase del radio urbano se cobra como chacra (como antes).</div>';
+    })()+
 
     // Envío nocturno: mismo criterio que los precios nocturnos de productos
     // (00 a 08hs). Si se deja vacío, el catálogo cobra el mismo envío de día
@@ -29075,6 +29080,10 @@ function renderConfigZonas(){
       '<div style="flex:1;min-width:150px">'+
         '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Envío rural nocturno</div>'+
         '<input type="number" value="'+(z.costoRuralNoc != null ? z.costoRuralNoc : '')+'" min="0" placeholder="'+(z.costoRural != null ? z.costoRural : 0)+'" oninput="guardarZonaCfgDemorado(\'costoRuralNoc\', this.value)" onblur="guardarZonaCfg(\'costoRuralNoc\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--gold);padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
+      '</div>'+
+      '<div style="flex:1;min-width:150px">'+
+        '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Más lejos nocturno</div>'+
+        '<input type="number" value="'+(z.costoLejosNoc != null ? z.costoLejosNoc : '')+'" min="0" placeholder="'+(z.costoLejos != null ? z.costoLejos : '')+'" oninput="guardarZonaCfgDemorado(\'costoLejosNoc\', this.value)" onblur="guardarZonaCfg(\'costoLejosNoc\', this.value)" style="width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:#f97316;padding:8px;font-family:Oswald,sans-serif;font-size:.95rem">'+
       '</div>'+
     '</div>'+
 
@@ -29101,7 +29110,7 @@ function guardarZonaCfgDemorado(campo, valor){
   // Los envíos nocturnos son opcionales: vacío = "cobrar igual que de día"
   // (null). Sin esto, el campo vacío se guardaba como $0 y de noche el
   // envío salía gratis con solo tocar el campo y salir.
-  if(/Noc$/.test(campo) && String(valor==null?'':valor).trim() === ''){
+  if((/Noc$/.test(campo) || campo==='radioLejosKm' || campo==='costoLejos') && String(valor==null?'':valor).trim() === ''){
     window.__lrZonaCfg[campo] = null;
   } else {
     window.__lrZonaCfg[campo] = parseFloat(valor) || 0;
@@ -29116,7 +29125,7 @@ function guardarZonaCfg(campo, valor){
   // Los envíos nocturnos son opcionales: vacío = "cobrar igual que de día"
   // (null). Sin esto, el campo vacío se guardaba como $0 y de noche el
   // envío salía gratis con solo tocar el campo y salir.
-  if(/Noc$/.test(campo) && String(valor==null?'':valor).trim() === ''){
+  if((/Noc$/.test(campo) || campo==='radioLejosKm' || campo==='costoLejos') && String(valor==null?'':valor).trim() === ''){
     window.__lrZonaCfg[campo] = null;
   } else {
     window.__lrZonaCfg[campo] = parseFloat(valor) || 0;

@@ -460,7 +460,7 @@ let CARRITO_MANUAL = {}; // { itemId: {nombre, categoria, texto} }
 let _manualModo = {}; // { itemId: 'peso' | 'monto' } — cómo está pidiendo ese suelto ahora mismo
 let COSTO_ENVIO = 0;
 let ZONA_CFG = null;
-let ZONA_ACTUAL = null;   // 'urbana' | 'rural' | null (todavía sin ubicación)
+let ZONA_ACTUAL = null;   // 'urbana' | 'rural' | 'lejos' | null (todavía sin ubicación)
 let DELIVERY_ACTIVO = true;
 
 // Elige el costo nocturno si corresponde (00 a 08hs, igual que los precios de
@@ -518,9 +518,14 @@ function recalcularEnvioPorZona(){
   }
   var km = distanciaKm(ZONA_CFG.lat, ZONA_CFG.lng, UBICACION_GPS.lat, UBICACION_GPS.lng);
   var radio = ZONA_CFG.radioKm != null ? ZONA_CFG.radioKm : 2;
-  ZONA_ACTUAL = (km <= radio) ? 'urbana' : 'rural';
+  // Tercer escalón opcional: más allá del límite de chacra, otro monto.
+  var hastaChacra = (ZONA_CFG.radioLejosKm != null && ZONA_CFG.radioLejosKm > radio) ? ZONA_CFG.radioLejosKm : null;
+  var hayLejos = hastaChacra != null && ZONA_CFG.costoLejos != null && ZONA_CFG.costoLejos > 0;
+  ZONA_ACTUAL = (km <= radio) ? 'urbana' : ((hayLejos && km > hastaChacra) ? 'lejos' : 'rural');
   ZONA_DISTANCIA = km;
-  COSTO_ENVIO = (ZONA_ACTUAL === 'rural')
+  COSTO_ENVIO = (ZONA_ACTUAL === 'lejos')
+    ? costoSegunHorario(ZONA_CFG.costoLejos, ZONA_CFG.costoLejosNoc)
+    : (ZONA_ACTUAL === 'rural')
     ? costoSegunHorario(ZONA_CFG.costoRural != null ? ZONA_CFG.costoRural : COSTO_ENVIO, ZONA_CFG.costoRuralNoc)
     : costoSegunHorario(ZONA_CFG.costoUrbano != null ? ZONA_CFG.costoUrbano : COSTO_ENVIO, ZONA_CFG.costoUrbanoNoc);
   actualizarCartelZona();
@@ -544,7 +549,12 @@ function actualizarCartelZona(){
   if(!el) return;
   if(!ZONA_ACTUAL){ el.style.display = 'none'; return; }
   el.style.display = 'block';
-  if(ZONA_ACTUAL === 'rural'){
+  if(ZONA_ACTUAL === 'lejos'){
+    el.style.background = 'rgba(249,115,22,.12)';
+    el.style.borderColor = 'rgba(249,115,22,.45)';
+    el.innerHTML = '<b style="color:#f97316">🛣️ Zona alejada</b><br>'+
+      '<span style="color:var(--gray)">Estás a ' + ZONA_DISTANCIA.toFixed(1) + ' km del local, así que el envío es de <b style="color:#f97316">' + fmt(COSTO_ENVIO) + '</b>.</span>';
+  } else if(ZONA_ACTUAL === 'rural'){
     el.style.background = 'rgba(244,180,0,.12)';
     el.style.borderColor = 'rgba(244,180,0,.45)';
     el.innerHTML = '<b style="color:#F4B400">🚜 Zona chacra / rural</b><br>'+
@@ -1978,7 +1988,7 @@ function confirmarPedido(){
 
   msg += '\n💰 *TOTAL*\n';
   msg += 'Subtotal: '+fmt(subtotal)+'\n';
-  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':'')+': '+fmt(envio)+'\n';
+  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':(ZONA_ACTUAL==='lejos'?' (zona alejada)':''))+': '+fmt(envio)+'\n';
   msg += '*Total: '+fmt(total)+'*';
   if(notasSinPrecio.length) msg += ' _(sin lo que falta confirmar)_';
   msg += '\n';
