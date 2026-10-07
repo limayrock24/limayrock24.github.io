@@ -3356,6 +3356,8 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 #armarPedidoOverlay .arqueo-box{max-height:94vh;overflow-y:auto}
 @media (min-width: 900px){
   #armarPedidoOverlay{align-items:center}
+  #historialPedidosOverlay{align-items:center}
+  #historialPedidosOverlay .arqueo-box{border-radius:12px}
   #armarPedidoOverlay .arqueo-box{max-width:1500px !important;width:96vw;height:94vh;border-radius:12px;display:flex;flex-direction:column;padding:20px 24px}
   #armarPedidoOverlay .arqueo-box h3{font-size:1.25rem}
   #armarPedidoOverlay .arqueo-box .sub{font-size:.85rem;margin-bottom:10px}
@@ -18591,7 +18593,11 @@ function registrarPedidoEnHistorial(id) {
 }
 
 var _historialPedidos = [];
-function abrirHistorialPedidos() {
+var _historialPedidosEmp = false;
+// modoEmpleado: desde la pestaña Pedidos de Recepción — solo los últimos 3
+// días y sin costos, para controlar la mercadería cuando llega.
+function abrirHistorialPedidos(modoEmpleado) {
+  _historialPedidosEmp = !!modoEmpleado;
   var ov = document.getElementById('historialPedidosOverlay');
   if(!ov){
     ov = document.createElement('div');
@@ -18606,10 +18612,18 @@ function abrirHistorialPedidos() {
     '</div>';
     document.body.appendChild(ov);
   }
+  ov.querySelector('h3').textContent = _historialPedidosEmp ? '📋 Pedidos recientes' : '📋 Historial de pedidos';
+  ov.querySelector('.sub').textContent = _historialPedidosEmp
+    ? 'Pedidos de los últimos 3 días. Tocá uno para ver qué se pidió y controlarlo cuando llega.'
+    : 'Los pedidos que se generaron en PDF, tuyos y de los empleados.';
   ov.classList.add('open');
   var lista = document.getElementById('historialPedidosLista');
   lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">Cargando…</div>';
-  window.__lrDB.collection('pedidosProveedor').orderBy('id','desc').limit(80).get().then(function(snap){
+  var consulta = window.__lrDB.collection('pedidosProveedor');
+  consulta = _historialPedidosEmp
+    ? consulta.where('id','>=', Date.now() - 3*86400000).orderBy('id','desc')
+    : consulta.orderBy('id','desc').limit(80);
+  consulta.get().then(function(snap){
     _historialPedidos = [];
     snap.forEach(function(d){ _historialPedidos.push(d.data()); });
     pintarHistorialPedidos();
@@ -18620,7 +18634,7 @@ function abrirHistorialPedidos() {
 function pintarHistorialPedidos() {
   var lista = document.getElementById('historialPedidosLista');
   if(!lista) return;
-  if(!_historialPedidos.length){ lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">Todavía no hay pedidos registrados.</div>'; return; }
+  if(!_historialPedidos.length){ lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">'+(_historialPedidosEmp ? 'No hay pedidos de los últimos 3 días.' : 'Todavía no hay pedidos registrados.')+'</div>'; return; }
   lista.innerHTML = _historialPedidos.map(function(r, i){
     var d = new Date(r.fecha);
     var fecha = d.toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
@@ -18635,7 +18649,7 @@ function pintarHistorialPedidos() {
         '<div><div style="font-family:Oswald,sans-serif;color:var(--gold);font-size:.9rem">'+r.proveedor+'</div>'+
         '<div style="font-size:.68rem;color:var(--gray)">'+fecha+' · por <b style="color:var(--light)">'+(r.responsable||'—')+'</b></div></div>'+
         '<div style="text-align:right;font-size:.7rem;color:var(--gray);white-space:nowrap">'+r.productos+' prod. · '+r.bultos+' bto. · '+r.unidades+' u.'+
-          (r.costoEstimado ? '<div style="color:var(--gold)">≈ '+fmt(r.costoEstimado)+'</div>' : '')+'</div>'+
+          (r.costoEstimado && !_historialPedidosEmp ? '<div style="color:var(--gold)">≈ '+fmt(r.costoEstimado)+'</div>' : '')+'</div>'+
       '</div>'+
       '<div id="histPedDet'+i+'" style="display:none;padding:6px 12px 10px">'+det+
         '<button type="button" onclick="verPDFHistorialPedido('+i+')" style="margin-top:8px;width:100%;background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;cursor:pointer">📄 Ver PDF</button>'+
@@ -23837,6 +23851,7 @@ function renderRecepPedidos() {
   var inv = getStockInv(), ventas4sem = getVentas4Semanas(), colchon = getSemanasColchonPedido();
   var borr = leerBorradoresPedido();
   el.innerHTML =
+    '<button type="button" onclick="abrirHistorialPedidos(true)" style="width:100%;margin:0 0 12px;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px;cursor:pointer">📋 Pedidos recientes (últimos 3 días) — para controlar lo que llega</button>'+
     '<div style="font-size:.78rem;color:var(--gray);margin-bottom:12px">Elegí el proveedor y armá el pedido. Al generar el PDF queda registrado.</div>'+
     '<div class="rm-prov-grid">'+
       provs.map(function(p){
