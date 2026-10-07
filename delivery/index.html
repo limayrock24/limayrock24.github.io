@@ -165,7 +165,6 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       Tocá <b>📲 Instalar app</b> y después <b>🔔 Activar avisos</b>, arriba.
     </div>
   </div>
-  <div id="repAvisoGPS" style="display:none;margin:12px 16px 0;border-radius:8px;padding:10px 14px;font-size:.76rem;line-height:1.45"></div>
   <div id="repartidorLista" style="flex:1;overflow-y:auto;padding:12px 16px"></div>
 </div>
 
@@ -182,7 +181,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "11"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "10"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -901,8 +900,6 @@ function soltarPedido(id) {
     delete p.repartidor;
     p.estadoDelivery = 'libre';
     p.liberadoEn = new Date().toISOString();
-    delete p.ubicacionRep;   // deja de figurar la ubicación del repartidor
-    detenerGPSRepartidor();
     if(p.estado === 'cargado') p.estado = 'pendiente';
     savePedidosWeb(pedidos);
     showToast('Pedido liberado — vuelve a estar disponible para los demás');
@@ -916,8 +913,6 @@ function marcarEntregado(id) {
   askConfirm('¿Confirmás que entregaste el pedido de '+p.nombre+'?').then(function(ok){
     if(!ok) return;
     p.estadoDelivery = 'entregado';
-    delete p.ubicacionRep;   // deja de figurar la ubicación del repartidor
-    detenerGPSRepartidor();
     p.entregadoEn = new Date().toISOString();
     p.estado = 'resuelto';
     savePedidosWeb(pedidos);
@@ -944,87 +939,9 @@ function chequearPedidosListosRepartidor(){
 }
 function actualizarContadorRepartidor() {
   chequearPedidosListosRepartidor();
-  try{ actualizarGPSRepartidor(); }catch(e){ console.error('GPS', e); }
   var ov = document.getElementById('repartidorOverlay');
   if(ov && ov.style.display === 'flex') renderPanelRepartidor();
 }
-
-// ── UBICACIÓN EN VIVO (por seguridad) ─────────────────────────────────────
-// Mientras el repartidor tiene un pedido tomado y sin entregar, este celular
-// manda su ubicación cada ~20 segundos al pedido (campo ubicacionRep), y el
-// local la ve en el mapa del admin. Al entregar o soltar el pedido se deja de
-// mandar y se borra del pedido. Es una página web: si se bloquea el celular o se cambia
-// de app, el teléfono deja de mandar; el admin lo marca como "sin señal".
-var _gpsWatch = null, _gpsTimer = null, _gpsUltPos = null, _gpsUltEnvio = 0, _gpsEstado = '';
-function _gpsPedidosActivos() {
-  if(!currentEmp) return [];
-  return getPedidosWeb().filter(function(p){
-    return p.repartidor === currentEmp.nombre && p.estadoDelivery !== 'entregado' && !p.anulado && p.estado !== 'resuelto';
-  });
-}
-function actualizarGPSRepartidor() {
-  var ov = document.getElementById('repartidorOverlay');
-  var abierto = ov && ov.style.display === 'flex';
-  var activos = abierto ? _gpsPedidosActivos() : [];
-  if(activos.length) iniciarGPSRepartidor(); else detenerGPSRepartidor();
-  pintarAvisoGPS(activos.length);
-}
-function iniciarGPSRepartidor() {
-  if(_gpsWatch !== null || _gpsEstado === 'nosoporta') return;
-  if(!navigator.geolocation){ _gpsEstado = 'nosoporta'; return; }
-  _gpsEstado = 'buscando';
-  _gpsWatch = navigator.geolocation.watchPosition(function(pos){
-    _gpsUltPos = pos;
-    var antes = _gpsEstado;
-    _gpsEstado = 'ok';
-    if(antes !== 'ok') pintarAvisoGPS(_gpsPedidosActivos().length);
-    if(Date.now() - _gpsUltEnvio >= 20000) enviarUbicacionRepartidor();
-  }, function(err){
-    _gpsEstado = (err && err.code === 1) ? 'denegado' : 'error';
-    if(err && err.code === 1 && _gpsWatch !== null){ navigator.geolocation.clearWatch(_gpsWatch); _gpsWatch = null; }
-    pintarAvisoGPS(_gpsPedidosActivos().length);
-  }, {enableHighAccuracy:true, maximumAge:15000, timeout:30000});
-  // Aunque esté quieto, se vuelve a mandar cada 20 s para que el local sepa
-  // que la página sigue abierta.
-  _gpsTimer = setInterval(enviarUbicacionRepartidor, 20000);
-}
-function detenerGPSRepartidor() {
-  if(_gpsWatch !== null && navigator.geolocation) navigator.geolocation.clearWatch(_gpsWatch);
-  if(_gpsTimer) clearInterval(_gpsTimer);
-  _gpsWatch = null; _gpsTimer = null;
-  if(_gpsEstado !== 'nosoporta') _gpsEstado = '';
-}
-function enviarUbicacionRepartidor() {
-  if(!_gpsUltPos || !window.__lrDB || !currentEmp) return;
-  var c = _gpsUltPos.coords;
-  var dato = {lat:c.latitude, lng:c.longitude, prec:Math.round(c.accuracy||0), ts:new Date().toISOString(), posTs:new Date(_gpsUltPos.timestamp).toISOString(), nombre:currentEmp.nombre};
-  _gpsUltEnvio = Date.now();
-  // update() de UN solo campo: nunca pisa el cobro ni otros cambios del pedido.
-  _gpsPedidosActivos().forEach(function(p){
-    window.__lrDB.collection('pedidosWeb').doc(String(p.id).replace(/\//g,'-')).update({ubicacionRep: dato})
-      .catch(function(e){ console.error('No se pudo mandar la ubicación', e); });
-  });
-}
-function pintarAvisoGPS(n) {
-  var el = document.getElementById('repAvisoGPS');
-  if(!el) return;
-  if(!n){ el.style.display = 'none'; return; }
-  var est = {
-    ok:        ['rgba(34,197,94,.10)','rgba(34,197,94,.45)','#22c55e','📍 Compartiendo tu ubicación con el local mientras llevás el pedido. <b>Dejá esta página abierta</b> hasta entregarlo.'],
-    buscando:  ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 Buscando tu ubicación… Si el celular te pregunta, tocá <b>Permitir</b>.'],
-    denegado:  ['rgba(204,0,0,.12)','rgba(204,0,0,.5)','#f87171','📍 <b>La ubicación está bloqueada.</b> El local la necesita por seguridad mientras repartís. Activala en los permisos del navegador para esta página y recargá.'],
-    error:     ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 No se pudo leer la ubicación. Revisá que el GPS del celular esté prendido.'],
-    nosoporta: ['rgba(204,0,0,.12)','rgba(204,0,0,.5)','#f87171','📍 Este celular no permite compartir la ubicación desde el navegador.']
-  }[_gpsEstado || 'buscando'];
-  el.style.display = 'block';
-  el.style.background = est[0];
-  el.style.border = '1px solid '+est[1];
-  el.style.color = est[2];
-  el.innerHTML = est[3];
-}
-document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState === 'visible' && _gpsWatch !== null) enviarUbicacionRepartidor();
-});
 
 // ── DISPONIBILIDAD ─────────────────────────────────────────────────────────
 function pintarEstadoDisponible(){
