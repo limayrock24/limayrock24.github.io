@@ -16750,11 +16750,14 @@ var _origAddToCart = addToCart;
 function addToCart(p) {
   var inv = getStockInv();
   var s   = inv[p.name];
-  // Sin bloqueo — solo aviso visual, nunca impide agregar
+  // Sin bloqueo — solo aviso visual, nunca impide agregar. El aviso se
+  // muestra al final (en rojo): antes salía primero y el "agregado" lo
+  // tapaba al instante, así que nunca se llegaba a ver.
+  var avisoStock = '';
   if(s && s.stock <= 0){
-    showToast('⚠ ' + p.name + ' figura SIN STOCK — verificá con el admin');
+    avisoStock = '⚠ ' + p.name + ' figura SIN STOCK (0) — se agregó igual, avisale al admin';
   } else if(s && s.stock <= s.minimo){
-    showToast('⚠ Quedan solo ' + s.stock + ' unidades de ' + p.name);
+    avisoStock = '⚠ Quedan solo ' + s.stock + ' unidades de ' + p.name;
   }
   var useNight = isNocturno() && p.pnoc;
   var precio   = useNight ? p.pnoc : p.pventa;
@@ -16777,7 +16780,8 @@ function addToCart(p) {
   }
   // Flash visual en favoritos
   buildFavs();
-  showToast('⚡ '+p.name+' agregado'+(destino===cart2?' (Carrito 2)':''));
+  if(avisoStock) showToast(avisoStock+(destino===cart2?' (Carrito 2)':''), s.stock <= 0);
+  else showToast('⚡ '+p.name+' agregado'+(destino===cart2?' (Carrito 2)':''));
 }
 
 
