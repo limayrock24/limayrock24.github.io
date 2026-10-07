@@ -8459,7 +8459,7 @@ function switchTab(tab) {
   }
   if(tab==='dashboard') renderDashboard();
   if(tab==='catalogo') initCatalogo();
-  if(tab==='logcat') renderLogCatalogo();
+  if(tab==='logcat'){ _movProdPeriodo = 'hoy'; _movProdTipo = 'todo'; _movProdDias = {}; renderLogCatalogo(); }
   if(tab==='proveedores') renderProveedores();
   if(tab==='codigos') renderCodigosPanel();
   if(tab==='delivery') renderDeliveryPanel();
@@ -18599,7 +18599,7 @@ function registrarPedidoEnHistorial(id) {
 
 var _historialPedidos = [];
 var _historialPedidosEmp = false;
-var _historialPedidosPeriodo = 'semana';
+var _historialPedidosPeriodo = 'hoy';
 function inicioPeriodoHistorialPedidos(per) {
   var d = new Date(); d.setHours(0,0,0,0);
   if(per === 'semana'){ var dia = (d.getDay()+6)%7; d.setDate(d.getDate()-dia); }   // desde el lunes
@@ -18608,12 +18608,13 @@ function inicioPeriodoHistorialPedidos(per) {
 }
 function cambiarPeriodoHistorialPedidos(per) {
   _historialPedidosPeriodo = per;
-  abrirHistorialPedidos(false);
+  abrirHistorialPedidos(false, true);
 }
 // modoEmpleado: desde la pestaña Pedidos de Recepción — solo los últimos 3
 // días y sin costos, para controlar la mercadería cuando llega.
-function abrirHistorialPedidos(modoEmpleado) {
+function abrirHistorialPedidos(modoEmpleado, mantenerPeriodo) {
   _historialPedidosEmp = !!modoEmpleado;
+  if(!mantenerPeriodo) _historialPedidosPeriodo = 'hoy';
   var ov = document.getElementById('historialPedidosOverlay');
   if(!ov){
     ov = document.createElement('div');
@@ -21301,7 +21302,7 @@ function confirmarDevolucionConsign() {
 // productos nuevos. Un renglón por cosa, agrupado por día; lo que se hizo
 // junto (una recepción, varios precios cambiados de una) va en un solo
 // renglón que se despliega.
-var _movProdPeriodo = 'semana';
+var _movProdPeriodo = 'hoy';
 var _movProdTipo = 'todo';
 var _movProdDias = {};
 var _movProdAbiertos = {};
