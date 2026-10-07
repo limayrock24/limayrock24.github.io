@@ -4016,8 +4016,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sp-proveedores" onclick="switchTab('proveedores')">🚚 Proveedores</button>
       <button class="ftbtn" id="sp-pedidos"     onclick="switchTab('pedidos')">🛒 Pedidos</button>
       <button class="ftbtn" id="sp-logcat"      onclick="switchTab('logcat')">📋 Movimientos</button>
-      <button class="ftbtn" id="sp-combos"      onclick="switchTab('combos')">🎁 Combos</button>
-      <button class="ftbtn" id="sp-imperdibles" onclick="switchTab('imperdibles')">⭐ Imperdibles</button>
+      <button class="ftbtn" id="sp-catweb"      onclick="abrirCatalogoWeb()">🌐 Catálogo web</button>
       <button class="ftbtn" id="sp-codigos"     onclick="switchTab('codigos')">📟 Códigos</button>
     </div>
 
@@ -4990,6 +4989,8 @@ body.night-on{background:#080005}
 
     <!-- COMBOS / PROMOS -->
     <div class="tab-pane" id="pane-combos">
+      <div class="catweb-bar"></div>
+      <div id="cwSecCombos">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">🎁 Combos y Promos</div>
         <button class="btn-save" style="padding:6px 14px" onclick="abrirComboModal(null)">+ Nuevo combo</button>
@@ -4999,6 +5000,8 @@ body.night-on{background:#080005}
       <div style="font-family:'Oswald',sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:6px 0 8px">🎁 Combos</div>
       <div id="comboCards"></div>
 
+      </div>
+      <div id="cwSecSueltos" style="display:none">
       <!-- PRODUCTOS SUELTOS (fiambrería, frutas/verduras, pan, etc.) — el cliente
            los pide por peso o por unidad en el catálogo web; esta lista y el
            precio se cargan acá y se sincronizan solos con la web. -->
@@ -5022,12 +5025,22 @@ body.night-on{background:#080005}
         <div style="font-size:.68rem;color:var(--gray);margin-top:6px">El costo es opcional — mismo criterio que el precio (cada 100g, por kilo o por unidad, según lo que elijas arriba). Sin costo cargado, el producto sigue funcionando igual, solo que no suma al margen estimado de un combo que lo incluya.</div>
       </div>
       <div id="itemsManualesCardsAdmin"></div>
+      </div>
+      <div id="cwSecAgrupar" style="display:none">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🗂 Agrupar y ordenar el catálogo web</div>
+        <div style="font-size:.72rem;color:var(--gray);margin-bottom:14px">Cómo se ven las categorías en la página de los clientes: cuáles van juntas, en qué orden y con qué icono.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+          <button class="btn-save" style="padding:16px;background:var(--card);border-color:#3498DB;color:#3498DB;font-size:.8rem" onclick="abrirGruposCatModal()">🗂 Agrupar categorías</button>
+          <button class="btn-save" style="padding:16px;background:var(--card);border-color:#9b59b6;color:#9b59b6;font-size:.8rem" onclick="abrirOrdenCatModal()">🔢 Orden e iconos</button>
+        </div>
+      </div>
     </div>
 
     <!-- IMPERDIBLES: lo que aparece arriba de todo en el catálogo web, en
          tarjeta grande. Productos sueltos marcados uno por uno, o agrupados
          (ej: Sky con sus 6 sabores) para que el cliente elija cuál se lleva. -->
     <div class="tab-pane" id="pane-imperdibles">
+      <div class="catweb-bar"></div>
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🔥 Destacar productos</div>
       <div style="font-size:.72rem;color:var(--gray);margin-bottom:12px">Tildá los productos que querés que aparezcan en "Imperdibles hoy" en el catálogo web, con una etiqueta opcional (ej: "Precio especial", "🆕 Novedad"). Se ven todos acá, sin tener que entrar producto por producto.</div>
       <input type="text" id="impProdSearch" placeholder="🔍 Buscar producto..." oninput="filtrarImpProductos(this.value)" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--white);font-size:.85rem;margin-bottom:10px">
@@ -5318,11 +5331,8 @@ body.night-on{background:#080005}
         <button id="btnMoverCat" onclick="abrirMoverCategoria()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--gold);color:var(--black);border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">📁 Mover a categoría (0)</button>
         <button id="btnBorrarSel" onclick="borrarSeleccionados()" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer;font-weight:700">🗑️ Eliminar (0)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
-        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirGruposCatModal()">🗂 Agrupar (catálogo web)</button>
-        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#9b59b6;color:#9b59b6" onclick="abrirOrdenCatModal()">🔢 Orden e iconos (catálogo web)</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
-        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">📈 Aumento masivo</button>
-        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#e67e22;color:#e67e22" onclick="switchTab('combos')">🎁 Crear Combo</button>
+        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">💲 Modificación de precios</button>
         <button class="btn-save" id="btnCartelitos" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
         <button class="btn-save" id="btnListaPrecios" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="mostrarListaPreciosPreview()" disabled>📋 Lista (0)</button>
       </div>
@@ -5427,7 +5437,7 @@ body.night-on{background:#080005}
     <div class="prod-modal-overlay" id="aumentoMasivoOverlay" onclick="if(event.target===this)cerrarAumentoMasivoModal()">
       <div class="prod-modal-box" style="max-width:440px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">📈 Aumento masivo de precios</span>
+          <span style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:#3498DB;text-transform:uppercase">💲 Modificación de precios</span>
           <button onclick="cerrarAumentoMasivoModal()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>
         </div>
         <div style="font-size:.7rem;color:var(--gray);margin-bottom:12px">Actualiza precio de venta y costo por igual, para todos los productos del grupo que elijas.</div>
@@ -8361,6 +8371,8 @@ function switchTab(tab) {
     var b = document.getElementById('sp-'+p);
     if(b) b.classList.toggle('active', p===tab);
   });
+  var bWeb = document.getElementById('sp-catweb');
+  if(bWeb) bWeb.classList.toggle('active', tab==='combos' || tab==='imperdibles');
 
   // El botón principal queda marcado mientras se esté en cualquiera de ellas
   var btnGrupo = document.getElementById('btnGrupoProductos');
@@ -8460,6 +8472,11 @@ function switchTab(tab) {
   }
   if(tab==='dashboard') renderDashboard();
   if(tab==='catalogo') initCatalogo();
+  if(tab==='combos' || tab==='imperdibles'){
+    if(tab==='imperdibles') _catWebSec = 'imperdibles';
+    else if(_catWebSec==='imperdibles') _catWebSec = 'combos';
+    pintarCatalogoWeb();
+  }
   if(tab==='logcat'){ _movProdPeriodo = 'hoy'; _movProdTipo = 'todo'; _movProdDias = {}; renderLogCatalogo(); }
   if(tab==='proveedores') renderProveedores();
   if(tab==='codigos') renderCodigosPanel();
@@ -21350,6 +21367,29 @@ function confirmarDevolucionConsign() {
 
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
+
+// ── PRODUCTOS → CATÁLOGO WEB ───────────────────────────────────────────────
+// Todo lo que es para la página de los clientes en una sola pestaña, con
+// sub-botones: combos y promos, productos sueltos, imperdibles y agrupar/ordenar.
+var _catWebSec = 'combos';
+function abrirCatalogoWeb(sec) {
+  if(sec) _catWebSec = sec;
+  switchTab(_catWebSec === 'imperdibles' ? 'imperdibles' : 'combos');
+}
+function pintarCatalogoWeb() {
+  var botones = [['combos','🎁 Combos y promos'],['sueltos','🥖 Productos sueltos'],['imperdibles','⭐ Imperdibles'],['agrupar','🗂 Agrupar y ordenar']];
+  var html = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+
+    botones.map(function(b){
+      var act = _catWebSec === b[0];
+      return '<button type="button" onclick="abrirCatalogoWeb(\''+b[0]+'\')" style="flex:1;min-width:140px;background:'+(act?'var(--gold)':'var(--card)')+';color:'+(act?'var(--black)':'var(--light)')+';border:1px solid '+(act?'var(--gold)':'var(--border)')+';border-radius:6px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer;white-space:nowrap">'+b[1]+'</button>';
+    }).join('')+'</div>';
+  document.querySelectorAll('.catweb-bar').forEach(function(el){ el.innerHTML = html; });
+  var secs = {combos:'cwSecCombos', sueltos:'cwSecSueltos', agrupar:'cwSecAgrupar'};
+  Object.keys(secs).forEach(function(k){
+    var el = document.getElementById(secs[k]);
+    if(el) el.style.display = (_catWebSec === k) ? '' : 'none';
+  });
+}
 
 // ── PRODUCTOS → MOVIMIENTOS ────────────────────────────────────────────────
 // Todo lo que le pasa a la mercadería y a los productos, en un solo lugar:
