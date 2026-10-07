@@ -3360,6 +3360,13 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .arm-ped-foto{display:none}
 select.sel-mes{cursor:pointer;text-align:center;text-align-last:center}
 select.sel-mes option{background:#1a1a1a;color:#eee}
+/* "Este mes" va en su propio botón; el desplegable queda como una flechita para elegir otros meses */
+.sel-mes-wrap{display:inline-flex;gap:4px;align-items:stretch;min-width:0}
+.sel-mes-wrap > .sel-mes-btn{flex:1 1 auto;min-width:0;white-space:nowrap}
+.sel-mes-wrap > select.sel-mes{flex:0 0 auto;min-width:0;width:auto!important}
+select.sel-mes.sel-mes-flecha{-webkit-appearance:none;appearance:none;width:38px!important;flex:0 0 38px!important;padding-left:0!important;padding-right:0!important;text-align:center;text-align-last:center}
+.sel-mes-apagado{background:transparent!important;border-color:var(--border)!important;color:var(--gray)!important;font-weight:400!important}
+.rent-period-btn.sel-mes-apagado{background:var(--surface)!important}
 #armarPedidoOverlay .arqueo-box{max-height:94vh;overflow-y:auto}
 @media (min-width: 900px){
   #armarPedidoOverlay{align-items:center}
@@ -14240,7 +14247,7 @@ function opcionesMesHtml(actual) {
   for(var i = 0; i < 12; i++){
     var d = new Date(h.getFullYear(), h.getMonth() - i, 1);
     var v = i === 0 ? 'mes' : 'mes:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-    var t = i === 0 ? 'Este mes ('+MESES_ES[d.getMonth()].toLowerCase()+')' : MESES_ES[d.getMonth()]+(d.getFullYear() !== h.getFullYear() ? ' '+d.getFullYear() : '');
+    var t = i === 0 ? 'Este mes' : MESES_ES[d.getMonth()]+(d.getFullYear() !== h.getFullYear() ? ' '+d.getFullYear() : '');
     html += '<option value="'+v+'"'+(v === actual ? ' selected' : '')+'>'+t+'</option>';
   }
   return html;
@@ -14265,6 +14272,80 @@ function llenarSelectsMes() {
 }
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', llenarSelectsMes);
 else llenarSelectsMes();
+
+// Selector de mes: al lado de cada desplegable de meses se agrega un botón
+// "Este mes" que se aplica con un toque, y el desplegable queda como una
+// flechita (▾) para elegir otro mes. Antes el desplegable ya mostraba "Este
+// mes" aunque el filtro estuviera en Hoy, y al elegirlo no pasaba nada porque
+// el valor no cambiaba. Se aplica solo a todos los selects .sel-mes, también
+// a los que se dibujan después.
+function _selMesActivo(s) {
+  if(s.classList.contains('active')) return true;
+  var bg = s.style.background || s.style.backgroundColor || '';
+  return /--gold|--red/.test(bg);
+}
+function _selMesSet(el, prop, val) { if(el[prop] !== val) el[prop] = val; }
+function _selMesToggle(el, cls, on) { if(el.classList.contains(cls) !== !!on) el.classList.toggle(cls, !!on); }
+function mejorarSelectMes(s) {
+  var btn = s.previousElementSibling;
+  if(!s.parentNode || !s.parentNode.classList.contains('sel-mes-wrap') || !btn || !btn.classList.contains('sel-mes-btn')){
+    var cs = getComputedStyle(s);
+    var wrap = document.createElement('span');
+    wrap.className = 'sel-mes-wrap';
+    wrap.style.flex = cs.flexGrow+' '+cs.flexShrink+' '+cs.flexBasis;
+    if(s.style.margin) wrap.style.margin = s.style.margin;
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.addEventListener('click', function(){
+      s.value = 'mes';
+      s.dispatchEvent(new Event('change', {bubbles:true}));
+      setTimeout(escanearSelectsMes, 0);
+    });
+    s.addEventListener('change', function(){ setTimeout(escanearSelectsMes, 0); });
+    s.parentNode.insertBefore(wrap, s);
+    wrap.appendChild(btn);
+    wrap.appendChild(s);
+  }
+  // Opción "▾" que se muestra cuando no hay un mes anterior elegido
+  var ph = s.querySelector('option[value=""]');
+  if(!ph){
+    ph = document.createElement('option');
+    ph.value = ''; ph.textContent = '▾'; ph.disabled = true; ph.hidden = true;
+    s.insertBefore(ph, s.firstChild);
+  }
+  if(s.value === 'mes' || s.value === '') { if(s.value !== '') s.value = ''; }
+  var esMesActual = s.value === '';
+  var act = _selMesActivo(s);
+  // Botón: copia el aspecto del desplegable
+  var base = s.className.replace(/\bsel-mes(-flecha|-apagado)?\b/g,'').replace(/\s+/g,' ').trim();
+  _selMesSet(btn, 'className', (base+' sel-mes-btn'+((act && esMesActual) ? '' : ' sel-mes-apagado')).replace(/\bactive\b/, (act && esMesActual) ? 'active' : '').trim());
+  var st = (s.getAttribute('style')||'').replace(/(^|;)\s*flex:[^;]*/g,'');
+  if(btn.getAttribute('style') !== st) btn.setAttribute('style', st);
+  var txt = 'Este mes';
+  _selMesSet(btn, 'textContent', txt);
+  _selMesSet(btn, 'title', 'Ver este mes ('+MESES_ES[new Date().getMonth()].toLowerCase()+')');
+  _selMesToggle(s, 'sel-mes-flecha', esMesActual);
+  _selMesToggle(s, 'sel-mes-apagado', !act || esMesActual);
+  _selMesSet(s, 'title', 'Elegir otro mes');
+}
+function escanearSelectsMes() {
+  _selMesPendiente = false;
+  document.querySelectorAll('select.sel-mes').forEach(function(s){
+    try{ mejorarSelectMes(s); }catch(e){}
+  });
+}
+var _selMesPendiente = false;
+(function(){
+  function programar(){ if(_selMesPendiente) return; _selMesPendiente = true; (window.requestAnimationFrame||setTimeout)(escanearSelectsMes); }
+  function iniciar(){
+    escanearSelectsMes();
+    new MutationObserver(programar).observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['class','style']});
+    // Cambiar el valor por código no dispara el observador: se repasa tras cada toque
+    document.addEventListener('click', function(){ setTimeout(programar, 0); }, true);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+  else iniciar();
+})();
 
 function getFechasRango(periodo) {
   var hoy = new Date();
