@@ -5333,8 +5333,8 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">💲 Modificación de precios</button>
-        <button class="btn-save" id="btnCartelitos" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
-        <button class="btn-save" id="btnListaPrecios" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="mostrarListaPreciosPreview()" disabled>📋 Lista (0)</button>
+        <button class="btn-save" id="btnCartelitos" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
+        <button class="btn-save" id="btnListaPrecios" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="mostrarListaPreciosPreview()" disabled>📋 Lista (0)</button>
       </div>
       <div class="cat-stats" id="catStats"></div>
       <div class="cat-table-wrap">
@@ -24548,14 +24548,17 @@ window._cartelitosSel = window._cartelitosSel || {}; // { nombreProducto: true }
 function actualizarBotonCartelitos() {
   var n = Object.keys(window._cartelitosSel).length;
   var btn = document.getElementById('btnCartelitos');
+  // Igual que Borrar y Mover: solo aparecen cuando hay productos tildados.
   if(btn){
     btn.textContent = '🏷️ Cartelitos ('+n+')';
     btn.disabled = n===0;
+    btn.style.display = n>0 ? 'inline-block' : 'none';
   }
   var btnLista = document.getElementById('btnListaPrecios');
   if(btnLista){
-    btnLista.textContent = '📋 Lista ('+n+')';
+    btnLista.textContent = '📋 Lista de precios ('+n+')';
     btnLista.disabled = n===0;
+    btnLista.style.display = n>0 ? 'inline-block' : 'none';
   }
   // Botón de borrado múltiple: aparece solo cuando hay algo tildado
   var btnDel = document.getElementById('btnBorrarSel');
@@ -27379,8 +27382,17 @@ function renderItemsManualesAdmin() {
     if(!porCat[cat]){ porCat[cat] = []; orden.push(cat); }
     porCat[cat].push(it);
   });
+  window._imCatAbiertas = window._imCatAbiertas || {};
   el.innerHTML = orden.map(function(cat){
-    return '<div style="font-size:.7rem;color:var(--gold);margin:8px 0 4px">'+cat+'</div>'+
+    var abierta = !!window._imCatAbiertas[cat];
+    var catEsc = cat.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    var conPrecio = porCat[cat].filter(function(it){ return it.precioKg; }).length;
+    return '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">'+
+      '<div onclick="window._imCatAbiertas[\''+catEsc+'\']=!window._imCatAbiertas[\''+catEsc+'\'];renderItemsManualesAdmin()" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;background:var(--card);cursor:pointer">'+
+        '<span style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;color:var(--gold)">'+(abierta?'▼':'▶')+' '+cat+'</span>'+
+        '<span style="font-size:.74rem;color:var(--gray)">'+porCat[cat].length+' producto'+(porCat[cat].length!==1?'s':'')+(conPrecio<porCat[cat].length?' · <span style="color:var(--red)">'+(porCat[cat].length-conPrecio)+' sin precio</span>':'')+'</span>'+
+      '</div>'+
+      (!abierta ? '' : '<div style="padding:8px 10px 4px">'+
       porCat[cat].map(function(it){
         return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:5px;flex-wrap:wrap;gap:6px">'+
           '<span style="font-size:.82rem;color:var(--white)">'+it.nombre+
@@ -27392,7 +27404,8 @@ function renderItemsManualesAdmin() {
             '<button onclick="eliminarItemManual('+it.id+')" style="background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:4px 9px;font-size:.68rem;cursor:pointer">✕</button>'+
           '</div>'+
         '</div>';
-      }).join('');
+      }).join('')+'</div>')+
+    '</div>';
   }).join('');
 }
 
