@@ -590,6 +590,11 @@ function restaurarEstadoNotificaciones(destino, quien, btnId){
     });
 }
 function activarNotifsRepartidor(){
+  // Abierto desde la app pero sin conexión con ella: pedir que la actualice.
+  if(/LimayRockDeliveryApp/.test(navigator.userAgent) && !esAppDelivery()){
+    alert('Esta versión de la app no puede activar los avisos.\n\nPedile al local el link para actualizar la app de Limay Rock Delivery.');
+    return;
+  }
   var btn = document.getElementById('btnNotifRepartidor');
   if(btn){ btn.textContent = '⏳ Activando...'; btn.disabled = true; }
   if(_lrEsIOS() && !_lrEstaInstalada()){

@@ -4,11 +4,16 @@
   "webDir": "www",
   "server": {
     "url": "https://limayrock24.github.io/delivery/",
-    "allowNavigation": ["limayrock24.github.io", "limayrock.com.ar", "*.limayrock.com.ar"],
+    "allowNavigation": [
+      "limayrock24.github.io",
+      "limayrock.com.ar",
+      "*.limayrock.com.ar"
+    ],
     "errorPath": "sin-conexion.html"
   },
   "android": {
     "useLegacyBridge": true,
-    "backgroundColor": "#0a0a0a"
+    "backgroundColor": "#0a0a0a",
+    "appendUserAgent": "LimayRockDeliveryApp"
   }
 }
