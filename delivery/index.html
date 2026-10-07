@@ -182,7 +182,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "12"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "13"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -592,7 +592,18 @@ function restaurarEstadoNotificaciones(destino, quien, btnId){
 function activarNotifsRepartidor(){
   // Abierto desde la app pero sin conexión con ella: pedir que la actualice.
   if(/LimayRockDeliveryApp/.test(navigator.userAgent) && !esAppDelivery()){
-    alert('Esta versión de la app no puede activar los avisos.\n\nPedile al local el link para actualizar la app de Limay Rock Delivery.');
+    var diag = [];
+    try{
+      diag.push('dir: '+location.origin);
+      diag.push('cap: '+(typeof window.Capacitor));
+      diag.push('ab: '+(typeof window.androidBridge));
+      if(window.Capacitor){
+        diag.push('plat: '+(Capacitor.getPlatform ? Capacitor.getPlatform() : '?'));
+        diag.push('nat: '+(Capacitor.isNativePlatform ? Capacitor.isNativePlatform() : '?'));
+        diag.push('reg: '+(typeof Capacitor.registerPlugin));
+      }
+    }catch(e){ diag.push('err: '+e.message); }
+    alert('Esta versión de la app no puede activar los avisos.\n\nPedile al local el link para actualizar la app de Limay Rock Delivery.\n\n['+diag.join(' · ')+']');
     return;
   }
   var btn = document.getElementById('btnNotifRepartidor');
