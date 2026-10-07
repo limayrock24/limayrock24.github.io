@@ -29047,8 +29047,19 @@ function renderDeliveryControl() {
 function renderConfigZonas(){
   var z = window.__lrZonaCfg || {};
   var tieneLocal = z.lat != null && z.lng != null;
+  // Plegado: solo el título y un resumen de los montos; se despliega al tocarlo.
+  var resumenZonas = '🏘️ Urbano '+fmt(z.costoUrbano != null ? z.costoUrbano : (window.__lrCostoEnvio||0))+
+    ' · 🚜 Chacra '+fmt(z.costoRural||0)+
+    ((z.radioLejosKm && z.costoLejos) ? ' · 🛣️ Más lejos '+fmt(z.costoLejos) : '');
+  var cabeceraZonas = '<div onclick="window._zonasAbierto=!window._zonasAbierto;renderDeliveryPanel()" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer">'+
+    '<span style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">'+(window._zonasAbierto?'▼':'▶')+' 📍 Zonas de envío</span>'+
+    '<span style="font-size:.74rem;color:var(--light)">'+resumenZonas+'</span>'+
+  '</div>';
+  if(!window._zonasAbierto){
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 16px">'+cabeceraZonas+'</div>';
+  }
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px">'+
-    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:4px">📍 Zonas de envío</div>'+
+    cabeceraZonas+'<div style="height:10px"></div>'+
     '<div style="font-size:.68rem;color:var(--gray);margin-bottom:12px">El costo se calcula solo según a qué distancia del local está el cliente.</div>'+
 
     // Tres escalones según la distancia al local: urbano, chacra y más lejos.
