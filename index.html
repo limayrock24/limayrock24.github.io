@@ -930,7 +930,8 @@
       // Si la persona está DENTRO de una pantalla a la que le acaban de sacar
       // el permiso, cerrarla en el momento — no alcanza con ocultar el botón,
       // porque ya estaba adentro.
-      if(!currentEmp.accesoRecepcion){
+      if(typeof aplicarPermisosRecep==='function') aplicarPermisosRecep();
+      if(!currentEmp.accesoRecepcion && !currentEmp.accesoPedidos){
         var ovR = document.getElementById('recepScreen');
         if(ovR && ovR.classList.contains('open')){
           ovR.classList.remove('open');
@@ -3365,6 +3366,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
   .arm-ped-fila.cargado{border:2px solid var(--green) !important;background:rgba(46,204,113,.09)}
   .arm-ped-fila .arm-ped-nombre{font-size:.92rem !important;min-height:2.5em;line-height:1.25}
   .arm-ped-fila input{width:100% !important;font-size:1.15rem !important;padding:9px 4px !important}
+  .arm-ped-fila input.arm-ped-uxb{width:48px !important;font-size:.72rem !important;padding:2px 3px !important}
   .arm-ped-fila label{flex:1}
   .arm-ped-fila .arm-ped-ctrl{flex-wrap:wrap;margin-top:auto !important;padding-top:6px}
   .arm-ped-fila .arm-ped-info{flex:1 0 100% !important;margin-bottom:4px}
@@ -4243,6 +4245,15 @@ body.night-on{background:#080005}
           <div class="recep-toggle-switch" id="emRecepToggle" onclick="toggleRecepAcceso()"></div>
         </div>
 
+        <!-- Acceso a Armar pedidos -->
+        <div class="recep-toggle">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--white)">🛒 Armar pedidos</div>
+            <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Arma pedidos a proveedores en PDF (sin ver costos). Entra por el botón de Recepción con su PIN</div>
+          </div>
+          <div class="recep-toggle-switch" id="emPedidosToggle" onclick="this.classList.toggle('on')"></div>
+        </div>
+
         <div id="emAvisoRepartidor" style="display:none;background:rgba(30,144,255,.08);border:1px solid rgba(30,144,255,.35);border-radius:6px;padding:11px 13px;margin-bottom:12px">
           <div style="font-family:'Oswald',sans-serif;font-size:.76rem;color:#1e90ff;letter-spacing:1px;margin-bottom:4px">🛵 USUARIO DE DELIVERY</div>
           <div style="font-size:.7rem;color:var(--gray);line-height:1.5">
@@ -4967,6 +4978,7 @@ body.night-on{background:#080005}
         <button class="rent-period-btn" id="pp-bajo" onclick="selFiltroPedido('bajo')">🟡 Stock bajo</button>
         <button class="rent-period-btn" id="pp-todos" onclick="selFiltroPedido('todos')">📋 Catálogo completo</button>
       </div>
+      <button type="button" onclick="abrirHistorialPedidos()" style="width:100%;margin:0 0 10px;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:9px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">📋 Historial de pedidos (tuyos y de los empleados)</button>
       <div id="pedidosGrid"></div>
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn pdf" onclick="exportarPedidosPDF()">📄 Lista de pedido</button>
@@ -6231,6 +6243,7 @@ body.night-on{background:#080005}
     <div class="recep-tab-btn active" id="rt-egresos" onclick="selRecepTab('egresos')">💸 Pagos</div>
     <div class="recep-tab-btn" id="rt-merc" onclick="selRecepTab('merc')">📥 Recepción</div>
     <div class="recep-tab-btn" id="rt-precios" onclick="selRecepTab('precios')">✏️ Precios</div>
+    <div class="recep-tab-btn" id="rt-pedidos" onclick="selRecepTab('pedidos')">🛒 Pedidos</div>
   </div>
   <div class="recep-body">
     <!-- Sub-pane: Recepción de mercadería -->
@@ -6257,6 +6270,10 @@ body.night-on{background:#080005}
           <tbody id="recepCatBody"></tbody>
         </table>
       </div>
+    </div>
+    <!-- Sub-pane: Pedidos a proveedores -->
+    <div class="recep-pane" id="recepPanePedidos">
+      <div id="recepPedidosContent"></div>
     </div>
     <!-- Sub-pane: Egresos -->
     <div class="recep-pane" id="recepPaneEgresos">
@@ -6373,7 +6390,7 @@ body.night-on{background:#080005}
   </div>
 </div>
 
-<div class="arqueo-modal" id="armarPedidoOverlay" style="z-index:730">
+<div class="arqueo-modal" id="armarPedidoOverlay" style="z-index:1500">
   <div class="arqueo-box" style="text-align:left;max-width:460px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <h3 id="armarPedidoTitulo">📝 Armar pedido</h3>
@@ -6381,6 +6398,7 @@ body.night-on{background:#080005}
     </div>
     <div class="sub">Cargá de cada producto cuántos <b>bultos</b> (cerrados) y/o cuántas <b>unidades</b> sueltas pedís. Los que dejes en blanco no salen en el PDF.</div>
     <div id="armarPedidoAviso" style="display:none;background:rgba(244,180,0,.1);border:1px solid rgba(244,180,0,.4);border-radius:6px;padding:8px 10px;margin:0 0 10px;font-size:.78rem;color:var(--light)"></div>
+    <div id="armarPedidoCosto" style="display:none;font-size:.78rem;color:var(--gold);margin:0 0 6px"></div>
     <div id="armarPedidoContador" style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--green);margin:-6px 0 4px"></div>
     <div class="arm-ped-filtros">
     <input type="text" id="armarPedidoBuscar" placeholder="Buscar producto..." oninput="filtrarArmarPedidoLista()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;margin:8px 0">
@@ -7421,6 +7439,7 @@ function refrescarPermisosCurrentEmp(){
   currentEmp.pin             = fresco.pin;
   currentEmp.funcion         = fresco.funcion;
   currentEmp.accesoRecepcion = !!fresco.accesoRecepcion;
+  currentEmp.accesoPedidos   = !!fresco.accesoPedidos;
   currentEmp.accesoStock     = !!fresco.accesoStock;
   currentEmp.accesoDelivery  = !!fresco.accesoDelivery;
   currentEmp.topeConsumo     = fresco.topeConsumo;
@@ -18261,7 +18280,11 @@ function calcularDatosPedido(nombre, inv, ventas4sem, diaPedido, diaEntrega, sem
 var _armarPedidoProv = null;
 var _armarPedidoCantidades = {};
 
-function abrirArmarPedidoModal(nombreProv, productosOverride) {
+// Modo empleado: abierto desde la pestaña Pedidos de Recepción. No muestra
+// costos (el costo estimado es solo para el admin, y nunca sale en el PDF).
+var _armarPedidoModoEmp = false;
+var _armarPedidoRegId = null;   // id del pedido en el historial (para corregirlo)
+function abrirArmarPedidoModal(nombreProv, productosOverride, modoEmpleado) {
   var prov;
   if(productosOverride) {
     // Grupo "Sin proveedor asignado": no es un proveedor real de la lista,
@@ -18279,6 +18302,8 @@ function abrirArmarPedidoModal(nombreProv, productosOverride) {
   // 15 min), se recupera tal cual para seguirlo o corregirlo.
   var borrador = leerBorradoresPedido()[nombreProv];
   if(borrador && borrador.c) _armarPedidoCantidades = JSON.parse(JSON.stringify(borrador.c));
+  _armarPedidoModoEmp = (modoEmpleado === undefined && borrador) ? !!borrador.emp : !!modoEmpleado;
+  _armarPedidoRegId = (borrador && borrador.gen && borrador.regId) ? borrador.regId : null;
   pintarAvisoBorradorPedido(borrador);
 
   document.getElementById('armarPedidoTitulo').textContent = '📝 Armar pedido — '+nombreProv;
@@ -18372,6 +18397,7 @@ function renderArmarPedidoLista(term) {
         '<div class="arm-ped-info" style="flex:1;min-width:0">'+
           '<div style="font-size:.64rem;color:var(--gray);margin-bottom:3px">Tenés: '+stock+'</div>'+
           sugHtml+
+          (!_armarPedidoModoEmp ? costoHtmlPedido(pn, idSafe, pnEsc) : '')+
         '</div>'+
         '<label style="'+estiloEtiq+';color:var(--gold)">Bultos'+
           '<input type="number" inputmode="numeric" min="0" placeholder="—" value="'+(cant.b||'')+'" id="armPedB_'+idSafe+'" oninput="actualizarCantidadPedido(\''+pnEsc+'\',\'b\',this.value)" style="'+estiloInput+';border-color:rgba(244,180,0,.45)">'+
@@ -18382,6 +18408,46 @@ function renderArmarPedidoLista(term) {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// Solo admin: costo por unidad y cuántas unidades trae el bulto (se guarda en
+// el producto, para poder estimar lo que sale el pedido también por bultos).
+function costoUnitPedido(nombre) {
+  var p = PRODUCTS.find(function(x){ return x.name===nombre; });
+  var inv = getStockInv();
+  return (p && p.costo) || (inv[nombre] && inv[nombre].costo) || 0;
+}
+function uxbPedido(nombre) {
+  var p = PRODUCTS.find(function(x){ return x.name===nombre; });
+  return (p && parseFloat(p.uxb)) || 0;
+}
+function costoHtmlPedido(nombre, idSafe, nEsc) {
+  var c = costoUnitPedido(nombre), uxb = uxbPedido(nombre);
+  return '<div style="font-size:.62rem;color:var(--gold);margin-top:4px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">'+
+    '💲 '+(c ? fmt(c)+' c/u' : 'sin costo')+
+    '<span style="color:var(--gray)">· bulto x</span>'+
+    '<input class="arm-ped-uxb" type="number" inputmode="numeric" min="0" placeholder="?" value="'+(uxb||'')+'" title="Cuántas unidades trae el bulto (solo para calcular el costo)" onchange="guardarUxbPedido(\''+nEsc+'\',this.value)" '+
+      'style="width:44px;background:var(--dark);border:1px solid var(--border);border-radius:3px;padding:2px 3px;color:var(--white);font-size:.66rem;text-align:center">'+
+  '</div>';
+}
+function guardarUxbPedido(nombre, val) {
+  var p = PRODUCTS.find(function(x){ return x.name===nombre; });
+  if(!p) return;
+  var n = parseFloat(val) || 0;
+  if(n > 0) p.uxb = n; else delete p.uxb;
+  // (lista, nombresABorrar, nombresTocados): se guarda SOLO este producto, sin borrar nada.
+  if(window.__lrSaveProductos) window.__lrSaveProductos(PRODUCTS, [], [nombre]);
+  pintarContadorPedido();
+}
+function costoEstimadoPedido(cantidades) {
+  var total = 0, bultosSinDato = 0;
+  Object.keys(cantidades).forEach(function(n){
+    var c = costoUnitPedido(n), uxb = uxbPedido(n);
+    var b = parseFloat(cantidades[n].b)||0, u = parseFloat(cantidades[n].u)||0;
+    total += c * u;
+    if(b){ if(uxb) total += c * uxb * b; else bultosSinDato += b; }
+  });
+  return { total: total, bultosSinDato: bultosSinDato };
 }
 
 function idFilaPedido(nombre) { return nombre.replace(/'/g,"\\'").replace(/[^a-zA-Z0-9]/g,'_'); }
@@ -18413,12 +18479,23 @@ function pintarContadorPedido() {
   var b = 0, u = 0;
   nombres.forEach(function(n){ b += parseFloat(_armarPedidoCantidades[n].b)||0; u += parseFloat(_armarPedidoCantidades[n].u)||0; });
   el.textContent = nombres.length ? ('✓ '+nombres.length+' producto'+(nombres.length!==1?'s':'')+' cargado'+(nombres.length!==1?'s':'')+' · '+b+' bulto'+(b!==1?'s':'')+' · '+u+' unid.') : '';
+  // Costo estimado: solo lo ve el admin (no sale en el PDF ni lo ven los empleados)
+  var ec = document.getElementById('armarPedidoCosto');
+  if(ec){
+    if(_armarPedidoModoEmp || !nombres.length){ ec.style.display = 'none'; }
+    else {
+      var est = costoEstimadoPedido(_armarPedidoCantidades);
+      ec.innerHTML = '💲 Costo estimado: <b style="color:var(--white)">'+fmt(est.total)+'</b>'+
+        (est.bultosSinDato ? ' <span style="color:var(--gray)">+ '+est.bultosSinDato+' bulto'+(est.bultosSinDato!==1?'s':'')+' sin calcular (poné cuántas unidades trae el bulto)</span>' : '')+
+        ' <span style="color:var(--gray);font-size:.66rem">· solo lo ves vos</span>';
+      ec.style.display = 'block';
+    }
+  }
 }
 
-function generarPDFPedido() {
-  var nombres = Object.keys(_armarPedidoCantidades);
-  if(!nombres.length){ showToast('Cargá al menos una cantidad',true); return; }
-
+// Arma el contenido del PDF de un pedido (también para reabrirlo desde el historial).
+function htmlPedidoPDF(provNombre, cantidades) {
+  var nombres = Object.keys(cantidades);
   // Agrupado por categoría y en orden alfabético, para que el proveedor lo
   // cargue en orden y sin saltearse nada. La cantidad va a la IZQUIERDA y
   // separada en bultos / unidades, así no se confunde una cosa con la otra.
@@ -18427,9 +18504,9 @@ function generarPDFPedido() {
   nombres.forEach(function(n){
     var p = PRODUCTS.find(function(pr){ return pr.name===n; });
     var cat = (p && p.cat) || 'Otros';
-    (porCat[cat] = porCat[cat] || []).push({ nombre:n, codigo:(p && p.codigo) || '', c:_armarPedidoCantidades[n] });
-    totBultos += parseFloat(_armarPedidoCantidades[n].b)||0;
-    totUnid   += parseFloat(_armarPedidoCantidades[n].u)||0;
+    (porCat[cat] = porCat[cat] || []).push({ nombre:n, codigo:(p && p.codigo) || '', c:cantidades[n] });
+    totBultos += parseFloat(cantidades[n].b)||0;
+    totUnid   += parseFloat(cantidades[n].u)||0;
   });
   var hayCodigos = nombres.some(function(n){ var p = PRODUCTS.find(function(pr){ return pr.name===n; }); return p && p.codigo; });
 
@@ -18460,24 +18537,119 @@ function generarPDFPedido() {
       '</tr></thead><tbody>'+filas+'</tbody></table>';
   }).join('');
 
-  var contenido =
-    '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #ddd;box-shadow:0 2px 8px rgba(0,0,0,.08);border-radius:6px;padding:20px 18px">'+
-      '<div class="kpis">'+
-        '<div class="kpi"><div class="l">Proveedor</div><div class="v">'+_armarPedidoProv.nombre+'</div></div>'+
-        '<div class="kpi"><div class="l">Productos</div><div class="v">'+nombres.length+'</div></div>'+
-        '<div class="kpi"><div class="l">Bultos</div><div class="v">'+totBultos+'</div></div>'+
-        '<div class="kpi"><div class="l">Unidades sueltas</div><div class="v">'+totUnid+'</div></div>'+
-      '</div>'+
-      '<p data-destacado="1" style="color:#111;font-size:14px;font-weight:bold;font-family:Arial,sans-serif;margin:0 0 8px">'+
+  return '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #ddd;box-shadow:0 2px 8px rgba(0,0,0,.08);border-radius:6px;padding:20px 18px">'+
+      // 1) Proveedor, a todo el ancho
+      '<div class="kpis"><div class="kpi" style="flex:1"><div class="l">Proveedor</div><div class="v" style="font-size:20px">'+provNombre+'</div></div></div>'+
+      // 2) Datos del local
+      '<p data-destacado="1" style="color:#111;font-size:14px;font-weight:bold;font-family:Arial,sans-serif;margin:0 0 10px;text-align:center">'+
         [DATOS_LOCAL_PEDIDO.nombre, DATOS_LOCAL_PEDIDO.direccion, DATOS_LOCAL_PEDIDO.cuit ? 'CUIT: '+DATOS_LOCAL_PEDIDO.cuit : ''].filter(Boolean).join('  ·  ')+'</p>'+
+      // 3) Totales
+      '<div class="kpis">'+
+        '<div class="kpi" style="flex:1"><div class="l">Productos</div><div class="v">'+nombres.length+'</div></div>'+
+        '<div class="kpi" style="flex:1"><div class="l">Bultos</div><div class="v">'+totBultos+'</div></div>'+
+        '<div class="kpi" style="flex:1"><div class="l">Unidades sueltas</div><div class="v">'+totUnid+'</div></div>'+
+      '</div>'+
       secciones+
     '</div>';
+}
 
-  abrirVentanaPDF('Pedido — '+_armarPedidoProv.nombre, contenido);
+function generarPDFPedido() {
+  var nombres = Object.keys(_armarPedidoCantidades);
+  if(!nombres.length){ showToast('Cargá al menos una cantidad',true); return; }
+
+  abrirVentanaPDF('Pedido — '+_armarPedidoProv.nombre, htmlPedidoPDF(_armarPedidoProv.nombre, _armarPedidoCantidades));
   document.getElementById('armarPedidoOverlay').classList.remove('open');
+
+  // Registro en el historial (si se corrige dentro de los 15 min, se
+  // actualiza el mismo pedido en vez de crear otro).
+  if(!_armarPedidoRegId) _armarPedidoRegId = Date.now();
+  registrarPedidoEnHistorial(_armarPedidoRegId);
+
   // Queda guardado 15 minutos por si hay que corregirlo y volver a generarlo.
   guardarBorradorPedido(true);
   pintarPildoraPedido();
+}
+
+// ── HISTORIAL DE PEDIDOS A PROVEEDORES ─────────────────────────────────────
+function registrarPedidoEnHistorial(id) {
+  try{
+    var cant = _armarPedidoCantidades, nombres = Object.keys(cant);
+    var b = 0, u = 0;
+    nombres.forEach(function(n){ b += parseFloat(cant[n].b)||0; u += parseFloat(cant[n].u)||0; });
+    var quien = _armarPedidoModoEmp ? ((_recepEmp && _recepEmp.nombre) || (currentEmp && currentEmp.nombre) || 'Empleado') : 'Admin';
+    var reg = {
+      id: id, fecha: new Date(id).toISOString(), actualizado: new Date().toISOString(),
+      proveedor: _armarPedidoProv.nombre, responsable: quien,
+      items: nombres.map(function(n){ return { nombre:n, b: parseFloat(cant[n].b)||0, u: parseFloat(cant[n].u)||0 }; }),
+      productos: nombres.length, bultos: b, unidades: u,
+      costoEstimado: Math.round(costoEstimadoPedido(cant).total)
+    };
+    if(window.__lrDB) window.__lrDB.collection('pedidosProveedor').doc(String(id)).set(reg).catch(function(e){
+      console.error('No se pudo guardar el pedido en el historial', e);
+    });
+  }catch(e){ console.error('Historial de pedidos', e); }
+}
+
+var _historialPedidos = [];
+function abrirHistorialPedidos() {
+  var ov = document.getElementById('historialPedidosOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'historialPedidosOverlay';
+    ov.className = 'arqueo-modal';
+    ov.style.zIndex = '1500';
+    ov.innerHTML = '<div class="arqueo-box" style="text-align:left;max-width:640px;max-height:94vh;overflow-y:auto">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>📋 Historial de pedidos</h3>'+
+      '<button type="button" onclick="document.getElementById(\'historialPedidosOverlay\').classList.remove(\'open\')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:6px 12px;cursor:pointer">✕ Cerrar</button></div>'+
+      '<div class="sub">Los pedidos que se generaron en PDF, tuyos y de los empleados.</div>'+
+      '<div id="historialPedidosLista"><div style="padding:16px;color:var(--gray);font-size:.8rem">Cargando…</div></div>'+
+    '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.classList.add('open');
+  var lista = document.getElementById('historialPedidosLista');
+  lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">Cargando…</div>';
+  window.__lrDB.collection('pedidosProveedor').orderBy('id','desc').limit(80).get().then(function(snap){
+    _historialPedidos = [];
+    snap.forEach(function(d){ _historialPedidos.push(d.data()); });
+    pintarHistorialPedidos();
+  }).catch(function(e){
+    lista.innerHTML = '<div style="padding:16px;color:var(--red);font-size:.8rem">No se pudo cargar el historial: '+(e && e.message ? e.message : 'sin conexión')+'</div>';
+  });
+}
+function pintarHistorialPedidos() {
+  var lista = document.getElementById('historialPedidosLista');
+  if(!lista) return;
+  if(!_historialPedidos.length){ lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">Todavía no hay pedidos registrados.</div>'; return; }
+  lista.innerHTML = _historialPedidos.map(function(r, i){
+    var d = new Date(r.fecha);
+    var fecha = d.toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    var det = (r.items||[]).map(function(it){
+      return '<div style="display:flex;gap:10px;padding:4px 0;border-top:1px solid rgba(255,255,255,.05);font-size:.76rem">'+
+        '<span style="width:58px;color:var(--gold);font-family:Oswald,sans-serif">'+(it.b?it.b+' bto.':'')+'</span>'+
+        '<span style="width:52px;font-family:Oswald,sans-serif">'+(it.u?it.u+' u.':'')+'</span>'+
+        '<span style="flex:1;color:var(--light)">'+it.nombre+'</span></div>';
+    }).join('');
+    return '<div style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden">'+
+      '<div onclick="var x=document.getElementById(\'histPedDet'+i+'\');x.style.display=x.style.display===\'none\'?\'block\':\'none\'" style="padding:10px 12px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center;background:var(--card)">'+
+        '<div><div style="font-family:Oswald,sans-serif;color:var(--gold);font-size:.9rem">'+r.proveedor+'</div>'+
+        '<div style="font-size:.68rem;color:var(--gray)">'+fecha+' · por <b style="color:var(--light)">'+(r.responsable||'—')+'</b></div></div>'+
+        '<div style="text-align:right;font-size:.7rem;color:var(--gray);white-space:nowrap">'+r.productos+' prod. · '+r.bultos+' bto. · '+r.unidades+' u.'+
+          (r.costoEstimado ? '<div style="color:var(--gold)">≈ '+fmt(r.costoEstimado)+'</div>' : '')+'</div>'+
+      '</div>'+
+      '<div id="histPedDet'+i+'" style="display:none;padding:6px 12px 10px">'+det+
+        '<button type="button" onclick="verPDFHistorialPedido('+i+')" style="margin-top:8px;width:100%;background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;cursor:pointer">📄 Ver PDF</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function verPDFHistorialPedido(i) {
+  var r = _historialPedidos[i];
+  if(!r) return;
+  var cant = {};
+  (r.items||[]).forEach(function(it){ var c = {}; if(it.b) c.b = String(it.b); if(it.u) c.u = String(it.u); cant[it.nombre] = c; });
+  document.getElementById('historialPedidosOverlay').classList.remove('open');
+  abrirVentanaPDF('Pedido — '+r.proveedor, htmlPedidoPDF(r.proveedor, cant));
 }
 
 // ── PEDIDO GUARDADO (minimizar / corregir) ──────────────────────────────────
@@ -18509,7 +18681,8 @@ function guardarBorradorPedido(recienGenerado) {
   var nombre = _armarPedidoProv.nombre;
   if(!Object.keys(_armarPedidoCantidades).length){ delete b[nombre]; escribirBorradoresPedido(b); return; }
   var previo = b[nombre] || {};
-  b[nombre] = { c: JSON.parse(JSON.stringify(_armarPedidoCantidades)), ts: Date.now(), gen: recienGenerado ? Date.now() : (previo.gen || null) };
+  b[nombre] = { c: JSON.parse(JSON.stringify(_armarPedidoCantidades)), ts: Date.now(), gen: recienGenerado ? Date.now() : (previo.gen || null),
+    emp: _armarPedidoModoEmp, regId: _armarPedidoRegId || null };
   escribirBorradoresPedido(b);
 }
 function descartarBorradorPedido(nombre) {
@@ -18537,6 +18710,7 @@ function empezarPedidoDeCero() {
   if(!confirm('¿Borrar todo lo cargado en este pedido y empezar de cero?')) return;
   descartarBorradorPedido(_armarPedidoProv.nombre);
   _armarPedidoCantidades = {};
+  _armarPedidoRegId = null;
   pintarAvisoBorradorPedido(null);
   filtrarArmarPedidoLista();
   pintarContadorPedido();
@@ -18550,7 +18724,7 @@ function minimizarArmarPedido() {
 }
 function retomarPedido(nombre) {
   if(nombre === 'Sin proveedor asignado') abrirArmarPedidoSinProveedor();
-  else abrirArmarPedidoModal(nombre);
+  else abrirArmarPedidoModal(nombre);   // el modo (admin/empleado) sale del borrador
 }
 function descartarPedidoDesdePildora(nombre) {
   if(!confirm('¿Descartar el pedido de '+nombre+'? Se borra todo lo cargado.')) return;
@@ -18563,7 +18737,7 @@ function pintarPildoraPedido() {
   if(!cont){
     cont = document.createElement('div');
     cont.id = 'lrPildoraPedido';
-    cont.style.cssText = 'position:fixed;right:12px;bottom:72px;z-index:720;display:none;flex-direction:column;gap:6px;align-items:flex-end';
+    cont.style.cssText = 'position:fixed;right:12px;bottom:72px;z-index:1400;display:none;flex-direction:column;gap:6px;align-items:flex-end';
     document.body.appendChild(cont);
   }
   var abierto = document.getElementById('armarPedidoOverlay') && document.getElementById('armarPedidoOverlay').classList.contains('open');
@@ -23432,6 +23606,8 @@ function abrirEmpModal(idx) {
     if(tit) tit.textContent = 'Editar — '+emp.nombre;
     if(del) del.style.display='block';
     if(recepSw) recepSw.classList.toggle('on', !!emp.accesoRecepcion);
+    var pedSw = document.getElementById('emPedidosToggle');
+    if(pedSw) pedSw.classList.toggle('on', !!emp.accesoPedidos);
     if(stockSw) stockSw.classList.toggle('on', !!emp.accesoStock);
     if(delivSw) delivSw.classList.toggle('on', !!emp.accesoDelivery);
     if(consumoDelivSw) consumoDelivSw.classList.toggle('on', !!emp.permiteConsumo);
@@ -23445,6 +23621,8 @@ function abrirEmpModal(idx) {
     if(tit) tit.textContent = '+ Nuevo empleado';
     if(del) del.style.display='none';
     if(recepSw) recepSw.classList.remove('on');
+    var pedSw0 = document.getElementById('emPedidosToggle');
+    if(pedSw0) pedSw0.classList.remove('on');
     if(stockSw) stockSw.classList.remove('on');
     if(delivSw) delivSw.classList.remove('on');
     if(consumoDelivSw) consumoDelivSw.classList.remove('on');
@@ -23481,9 +23659,11 @@ function selEmpRol(rol) {
     if(swDeliv) swDeliv.classList.add('on');
     if(swRecep) swRecep.classList.remove('on');
     if(swStock) swStock.classList.remove('on');
+    var swPed = document.getElementById('emPedidosToggle');
+    if(swPed) swPed.classList.remove('on');
   }
   // Ocultar las filas de permisos que no corresponden a un repartidor
-  [['emRecepToggle', esRep], ['emStockToggle', esRep]].forEach(function(par){
+  [['emRecepToggle', esRep], ['emStockToggle', esRep], ['emPedidosToggle', esRep]].forEach(function(par){
     var sw = document.getElementById(par[0]);
     var fila = sw ? sw.closest('.recep-toggle') : null;
     if(fila) fila.style.display = par[1] ? 'none' : '';
@@ -23530,6 +23710,7 @@ function guardarEmpModal() {
   if(pinDup>-1){ showToast('Ese PIN ya lo usa '+emps[pinDup].nombre,true); return; }
 
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
+  var pedidosOn = !!(document.getElementById('emPedidosToggle') && document.getElementById('emPedidosToggle').classList.contains('on'));
   var stockOn = document.getElementById('emStockToggle').classList.contains('on');
   var deliveryOn = document.getElementById('emDeliveryToggle').classList.contains('on');
   var consumoDelivOn = document.getElementById('emConsumoToggle') ? document.getElementById('emConsumoToggle').classList.contains('on') : false;
@@ -23539,9 +23720,9 @@ function guardarEmpModal() {
   // El rol Repartidor define sus permisos solo, sin depender de los switches
   // (que están ocultos para ese rol). "Permitir consumos" solo aplica (y solo
   // se guarda en true) cuando el rol es Delivery.
-  if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; deliveryOn = true; }
+  if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; deliveryOn = true; pedidosOn = false; }
   else { consumoDelivOn = false; }
-  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
+  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoPedidos: pedidosOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
     permiteConsumo: consumoDelivOn, topeConsumo: topeConsumo||null, margenAviso: margenAviso||null};
   if(idx>=0 && EMPLEADOS[idx]){
     EMPLEADOS[idx] = empData;
@@ -23622,6 +23803,54 @@ function closeRecepScreen() {
   _rmProvActual = null;
   _recepMinimizada = false;
   pintarPildoraRecep();
+}
+
+// ── RECEPCIÓN: permisos por pestaña y pestaña Pedidos ──────────────────────
+// Recepción (Pagos, Recepción, Precios) y Armar pedidos son dos permisos
+// distintos; cada empleado ve solo las pestañas que el admin le habilitó.
+function recepPuedeRecepcion() {
+  var e = _recepEmp || currentEmp;
+  return !!(e && (e.rol === 'admin' || e.accesoRecepcion));
+}
+function recepPuedePedidos() {
+  var e = _recepEmp || currentEmp;
+  return !!(e && (e.rol === 'admin' || e.accesoPedidos));
+}
+function aplicarPermisosRecep() {
+  if(_recepEmp && currentEmp && _recepEmp.nombre === currentEmp.nombre) _recepEmp = currentEmp;
+  var rec = recepPuedeRecepcion(), ped = recepPuedePedidos();
+  ['egresos','merc','precios'].forEach(function(t){ var b = document.getElementById('rt-'+t); if(b) b.style.display = rec ? '' : 'none'; });
+  var bp = document.getElementById('rt-pedidos'); if(bp) bp.style.display = ped ? '' : 'none';
+  var activa = document.querySelector('.recep-tab-btn.active');
+  if(activa && activa.style.display === 'none' && document.getElementById('recepScreen').classList.contains('open')){
+    selRecepTab(rec ? 'egresos' : 'pedidos');
+  }
+}
+function renderRecepPedidos() {
+  var el = document.getElementById('recepPedidosContent');
+  if(!el) return;
+  var provs = getProveedores().slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre,'es'); });
+  if(!provs.length){
+    el.innerHTML = '<div style="text-align:center;padding:30px 16px;color:var(--gray);font-size:.85rem">No hay proveedores cargados todavía.</div>';
+    return;
+  }
+  var inv = getStockInv(), ventas4sem = getVentas4Semanas(), colchon = getSemanasColchonPedido();
+  var borr = leerBorradoresPedido();
+  el.innerHTML =
+    '<div style="font-size:.78rem;color:var(--gray);margin-bottom:12px">Elegí el proveedor y armá el pedido. Al generar el PDF queda registrado.</div>'+
+    '<div class="rm-prov-grid">'+
+      provs.map(function(p){
+        var reales = (p.productos||[]).filter(function(pn){ return existeEnCatalogo(pn); });
+        var faltan = reales.filter(function(pn){ return calcularDatosPedido(pn, inv, ventas4sem, p.diaPedido, p.diaEntrega, colchon).sugerido > 0; }).length;
+        var b = borr[p.nombre];
+        var nEsc = p.nombre.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return '<div class="rm-prov-btn" onclick="abrirArmarPedidoModal(\''+nEsc+'\', null, true)">🛒 '+p.nombre+
+          '<div class="sub">'+reales.length+' productos'+(faltan?' · <span style="color:var(--gold)">'+faltan+' para reponer</span>':'')+'</div>'+
+          ((p.diaPedido && p.diaEntrega) ? '<div class="sub">📅 Pide '+p.diaPedido+' → llega '+p.diaEntrega+'</div>' : '')+
+          (b ? '<div class="sub" style="color:var(--gold)">'+(b.gen?'📄 generado — se puede corregir':'📝 a medias: '+Object.keys(b.c).length+' cargados')+'</div>' : '')+
+        '</div>';
+      }).join('')+
+    '</div>';
 }
 
 // ── RECEPCIÓN: minimizar y guardar lo cargado ──────────────────────────────
@@ -23727,8 +23956,8 @@ function descartarBorradorRecep() {
 }
 
 function selRecepTab(tab) {
-  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos'};
-  ['merc','precios','egresos'].forEach(function(t){
+  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos', pedidos:'Pedidos'};
+  ['merc','precios','egresos','pedidos'].forEach(function(t){
     var btn = document.getElementById('rt-'+t);
     var pane= document.getElementById('recepPane'+paneMap[t]);
     if(btn) btn.classList.toggle('active', t===tab);
@@ -23739,6 +23968,7 @@ function selRecepTab(tab) {
     else initRecepMerc();
   }
   if(tab==='precios') initRecepCatalogo();
+  if(tab==='pedidos') renderRecepPedidos();
   if(tab==='egresos') initRecepEgresos();
 }
 
@@ -25949,7 +26179,7 @@ function guardarCargaStock() {
 
 function updateRecepBtn() {
   var btn = document.getElementById('btnGoRecepcion');
-  if(btn) btn.style.display = (currentEmp && currentEmp.accesoRecepcion) ? 'inline-block' : 'none';
+  if(btn) btn.style.display = (currentEmp && (currentEmp.accesoRecepcion || currentEmp.accesoPedidos)) ? 'inline-block' : 'none';
   var btnStock = document.getElementById('btnGoCargaStock');
   if(btnStock) btnStock.style.display = (currentEmp && currentEmp.accesoStock) ? 'inline-block' : 'none';
   var btnDeliv = document.getElementById('btnGoDelivery');
@@ -26401,7 +26631,7 @@ function cargarPedidoAlCarrito(id) {
 }
 
 function abrirRecepDesdeApp() {
-  if(!currentEmp || !currentEmp.accesoRecepcion) return;
+  if(!currentEmp || !(currentEmp.accesoRecepcion || currentEmp.accesoPedidos)) return;
   pedirPinRecepcion();
 }
 
@@ -26425,7 +26655,7 @@ function recepPinPress(d) {
     setTimeout(function(){
       // Se revalida el permiso acá también: si se lo sacaron mientras tenía la
       // pantalla abierta, el PIN correcto no alcanza para entrar.
-      if(!currentEmp.accesoRecepcion && currentEmp.rol !== 'admin'){
+      if(!currentEmp.accesoRecepcion && !currentEmp.accesoPedidos && currentEmp.rol !== 'admin'){
         document.getElementById('recepPinOverlay').classList.remove('open');
         _recepPinBuf='';
         if(typeof showToast==='function') showToast('Ya no tenés acceso a Recepción', true);
@@ -26435,9 +26665,11 @@ function recepPinPress(d) {
       if(_recepPinBuf === currentEmp.pin){
         document.getElementById('recepPinOverlay').classList.remove('open');
         _recepEmp = currentEmp;
-        document.getElementById('recepEmpNombre').textContent = currentEmp.nombre + ' · Acceso Recepción';
+        document.getElementById('recepEmpNombre').textContent = currentEmp.nombre + ' · ' +
+          ((currentEmp.rol==='admin' || currentEmp.accesoRecepcion) ? (currentEmp.accesoPedidos ? 'Recepción y Pedidos' : 'Acceso Recepción') : 'Armar pedidos');
         document.getElementById('recepScreen').classList.add('open');
-        selRecepTab('egresos');
+        aplicarPermisosRecep();
+        selRecepTab(recepPuedeRecepcion() ? 'egresos' : 'pedidos');
         _recepPinBuf='';
       } else {
         document.getElementById('recepPinError').classList.add('show');
@@ -29068,7 +29300,8 @@ function descargarPDFReal() {
         if(destacado){ doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(20,20,20); }
         else { doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(130,130,130); }
         var lineas = doc.splitTextToSize(el.textContent.trim(), pageWidth-marginX*2);
-        doc.text(lineas, marginX, y);
+        if(destacado) doc.text(lineas, pageWidth/2, y, {align:'center'});
+        else doc.text(lineas, marginX, y);
         y += lineas.length*(destacado?5.5:4) + 4;
       }
     });
