@@ -27080,14 +27080,17 @@ function actualizarContadorRepartidor() {
 function abrirAnularUltimas() {
   if(!currentEmp) return;
   var inicioTs = currentEmp.turnoInicio ? new Date(currentEmp.turnoInicio).getTime() : 0;
+  // Cada caja anula solo lo suyo: con dos cajas abiertas a la vez, la otra
+  // computadora no tiene que poder tocar ventas que no cobró ella.
+  var miCaja = cajaTurnoActual();
 
   var delTurno = VENTAS.filter(function(v){
-    return !v.anulada && !v.fiadoCarga && new Date(v.fecha).getTime() >= inicioTs;
+    return !v.anulada && !v.fiadoCarga && cajaDe(v) === miCaja && new Date(v.fecha).getTime() >= inicioTs;
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,5);
 
   // Recargas del turno (sin los "cambio de efectivo", que no son recargas)
   var recargasTurno = getCargasVirtuales().filter(function(c){
-    return c.tipo !== 'cambio-efectivo' && new Date(c.fecha).getTime() >= inicioTs;
+    return c.tipo !== 'cambio-efectivo' && cajaDe(c) === miCaja && new Date(c.fecha).getTime() >= inicioTs;
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); }).slice(0,5);
 
   var ov = document.getElementById('anularUltimasOverlay');
