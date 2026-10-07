@@ -7305,7 +7305,10 @@ function hayVariasCajas(){
   if(cajaEquipo() === 2 || window.__lrDemoCaja2) return true;
   var ses = window.__lrSesionesVigentes || [];
   if(ses.some(function(s){ return cajaDe(s) === 2; })) return true;
-  return getCierres().some(function(c){ return cajaDe(c) === 2; });
+  // Solo cierres de la Caja 2 de los últimos 7 días: una prueba suelta no deja
+  // al sistema mostrando dos cajas para siempre.
+  var hace7 = Date.now() - 7*24*3600000;
+  return getCierres().some(function(c){ return cajaDe(c) === 2 && new Date(c.horaFin || c.fecha).getTime() >= hace7; });
 }
 // Etiqueta con la caja SOLO los registros nuevos (los que todavía no están en
 // la nube). Lo ya guardado nunca se re-etiqueta.
