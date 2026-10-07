@@ -7318,6 +7318,12 @@ function etiquetarCajaNuevos(lista, previo, listos){
     r.caja = c;
   });
 }
+// Etiqueta "Caja N" para mostrar en cierres (solo si se usa más de una caja).
+function etiquetaCajaHtml(r){
+  if(!hayVariasCajas()) return '';
+  var c = cajaDe(r);
+  return ' <span style="font-family:Oswald,sans-serif;font-size:.62rem;letter-spacing:1px;padding:1px 6px;border-radius:4px;background:'+(c===2?'rgba(30,144,255,.18)':'rgba(245,194,0,.18)')+';color:'+(c===2?'#1e90ff':'var(--gold)')+';border:1px solid '+(c===2?'rgba(30,144,255,.4)':'rgba(245,194,0,.4)')+'">CAJA '+c+'</span>';
+}
 function elegirCajaEquipo(n){
   try{ localStorage.setItem(SK_CAJA_EQUIPO, String(n === 2 ? 2 : 1)); }catch(e){}
   if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio && !currentEmp._cajaFijada){
@@ -11253,7 +11259,7 @@ function renderCierres() {
     return '<div class="cierre-card" onclick="toggleCierreDetail('+idx+')">'+
       '<div class="cierre-card-header">'+
         '<div>'+
-          '<div class="cierre-card-emp">'+c.empleado+' <span style="color:var(--gray);font-size:.72rem">· '+c.turno+'</span></div>'+
+          '<div class="cierre-card-emp">'+c.empleado+' <span style="color:var(--gray);font-size:.72rem">· '+c.turno+'</span>'+etiquetaCajaHtml(c)+'</div>'+
           '<div class="cierre-card-fecha">'+fechaStr+' · '+horaIni+' → '+horaFin+' ('+dur+')</div>'+
         '</div>'+
         '<div>'+badgeHtml+'</div>'+
@@ -11915,7 +11921,7 @@ function construirVentasDetalleCierreHtml(c) {
     if(v.anulada) return false;
     if(v.fiadoCarga) return false;
     var fv = new Date(v.fecha).getTime();
-    return fv >= ini && fv <= fin;
+    return fv >= ini && fv <= fin && cajaDe(v) === cajaDe(c);   // con dos cajas, solo las de su caja
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
 
   if(!ventasDelCierre.length){
@@ -15506,7 +15512,7 @@ function renderHoras() {
       var dur  = c.durMinutos ? Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':'') : '—';
       var mT = multTurno(c);
       return '<div class="turno-row" style="'+(c.pagado?'opacity:.5':'')+'">'+
-        '<span class="turno-fecha">'+fecha+'</span>'+
+        '<span class="turno-fecha">'+fecha+etiquetaCajaHtml(c)+'</span>'+
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
         '<span class="turno-duracion">'+dur+(mT>1?' <span style="background:rgba(245,194,0,.18);color:var(--gold);border-radius:3px;padding:0 4px;font-size:.62rem;white-space:nowrap">🎉 '+textoMult(mT)+'</span>':'')+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+'</span>'+
@@ -22442,7 +22448,7 @@ function renderDashboard() {
         }
         return '<div class="dash-row" style="cursor:pointer;padding:7px 10px" data-tab="cierres">'+
           '<span class="dl" style="display:flex;flex-direction:column;gap:2px">'+
-            '<span style="font-family:Oswald,sans-serif;font-size:.82rem;color:var(--white)">'+c.empleado+' <span style="color:var(--gray);font-size:.7rem">· '+c.turno+'</span></span>'+
+            '<span style="font-family:Oswald,sans-serif;font-size:.82rem;color:var(--white)">'+c.empleado+' <span style="color:var(--gray);font-size:.7rem">· '+c.turno+'</span>'+etiquetaCajaHtml(c)+'</span>'+
             '<span style="font-size:.67rem;color:var(--gray)">'+fechaStr+' · '+horaIni+'→'+horaFin+'</span>'+
           '</span>'+
           '<span class="dv" style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">'+
