@@ -33,6 +33,12 @@ jobs:
         working-directory: app-delivery
         run: npm ci
 
+      - name: Marcar el número de versión (lo usa el aviso de "hay una versión nueva")
+        working-directory: app-delivery
+        run: |
+          node -e "const f='capacitor.config.json';const c=require('./'+f);c.android.appendUserAgent='LimayRockDeliveryApp/${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(c,null,2))"
+          grep appendUserAgent capacitor.config.json
+
       - name: Sincronizar proyecto Android
         working-directory: app-delivery
         run: npx cap sync android

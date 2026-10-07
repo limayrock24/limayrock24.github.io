@@ -158,6 +158,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <button onclick="setFiltroRepartidor('mios')" id="repFiltroMios" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Mis pedidos</button>
     <button onclick="setFiltroRepartidor('historial')" id="repFiltroHist" style="flex:1;background:transparent;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">Historial</button>
   </div>
+  <div id="repAvisoActualizar" style="display:none;margin:12px 16px 0;background:rgba(245,194,0,.12);border:1px solid rgba(245,194,0,.55);border-radius:8px;padding:12px 14px">
+    <div style="font-family:Oswald,sans-serif;font-size:.8rem;color:var(--gold);letter-spacing:1px;margin-bottom:6px">📲 HAY UNA VERSIÓN NUEVA DE LA APP</div>
+    <div style="font-size:.72rem;color:var(--light);line-height:1.5;margin-bottom:8px">Tocá <b>Actualizar</b>, abrí el archivo que se descarga y elegí <b>Actualizar</b>. No se pierde nada.</div>
+    <button type="button" onclick="abrirActualizacionApp()" style="width:100%;background:var(--gold);color:#000;border:none;border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-size:.85rem;font-weight:700;letter-spacing:1px;cursor:pointer">⬇ Actualizar</button>
+  </div>
   <div id="repAvisoNotifs" style="display:none;margin:12px 16px 0;background:rgba(245,194,0,.10);border:1px solid rgba(245,194,0,.4);border-radius:8px;padding:12px 14px">
     <div style="font-family:Oswald,sans-serif;font-size:.78rem;color:var(--gold);letter-spacing:1px;margin-bottom:5px">🔔 ACTIVÁ LOS AVISOS</div>
     <div style="font-size:.72rem;color:var(--light);line-height:1.5">
@@ -182,7 +187,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "14"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "15"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -570,6 +575,30 @@ function activarNotifsApp(destino, quien){
     }).then(function(){ return token; });
   });
 }
+// ── AVISO DE VERSIÓN NUEVA DE LA APP ──────────────────────────────────────
+// La app manda su número de versión en el user agent ("LimayRockDeliveryApp/8").
+// Se compara con la última versión publicada en GitHub (Releases) y, si hay
+// una más nueva, se muestra el cartel para actualizar.
+var URL_DESCARGA_APP = 'https://github.com/limayrock24/limayrock24.github.io/releases/latest/download/LimayRock-Delivery.apk';
+function versionAppInstalada(){
+  var m = navigator.userAgent.match(/LimayRockDeliveryApp(?:\/(\d+))?/);
+  return m ? parseInt(m[1] || '0', 10) : null;
+}
+function chequearVersionApp(){
+  var inst = versionAppInstalada();
+  if(inst === null) return;   // no es la app (navegador)
+  fetch('https://api.github.com/repos/limayrock24/limayrock24.github.io/releases/latest', {cache:'no-store'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(rel){
+      if(!rel || !rel.tag_name) return;
+      var m = String(rel.tag_name).match(/app-delivery-v(\d+)/);
+      var ultima = m ? parseInt(m[1], 10) : 0;
+      var el = document.getElementById('repAvisoActualizar');
+      if(el) el.style.display = (ultima > inst) ? 'block' : 'none';
+    }).catch(function(){});
+}
+function abrirActualizacionApp(){ location.href = URL_DESCARGA_APP; }
+
 function restaurarEstadoNotificaciones(destino, quien, btnId){
   if(esAppDelivery()){
     // Versión vieja de la app (sin avisos propios): no se hace nada.
@@ -732,6 +761,7 @@ function abrirPanelRepartidor() {
   _repFiltro = 'libres';
   restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
   pintarEstadoDisponible();
+  chequearVersionApp();
   setFiltroRepartidor('libres');
   document.getElementById('repartidorOverlay').style.display = 'flex';
 }

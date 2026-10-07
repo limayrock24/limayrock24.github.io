@@ -82,9 +82,12 @@ public class AvisosService extends FirebaseMessagingService {
         // La página de delivery vuelve a registrar el celular cada vez que se abre la app.
     }
 
-    private void crearCanales() {
+    private void crearCanales() { crearCanales(this); }
+
+    /** Canales de aviso; se crean también al abrir la app (MainActivity). */
+    static void crearCanales(android.content.Context ctx) {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationManager nm = getSystemService(NotificationManager.class);
+        NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) return;
         if (nm.getNotificationChannel(CANAL_PEDIDOS) == null) {
             NotificationChannel c = new NotificationChannel(CANAL_PEDIDOS, "Pedidos nuevos", NotificationManager.IMPORTANCE_HIGH);
