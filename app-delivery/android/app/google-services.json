@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "391677998496",
+    "project_id": "limay-rock-852cb",
+    "storage_bucket": "limay-rock-852cb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:391677998496:android:a94b238ebe51b8db39a0c5",
+        "android_client_info": {
+          "package_name": "com.limayrock.delivery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAeWs34Bd22N5XvDEtD9MewDySIV-0JcDw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
