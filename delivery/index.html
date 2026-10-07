@@ -268,6 +268,7 @@ window.__LR_BUILD = "12"; // versión de ESTA página — se bumpea a mano acá 
     if(s.empleadosListos && s.pedidosWebListos){
       var overlay = document.getElementById('lrLoadingOverlay');
       if(overlay) overlay.style.display = 'none';
+      if(typeof intentarSesionGuardadaApp === 'function') intentarSesionGuardadaApp();
     }
   }
 
@@ -657,6 +658,25 @@ function loginDelivery(){
   if(err) err.textContent = '';
   _dlPinBuf = ''; pintarDlDots();
   currentEmp = emp;
+  guardarSesionApp(emp.nombre);
+  document.getElementById('deliveryLoginOverlay').style.display = 'none';
+  abrirPanelRepartidor();
+}
+// En la app instalada el repartidor queda adentro hasta que toque "Salir"
+// (en el navegador sigue pidiendo el PIN cada vez, como siempre).
+var SK_SESION_APP = 'lr_delivery_sesion_app';
+function guardarSesionApp(nombre){
+  if(!esAppDelivery()) return;
+  try{ if(nombre) localStorage.setItem(SK_SESION_APP, nombre); else localStorage.removeItem(SK_SESION_APP); }catch(e){}
+}
+function intentarSesionGuardadaApp(){
+  if(currentEmp || !esAppDelivery()) return;
+  var nombre = null;
+  try{ nombre = localStorage.getItem(SK_SESION_APP); }catch(e){}
+  if(!nombre) return;
+  var emp = (window.EMPLEADOS||[]).find(function(e){ return e.nombre === nombre && e.accesoDelivery; });
+  if(!emp){ guardarSesionApp(null); return; }   // le sacaron el acceso: vuelve a pedir PIN
+  currentEmp = emp;
   document.getElementById('deliveryLoginOverlay').style.display = 'none';
   abrirPanelRepartidor();
 }
@@ -678,6 +698,7 @@ function salirModoDelivery(){
     sincronizarDeliveryConDisponibles();
   }
   currentEmp = null;
+  guardarSesionApp(null);
   _dlPinBuf = ''; pintarDlDots();
   document.getElementById('repartidorOverlay').style.display = 'none';
   document.getElementById('deliveryLoginOverlay').style.display = 'flex';
