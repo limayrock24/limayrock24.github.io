@@ -6555,6 +6555,7 @@ body.night-on{background:#080005}
     </div>
 
 <button class="arqueo-confirm" id="arqueoConfirmBtn" disabled onclick="confirmarArqueoYCerrar()">✓ Confirmar y cerrar turno</button>
+<button type="button" onclick="abrirDescartarTurnoPrueba()" style="display:block;width:100%;margin-top:8px;background:transparent;border:none;color:var(--gray);font-size:.7rem;text-decoration:underline;cursor:pointer;padding:6px">🗑 Era un turno de prueba — descartarlo sin dejar registro</button>
   </div>
 </div>
 
@@ -10970,6 +10971,94 @@ function confirmarArqueoYCerrar() {
   document.getElementById('empActual').textContent='—';
   initLogin();
   showToast('Turno cerrado. ¡Hasta pronto!');
+}
+
+// ── DESCARTAR UN TURNO DE PRUEBA ────────────────────────────────────────────
+// Para un turno abierto solo para probar (por ejemplo la Caja 2 en una
+// computadora prestada): se cierra sin dejar cierre, sin horas y sin las
+// ventas anuladas de prueba. Solo se puede si el turno no tiene ventas
+// válidas ni movimientos de plata, y pide el PIN de administrador.
+function movimientosRealesDelTurno(){
+  if(!currentEmp || !currentEmp.turnoInicio) return null;
+  var ini = new Date(currentEmp.turnoInicio).getTime(), miCaja = cajaTurnoActual();
+  function delTurno(r){ return r && cajaDe(r) === miCaja && new Date(r.fecha).getTime() >= ini; }
+  var ventas = VENTAS.filter(delTurno);
+  return {
+    ventasAnuladas: ventas.filter(function(v){ return v.anulada; }),
+    ventasValidas: ventas.filter(function(v){ return !v.anulada; }).length,
+    otros: getRetirosCaja().filter(delTurno).length + getEgresos().filter(delTurno).length +
+           getCargasVirtuales().filter(delTurno).length + getPrestamos().filter(delTurno).length +
+           getTransferCuentas().filter(delTurno).length
+  };
+}
+function abrirDescartarTurnoPrueba(){
+  var m = movimientosRealesDelTurno();
+  if(!m) return;
+  if(m.ventasValidas || m.otros){
+    showToast('Este turno tiene '+(m.ventasValidas?m.ventasValidas+' venta(s) sin anular':'')+(m.ventasValidas&&m.otros?' y ':'')+(m.otros?m.otros+' movimiento(s) de caja':'')+' — anulalos primero o cerralo normal', true);
+    return;
+  }
+  var ov = document.getElementById('descartarTurnoOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'descartarTurnoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2400;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;width:360px;max-width:96vw">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:6px">🗑 Descartar turno de prueba</div>'+
+        '<div id="descartarTurnoTxt" style="font-size:.78rem;color:var(--light);line-height:1.45;margin-bottom:12px"></div>'+
+        '<input type="password" inputmode="numeric" maxlength="4" id="descartarTurnoPin" placeholder="PIN de administrador" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--black);border:1px solid var(--border);color:var(--white);border-radius:5px;padding:11px;font-size:1rem;text-align:center;letter-spacing:6px;margin-bottom:10px" onkeydown="if(event.key===\'Enter\')confirmarDescartarTurnoPrueba()">'+
+        '<div style="display:flex;gap:8px">'+
+          '<button onclick="document.getElementById(\'descartarTurnoOverlay\').style.display=\'none\'" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
+          '<button onclick="confirmarDescartarTurnoPrueba()" style="flex:1;background:var(--red);border:none;color:var(--white);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Descartar</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  document.getElementById('descartarTurnoTxt').innerHTML =
+    'Se cierra el turno de <b>'+String(currentEmp.nombre).replace(/[&<>"]/g,'')+'</b> en la <b>Caja '+cajaTurnoActual()+'</b> sin dejar registro: '+
+    'no queda cierre, no suma horas'+(m.ventasAnuladas.length?' y se borran sus '+m.ventasAnuladas.length+' venta(s) anulada(s) de prueba':'')+'.';
+  document.getElementById('descartarTurnoPin').value = '';
+  ov.style.display = 'flex';
+  setTimeout(function(){ document.getElementById('descartarTurnoPin').focus(); }, 50);
+}
+function confirmarDescartarTurnoPrueba(){
+  var pin = document.getElementById('descartarTurnoPin').value.trim();
+  var esAdmin = pin === '0000' || (EMPLEADOS||[]).some(function(e){ return e.rol==='admin' && e.pin===pin; });
+  if(!esAdmin){ showToast('PIN de administrador incorrecto', true); document.getElementById('descartarTurnoPin').value=''; return; }
+  var m = movimientosRealesDelTurno();
+  if(!m || m.ventasValidas || m.otros){ showToast('El turno ya tiene movimientos — cerralo normal', true); return; }
+  // Borrar las ventas anuladas de prueba (en la nube y en esta pantalla)
+  var ids = m.ventasAnuladas.map(function(v){ return String(v.id); });
+  ids.forEach(function(id){
+    if(window.__lrDB) window.__lrDB.collection(window.__lrCOL.ventas).doc(id).delete().catch(function(e){ console.error('Error borrando venta de prueba', id, e); });
+  });
+  VENTAS = VENTAS.filter(function(v){ return ids.indexOf(String(v.id)) === -1; });
+  // Y sus renglones en Movimientos: la venta y la devolución de stock al anularla.
+  var movsBorrar = getMovimientos().filter(function(mv){
+    return (mv.tipo === 'venta' && ids.indexOf(String(mv.refId)) !== -1) ||
+           ids.some(function(id){ return mv.extra === 'Anulación venta #'+id; });
+  }).map(function(mv){ return String(mv.id); });
+  movsBorrar.forEach(function(id){
+    if(window.__lrDB) window.__lrDB.collection(window.__lrCOL.movimientos).doc(id).delete().catch(function(e){ console.error('Error borrando movimiento de prueba', id, e); });
+  });
+  document.getElementById('descartarTurnoOverlay').style.display = 'none';
+  document.getElementById('arqueoModal').classList.remove('open');
+  var nombre = currentEmp.nombre;
+  limpiarSesionActiva(nombre);
+  var rBtn2=document.getElementById('btnRetiroCaja'); if(rBtn2) rBtn2.style.display='none';
+  currentEmp=null; cart=[]; pagoSel=null; nightMode=false;
+  var nightBtn=document.getElementById('nightBtn');
+  nightBtn.classList.remove('on'); nightBtn.innerHTML='🌙 Diurno';
+  document.body.classList.remove('night-on');
+  document.getElementById('nightBanner').style.display='none';
+  document.getElementById('cartPanel').classList.remove('open');
+  updateCart();
+  document.getElementById('adminOverlay').classList.remove('open');
+  document.getElementById('confirmOverlay').classList.remove('open');
+  document.getElementById('empActual').textContent='—';
+  initLogin();
+  showToast('🗑 Turno de prueba de '+nombre+' descartado — no quedó registro');
 }
 
 // ── STOCK ALERTS ───────────────────────────────────────────────────────────
