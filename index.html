@@ -4453,6 +4453,10 @@ body.night-on{background:#080005}
           <label>Nota (opcional)</label>
           <input type="text" id="eNota" placeholder="Factura N°, detalle de compra...">
         </div>
+        <div class="field" id="egresoCajaRow" style="display:none">
+          <label>Si se paga en efectivo: ¿de qué caja sale?</label>
+          <select id="egresoCaja"><option value="1">Caja 1</option><option value="2">Caja 2</option></select>
+        </div>
         <button class="btn-save" style="width:100%;padding:10px;margin-top:4px" onclick="registrarEgreso()">💸 Registrar egreso</button>
       </div>
 
@@ -8550,7 +8554,7 @@ function switchTab(tab) {
     renderStockVentasDia();
   }
   if(tab==='consumos') renderConsumos();
-  if(tab==='egresos'){ _egPeriodo='hoy'; _egDesde=''; _egHasta=''; _egCat='todas'; renderEgresos(); setFechaHoyEgreso(); poblarSelectProveedoresEgreso(); }
+  if(tab==='egresos'){ _egPeriodo='hoy'; _egDesde=''; _egHasta=''; _egCat='todas'; renderEgresos(); setFechaHoyEgreso(); poblarSelectProveedoresEgreso(); prepararSelectorCaja('egreso'); }
   if(tab==='rentabilidad'){
     renderRentabilidad(); renderReportes();
     // Si la sección liquidez estaba abierta, refrescarla
@@ -14044,6 +14048,7 @@ function registrarEgreso() {
 
   var egreso = {id:Date.now(), prov:prov, proveedor:prov, categoria:cat||'proveedor', monto:monto, fecha:fecha, ts:new Date().toISOString(), medio:medio, nota:nota};
   if(mixtoData) egreso.mixto = mixtoData;
+  egreso.caja = cajaElegida('egreso');   // con dos cajas, de qué cajón sale el efectivo
 
   var egresos = getEgresos();
   egresos.push(egreso);
