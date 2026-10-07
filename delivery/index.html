@@ -181,7 +181,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "9"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "10"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -704,10 +704,12 @@ function renderPanelRepartidor() {
 
   cont.innerHTML = lista.map(function(p){
     var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; })
-      .concat((p.combos||[]).map(function(cb){ return (cb.emoji||'🎁')+' '+cb.nombre+(cb.cantidad>1?' ×'+cb.cantidad:''); }))
-      .concat((p.notasManuales||[]).map(function(n){ return n.nombre+(n.texto?' ('+n.texto+')':''); }))
-      .join(', ');
+    // Un renglón por producto con la cantidad grande adelante ("2  Manaos Pomelo 3L"),
+    // para que el repartidor no se confunda al armar o controlar el pedido.
+    var itemsTxt = (p.items||[]).map(function(it){ return filaProdDelivery(it.cantidad, it.nombre); })
+      .concat((p.combos||[]).map(function(cb){ return filaProdDelivery(cb.cantidad||1, (cb.emoji||'🎁')+' '+cb.nombre); }))
+      .concat((p.notasManuales||[]).map(function(n){ return filaProdDelivery('✍', n.nombre+(n.texto?' ('+n.texto+')':'')); }))
+      .join('');
     var mio = p.repartidor === yo;
     var dir = p.direccion || p.domicilio || '';
     var telLimpio = (p.telefono||'').replace(/\D/g,'');
@@ -729,9 +731,10 @@ function renderPanelRepartidor() {
       '<div style="font-size:.76rem;color:var(--gray);margin-top:5px">📞 '+p.telefono+' · 🕐 '+hora+'</div>'+
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
-      (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
-      ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="font-size:.8rem;margin-top:5px;color:#22c55e;font-weight:600">➕ Sumado en el local: '+p.itemsAgregados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+'</div>' : '')+
-      ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="font-size:.8rem;margin-top:3px;color:#f87171">➖ Sacado: '+p.itemsQuitados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+'</div>' : '')+
+      (itemsTxt ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">🛍 Productos</div>'+itemsTxt+'</div>' : '')+
+      ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#22c55e;font-weight:700;margin-bottom:2px">➕ SUMADO EN EL LOCAL</div>'+p.itemsAgregados.map(function(it){ return filaProdDelivery(it.cantidad, it.nombre, '#22c55e'); }).join('')+'</div>' : '')+
+      ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:2px">➖ SACADO (no va)</div>'+p.itemsQuitados.map(function(it){ return filaProdDelivery(it.cantidad, '<s>'+it.nombre+'</s>', '#f87171'); }).join('')+'</div>' : '')+
       ((p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
         (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
@@ -746,6 +749,13 @@ function renderPanelRepartidor() {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+function filaProdDelivery(cant, nombre, color) {
+  return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+
+    '<span style="flex:0 0 auto;min-width:34px;text-align:center;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;color:#052e16;background:'+(color||'var(--gold)')+';border-radius:5px;padding:2px 6px">'+cant+'</span>'+
+    '<span style="font-size:.92rem;color:'+(color||'var(--white)')+';line-height:1.25">'+nombre+'</span>'+
+  '</div>';
 }
 
 // ── HISTORIAL: agrupado por día, con totales de hoy/semana/mes ─────────────
