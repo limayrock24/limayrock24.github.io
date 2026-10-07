@@ -3254,6 +3254,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .recep-tabs{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border)}
 .recep-tab-btn{flex:1;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:10px;font-family:'Oswald',sans-serif;font-size:.8rem;letter-spacing:1px;text-transform:uppercase;color:var(--gray);cursor:pointer;text-align:center}
 .recep-tab-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(245,194,0,.08)}
+@media (max-width:600px){.recep-tabs{gap:4px;padding:8px}.recep-tab-btn{min-width:0;padding:8px 2px;font-size:.6rem;letter-spacing:0;overflow-wrap:anywhere}}
 .recep-body{flex:1;padding:14px;overflow-y:auto}
 .recep-pane{display:none}
 .recep-pane.active{display:block}
@@ -6270,6 +6271,7 @@ body.night-on{background:#080005}
     <div class="recep-tab-btn" id="rt-merc" onclick="selRecepTab('merc')">📥 Recepción</div>
     <div class="recep-tab-btn" id="rt-precios" onclick="selRecepTab('precios')">✏️ Precios</div>
     <div class="recep-tab-btn" id="rt-pedidos" onclick="selRecepTab('pedidos')">🛒 Pedidos</div>
+    <div class="recep-tab-btn" id="rt-bajas" onclick="selRecepTab('bajas')">🗑 Bajas</div>
   </div>
   <div class="recep-body">
     <!-- Sub-pane: Recepción de mercadería -->
@@ -6300,6 +6302,10 @@ body.night-on{background:#080005}
     <!-- Sub-pane: Pedidos a proveedores -->
     <div class="recep-pane" id="recepPanePedidos">
       <div id="recepPedidosContent"></div>
+    </div>
+    <!-- Sub-pane: Bajas de producto (vencido / roto / otro) -->
+    <div class="recep-pane" id="recepPaneBajas">
+      <div id="recepBajasContent"></div>
     </div>
     <!-- Sub-pane: Egresos -->
     <div class="recep-pane" id="recepPaneEgresos">
@@ -24156,7 +24162,7 @@ function recepPuedePedidos() {
 function aplicarPermisosRecep() {
   if(_recepEmp && currentEmp && _recepEmp.nombre === currentEmp.nombre) _recepEmp = currentEmp;
   var rec = recepPuedeRecepcion(), ped = recepPuedePedidos();
-  ['egresos','merc','precios'].forEach(function(t){ var b = document.getElementById('rt-'+t); if(b) b.style.display = rec ? '' : 'none'; });
+  ['egresos','merc','precios','bajas'].forEach(function(t){ var b = document.getElementById('rt-'+t); if(b) b.style.display = rec ? '' : 'none'; });
   var bp = document.getElementById('rt-pedidos'); if(bp) bp.style.display = ped ? '' : 'none';
   var activa = document.querySelector('.recep-tab-btn.active');
   if(activa && activa.style.display === 'none' && document.getElementById('recepScreen').classList.contains('open')){
@@ -24189,6 +24195,173 @@ function renderRecepPedidos() {
         '</div>';
       }).join('')+
     '</div>';
+}
+
+// ── RECEPCIÓN: BAJAS DE PRODUCTO ───────────────────────────────────────────
+// Pestaña propia para sacar del stock lo vencido, roto o perdido: se busca el
+// producto (o se escanea), se carga cuántas unidades y el motivo, y se pueden
+// juntar varios antes de confirmar. Solo descuenta stock (igual que el retiro
+// desde la ficha del producto): no toca ventas, caja ni deuda con proveedores.
+var _bajasLista = [];   // [{n, cant, motivo, nota}]
+var BAJA_MOTIVOS = [
+  {v:'Vencido', t:'📅 Vencido'},
+  {v:'Roto / dañado', t:'💥 Roto / dañado'},
+  {v:'Otro', t:'✏️ Otro'}
+];
+function escBaja(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function renderRecepBajas() {
+  var el = document.getElementById('recepBajasContent');
+  if(!el) return;
+  el.innerHTML =
+    '<div style="font-size:.78rem;color:var(--gray);margin-bottom:10px">Buscá el producto o escanealo, cargá cuántas unidades salen y el motivo. Podés cargar varios y confirmar todo junto.</div>'+
+    '<input type="text" id="bajaBuscar" placeholder="🔍 Buscar producto o escanear código..." autocomplete="off" oninput="buscarProductoBaja()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elegirPrimerResultadoBaja();}" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:11px 12px;font-family:Barlow,sans-serif;font-size:.9rem;box-sizing:border-box">'+
+    '<div id="bajaResultados" style="margin-top:6px"></div>'+
+    '<div id="bajaListaCont" style="margin-top:12px"></div>'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);margin:18px 0 8px;text-transform:uppercase">Bajas de hoy</div>'+
+    '<div id="bajasHoyCont"></div>';
+  pintarListaBajas();
+  pintarBajasHoy();
+  setTimeout(function(){ var i = document.getElementById('bajaBuscar'); if(i) i.focus(); }, 100);
+}
+function buscarProductoBaja() {
+  var inp = document.getElementById('bajaBuscar'), res = document.getElementById('bajaResultados');
+  if(!inp || !res) return;
+  var t = normalizarNombreProd(inp.value);
+  if(!t){ res.innerHTML = ''; return; }
+  var inv = getStockInv();
+  var exactos = PRODUCTS.filter(function(p){ return p.codigo && p.codigo === inp.value.trim(); });
+  var lista = exactos.length ? exactos : PRODUCTS.filter(function(p){ return normalizarNombreProd(p.name).indexOf(t) !== -1; }).slice(0, 8);
+  if(!lista.length){ res.innerHTML = '<div style="font-size:.75rem;color:var(--gray);padding:8px 2px">No se encontró ningún producto.</div>'; return; }
+  res.innerHTML = lista.map(function(p){
+    var s = inv[p.name] ? inv[p.name].stock : 0;
+    var nEsc = p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return '<div onclick="agregarProductoBaja(\''+nEsc+'\')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:5px;padding:10px 12px;margin-bottom:4px;cursor:pointer">'+
+      '<span style="font-size:.85rem;color:var(--white)">'+escBaja(p.name)+'</span>'+
+      '<span style="font-size:.72rem;color:var(--gray);white-space:nowrap">Stock: '+s+' · <span style="color:var(--red);font-weight:700">+ Agregar</span></span>'+
+    '</div>';
+  }).join('');
+}
+function elegirPrimerResultadoBaja() {
+  var inp = document.getElementById('bajaBuscar');
+  if(!inp || !inp.value.trim()) return;
+  var cod = inp.value.trim();
+  var p = PRODUCTS.find(function(x){ return x.codigo && x.codigo === cod; });
+  if(!p){
+    var t = normalizarNombreProd(cod);
+    var l = PRODUCTS.filter(function(x){ return normalizarNombreProd(x.name).indexOf(t) !== -1; });
+    if(l.length === 1) p = l[0];
+  }
+  if(p) agregarProductoBaja(p.name);
+}
+function agregarProductoBaja(nombre) {
+  var ya = _bajasLista.find(function(b){ return b.n === nombre; });
+  if(ya) ya.cant = (parseInt(ya.cant)||0) + 1;
+  else _bajasLista.push({n:nombre, cant:1, motivo:'Vencido', nota:''});
+  var inp = document.getElementById('bajaBuscar'); if(inp){ inp.value = ''; inp.focus(); }
+  var res = document.getElementById('bajaResultados'); if(res) res.innerHTML = '';
+  pintarListaBajas();
+}
+function quitarProductoBaja(i) { _bajasLista.splice(i,1); pintarListaBajas(); }
+function cambiarCantBaja(i, v) { if(_bajasLista[i]) _bajasLista[i].cant = v; }
+function cambiarNotaBaja(i, v) { if(_bajasLista[i]) _bajasLista[i].nota = v; }
+function cambiarMotivoBaja(i, m) {
+  if(!_bajasLista[i]) return;
+  _bajasLista[i].motivo = m;
+  pintarListaBajas();
+  if(m === 'Otro'){ var n = document.getElementById('bajaNota_'+i); if(n) n.focus(); }
+}
+function pintarListaBajas() {
+  var el = document.getElementById('bajaListaCont');
+  if(!el) return;
+  if(!_bajasLista.length){ el.innerHTML = ''; return; }
+  var inv = getStockInv();
+  el.innerHTML =
+    '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--red);margin-bottom:8px;text-transform:uppercase">🗑 Para dar de baja ('+_bajasLista.length+')</div>'+
+    _bajasLista.map(function(b,i){
+      var s = inv[b.n] ? inv[b.n].stock : 0;
+      var esOtro = b.motivo === 'Otro';
+      return '<div style="background:var(--card);border:1px solid rgba(204,0,0,.35);border-radius:6px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">'+
+          '<div style="min-width:0"><div style="font-size:.9rem;color:var(--white);font-weight:600">'+escBaja(b.n)+'</div>'+
+          '<div style="font-size:.7rem;color:var(--gray)">Stock actual: '+s+'</div></div>'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<input type="number" min="1" inputmode="numeric" value="'+escBaja(b.cant)+'" oninput="cambiarCantBaja('+i+',this.value)" title="Unidades que salen" style="width:64px;background:#111;border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;font-size:1rem;text-align:center">'+
+            '<button type="button" onclick="quitarProductoBaja('+i+')" title="Quitar" style="background:none;border:none;color:var(--gray);font-size:1.1rem;cursor:pointer">✕</button>'+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'+
+          BAJA_MOTIVOS.map(function(m){
+            var on = b.motivo === m.v;
+            return '<button type="button" onclick="cambiarMotivoBaja('+i+',\''+m.v+'\')" style="flex:1;min-width:90px;background:'+(on?'rgba(204,0,0,.15)':'none')+';border:1.5px solid '+(on?'var(--red)':'var(--border)')+';color:'+(on?'var(--white)':'var(--gray)')+';border-radius:4px;padding:7px 6px;font-size:.75rem;cursor:pointer">'+m.t+'</button>';
+          }).join('')+
+        '</div>'+
+        '<input type="text" id="bajaNota_'+i+'" value="'+escBaja(b.nota)+'" oninput="cambiarNotaBaja('+i+',this.value)" placeholder="'+(esOtro?'Escribí el motivo (obligatorio)':'Nota opcional — ej: vencía el 15/07')+'" style="width:100%;box-sizing:border-box;background:#111;border:1.5px solid '+(esOtro?'var(--gold)':'var(--border)')+';color:var(--white);border-radius:4px;padding:8px;font-size:.8rem">'+
+      '</div>';
+    }).join('')+
+    '<div style="font-size:.66rem;color:var(--gray);margin:2px 0 8px">⚠ Solo descuenta stock. No genera ingreso ni deuda con ningún proveedor.</div>'+
+    '<button type="button" onclick="confirmarBajasRecep()" style="width:100%;background:var(--red);color:var(--white);border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;font-weight:700;cursor:pointer">🗑 Confirmar '+(_bajasLista.length===1?'baja':_bajasLista.length+' bajas')+'</button>';
+}
+function confirmarBajasRecep() {
+  if(!_bajasLista.length) return;
+  for(var i=0;i<_bajasLista.length;i++){
+    var b = _bajasLista[i];
+    var c = parseInt(b.cant);
+    if(!c || c<=0){ showToast('Cargá las unidades de '+b.n, true); return; }
+    if(b.motivo === 'Otro' && !String(b.nota||'').trim()){
+      showToast('Escribí el motivo de '+b.n, true);
+      var n = document.getElementById('bajaNota_'+i); if(n) n.focus();
+      return;
+    }
+  }
+  var resumen = _bajasLista.map(function(b){ return '• '+b.n+': '+parseInt(b.cant)+' u. ('+(b.motivo==='Otro'?b.nota.trim():b.motivo)+')'; }).join('\n');
+  if(!confirm('¿Confirmás estas bajas?\n\n'+resumen)) return;
+
+  var inv = getStockInv(), movs = getStockMovs();
+  var resp = (typeof _recepEmp!=='undefined' && _recepEmp) ? _recepEmp.nombre : (currentEmp?currentEmp.nombre:'Admin');
+  var etiquetas = [], lote = [];
+  _bajasLista.forEach(function(b, k){
+    var cant = parseInt(b.cant), nota = String(b.nota||'').trim();
+    if(!inv[b.n]) inv[b.n] = {stock:0, minimo:0};
+    var antes = inv[b.n].stock, despues = Math.max(0, antes - cant);
+    inv[b.n].stock = despues;
+    movs.push({
+      id: Date.now()+k, ts: new Date().toISOString(), producto: b.n,
+      tipo: 'baja', motivo: b.motivo,
+      stockAntes: antes, stockDespues: despues, diferencia: -(antes-despues),
+      nota: b.motivo + (nota ? ' — '+nota : ''),
+      responsable: resp
+    });
+    lote.push({tipo:'baja-stock', producto:b.n, cantidad:-(antes-despues), stockAntes:antes, stockDespues:despues, responsable:resp});
+    etiquetas.push(b.n+': '+antes+' → '+despues);
+  });
+  registrarMovimientosLote(lote);
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Bajas ('+etiquetas.length+')');
+  if(movs.length>500) movs = movs.slice(-500);
+  saveStockMovs(movs);
+  var n = _bajasLista.length;
+  _bajasLista = [];
+  pintarListaBajas();
+  pintarBajasHoy();
+  if(typeof renderInventario==='function') renderInventario();
+  autoSaveNow();
+  showToast('🗑 '+(n===1?'Baja registrada':n+' bajas registradas'));
+}
+function pintarBajasHoy() {
+  var el = document.getElementById('bajasHoyCont');
+  if(!el) return;
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var lista = getStockMovs().filter(function(m){ return m.tipo === 'baja' && new Date(m.ts) >= hoy; })
+    .sort(function(a,b){ return new Date(b.ts) - new Date(a.ts); });
+  if(!lista.length){ el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--gray);font-size:.78rem">Todavía no hay bajas hoy.</div>'; return; }
+  el.innerHTML = lista.map(function(m){
+    var hora = new Date(m.ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    return '<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid rgba(255,255,255,.06);padding:7px 2px;font-size:.8rem">'+
+      '<div style="min-width:0"><div style="color:var(--white)">'+escBaja(m.producto)+'</div>'+
+      '<div style="font-size:.7rem;color:var(--gray)">'+hora+' · '+escBaja(m.nota||m.motivo||'')+' · '+escBaja(m.responsable||'')+'</div></div>'+
+      '<div style="color:var(--red);font-family:Oswald,sans-serif;white-space:nowrap">'+m.diferencia+' u.</div>'+
+    '</div>';
+  }).join('');
 }
 
 // ── RECEPCIÓN: minimizar y guardar lo cargado ──────────────────────────────
@@ -24294,8 +24467,8 @@ function descartarBorradorRecep() {
 }
 
 function selRecepTab(tab) {
-  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos', pedidos:'Pedidos'};
-  ['merc','precios','egresos','pedidos'].forEach(function(t){
+  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos', pedidos:'Pedidos', bajas:'Bajas'};
+  ['merc','precios','egresos','pedidos','bajas'].forEach(function(t){
     var btn = document.getElementById('rt-'+t);
     var pane= document.getElementById('recepPane'+paneMap[t]);
     if(btn) btn.classList.toggle('active', t===tab);
@@ -24307,6 +24480,7 @@ function selRecepTab(tab) {
   }
   if(tab==='precios') initRecepCatalogo();
   if(tab==='pedidos') renderRecepPedidos();
+  if(tab==='bajas') renderRecepBajas();
   if(tab==='egresos') initRecepEgresos();
 }
 
