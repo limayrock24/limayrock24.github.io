@@ -10167,7 +10167,7 @@ function doConfirmarVenta() {
     // pedido sabe con qué venta se cobró. Sin esto, anular la venta dejaba el
     // pedido dado por cobrado y entregado, inflando los números del delivery.
     venta.pedidoWebId = _pedidoWebEnCarrito;
-    marcarPedidoWebCobrado(_pedidoWebEnCarrito, venta.id, delivery);
+    marcarPedidoWebCobrado(_pedidoWebEnCarrito, venta.id, delivery, venta.items);
     _pedidoWebEnCarrito = null;
   }
 
@@ -10188,7 +10188,23 @@ function doConfirmarVenta() {
 
 // Marca un pedido web como cobrado y listo para que el repartidor lo retire.
 // Se dispara solo al confirmar la venta desde el carrito.
-function marcarPedidoWebCobrado(id, ventaId, envioCobrado){
+// Lo que se sumó o se sacó en el local a un pedido del catálogo (por ejemplo,
+// la clienta pidió más cosas por WhatsApp y el cajero las agregó al carrito).
+function htmlCambiosPedidoWeb(p, grande) {
+  var h = '';
+  var fs = grande ? '.8rem' : '.75rem';
+  if(p.itemsAgregados && p.itemsAgregados.length){
+    h += '<div style="font-size:'+fs+';margin-top:5px;color:#22c55e;font-weight:600">➕ Sumado en el local: '+
+      p.itemsAgregados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+'</div>';
+  }
+  if(p.itemsQuitados && p.itemsQuitados.length){
+    h += '<div style="font-size:'+fs+';margin-top:3px;color:#f87171">➖ Sacado: '+
+      p.itemsQuitados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+'</div>';
+  }
+  return h;
+}
+
+function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p || p.pagoConfirmado) return;
@@ -10201,6 +10217,35 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado){
     p.envio = envioCobrado;
     p.total = subtotalProd + envioCobrado;
     p.envioCambiadoPor = currentEmp ? currentEmp.nombre : 'Local';
+  }
+  // Lo que se vendió de verdad contra lo que pidió por el catálogo: si en el
+  // local se sumaron cosas (o se sacaron), el pedido queda con esa diferencia
+  // y con el total real, así el repartidor ve el pedido completo.
+  if(Array.isArray(itemsVenta) && itemsVenta.length){
+    var original = {};
+    (p.items||[]).forEach(function(it){ original[it.nombre] = (original[it.nombre]||0) + (it.cantidad||1); });
+    (p.combos||[]).forEach(function(cb){ var k = (cb.emoji||'🎁')+' '+cb.nombre; original[k] = (original[k]||0) + (cb.cantidad||1); });
+    (p.notasManuales||[]).forEach(function(n){ var k = n.nombre + (n.texto ? ' ('+n.texto+')' : ''); original[k] = (original[k]||0) + 1; });
+    var vendido = {}, precioDe = {};
+    itemsVenta.forEach(function(i){ vendido[i.name] = (vendido[i.name]||0) + (i.qty||1); precioDe[i.name] = i.precio; });
+    var agregados = [], quitados = [];
+    Object.keys(vendido).forEach(function(n){
+      var extra = vendido[n] - (original[n]||0);
+      if(extra > 0) agregados.push({ nombre: n, cantidad: extra, precio: precioDe[n] || 0 });
+    });
+    Object.keys(original).forEach(function(n){
+      var falta = original[n] - (vendido[n]||0);
+      if(falta > 0) quitados.push({ nombre: n, cantidad: falta });
+    });
+    if(agregados.length || quitados.length){
+      var subtotalVenta = itemsVenta.reduce(function(s,i){ return s + (i.subtotal || (i.precio||0)*(i.qty||1)); }, 0);
+      if(p.subtotalOriginal === undefined) p.subtotalOriginal = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
+      p.itemsAgregados = agregados;
+      p.itemsQuitados = quitados;
+      p.subtotal = subtotalVenta;
+      p.total = subtotalVenta + (p.envio||0);
+      p.modificadoEnLocalPor = currentEmp ? currentEmp.nombre : 'Local';
+    }
   }
   p.pagoConfirmado = true;
   p.cobradoEn = new Date().toISOString();
@@ -25921,6 +25966,7 @@ function renderPanelRepartidor() {
       (p.medioPago ? '<div style="font-size:.78rem;margin-top:4px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#22c55e')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Paga con '+p.medioPago+
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
       (itemsTxt ? '<div style="font-size:.75rem;color:var(--gray);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06)">'+itemsTxt+'</div>' : '')+
+      htmlCambiosPedidoWeb(p)+
       (p.envio>0 ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio)+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : '')+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
@@ -26790,6 +26836,7 @@ function abrirDeliveryPendModal() {
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
         repHtml+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
+        htmlCambiosPedidoWeb(p)+
         notasHtml+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;margin-top:8px">'+fmt(p.total)+envioTxt+' · '+hora+'</div>'+
         // El LOCAL es el único que habla con el cliente: le pasa los datos de
@@ -29294,6 +29341,7 @@ function renderDeliveryPanel() {
             '<div style="flex:1;min-width:0">'+
               '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · <a href="https://wa.me/549'+p.telefono.replace(/\D/g,'')+'" target="_blank" style="color:var(--green);text-decoration:none">📞 '+p.telefono+'</a></div>'+
               '<div style="font-size:.76rem;color:var(--gray);margin-top:2px">'+itemsTxt+'</div>'+
+              htmlCambiosPedidoWeb(p)+
               envioTxt+
               notasTxt+
               '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">'+hora+'</div>'+
