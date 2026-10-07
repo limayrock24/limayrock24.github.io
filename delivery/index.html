@@ -182,7 +182,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "11"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "12"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -539,7 +539,45 @@ window.__lrEscucharNotifsEnVivo = function(){
     });
   }catch(e){ console.warn('No se pudo escuchar notificaciones en vivo:', e); }
 };
+// En la app instalada (Android) los avisos son nativos: el celular se anota en
+// la misma lista (fcmTokens, con el mismo "destino" y "quien" que la página),
+// así todo lo que se maneja desde el admin sigue funcionando igual.
+function activarNotifsApp(destino, quien){
+  var PN;
+  try{ PN = Capacitor.registerPlugin('PushNotifications'); }catch(e){ return Promise.reject(e); }
+  return PN.checkPermissions().then(function(p){
+    return p.receive === 'granted' ? p : PN.requestPermissions();
+  }).then(function(p){
+    if(p.receive !== 'granted') throw new Error('No diste permiso para recibir avisos');
+    return PN.removeAllListeners().catch(function(){}).then(function(){
+      return new Promise(function(resolve, reject){
+        PN.addListener('registration', function(t){ resolve(t.value); });
+        PN.addListener('registrationError', function(e){ reject(new Error((e && e.error) || 'No se pudo registrar el celular')); });
+        PN.register().catch(reject);
+      });
+    });
+  }).then(function(token){
+    if(!token) throw new Error('No se pudo registrar el celular');
+    var disp = ('App Android · '+navigator.userAgent).slice(0, 120);
+    try{
+      window.__lrDB.collection('fcmTokens').where('dispositivo', '==', disp).where('quien', '==', quien || '')
+        .get().then(function(snap){ snap.forEach(function(doc){ if(doc.id !== token.slice(-40)) doc.ref.delete(); }); }).catch(function(){});
+    }catch(e){}
+    return window.__lrDB.collection('fcmTokens').doc(token.slice(-40)).set({
+      token: token, destino: destino, quien: quien || '', dispositivo: disp, app: true, fecha: new Date().toISOString()
+    }).then(function(){ return token; });
+  });
+}
 function restaurarEstadoNotificaciones(destino, quien, btnId){
+  if(esAppDelivery()){
+    // Versión vieja de la app (sin avisos propios): no se hace nada.
+    if(!(Capacitor.isPluginAvailable && Capacitor.isPluginAvailable('PushNotifications'))) return;
+    activarNotifsApp(destino, quien).catch(function(e){
+      console.warn('Avisos de la app:', e);
+      showToast('🔔 Para que te lleguen los pedidos, permití las notificaciones de la app', true);
+    });
+    return;
+  }
   if(!('Notification' in window) || Notification.permission !== 'granted') return;
   var btn = document.getElementById(btnId);
   if(btn){ btn.textContent = '🔔 Avisos activados'; btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)'; }
