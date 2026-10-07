@@ -18594,6 +18594,17 @@ function registrarPedidoEnHistorial(id) {
 
 var _historialPedidos = [];
 var _historialPedidosEmp = false;
+var _historialPedidosPeriodo = 'semana';
+function inicioPeriodoHistorialPedidos(per) {
+  var d = new Date(); d.setHours(0,0,0,0);
+  if(per === 'semana'){ var dia = (d.getDay()+6)%7; d.setDate(d.getDate()-dia); }   // desde el lunes
+  if(per === 'mes') d.setDate(1);
+  return d.getTime();
+}
+function cambiarPeriodoHistorialPedidos(per) {
+  _historialPedidosPeriodo = per;
+  abrirHistorialPedidos(false);
+}
 // modoEmpleado: desde la pestaña Pedidos de Recepción — solo los últimos 3
 // días y sin costos, para controlar la mercadería cuando llega.
 function abrirHistorialPedidos(modoEmpleado) {
@@ -18616,13 +18627,23 @@ function abrirHistorialPedidos(modoEmpleado) {
   ov.querySelector('.sub').textContent = _historialPedidosEmp
     ? 'Pedidos de los últimos 3 días. Tocá uno para ver qué se pidió y controlarlo cuando llega.'
     : 'Los pedidos que se generaron en PDF, tuyos y de los empleados.';
+  var filtros = document.getElementById('historialPedidosFiltros');
+  if(!filtros){
+    filtros = document.createElement('div');
+    filtros.id = 'historialPedidosFiltros';
+    filtros.style.cssText = 'display:flex;gap:6px;margin:0 0 10px';
+    ov.querySelector('.sub').after(filtros);
+  }
+  filtros.style.display = _historialPedidosEmp ? 'none' : 'flex';
+  filtros.innerHTML = [['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes']].map(function(x){
+    var act = _historialPedidosPeriodo === x[0];
+    return '<button type="button" onclick="cambiarPeriodoHistorialPedidos(\''+x[0]+'\')" style="flex:1;background:'+(act?'var(--gold)':'none')+';color:'+(act?'var(--black)':'var(--gray)')+';border:1px solid '+(act?'var(--gold)':'var(--border)')+';border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px;cursor:pointer">'+x[1]+'</button>';
+  }).join('');
   ov.classList.add('open');
   var lista = document.getElementById('historialPedidosLista');
   lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">Cargando…</div>';
   var consulta = window.__lrDB.collection('pedidosProveedor');
-  consulta = _historialPedidosEmp
-    ? consulta.where('id','>=', Date.now() - 3*86400000).orderBy('id','desc')
-    : consulta.orderBy('id','desc').limit(80);
+  consulta = consulta.where('id','>=', _historialPedidosEmp ? Date.now() - 3*86400000 : inicioPeriodoHistorialPedidos(_historialPedidosPeriodo)).orderBy('id','desc');
   consulta.get().then(function(snap){
     _historialPedidos = [];
     snap.forEach(function(d){ _historialPedidos.push(d.data()); });
@@ -18634,7 +18655,7 @@ function abrirHistorialPedidos(modoEmpleado) {
 function pintarHistorialPedidos() {
   var lista = document.getElementById('historialPedidosLista');
   if(!lista) return;
-  if(!_historialPedidos.length){ lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">'+(_historialPedidosEmp ? 'No hay pedidos de los últimos 3 días.' : 'Todavía no hay pedidos registrados.')+'</div>'; return; }
+  if(!_historialPedidos.length){ lista.innerHTML = '<div style="padding:16px;color:var(--gray);font-size:.8rem">'+(_historialPedidosEmp ? 'No hay pedidos de los últimos 3 días.' : 'No hay pedidos en este período.')+'</div>'; return; }
   lista.innerHTML = _historialPedidos.map(function(r, i){
     var d = new Date(r.fecha);
     var fecha = d.toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
@@ -21560,7 +21581,8 @@ function renderDashboard() {
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
         '</div>'+
-        '<div style="text-align:center">'+
+        '<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap">'+
+          '<button onclick="event.stopPropagation();abrirMensajeRapido(\''+nombreEmp.replace(/'/g,"\\'")+'\')" style="background:none;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">💬 Mensaje a '+sesionViva.nombre+'</button>'+
           '<button onclick="window.__lrTurnoVivoExpandido=window.__lrTurnoVivoExpandido||{};window.__lrTurnoVivoExpandido[\''+claveExpandido+'\']=!window.__lrTurnoVivoExpandido[\''+claveExpandido+'\'];renderDashboard();" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
             (expandido ? '▲ Ocultar movimientos' : '▼ Ver movimientos del turno')+
           '</button>'+
@@ -28153,10 +28175,17 @@ function saveMensajesPunt(m) { window.__lrMensajesPuntCache = m; if(window.__lrS
 function renderMensajesPanel() {
   var sel = document.getElementById('mpEmpleado');
   if(sel){
+    var elegidoAntes = sel.value;
     // Los de delivery no reciben mensajes (no abren turno en el panel de venta)
     sel.innerHTML = getEmpleados().filter(function(e){ return !empEsDelivery(e); })
       .map(function(e){ return '<option value="'+e.nombre+'">'+e.nombre+'</option>'; }).join('');
+    // Mantener el que estaba elegido; si no había, el que tiene el turno abierto.
+    var enTurno = window.__lrSesionActivaCache && window.__lrSesionActivaCache.nombre;
+    var preferido = elegidoAntes || enTurno;
+    if(preferido && Array.prototype.some.call(sel.options, function(o){ return o.value === preferido; })) sel.value = preferido;
   }
+  var fechaMp = document.getElementById('mpFecha');
+  if(fechaMp && !fechaMp.value) fechaMp.value = fechaLocalStr();
 
   var hoyStr = fechaLocalStr();
   var puntuales = getMensajesPunt().filter(function(m){ return !m.mostrado; })
@@ -28209,6 +28238,43 @@ function renderMensajesPanel() {
   }
 }
 
+// Mensaje rápido desde el turno en vivo: se le muestra en el momento al
+// empleado que está trabajando (es un mensaje puntual con fecha de hoy).
+function abrirMensajeRapido(nombre) {
+  var ov = document.getElementById('mensajeRapidoOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'mensajeRapidoOverlay';
+    ov.className = 'arqueo-modal';
+    ov.style.zIndex = '1500';
+    ov.innerHTML = '<div class="arqueo-box" style="text-align:left;max-width:440px">'+
+      '<h3 id="mensajeRapidoTitulo">💬 Mensaje</h3>'+
+      '<div class="sub">Le aparece en el momento en la pantalla del panel de venta.</div>'+
+      '<textarea id="mensajeRapidoTexto" rows="4" placeholder="Escribí el mensaje…" style="width:100%;box-sizing:border-box;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;resize:vertical"></textarea>'+
+      '<button class="arqueo-confirm" onclick="enviarMensajeRapido()" style="margin-top:12px">✉️ Enviar</button>'+
+      '<button onclick="document.getElementById(\'mensajeRapidoOverlay\').classList.remove(\'open\')" style="width:100%;background:none;border:1px solid var(--border);color:var(--gray);border-radius:8px;padding:10px;font-family:Oswald,sans-serif;font-size:.8rem;cursor:pointer;margin-top:8px">Cancelar</button>'+
+    '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.dataset.empleado = nombre;
+  document.getElementById('mensajeRapidoTitulo').textContent = '💬 Mensaje a '+nombre;
+  document.getElementById('mensajeRapidoTexto').value = '';
+  ov.classList.add('open');
+  setTimeout(function(){ document.getElementById('mensajeRapidoTexto').focus(); }, 100);
+}
+function enviarMensajeRapido() {
+  var ov = document.getElementById('mensajeRapidoOverlay');
+  var nombre = ov && ov.dataset.empleado;
+  var texto = document.getElementById('mensajeRapidoTexto').value.trim();
+  if(!nombre) return;
+  if(!texto){ showToast('Escribí el mensaje', true); return; }
+  var msgs = getMensajesPunt();
+  msgs.push({ id: Date.now(), empleado: nombre, texto: texto, fecha: fechaLocalStr(), mostrado: false });
+  saveMensajesPunt(msgs);
+  ov.classList.remove('open');
+  showToast('✉️ Mensaje enviado a '+nombre+' — le aparece en el momento');
+}
+
 function eliminarMensajePuntual(id) {
   saveMensajesPunt(getMensajesPunt().filter(function(m){ return m.id!==id; }));
   renderMensajesPanel();
@@ -28224,7 +28290,7 @@ function enviarMensajePuntual() {
   msgs.push({ id:Date.now(), empleado:emp, texto:texto, fecha: fecha, mostrado:false });
   saveMensajesPunt(msgs);
   document.getElementById('mpTexto').value = '';
-  if(fechaInp) fechaInp.value = '';
+  if(fechaInp) fechaInp.value = fechaLocalStr();
   var fechaTxt = fecha===fechaLocalStr() ? 'hoy' : new Date(fecha+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
   showToast('✉️ Mensaje para '+emp+' guardado — le va a aparecer '+fechaTxt);
   renderMensajesPanel();
