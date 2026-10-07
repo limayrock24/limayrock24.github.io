@@ -1652,8 +1652,20 @@
     // anteriores, y hay que poder saber cómo eran esos también.
     var basePW = window.__lrPedidosWebBase || (window.__lrPedidosWebBase = new WeakMap());
     lista.forEach(function(d){ basePW.set(d, JSON.stringify(d)); });
+    // Si lo único que cambió es la ubicación en vivo del repartidor (llega
+    // cada ~20 s), no se redibuja nada: solo se mueve el mapa y el "hace X".
+    var mapaPrevio = window.__lrSync.ultimoPedidosWebSnapshot;
+    var soloUbicacion = false;
+    if(mapaPrevio && window.__lrSync.pedidosWebListos){
+      var sinUbic = function(m){ var o = {}; Object.keys(m).sort().forEach(function(k){ var c = Object.assign({}, m[k]); delete c.ubicacionRep; o[k] = c; }); return stringifyOrdenado(o); };
+      try{ soloUbicacion = sinUbic(mapaPrevio) === sinUbic(mapa); }catch(e){ soloUbicacion = false; }
+    }
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
     window.__lrSync.pedidosWebListos = true;
+    if(soloUbicacion){
+      if(typeof actualizarUbicacionesEnVivo==='function') actualizarUbicacionesEnVivo();
+      return;
+    }
     if(document.getElementById('searchInput') && typeof actualizarDeliveryPendBadge==='function'){
       actualizarDeliveryPendBadge();
     }
@@ -10213,6 +10225,156 @@ function doConfirmarVenta() {
 // Se dispara solo al confirmar la venta desde el carrito.
 // Lo que se sumó o se sacó en el local a un pedido del catálogo (por ejemplo,
 // la clienta pidió más cosas por WhatsApp y el cajero las agregó al carrito).
+// ── UBICACIÓN EN VIVO DEL REPARTIDOR ───────────────────────────────────────
+// El celular del repartidor (página de delivery) manda su posición al pedido
+// cada ~20 s mientras lo lleva (campo ubicacionRep). Acá se muestra si está
+// llegando bien y se abre un mapa que se actualiza solo. Si pasan más de 2
+// minutos sin datos, se marca en rojo: el repartidor cerró la página,
+// bloqueó el celular o se quedó sin señal.
+var GPS_SIN_SENAL_SEG = 120;
+function _gpsHace(seg) {
+  if(seg < 60) return seg+' s';
+  var m = Math.floor(seg/60);
+  return m < 60 ? m+' min' : Math.floor(m/60)+' h '+(m%60)+' min';
+}
+function _gpsTextoFila(ts) {
+  var seg = Math.max(0, Math.round((Date.now() - new Date(ts).getTime())/1000));
+  var vivo = seg <= GPS_SIN_SENAL_SEG;
+  return {vivo:vivo, txt: vivo ? '📍 Ubicación en vivo · hace '+_gpsHace(seg) : '📍 Sin señal de ubicación hace '+_gpsHace(seg)};
+}
+function htmlFilaGPSPedido(p) {
+  var u = p.ubicacionRep;
+  if(!u || !u.ts){
+    return '<div style="font-size:.72rem;color:var(--gold);margin-top:3px">📍 Todavía no llegó su ubicación (tiene que usar la app de delivery y permitir la ubicación)</div>';
+  }
+  var t = _gpsTextoFila(u.ts);
+  return '<div class="gps-fila" data-ts="'+u.ts+'" style="font-size:.72rem;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:'+(t.vivo?'var(--green)':'var(--red)')+'">'+
+    '<span class="gps-txt">'+t.txt+'</span>'+
+    '<button type="button" onclick="abrirMapaRepartidor('+p.id+')" style="background:none;border:1px solid currentColor;color:inherit;border-radius:4px;padding:2px 8px;font-size:.68rem;cursor:pointer">🗺 Ver en el mapa</button>'+
+  '</div>';
+}
+// Refresca los "hace X" de las filas (y el estado de color) sin redibujar.
+function refrescarFilasGPS() {
+  document.querySelectorAll('.gps-fila').forEach(function(el){
+    var t = _gpsTextoFila(el.getAttribute('data-ts'));
+    var s = el.querySelector('.gps-txt');
+    if(s && s.textContent !== t.txt) s.textContent = t.txt;
+    var c = t.vivo ? 'var(--green)' : 'var(--red)';
+    if(el.style.color !== c) el.style.color = c;
+  });
+  pintarMapaRepartidor();
+}
+setInterval(refrescarFilasGPS, 5000);
+function actualizarUbicacionesEnVivo() {
+  getPedidosWeb().forEach(function(p){
+    if(!p.ubicacionRep || !p.ubicacionRep.ts) return;
+    document.querySelectorAll('.gps-fila').forEach(function(el){
+      var b = el.querySelector('button');
+      if(b && b.getAttribute('onclick') === 'abrirMapaRepartidor('+p.id+')') el.setAttribute('data-ts', p.ubicacionRep.ts);
+    });
+  });
+  // Si un pedido recién empieza a mandar ubicación, la fila todavía no existe:
+  // ahí sí se redibuja la lista de pedidos en curso.
+  var faltan = getPedidosWeb().some(function(p){
+    return p.ubicacionRep && p.repartidor && p.estadoDelivery !== 'entregado' && !document.querySelector('.gps-fila button[onclick="abrirMapaRepartidor('+p.id+')"]');
+  });
+  if(faltan && typeof renderDeliveryPanel==='function' && document.getElementById('deliveryPedidosActivos')){
+    var ae = document.activeElement;
+    if(!ae || !document.getElementById('pane-delivery') || !document.getElementById('pane-delivery').contains(ae) || ae.tagName === 'BUTTON') renderDeliveryPanel();
+  }
+  refrescarFilasGPS();
+}
+function cargarLeaflet(cb) {
+  if(window.L && window.L.map){ cb(); return; }
+  (window._leafletEspera = window._leafletEspera || []).push(cb);
+  if(window._leafletCargando) return;
+  window._leafletCargando = true;
+  var css = document.createElement('link');
+  css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(css);
+  var js = document.createElement('script');
+  js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  js.onload = function(){ var l = window._leafletEspera || []; window._leafletEspera = []; l.forEach(function(f){ try{ f(); }catch(e){ console.error(e); } }); };
+  js.onerror = function(){ window._leafletCargando = false; var e = document.getElementById('mapaRepEstado'); if(e) e.innerHTML = '<span style="color:var(--red)">No se pudo cargar el mapa. Revisá la conexión.</span>'; };
+  document.head.appendChild(js);
+}
+var _mapaRep = null; // {id, mapa, marcRep, circulo, marcCli, centrado}
+function abrirMapaRepartidor(id) {
+  var ov = document.getElementById('mapaRepOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'mapaRepOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2500;display:flex;align-items:center;justify-content:center;padding:12px';
+    ov.innerHTML =
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;width:100%;max-width:720px;max-height:96vh;display:flex;flex-direction:column;padding:14px">'+
+        '<div id="mapaRepTitulo" style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;color:var(--white)"></div>'+
+        '<div id="mapaRepEstado" style="font-size:.78rem;margin:4px 0 10px">Cargando mapa...</div>'+
+        '<div id="mapaRepCanvas" style="width:100%;height:60vh;border-radius:8px;overflow:hidden;background:#111"></div>'+
+        '<div style="display:flex;gap:8px;margin-top:10px">'+
+          '<a id="mapaRepGoogle" target="_blank" style="flex:1;text-align:center;background:var(--green);color:var(--black);text-decoration:none;border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700;letter-spacing:1px">Abrir en Google Maps</a>'+
+          '<button type="button" onclick="cerrarMapaRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:11px 18px;font-family:Oswald,sans-serif;font-size:.78rem;cursor:pointer">Cerrar</button>'+
+        '</div>'+
+      '</div>';
+    ov.addEventListener('click', function(e){ if(e.target === ov) cerrarMapaRepartidor(); });
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  if(_mapaRep && _mapaRep.mapa){ try{ _mapaRep.mapa.remove(); }catch(e){} }
+  _mapaRep = {id:id};
+  document.getElementById('mapaRepCanvas').innerHTML = '';
+  pintarMapaRepartidor();
+  cargarLeaflet(function(){
+    if(!_mapaRep || _mapaRep.id !== id) return;
+    var cont = document.getElementById('mapaRepCanvas');
+    _mapaRep.mapa = L.map(cont).setView([-38.99, -68.23], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(_mapaRep.mapa);
+    setTimeout(function(){ try{ _mapaRep.mapa.invalidateSize(); }catch(e){} }, 200);
+    pintarMapaRepartidor();
+  });
+}
+function cerrarMapaRepartidor() {
+  var ov = document.getElementById('mapaRepOverlay');
+  if(ov) ov.style.display = 'none';
+  if(_mapaRep && _mapaRep.mapa){ try{ _mapaRep.mapa.remove(); }catch(e){} }
+  _mapaRep = null;
+}
+function pintarMapaRepartidor() {
+  if(!_mapaRep) return;
+  var p = getPedidosWeb().find(function(x){ return x.id === _mapaRep.id; });
+  var tit = document.getElementById('mapaRepTitulo'), est = document.getElementById('mapaRepEstado'), gl = document.getElementById('mapaRepGoogle');
+  if(!p){ if(est) est.textContent = 'El pedido ya no está en curso.'; return; }
+  var u = p.ubicacionRep;
+  if(tit) tit.textContent = '🛵 '+(p.repartidor||'Repartidor')+' — pedido de '+p.nombre;
+  if(!u || !u.ts){
+    if(est) est.innerHTML = '<span style="color:var(--gray)">'+(p.estadoDelivery === 'entregado' ? '✅ Pedido entregado — ya no se comparte la ubicación.' : 'Todavía no llegó ninguna ubicación del repartidor.')+'</span>';
+    if(gl) gl.style.display = 'none';
+    return;
+  }
+  var t = _gpsTextoFila(u.ts);
+  if(est) est.innerHTML = '<span style="color:'+(t.vivo?'var(--green)':'var(--red)')+'">'+t.txt+'</span>'+
+    '<span style="color:var(--gray)"> · precisión ±'+(u.prec||'?')+' m</span>'+
+    (t.vivo ? '' : '<div style="color:var(--red);margin-top:3px">El mapa muestra el último punto que mandó. Puede que haya cerrado la página o bloqueado el celular.</div>');
+  if(gl){ gl.style.display = ''; gl.href = 'https://maps.google.com/?q='+u.lat+','+u.lng; }
+  if(!_mapaRep.mapa || !window.L) return;
+  var pos = [u.lat, u.lng], color = t.vivo ? '#22c55e' : '#ef4444';
+  if(!_mapaRep.marcRep){
+    _mapaRep.circulo = L.circle(pos, {radius: u.prec||30, color:color, weight:1, fillOpacity:.12}).addTo(_mapaRep.mapa);
+    _mapaRep.marcRep = L.circleMarker(pos, {radius:10, color:'#fff', weight:3, fillColor:color, fillOpacity:1}).addTo(_mapaRep.mapa)
+      .bindTooltip('🛵 '+(p.repartidor||''), {permanent:true, direction:'top', offset:[0,-10]});
+  } else {
+    _mapaRep.marcRep.setLatLng(pos).setStyle({fillColor:color});
+    _mapaRep.circulo.setLatLng(pos).setRadius(u.prec||30).setStyle({color:color});
+  }
+  if(p.gps && p.gps.lat && !_mapaRep.marcCli){
+    _mapaRep.marcCli = L.marker([p.gps.lat, p.gps.lng]).addTo(_mapaRep.mapa).bindTooltip('🏠 '+p.nombre, {permanent:true, direction:'top', offset:[0,-30]});
+  }
+  if(!_mapaRep.centrado){
+    _mapaRep.centrado = true;
+    if(_mapaRep.marcCli) _mapaRep.mapa.fitBounds(L.latLngBounds([pos, [p.gps.lat, p.gps.lng]]), {padding:[50,50], maxZoom:17});
+    else _mapaRep.mapa.setView(pos, 16);
+  }
+}
+
 // Seguimiento de un pedido web en el panel admin: cuándo llegó, si ya lo
 // tomó un repartidor (quién y a qué hora), si está cobrado y si se entregó.
 function htmlEstadoPedidoWeb(p) {
@@ -10222,9 +10384,15 @@ function htmlEstadoPedidoWeb(p) {
   var fila = function(color, txt){ return '<div style="font-size:.72rem;color:'+color+';margin-top:3px">'+txt+'</div>'; };
   var h = fila('var(--gray)', '📥 Llegó a las '+hh(p.fecha)+' · hace '+hace);
   if(p.estadoDelivery === 'entregado'){
-    h += fila('var(--green)', '🛵 Lo llevó <b>'+(p.repartidor||'—')+'</b>'+(p.tomadoEn?' (lo tomó '+hh(p.tomadoEn)+')':''));
+    h += fila('var(--green)', '🛵 Lo llevó <b>'+(p.repartidor||'—')+'</b>'+(p.tomadoEn?' (lo tomó '+hh(p.tomadoEn)+')':'')+(p.retiradoEn?' · salió '+hh(p.retiradoEn):''));
   } else if(p.repartidor){
-    h += fila('var(--green)', '🛵 Lo tomó <b>'+p.repartidor+'</b> a las '+hh(p.tomadoEn)+' · en camino');
+    h += fila('var(--green)', '🛵 Lo tomó <b>'+p.repartidor+'</b> a las '+hh(p.tomadoEn));
+    if(p.retiradoEn){
+      h += fila('#38bdf8', '📦 Lo retiró del local a las '+hh(p.retiradoEn)+' · <b>en camino</b>');
+      h += htmlFilaGPSPedido(p);
+    } else {
+      h += fila('var(--gray)', '📦 Todavía no lo retiró del local (la ubicación se ve desde que lo retira)');
+    }
   } else {
     h += fila('var(--gold)', '⏳ Ningún repartidor lo tomó todavía'+(p.liberadoEn?' (un repartidor lo soltó a las '+hh(p.liberadoEn)+')':''));
   }

@@ -1,0 +1,59 @@
+# Compila la app de repartidores (Android) y la deja para descargar en
+# "Releases" del repositorio. Link fijo a la última versión:
+# https://github.com/limayrock24/limayrock24.github.io/releases/latest/download/LimayRock-Delivery.apk
+name: App delivery (Android)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app-delivery/**'
+      - '.github/workflows/app-delivery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        working-directory: app-delivery
+        run: npm ci
+
+      - name: Sincronizar proyecto Android
+        working-directory: app-delivery
+        run: npx cap sync android
+
+      - name: Compilar APK
+        working-directory: app-delivery/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../../LimayRock-Delivery.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LimayRock-Delivery
+          path: LimayRock-Delivery.apk
+
+      - name: Publicar versión
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-delivery-v${{ github.run_number }}
+          name: App Delivery v1.0.${{ github.run_number }}
+          body: App de repartidores de Limay Rock. Descargar e instalar LimayRock-Delivery.apk en el celular.
+          files: LimayRock-Delivery.apk
+          make_latest: true

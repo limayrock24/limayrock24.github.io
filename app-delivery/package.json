@@ -1,0 +1,12 @@
+{
+  "name": "limayrock-delivery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App de repartidores de Limay Rock: abre el panel de delivery y comparte la ubicación de fondo mientras llevan un pedido.",
+  "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.19",
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}

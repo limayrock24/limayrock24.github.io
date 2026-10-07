@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Limay Rock Delivery</string>
+    <string name="title_activity_main">Limay Rock Delivery</string>
+    <string name="package_name">com.limayrock.delivery</string>
+    <string name="custom_url_scheme">com.limayrock.delivery</string>
+    <!-- Aviso fijo mientras se comparte la ubicación (GPS de fondo) -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Pedido en camino</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_tracking</string>
+    <string name="capacitor_background_geolocation_notification_color">#F5C200</string>
+</resources>

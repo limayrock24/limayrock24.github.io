@@ -165,6 +165,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       Tocá <b>📲 Instalar app</b> y después <b>🔔 Activar avisos</b>, arriba.
     </div>
   </div>
+  <div id="repAvisoGPS" style="display:none;margin:12px 16px 0;border-radius:8px;padding:10px 14px;font-size:.76rem;line-height:1.45"></div>
   <div id="repartidorLista" style="flex:1;overflow-y:auto;padding:12px 16px"></div>
 </div>
 
@@ -181,7 +182,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "10"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "11"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -681,7 +682,11 @@ function renderPanelRepartidor() {
   var avisoN = document.getElementById('repAvisoNotifs');
   if(avisoN){
     var yaTiene = ('Notification' in window) && Notification.permission === 'granted';
-    avisoN.style.display = yaTiene ? 'none' : 'block';
+    avisoN.style.display = (yaTiene || esAppDelivery()) ? 'none' : 'block';
+  }
+  // En la app instalada no van los botones de instalar / avisos web (los avisos de la app son aparte).
+  if(esAppDelivery()){
+    document.querySelectorAll('.btn-instalar-app, #btnNotifRepartidor').forEach(function(b){ b.style.display = 'none'; });
   }
   var yo = currentEmp.nombre;
   var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; });
@@ -719,7 +724,9 @@ function renderPanelRepartidor() {
         '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>'+
-      (p.pagoConfirmado
+      (p.retiradoEn
+        ? '<div style="font-size:.78rem;margin-top:5px;color:#052e16;background:#38bdf8;border-radius:5px;padding:6px 9px;font-weight:700;text-align:center">🛵 EN CAMINO — lo retiraste a las '+new Date(p.retiradoEn).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</div>'
+        : p.pagoConfirmado
         ? '<div style="font-size:.78rem;margin-top:5px;color:#052e16;background:#22c55e;border-radius:5px;padding:6px 9px;font-weight:700;text-align:center">✅ PAGADO Y LISTO — pasá a retirarlo</div>'
         : '<div style="font-size:.72rem;margin-top:5px;color:'+(p.estado==='cargado'?'var(--gold)':'var(--gray)')+'">'+
             (p.estado==='cargado' ? '📦 El local lo está preparando' : '⏳ El local todavía no lo preparó')+'</div>')+
@@ -741,7 +748,9 @@ function renderPanelRepartidor() {
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+
-            (p.pagoConfirmado
+            (p.pagoConfirmado && !p.retiradoEn
+              ? '<button onclick="marcarRetirado('+p.id+')" style="flex:1;background:#38bdf8;color:#052e16;border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">📦 Retiré el pedido</button>'
+              : p.pagoConfirmado
               ? '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'
               : '<button disabled title="El local todavía no confirmó el cobro" style="flex:1;background:rgba(255,255,255,.06);color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:not-allowed">⏳ Falta cobrar</button>')+
             '<button onclick="soltarPedido('+p.id+')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Soltar</button>'
@@ -898,13 +907,28 @@ function soltarPedido(id) {
   askConfirm('¿Soltás el pedido de '+p.nombre+'? Va a quedar disponible para otro repartidor.').then(function(ok){
     if(!ok) return;
     delete p.repartidor;
+    delete p.retiradoEn;
     p.estadoDelivery = 'libre';
     p.liberadoEn = new Date().toISOString();
+    delete p.ubicacionRep;   // deja de figurar la ubicación del repartidor
+    detenerGPSRepartidor();
     if(p.estado === 'cargado') p.estado = 'pendiente';
     savePedidosWeb(pedidos);
     showToast('Pedido liberado — vuelve a estar disponible para los demás');
     setFiltroRepartidor('libres');
   });
+}
+// El repartidor avisa que ya retiró el pedido del local y sale a entregarlo.
+// Desde acá hasta "Entregado" se comparte su ubicación con el local.
+function marcarRetirado(id) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id===id; });
+  if(!p || p.retiradoEn) return;
+  p.retiradoEn = new Date().toISOString();
+  savePedidosWeb(pedidos);
+  showToast('🛵 ¡En camino! Cuando se lo des al cliente, tocá Entregado');
+  renderPanelRepartidor();
+  try{ actualizarGPSRepartidor(); }catch(e){}
 }
 function marcarEntregado(id) {
   var pedidos = getPedidosWeb();
@@ -913,6 +937,8 @@ function marcarEntregado(id) {
   askConfirm('¿Confirmás que entregaste el pedido de '+p.nombre+'?').then(function(ok){
     if(!ok) return;
     p.estadoDelivery = 'entregado';
+    delete p.ubicacionRep;   // deja de figurar la ubicación del repartidor
+    detenerGPSRepartidor();
     p.entregadoEn = new Date().toISOString();
     p.estado = 'resuelto';
     savePedidosWeb(pedidos);
@@ -939,9 +965,158 @@ function chequearPedidosListosRepartidor(){
 }
 function actualizarContadorRepartidor() {
   chequearPedidosListosRepartidor();
+  try{ actualizarGPSRepartidor(); }catch(e){ console.error('GPS', e); }
   var ov = document.getElementById('repartidorOverlay');
   if(ov && ov.style.display === 'flex') renderPanelRepartidor();
 }
+
+// ── UBICACIÓN EN VIVO (por seguridad) ─────────────────────────────────────
+// Desde que el repartidor retira el pedido del local hasta que lo entrega, este celular
+// manda su ubicación cada ~20 segundos al pedido (campo ubicacionRep), y el
+// local la ve en el mapa del admin. Al entregar o soltar el pedido se deja de
+// mandar y se borra del pedido. Es una página web: si se bloquea el celular o se cambia
+// de app, el teléfono deja de mandar; el admin lo marca como "sin señal".
+var _gpsWatch = null, _gpsTimer = null, _gpsUltPos = null, _gpsUltEnvio = 0, _gpsEstado = '';
+function _gpsPedidosActivos() {
+  if(!currentEmp) return [];
+  return getPedidosWeb().filter(function(p){
+    return p.repartidor === currentEmp.nombre && p.retiradoEn && p.estadoDelivery !== 'entregado' && !p.anulado && p.estado !== 'resuelto';
+  });
+}
+function actualizarGPSRepartidor() {
+  var ov = document.getElementById('repartidorOverlay');
+  var abierto = ov && ov.style.display === 'flex';
+  var activos = abierto ? _gpsPedidosActivos() : [];
+  if(activos.length) iniciarGPSRepartidor(); else detenerGPSRepartidor();
+  pintarAvisoGPS(activos.length);
+}
+// En la app instalada (Android) se usa el GPS nativo, que sigue andando
+// aunque el repartidor abra Google Maps o bloquee el celular. En el
+// navegador queda el GPS web (solo con la página abierta).
+var _gpsNativoId = null;
+function _gpsPluginNativo() {
+  try{
+    if(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Capacitor.registerPlugin){
+      return window._bgGeoPlugin || (window._bgGeoPlugin = Capacitor.registerPlugin('BackgroundGeolocation'));
+    }
+  }catch(e){}
+  return null;
+}
+function esAppDelivery() { return !!_gpsPluginNativo(); }
+function abrirAjustesUbicacion() { var bg = _gpsPluginNativo(); if(bg && bg.openSettings) bg.openSettings(); }
+function iniciarGPSRepartidor() {
+  if(_gpsWatch !== null || _gpsEstado === 'nosoporta') return;
+  var bg = _gpsPluginNativo();
+  if(bg){
+    _gpsEstado = 'buscando';
+    _gpsWatch = 'nativo';
+    _gpsNativoId = bg.addWatcher({
+      backgroundTitle: 'Limay Rock — llevando un pedido',
+      backgroundMessage: 'Compartiendo tu ubicación con el local hasta que lo entregues.',
+      requestPermissions: true, stale: false, distanceFilter: 15
+    }, function(loc, err){
+      if(err){
+        _gpsEstado = (err.code === 'NOT_AUTHORIZED') ? 'denegado' : 'error';
+        pintarAvisoGPS(_gpsPedidosActivos().length);
+        return;
+      }
+      if(!loc) return;
+      _gpsUltPos = {coords:{latitude:loc.latitude, longitude:loc.longitude, accuracy:loc.accuracy}, timestamp: loc.time || Date.now()};
+      var antes = _gpsEstado; _gpsEstado = 'ok';
+      if(antes !== 'ok') pintarAvisoGPS(_gpsPedidosActivos().length);
+      if(Date.now() - _gpsUltEnvio >= 20000) enviarUbicacionRepartidor();
+    });
+    _gpsTimer = setInterval(enviarUbicacionRepartidor, 20000);
+    return;
+  }
+  if(!navigator.geolocation){ _gpsEstado = 'nosoporta'; return; }
+  _gpsEstado = 'buscando';
+  _gpsWatch = navigator.geolocation.watchPosition(function(pos){
+    _gpsUltPos = pos;
+    var antes = _gpsEstado;
+    _gpsEstado = 'ok';
+    if(antes !== 'ok') pintarAvisoGPS(_gpsPedidosActivos().length);
+    if(Date.now() - _gpsUltEnvio >= 20000) enviarUbicacionRepartidor();
+  }, function(err){
+    _gpsEstado = (err && err.code === 1) ? 'denegado' : 'error';
+    if(err && err.code === 1 && _gpsWatch !== null){ navigator.geolocation.clearWatch(_gpsWatch); _gpsWatch = null; }
+    pintarAvisoGPS(_gpsPedidosActivos().length);
+  }, {enableHighAccuracy:true, maximumAge:15000, timeout:30000});
+  // Aunque esté quieto, se vuelve a mandar cada 20 s para que el local sepa
+  // que la página sigue abierta.
+  _gpsTimer = setInterval(enviarUbicacionRepartidor, 20000);
+}
+function detenerGPSRepartidor() {
+  if(_gpsWatch === 'nativo'){
+    var bg = _gpsPluginNativo(), idP = _gpsNativoId;
+    if(bg && idP) Promise.resolve(idP).then(function(id){ bg.removeWatcher({id:id}); }).catch(function(){});
+    _gpsNativoId = null;
+  } else if(_gpsWatch !== null && navigator.geolocation) navigator.geolocation.clearWatch(_gpsWatch);
+  if(_gpsTimer) clearInterval(_gpsTimer);
+  _gpsWatch = null; _gpsTimer = null;
+  if(_gpsEstado !== 'nosoporta') _gpsEstado = '';
+}
+function enviarUbicacionRepartidor() {
+  if(!_gpsUltPos || !window.__lrDB || !currentEmp) return;
+  var c = _gpsUltPos.coords;
+  var dato = {lat:c.latitude, lng:c.longitude, prec:Math.round(c.accuracy||0), ts:new Date().toISOString(), posTs:new Date(_gpsUltPos.timestamp).toISOString(), nombre:currentEmp.nombre};
+  _gpsUltEnvio = Date.now();
+  var http = _httpNativo();
+  // update() de UN solo campo: nunca pisa el cobro ni otros cambios del pedido.
+  _gpsPedidosActivos().forEach(function(p){
+    var idDoc = String(p.id).replace(/\//g,'-');
+    if(http){ enviarUbicacionNativa(http, idDoc, dato); return; }
+    window.__lrDB.collection('pedidosWeb').doc(idDoc).update({ubicacionRep: dato})
+      .catch(function(e){ console.error('No se pudo mandar la ubicación', e); });
+  });
+}
+// En la app, con el celular bloqueado Android frena los envíos de la página
+// después de unos minutos; por eso ahí la ubicación se manda con el HTTP
+// nativo del teléfono, directo a la base (mismo campo, mismo pedido).
+function _httpNativo() {
+  if(!esAppDelivery()) return null;
+  try{ return window._httpPlugin || (window._httpPlugin = Capacitor.registerPlugin('CapacitorHttp')); }catch(e){ return null; }
+}
+function enviarUbicacionNativa(http, idDoc, dato) {
+  var url = 'https://firestore.googleapis.com/v1/projects/limay-rock-852cb/databases/(default)/documents/pedidosWeb/'+encodeURIComponent(idDoc)+
+    '?updateMask.fieldPaths=ubicacionRep&currentDocument.exists=true';
+  var cuerpo = {fields:{ubicacionRep:{mapValue:{fields:{
+    lat:{doubleValue:dato.lat}, lng:{doubleValue:dato.lng}, prec:{integerValue:String(dato.prec)},
+    ts:{stringValue:dato.ts}, posTs:{stringValue:dato.posTs}, nombre:{stringValue:dato.nombre}
+  }}}}};
+  var token = Promise.resolve(null);
+  try{
+    var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+    if(u) token = u.getIdToken().catch(function(){ return null; });
+  }catch(e){}
+  token.then(function(t){
+    var h = {'Content-Type':'application/json'};
+    if(t) h.Authorization = 'Bearer '+t;
+    return http.request({url:url, method:'PATCH', headers:h, data:cuerpo});
+  }).then(function(r){
+    if(r && r.status >= 300) console.error('Ubicación rechazada', r.status, r.data);
+  }).catch(function(e){ console.error('No se pudo mandar la ubicación (nativo)', e); });
+}
+function pintarAvisoGPS(n) {
+  var el = document.getElementById('repAvisoGPS');
+  if(!el) return;
+  if(!n){ el.style.display = 'none'; return; }
+  var est = {
+    ok:        ['rgba(34,197,94,.10)','rgba(34,197,94,.45)','#22c55e', esAppDelivery() ? '📍 Compartiendo tu ubicación con el local hasta que entregues el pedido. Podés usar Google Maps tranquilo.' : '📍 Compartiendo tu ubicación con el local mientras llevás el pedido. <b>Dejá esta página abierta</b> hasta entregarlo.'],
+    buscando:  ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 Buscando tu ubicación… Si el celular te pregunta, tocá <b>Permitir</b>.'],
+    denegado:  ['rgba(204,0,0,.12)','rgba(204,0,0,.5)','#f87171', esAppDelivery() ? '📍 <b>La ubicación está bloqueada.</b> El local la necesita por seguridad mientras llevás el pedido. <button type="button" onclick="abrirAjustesUbicacion()" style="margin-top:6px;display:block;background:#f87171;color:#000;border:none;border-radius:4px;padding:6px 10px;font-weight:700">Abrir ajustes y permitir ubicación</button>' : '📍 <b>La ubicación está bloqueada.</b> El local la necesita por seguridad mientras repartís. Activala en los permisos del navegador para esta página y recargá.'],
+    error:     ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 No se pudo leer la ubicación. Revisá que el GPS del celular esté prendido.'],
+    nosoporta: ['rgba(204,0,0,.12)','rgba(204,0,0,.5)','#f87171','📍 Este celular no permite compartir la ubicación desde el navegador.']
+  }[_gpsEstado || 'buscando'];
+  el.style.display = 'block';
+  el.style.background = est[0];
+  el.style.border = '1px solid '+est[1];
+  el.style.color = est[2];
+  el.innerHTML = est[3];
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible' && _gpsWatch !== null) enviarUbicacionRepartidor();
+});
 
 // ── DISPONIBILIDAD ─────────────────────────────────────────────────────────
 function pintarEstadoDisponible(){
