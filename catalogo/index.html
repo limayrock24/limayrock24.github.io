@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791347927";
+window.__LR_BUILD = "1791351194";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -359,7 +359,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
       <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
-      <div style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación es obligatorio</b> para poder confirmar el pedido — es lo que le llega al repartidor para encontrarte. Los datos de abajo son opcionales, pero ayudan a llegar más rápido.</div>
+      <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación es obligatorio</b> para poder confirmar el pedido — es lo que le llega al repartidor para encontrarte. Los datos de abajo son opcionales, pero ayudan a llegar más rápido.</div>
       <input type="text" id="clienteDireccion" placeholder="Calle y número (opcional)" style="margin-top:8px">
       <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
     </div>
@@ -1807,6 +1807,14 @@ function elegirMedioPago(medio){
   if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
 }
 
+var GPS_OBLIGATORIO = false;   // temporal: ubicación opcional (con dirección escrita)
+document.addEventListener('DOMContentLoaded', function(){
+  if(GPS_OBLIGATORIO) return;
+  var a = document.getElementById('avisoGpsObligatorio');
+  if(a) a.innerHTML = 'Compartí tu ubicación o escribí tu dirección abajo — es lo que le llega al repartidor para encontrarte.';
+  var d = document.getElementById('clienteDireccion');
+  if(d) d.placeholder = 'Calle y número';
+});
 // GPS OBLIGATORIO para pedir por acá (ver irAConfirmar): sin ubicación
 // compartida no se puede confirmar el pedido — es el dato que hace que le
 // llegue al repartidor en su app con el mapa. La dirección escrita más abajo
@@ -1877,7 +1885,14 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  if(!UBICACION_GPS){
+  // GPS_OBLIGATORIO en false (temporal, a pedido del local): sin ubicación
+  // alcanza con escribir la dirección. Para volver a exigirla: true.
+  if(!UBICACION_GPS && !GPS_OBLIGATORIO && !direccion){
+    errEl.textContent = 'Compartí tu ubicación o escribí tu dirección (calle y número) para que el repartidor te encuentre.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if(!UBICACION_GPS && GPS_OBLIGATORIO){
     errEl.textContent = 'Para confirmar el pedido es obligatorio compartir tu ubicación (tocá el botón "📍 Compartir mi ubicación" más arriba) — es lo que le llega al repartidor para encontrarte.';
     errEl.style.display = 'block';
     return;
