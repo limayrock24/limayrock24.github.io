@@ -4987,6 +4987,7 @@ body.night-on{background:#080005}
           <option value="">Todos los tipos</option>
           <option value="venta">Venta</option>
           <option value="consumo">Consumo</option>
+          <option value="suelto">Abierto para venta suelta</option>
           <option value="fiados">Fiados</option>
           <option value="consignaciones">Consignación</option>
           <option value="retiro">Retiro de caja</option>
@@ -12369,6 +12370,13 @@ function setupOpButtons() {
   btnLocal.onclick = function(){ registrarConsumoDelLocal(); };
   opBtns.appendChild(btnLocal);
 
+  // Abrir un atado/paquete para vender suelto: descuenta stock, no suma plata
+  var btnSuelto = document.createElement('button');
+  btnSuelto.className = 'op-btn'; btnSuelto.id = 'op-suelto';
+  btnSuelto.innerHTML = '📦 Abrir para venta suelta';
+  btnSuelto.onclick = function(){ registrarAperturaSuelta(); };
+  opBtns.appendChild(btnSuelto);
+
   // Fiado: disponible para todos
   var btnF = document.createElement('button');
   btnF.className = 'op-btn'; btnF.id = 'op-fiado';
@@ -16922,6 +16930,34 @@ function closeAdminSel() {
   if(tipoOp==='admin-consumo') resetOpButtons();
 }
 
+// Venta suelta (cigarrillos, papas, maní, etc.): al abrir un atado o paquete
+// para vender suelto, se escanea y se registra acá. Solo DESCUENTA STOCK: no
+// es una venta ni suma plata — lo que cobran por los sueltos entra después
+// como Ítem manual, como siempre.
+function registrarAperturaSuelta() {
+  var conStock = cart.filter(function(i){ return !i.manual && !i.esCombo; });
+  if(!conStock.length){ showToast('Escaneá o buscá el producto que vas a abrir (los ítems manuales no tienen stock)', true); return; }
+  var resumen = conStock.map(function(i){ return i.name+' ×'+i.qty; }).join('\n');
+  askConfirm('📦 ABRIR PARA VENTA SUELTA\n\n'+resumen+'\n\nSe descuenta del stock. No es una venta: no suma plata.\nLo que cobres por los sueltos cargalo con Ítem manual.\n\n¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    var items = JSON.parse(JSON.stringify(conStock));
+    descontarStock(items, 'suelto');
+    registrarOperacion('suelto', items.map(function(i){ return Object.assign({}, i, {subtotal:0}); }), 0, currentEmp?currentEmp.nombre:'—', 'Abierto para venta suelta');
+    updateProdCount(items);
+    document.getElementById('ventaOkMonto').textContent = items.map(function(i){ return i.qty; }).reduce(function(a,b){ return a+b; },0)+' u.';
+    document.getElementById('ventaOkMedio').textContent = '📦 Abierto para venta suelta (stock descontado)';
+    var okEl = document.getElementById('ventaOk');
+    okEl.classList.add('show');
+    setTimeout(function(){
+      okEl.classList.remove('show');
+      cart = cart.filter(function(i){ return i.manual || i.esCombo; }); pagoSel=null;
+      updateCart(); resetOpButtons();
+      if(!cart.length) document.getElementById('cartPanel').classList.remove('open');
+      buildFavs();
+    }, 2000);
+  });
+}
+
 // Uso interno del local (yerba, papel, regalos): lo que hay en el carrito se
 // registra al costo como consumo de Limay Rock, previa confirmación.
 function registrarConsumoDelLocal() {
@@ -18667,19 +18703,20 @@ function toggleMovDet(id) {
 var MOV_ICONOS = {
   ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️',
   'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱',
-  'consignacion': '📦', 'cobro-consignacion': '✅', 'devolucion-consignacion': '↩'
+  'consignacion': '📦', 'cobro-consignacion': '✅', 'devolucion-consignacion': '↩', suelto: '📦'
 };
 var MOV_COLORES = {
   ingreso: 'var(--green)', venta: 'var(--green)', consumo: 'var(--red)',
   fiado: 'var(--gold)', egreso: 'var(--red)', retiro: 'var(--gold)', 'ingreso-caja': 'var(--green)', 'carga-virtual': '#1e90ff', prestamo: '#1e90ff', 'transfer-cuentas': '#9B59B6', 'ajuste-stock': 'var(--gold)', 'baja-stock': 'var(--red)',
   'cobro-fiado': 'var(--green)', 'fiado-parcial': '#E67E22', 'cambio-efectivo': '#16A085',
-  'consignacion': 'var(--gold)', 'cobro-consignacion': 'var(--green)', 'devolucion-consignacion': '#3498DB'
+  'consignacion': 'var(--gold)', 'cobro-consignacion': 'var(--green)', 'devolucion-consignacion': '#3498DB', suelto: '#E67E22'
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
   fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)',
   'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo',
-  'consignacion': 'Consignación', 'cobro-consignacion': 'Cobro de consignación', 'devolucion-consignacion': 'Devolución de consignación'
+  'consignacion': 'Consignación', 'cobro-consignacion': 'Cobro de consignación', 'devolucion-consignacion': 'Devolución de consignación',
+  suelto: 'Abierto para venta suelta'
 };
 
 // Períodos del historial de movimientos. Misma lógica y mismos nombres que
@@ -18852,7 +18889,7 @@ function renderMovimientos() {
           '<div style="font-size:.76rem;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(m.resumen||m.producto||'—').slice(0,60)+(esIngresoMercaderia && m.stockAntes!=null && m.stockDespues!=null ? ' <span style="color:var(--gold)">('+m.stockAntes+' → '+m.stockDespues+')</span>' : '')+'</div>'+
           '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+fecha+' · '+(m.responsable||'—')+(m.extra?' · '+extraConRecargo:'')+'</div>'+
         '</div>'+
-        (esIngresoMercaderia ? (m.cantidad!=null ? '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+(Number(m.cantidad)>=0?'var(--green)':'var(--red)')+';white-space:nowrap;font-weight:600">'+(Number(m.cantidad)>0?'+':'')+m.cantidad+' u.</div>' : '') : '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+totalColor+';white-space:nowrap;font-weight:600">'+signo+'$'+Math.abs(Number(montoNeto||0)).toLocaleString('es-AR')+'</div>')+
+        (esIngresoMercaderia ? (m.cantidad!=null ? '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+(Number(m.cantidad)>=0?'var(--green)':'var(--red)')+';white-space:nowrap;font-weight:600">'+(Number(m.cantidad)>0?'+':'')+m.cantidad+' u.</div>' : '') : (m.tipo==='suelto' ? '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:#E67E22;white-space:nowrap;font-weight:600">−'+(m.items||[]).reduce(function(t,i){ return t+(Number(i.qty)||0); },0)+' u. stock</div>' : '<div style="font-family:Oswald,sans-serif;font-size:.95rem;color:'+totalColor+';white-space:nowrap;font-weight:600">'+signo+'$'+Math.abs(Number(montoNeto||0)).toLocaleString('es-AR')+'</div>'))+
       '</div>'+
       (detHtml ? '<div class="consumo-dropdown" id="'+detId+'" style="margin-top:8px">'+detHtml+'</div>' : '');
 
@@ -22363,7 +22400,7 @@ function renderDashboard() {
 
   if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁'};
+    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
     // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
@@ -31547,7 +31584,7 @@ function descontarStock(items, tipoMov) {
       descontarUnProd(item.name, item.qty);
     }
   });
-  var etiquetaTipo = {venta:'Venta', consumo:'Consumo', fiado:'Fiado', consignacion:'Consignación'}[tipo] || 'Descuento de stock';
+  var etiquetaTipo = {venta:'Venta', consumo:'Consumo', fiado:'Fiado', consignacion:'Consignación', suelto:'Venta suelta'}[tipo] || 'Descuento de stock';
   window.__lrStockInvCache = inv;
   if(window.__lrDescontarStockNube){
     // Restando en la nube (ver __lrDescontarStockNube). Sin conexión queda
