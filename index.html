@@ -12511,6 +12511,7 @@ function enviarDatosCobro(id) {
   var tel = (p.telefono||'').replace(/\D/g,'');
   if(tel.length <= 10) tel = '549' + tel;
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(mensajeConfirmacionPedido(p)), '_blank');
+  registrarAvisoCliente(id, 'confirmado');
 }
 
 // Ya no tiene botón: marcaba el pedido como cobrado SIN registrar la venta
@@ -26592,6 +26593,115 @@ function mensajeConfirmacionPedido(p){
   return msg;
 }
 
+// ── MENSAJES AL CLIENTE (WhatsApp del local) ───────────────────────────────
+// Mensajes listos para que el empleado de turno le escriba al cliente de un
+// pedido web desde el WhatsApp del local. Cada mensaje enviado queda anotado
+// en el pedido (p.avisos), así el que entra al turno sabe qué se le dijo.
+// Emojis "clásicos" a propósito (ver mensajeConfirmacionPedido).
+var AVISOS_CLIENTE = {
+  confirmado: 'Confirmado',
+  salio:      'Salió',
+  falta:      'Falta producto',
+  gracias:    'Gracias',
+  libre:      'Mensaje'
+};
+function registrarAvisoCliente(id, tipo) {
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p) return;
+  var avisos = Object.assign({}, p.avisos || {});
+  avisos[tipo] = {ts: new Date().toISOString(), por: currentEmp ? currentEmp.nombre : 'Local'};
+  p.avisos = avisos;
+  savePedidosWeb(pedidos);
+}
+function htmlAvisosCliente(p) {
+  var a = p.avisos || {};
+  var tipos = Object.keys(a).filter(function(t){ return AVISOS_CLIENTE[t]; })
+    .sort(function(x, y){ return new Date(a[x].ts) - new Date(a[y].ts); });
+  if(!tipos.length) return '';
+  return '<div style="font-size:.7rem;color:#25D366;margin-top:5px">💬 Le avisamos: '+
+    tipos.map(function(t){
+      return AVISOS_CLIENTE[t]+' <span style="color:var(--gray)">'+new Date(a[t].ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span>';
+    }).join(' · ')+'</div>';
+}
+function textoMensajeCliente(p, tipo, extra) {
+  var nombre = (p.nombre || '').split(' ')[0];
+  if(tipo === 'salio'){
+    return '¡Hola ' + nombre + '! 👋\n\nTu pedido de *LIMAY ROCK* ya salió del local' +
+      (p.repartidor ? ' con *' + p.repartidor + '*' : '') + ' 📦\nEn unos minutos lo tenés en tu casa.\n\n¡Gracias por elegirnos! 🙌';
+  }
+  if(tipo === 'falta'){
+    var prod = extra && extra.producto ? '*' + extra.producto + '*' : 'uno de los productos';
+    var msg = '¡Hola ' + nombre + '! 👋\n\nTe escribimos de *LIMAY ROCK* por tu pedido: en este momento no nos queda ' + prod + ' 😕\n\n';
+    msg += (extra && extra.cambio)
+      ? '¿Te lo cambiamos por *' + extra.cambio + '*? Si no, lo sacamos y te cobramos el resto.\n\n'
+      : '¿Querés que te lo cambiemos por otra cosa, o lo sacamos y te cobramos el resto?\n\n';
+    return msg + 'Avisanos por acá y seguimos con tu pedido 👍';
+  }
+  if(tipo === 'gracias'){
+    return '¡Gracias por tu compra, ' + nombre + '! 🙌\n\nEsperamos que disfrutes tu pedido de *LIMAY ROCK* 🔥\nCualquier cosa que necesites, escribinos por acá. ¡Estamos las 24 hs!';
+  }
+  return '';
+}
+function abrirMensajesCliente(id) {
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!p) return;
+  var ov = document.getElementById('msgClienteOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'msgClienteOverlay';
+    ov.className = 'overlay';
+    ov.style.zIndex = '1600';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.classList.remove('open'); });
+    document.body.appendChild(ov);
+  }
+  var a = p.avisos || {};
+  var marca = function(t){ return a[t] ? ' <span style="font-size:.66rem;color:var(--gray);font-weight:400">✓ enviado '+new Date(a[t].ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span>' : ''; };
+  var boton = function(onclick, txt, sub){
+    return '<button type="button" onclick="'+onclick+'" style="display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:11px 12px;margin-bottom:8px;cursor:pointer;font-size:.86rem;font-weight:600">'+txt+
+      (sub ? '<div style="font-size:.7rem;color:var(--gray);font-weight:400;margin-top:2px">'+sub+'</div>' : '')+'</button>';
+  };
+  var prods = (p.items||[]).map(function(it){ return it.nombre; })
+    .concat((p.combos||[]).map(function(c){ return c.nombre; }));
+  var esc = function(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); };
+  ov.innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:420px;width:100%;max-height:92vh;overflow-y:auto;margin:auto">'+
+      '<h3 style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;text-transform:uppercase;color:#25D366;margin:0 0 2px">💬 Mensajes a '+esc(p.nombre)+'</h3>'+
+      '<div style="font-size:.74rem;color:var(--gray);margin-bottom:12px">Se abre el WhatsApp del local con el mensaje ya escrito. Revisalo y tocá enviar.</div>'+
+      boton('enviarDatosCobro('+p.id+');document.getElementById(\'msgClienteOverlay\').classList.remove(\'open\')', '✅ Pedido confirmado + datos de pago'+marca('confirmado'), 'Alias para transferir, o pregunta del vuelto si paga en efectivo')+
+      boton('enviarMensajeCliente('+p.id+',\'salio\')', '📦 Ya salió tu pedido'+marca('salio'), p.repartidor ? 'Con '+esc(p.repartidor) : 'Todavía no lo tomó ningún repartidor')+
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:11px 12px;margin-bottom:8px">'+
+        '<div style="font-size:.86rem;font-weight:600;color:var(--white);margin-bottom:6px">😕 Nos falta un producto'+marca('falta')+'</div>'+
+        '<select id="msgFaltaProd" style="width:100%;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:8px;margin-bottom:6px">'+
+          (prods.length ? prods.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('') : '<option value="">(sin productos)</option>')+
+        '</select>'+
+        '<input type="text" id="msgFaltaCambio" placeholder="Ofrecer cambio por… (opcional)" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:8px;margin-bottom:8px">'+
+        '<button type="button" onclick="enviarMensajeCliente('+p.id+',\'falta\')" style="width:100%;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-weight:700;cursor:pointer">Avisar al cliente</button>'+
+      '</div>'+
+      boton('enviarMensajeCliente('+p.id+',\'gracias\')', '🙌 Gracias por tu compra'+marca('gracias'), 'Para cuando ya lo recibió')+
+      boton('enviarMensajeCliente('+p.id+',\'libre\')', '✍ Escribir otro mensaje'+marca('libre'), 'Abre el chat con el cliente, sin texto')+
+      '<button type="button" onclick="document.getElementById(\'msgClienteOverlay\').classList.remove(\'open\')" style="width:100%;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px;cursor:pointer">Cerrar</button>'+
+    '</div>';
+  ov.classList.add('open');
+}
+function enviarMensajeCliente(id, tipo) {
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!p) return;
+  var extra = null;
+  if(tipo === 'falta'){
+    var sel = document.getElementById('msgFaltaProd'), cam = document.getElementById('msgFaltaCambio');
+    extra = {producto: sel ? sel.value : '', cambio: cam ? cam.value.trim() : ''};
+  }
+  whatsappCliente(p, textoMensajeCliente(p, tipo, extra));
+  registrarAvisoCliente(id, tipo);
+  var ov = document.getElementById('msgClienteOverlay');
+  if(ov) ov.classList.remove('open');
+  setTimeout(function(){
+    var m = document.getElementById('deliveryPendModal');
+    if(m && m.classList.contains('open') && typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
+  }, 600);
+}
+
 function whatsappCliente(p, texto){
   var tel = (p.telefono||'').replace(/\D/g,'');
   if(tel.length <= 10) tel = '549' + tel;
@@ -27289,6 +27399,7 @@ function abrirDeliveryPendModal() {
         (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : (p.zona==='lejos' ? '<div style="font-size:.72rem;color:#f97316;margin-top:2px">🛣️ Zona más lejos'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : ''))+
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
         repHtml+
+        htmlAvisosCliente(p)+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         htmlCambiosPedidoWeb(p)+
         notasHtml+
@@ -27297,6 +27408,7 @@ function abrirDeliveryPendModal() {
         // pago y confirma el cobro. El repartidor solo lleva el pedido.
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
           '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
+          '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Más mensajes</button>'+
           (p.pagoConfirmado
             ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
             : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
