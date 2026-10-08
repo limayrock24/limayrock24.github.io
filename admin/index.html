@@ -4249,6 +4249,7 @@ body.night-on{background:#080005}
           <select id="consumosMesFiltro" onchange="renderConsumosEmp()" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:7px 10px;font-family:Barlow,sans-serif;font-size:.82rem">
             <option value="">Todos los meses</option>
           </select>
+          <button class="sec-exp-btn pdf" onclick="exportarConsumosEmpPDF(document.getElementById('consumosEmpFiltro').value, document.getElementById('consumosMesFiltro').value)" title="Elegí un empleado (y si querés un mes) y descargá solo sus consumos">📄 PDF de consumos</button>
         </div>
         <div id="consumosEmpGrid"></div>
       </div>
@@ -16277,6 +16278,153 @@ function descargarPDFEmpleadoMovil(D, btn){
   });
 }
 
+// ── PDF SOLO DE CONSUMOS DE UN EMPLEADO ─────────────────────────────────────
+// Mismo formato de celular que el PDF de liquidación, pero únicamente con los
+// consumos: por mes, con fecha, productos, monto y si ya se descontó.
+// mesKey: 'AAAA-MM' para un mes; vacío = todos los meses (uno por sección).
+function exportarConsumosEmpPDF(nombre, mesKey) {
+  if(!nombre){ showToast('Elegí un empleado para descargar sus consumos', true); return; }
+  var lista = getConsumos().filter(function(c){
+    if(c.tipo === 'negocio' || c.tipo === 'cefhas') return false;
+    if(c.empleado !== nombre) return false;
+    if(mesKey){
+      var d = new Date(c.fecha);
+      if(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0') !== mesKey) return false;
+    }
+    return true;
+  }).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+  if(!lista.length){ showToast('Sin consumos de '+nombre+' para ese período', true); return; }
+
+  var $f = function(n){ return '$'+Number(n||0).toLocaleString('es-AR'); };
+  var mesesMap = {};
+  lista.forEach(function(c){
+    var d = new Date(c.fecha);
+    var k = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    if(!mesesMap[k]){
+      var lbl = d.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+      mesesMap[k] = { label: lbl.charAt(0).toUpperCase()+lbl.slice(1), total: 0, items: [] };
+    }
+    var dia = d.toLocaleDateString('es-AR',{weekday:'short'}).replace('.','');
+    mesesMap[k].total += c.total || 0;
+    mesesMap[k].items.push({
+      fecha: dia.charAt(0).toUpperCase()+dia.slice(1)+' '+d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' · '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false}),
+      prods: (c.items||[]).map(function(i){
+        var sub = (i.subtotal != null) ? i.subtotal : (i.precio||0)*(i.qty||1);
+        return { nombre: (i.name||'?')+' x'+(i.qty||1), monto: sub };
+      }),
+      total: c.total || 0, descontado: !!c.saldado
+    });
+  });
+  var meses = Object.keys(mesesMap).sort().map(function(k){ return mesesMap[k]; });
+  var total = lista.reduce(function(s,c){ return s+(c.total||0); },0);
+  var yaDesc = lista.filter(function(c){ return c.saldado; }).reduce(function(s,c){ return s+(c.total||0); },0);
+
+  var D = {
+    nombre: nombre,
+    periodo: mesKey ? meses[0].label : (meses.length===1 ? meses[0].label : meses[0].label+' a '+meses[meses.length-1].label),
+    generado: new Date().toLocaleString('es-AR'),
+    cantidad: lista.length, total: total, yaDescontado: yaDesc, pendiente: total - yaDesc,
+    meses: meses, varios: meses.length > 1
+  };
+  window.__lrPdfMovil = function(btn){ return descargarPDFConsumosMovil(D, btn); };
+
+  // Vista en pantalla (misma que el PDF): una columna, letra grande.
+  var fila = function(l, v, color, negrita){
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #eee;font-size:15px">'+
+      '<span style="color:#444">'+l+'</span><span style="white-space:nowrap;'+(negrita?'font-weight:bold;':'')+'color:'+(color||'#111')+'">'+v+'</span></div>';
+  };
+  var titulo = function(t){ return '<div style="font-size:15px;font-weight:bold;color:#CC0000;margin:22px 0 4px;text-transform:uppercase;letter-spacing:.5px">'+t+'</div>'; };
+  var html = '<div data-pdf-movil="1" style="max-width:480px;margin:0 auto;font-family:Arial,sans-serif;color:#111">'+
+    '<div style="font-size:14px;color:#555;margin-bottom:12px">Período: <b style="color:#111">'+D.periodo+'</b></div>'+
+    '<div style="background:#CC0000;color:#fff;border-radius:12px;padding:16px;text-align:center">'+
+      '<div style="font-size:13px;letter-spacing:1px;opacity:.9">TOTAL DE CONSUMOS</div>'+
+      '<div style="font-size:34px;font-weight:bold;margin-top:2px">'+$f(D.total)+'</div>'+
+      '<div style="font-size:13px;opacity:.9;margin-top:2px">'+D.cantidad+' consumo'+(D.cantidad===1?'':'s')+'</div>'+
+    '</div>'+
+    titulo('Resumen')+
+    fila('Ya descontado', $f(D.yaDescontado), '#1e7e45')+
+    fila('<b>Falta descontar</b>', $f(D.pendiente), '#CC0000', true)+
+    D.meses.map(function(m){
+      return titulo(m.label+' ('+$f(m.total)+')')+
+        m.items.map(function(c){
+          return '<div style="padding:9px 0;border-bottom:1px solid #eee;'+(c.descontado?'opacity:.55':'')+'">'+
+            '<div style="display:flex;justify-content:space-between;font-size:15px"><b>'+c.fecha+'</b><b>'+$f(c.total)+'</b></div>'+
+            c.prods.map(function(p){ return '<div style="display:flex;justify-content:space-between;font-size:13px;color:#666;margin-top:2px"><span>'+p.nombre+'</span><span>'+$f(p.monto)+'</span></div>'; }).join('')+
+            (c.descontado ? '<div style="font-size:12px;font-weight:bold;color:#1e7e45;margin-top:3px">✓ Ya descontado</div>' : '')+
+          '</div>';
+        }).join('');
+    }).join('')+
+    '<div style="font-size:12px;color:#888;margin:20px 0 10px">Revisá que los consumos coincidan con lo que llevaste. Cualquier diferencia, avisale a tu encargado.</div>'+
+  '</div>';
+  abrirVentanaPDF('Consumos — '+nombre, html);
+}
+
+function descargarPDFConsumosMovil(D, btn){
+  var textoOriginal = btn ? btn.textContent : '';
+  if(btn){ btn.textContent = '⏳ Generando...'; btn.disabled = true; }
+  var fin = function(){ if(btn){ btn.textContent = textoOriginal; btn.disabled = false; } };
+  return cargarJsPDF().then(function(){
+    var J = window.jspdf.jsPDF;
+    var W = 100, M = 7, AN = W - M*2;
+    var limpio = function(t){ return String(t).replace(/−/g,'-').replace(/[^\x00-\xFF]/g,'').replace(/\s+/g,' ').trim(); };
+    var $f = function(n){ return '$'+Number(n||0).toLocaleString('es-AR'); };
+    function dibujar(doc){
+      var y = 12;
+      var txt = function(t, x, yy, tam, estilo, color, opc){ doc.setFont('helvetica', estilo||'normal'); doc.setFontSize(tam); doc.setTextColor.apply(doc, color||[20,20,20]); doc.text(limpio(t), x, yy, opc||{}); };
+      var linea = function(){ doc.setDrawColor(230,230,230); doc.setLineWidth(0.2); doc.line(M, y, W-M, y); };
+      var titulo = function(t){ y += 10; txt(t.toUpperCase(), M, y, 11, 'bold', [204,0,0]); y += 2; };
+      var fila = function(l, v, color, negrita){
+        y += 6.2; txt(l, M, y, 10.5, negrita?'bold':'normal', [60,60,60]);
+        txt(v, W-M, y, 10.5, 'bold', color||[20,20,20], {align:'right'}); y += 2.6; linea();
+      };
+      txt('LIMAY ROCK', M, y, 15, 'bold', [204,0,0]); y += 7;
+      txt('Consumos de '+D.nombre, M, y, 13, 'bold'); y += 5.5;
+      txt('Período: '+D.periodo, M, y, 9.5, 'normal', [90,90,90]); y += 4.5;
+      txt('Generado: '+D.generado, M, y, 7.5, 'normal', [140,140,140]); y += 5;
+      doc.setFillColor(204,0,0); doc.roundedRect(M, y, AN, 25, 3, 3, 'F');
+      txt('TOTAL DE CONSUMOS', W/2, y+7, 9, 'bold', [255,255,255], {align:'center'});
+      txt($f(D.total), W/2, y+16.5, 21, 'bold', [255,255,255], {align:'center'});
+      txt(D.cantidad+' consumo'+(D.cantidad===1?'':'s'), W/2, y+22, 8.5, 'normal', [255,255,255], {align:'center'});
+      y += 29;
+      titulo('Resumen');
+      fila('Ya descontado', $f(D.yaDescontado), [39,174,96]);
+      fila('Falta descontar', $f(D.pendiente), [204,0,0], true);
+      D.meses.forEach(function(m){
+        titulo(m.label+' ('+$f(m.total)+')');
+        m.items.forEach(function(c){
+          var gris = c.descontado ? [150,150,150] : null;
+          y += 6; txt(c.fecha, M, y, 10.5, 'bold', gris); txt($f(c.total), W-M, y, 10.5, 'bold', gris, {align:'right'});
+          c.prods.forEach(function(p){
+            doc.setFont('helvetica','normal'); doc.setFontSize(9);
+            var lineas = doc.splitTextToSize(limpio(p.nombre), AN - 22);
+            lineas.forEach(function(l, i){
+              y += 4.4; txt(l, M, y, 9, 'normal', [110,110,110]);
+              if(i === 0) txt($f(p.monto), W-M, y, 9, 'normal', [110,110,110], {align:'right'});
+            });
+          });
+          if(c.descontado){ y += 4.4; txt('Ya descontado', M, y, 8.5, 'bold', [39,174,96]); }
+          y += 2.6; linea();
+        });
+      });
+      y += 7;
+      doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(130,130,130);
+      var nota = doc.splitTextToSize('Revisá que los consumos coincidan con lo que llevaste. Cualquier diferencia, avisale a tu encargado.', AN);
+      doc.text(nota, M, y); y += nota.length*3.8;
+      return y + 8;
+    }
+    var alto = dibujar(new J({ unit:'mm', format:[W, 5000] }));
+    var doc = new J({ unit:'mm', format:[W, Math.max(alto, 120)] });
+    dibujar(doc);
+    var per = D.periodo.replace(/[^0-9a-zA-ZáéíóúÁÉÍÓÚñÑ]+/g,'_').replace(/_+$/,'');
+    doc.save('Consumos_'+D.nombre.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+/g,'_')+'_'+per+'.pdf');
+    fin();
+  }).catch(function(e){
+    fin();
+    console.error(e);
+    showToast('⚠️ Necesitás internet la primera vez para descargar en PDF. Mientras tanto, usá "Imprimir".',true);
+  });
+}
+
 // ── AUDITORÍA POR EMPLEADO ──────────────────────────────────────────────────
 function initAuditoria() {
   var sel = document.getElementById('auditEmpSel');
@@ -24344,7 +24492,15 @@ function renderConsumosEmp() {
         mesTotalEl.textContent = mesTotalEl._visible ? mesTotalEl.dataset.monto : '••••';
       };
 
+      // PDF solo de los consumos de este empleado en este mes
+      var mesPdfBtn = document.createElement('button');
+      mesPdfBtn.textContent = '📄 PDF';
+      mesPdfBtn.title = 'Descargar los consumos de '+emp+' de '+mes.label;
+      mesPdfBtn.style.cssText = 'margin-left:auto;margin-right:10px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:3px 9px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:.5px;cursor:pointer';
+      mesPdfBtn.onclick = (function(nEmp, k){ return function(e){ e.stopPropagation(); exportarConsumosEmpPDF(nEmp, k); }; })(emp, mesKey);
+
       mesHeader.appendChild(mesLabel);
+      mesHeader.appendChild(mesPdfBtn);
       mesHeader.appendChild(mesTotalEl);
       mesHeader.appendChild(mesArrow);
 
