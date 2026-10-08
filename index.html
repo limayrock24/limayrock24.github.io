@@ -22553,8 +22553,7 @@ function renderDashboard() {
         '<div style="font-size:.78rem;color:var(--gray)">Quedó en el cajón: <b style="color:var(--white)">'+fmt(calcularLiquidez(c).efectivoCaja)+'</b></div>'+
       '</div>';
     }).join('');
-    var botonDemo = '<div style="text-align:right;margin:-4px 0 10px"><button onclick="alternarDemoCaja2()" style="background:'+(window.__lrDemoCaja2?'var(--gold)':'none')+';color:'+(window.__lrDemoCaja2?'var(--black)':'var(--gray)')+';border:1px solid '+(window.__lrDemoCaja2?'var(--gold)':'var(--border)')+';border-radius:5px;padding:5px 12px;font-size:.7rem;cursor:pointer">'+(window.__lrDemoCaja2?'✕ Salir del ejemplo':'👁 Ver ejemplo con 2 cajas')+'</button></div>';
-    turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos + tarjetasLibres + botonDemo;
+    turnoVivoHtml = resumenGlobalHtml + tarjetasTurnos + tarjetasLibres;
   } else {
     // Mientras el dato del turno no haya llegado de la nube, se dice que se
     // está consultando. Decir "no hay turno" cuando en realidad todavía no se
@@ -22563,7 +22562,6 @@ function renderDashboard() {
     turnoVivoHtml = sesionCargada
       ? '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gray);font-size:.85rem">⚪ No hay ningún turno abierto en este momento</div>'
       : '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gold);font-size:.85rem">⏳ Consultando el estado del turno...</div>';
-    if(sesionCargada) turnoVivoHtml += '<div style="text-align:right;margin:-4px 0 10px"><button onclick="alternarDemoCaja2()" style="background:none;color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:5px 12px;font-size:.7rem;cursor:pointer">👁 Ver ejemplo con 2 cajas</button></div>';
   }
 
   // Margen bruto de lo vendido hoy — mismo cálculo que usa Rentabilidad
