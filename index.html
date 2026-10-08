@@ -15941,14 +15941,22 @@ function setValorHoraEmpleado(nombre, valor) {
 }
 
 function marcarConsumosSaldados(nombreEmp) {
-  // Mismo período que muestra la tarjeta.
-  var rangoC = getRangoLiquidacion();
-  var pend = getConsumos().filter(function(c){
-    var dc = new Date(c.fecha);
-    return c.tipo==='empleado' && c.empleado===nombreEmp && pendienteConsumo(c) > 0 && dc>=rangoC.desde && dc<=rangoC.hasta;
+  // El descuento es POR MES: se elige el mes y solo se tocan los consumos de
+  // ese mes (no pasa a otros meses en cadena).
+  var claveMes = function(f){ var d = new Date(f); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
+  var pendMes = {};
+  getConsumos().forEach(function(c){
+    if(c.tipo!=='empleado' || c.empleado!==nombreEmp) return;
+    var p = pendienteConsumo(c); if(!p) return;
+    var k = claveMes(c.fecha); pendMes[k] = (pendMes[k]||0) + p;
   });
-  var totalPend = pend.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
-  if(!totalPend){ showToast('No hay consumos pendientes de '+nombreEmp, true); return; }
+  var meses = Object.keys(pendMes).sort().reverse();
+  if(!meses.length){ showToast('No hay consumos pendientes de '+nombreEmp, true); return; }
+  var rangoC = getRangoLiquidacion();
+  var mesSel = claveMes(rangoC.desde);
+  if(!pendMes[mesSel]) mesSel = meses[0];
+  var nombreMes = function(k){ var p = k.split('-'); var t = new Date(+p[0], +p[1]-1, 1).toLocaleDateString('es-AR',{month:'long',year:'numeric'}); return t.charAt(0).toUpperCase()+t.slice(1); };
+
   var ov = document.getElementById('descConsumoOverlay');
   if(!ov){
     ov = document.createElement('div');
@@ -15958,43 +15966,57 @@ function marcarConsumosSaldados(nombreEmp) {
   }
   ov.innerHTML =
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;width:380px;max-width:96vw">'+
-      '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:8px">✓ Descontar consumos de '+nombreEmp.replace(/[<>&"]/g,'')+'</div>'+
-      '<div style="font-size:.8rem;color:var(--light);margin-bottom:12px">Consumos pendientes del período: <b style="color:var(--red)">'+fmt(totalPend)+'</b></div>'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">✓ Descontar consumos de '+nombreEmp.replace(/[<>&"]/g,'')+'</div>'+
+      '<label style="font-size:.72rem;color:var(--gray);display:block;margin-bottom:4px">Mes</label>'+
+      '<select id="descConsumoMes" style="width:100%;background:var(--black);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:9px;font-size:.9rem;margin-bottom:8px">'+
+        meses.map(function(k){ return '<option value="'+k+'"'+(k===mesSel?' selected':'')+'>'+nombreMes(k)+' — pendiente '+fmt(pendMes[k])+'</option>'; }).join('')+
+      '</select>'+
+      '<div id="descConsumoPend" style="font-size:.8rem;color:var(--light);margin-bottom:12px"></div>'+
       '<label style="font-size:.72rem;color:var(--gray);display:block;margin-bottom:4px">¿Cuánto le descontás del sueldo?</label>'+
       '<input type="text" inputmode="numeric" id="descConsumoMonto" oninput="formatMontoInput(this)" style="width:100%;box-sizing:border-box;background:var(--black);border:1.5px solid var(--gold);color:var(--white);border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-size:1.3rem;text-align:center">'+
-      '<div style="font-size:.68rem;color:var(--gray);margin:8px 0 12px;line-height:1.4">Si ponés el total, quedan todos descontados. Si ponés menos, se descuenta ese monto (empezando por los más viejos) y el resto queda pendiente para la próxima.</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin:8px 0 12px;line-height:1.4">Solo se descuenta de los consumos de ese mes. Si ponés el total del mes, quedan todos descontados; si ponés menos, lo que falta queda pendiente en ese mismo mes.</div>'+
       '<div style="display:flex;gap:8px">'+
         '<button onclick="document.getElementById(\'descConsumoOverlay\').style.display=\'none\'" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
         '<button id="descConsumoOk" style="flex:1;background:var(--green);border:none;color:var(--black);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-weight:700;font-size:.75rem;letter-spacing:1px;cursor:pointer">✓ Descontar</button>'+
       '</div>'+
     '</div>';
   ov.style.display = 'flex';
+  var sel = document.getElementById('descConsumoMes');
   var inp = document.getElementById('descConsumoMonto');
-  inp.value = String(totalPend); formatMontoInput(inp);
+  var alCambiarMes = function(){
+    var k = sel.value;
+    document.getElementById('descConsumoPend').innerHTML = 'Consumos pendientes de '+nombreMes(k)+': <b style="color:var(--red)">'+fmt(pendMes[k])+'</b>';
+    inp.value = String(pendMes[k]); formatMontoInput(inp);
+  };
+  sel.onchange = alCambiarMes;
+  alCambiarMes();
   setTimeout(function(){ inp.focus(); inp.select(); }, 50);
   document.getElementById('descConsumoOk').onclick = function(){
+    var k = sel.value, totalMes = pendMes[k];
     var monto = getMontoInputValue('descConsumoMonto');
     if(!(monto > 0)){ showToast('Ingresá cuánto le descontás', true); return; }
-    if(monto > totalPend) monto = totalPend;
-    aplicarDescuentoConsumos(nombreEmp, monto, rangoC);
+    if(monto > totalMes) monto = totalMes;
+    aplicarDescuentoConsumos(nombreEmp, monto, k);
     ov.style.display = 'none';
-    showToast(monto >= totalPend
-      ? '✅ Consumos de '+nombreEmp+' marcados como descontados'
-      : '✅ Se descontaron '+fmt(monto)+' de los consumos de '+nombreEmp+' — quedan '+fmt(totalPend-monto)+' pendientes');
+    showToast(monto >= totalMes
+      ? '✅ Consumos de '+nombreMes(k)+' de '+nombreEmp+' marcados como descontados'
+      : '✅ Se descontaron '+fmt(monto)+' de '+nombreMes(k)+' — quedan '+fmt(totalMes-monto)+' pendientes de ese mes');
     renderLiquidacion();
   };
 }
 
-// Descuenta un monto de los consumos pendientes de un empleado, del más viejo
-// al más nuevo: los que se cubren enteros quedan descontados; el último puede
-// quedar descontado en parte (montoDescontado), con el resto pendiente.
-function aplicarDescuentoConsumos(nombreEmp, monto, rango) {
+// Descuenta un monto de los consumos pendientes de un empleado EN UN MES
+// (mesKey 'AAAA-MM'), del más viejo al más nuevo dentro de ese mes: los que se
+// cubren enteros quedan descontados; el último puede quedar descontado en
+// parte (montoDescontado), con el resto pendiente en ese mismo mes.
+function aplicarDescuentoConsumos(nombreEmp, monto, mesKey) {
   var consumos = getConsumos();
   var ahoraISO = new Date().toISOString();
   var resto = monto;
   consumos.filter(function(c){
-    var dc = new Date(c.fecha);
-    return c.tipo==='empleado' && c.empleado===nombreEmp && pendienteConsumo(c) > 0 && (!rango || (dc>=rango.desde && dc<=rango.hasta));
+    if(c.tipo!=='empleado' || c.empleado!==nombreEmp || !(pendienteConsumo(c) > 0)) return false;
+    var d = new Date(c.fecha);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0') === mesKey;
   }).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); }).forEach(function(c){
     if(resto <= 0) return;
     var p = pendienteConsumo(c);
