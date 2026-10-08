@@ -9,14 +9,12 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Equipos identificados (ver lr-identificacion.js).
-    // prueba@ es temporal, para verificar; se saca al terminar.
     function equipo() {
       return request.auth != null
         && request.auth.token.email in [
           'local@limayrock.app',
           'admin@limayrock.app',
-          'delivery@limayrock.app',
-          'prueba@limayrock.app'
+          'delivery@limayrock.app'
         ];
     }
 
