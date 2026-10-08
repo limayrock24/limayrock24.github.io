@@ -10672,12 +10672,18 @@ var _empPendiente = null;
 // lo que sigue sin saldar. Antes sumaba TODO lo no saldado sin importar el
 // mes, así que un consumo que quedara sin marcar como saldado en algún mes
 // se arrastraba para siempre e inflaba el tope de los meses siguientes.
+// Lo que falta descontar de un consumo: el total menos lo que ya se le
+// descontó a cuenta (descuentos parciales). Un consumo saldado no debe nada.
+function pendienteConsumo(c) {
+  if(!c || c.saldado) return 0;
+  return Math.max(0, (c.total||0) - (c.montoDescontado||0));
+}
 function getConsumoPendienteEmpleado(nombre) {
   var ahora = new Date();
   var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
   return getConsumos().filter(function(c){
     return c.tipo==='empleado' && c.empleado===nombre && !c.saldado && new Date(c.fecha) >= inicioMes;
-  }).reduce(function(s,c){ return s+c.total; },0);
+  }).reduce(function(s,c){ return s+pendienteConsumo(c); },0);
 }
 function chequearTopeConsumo() {
   if(!currentEmp || !currentEmp.topeConsumo) return null;
@@ -15823,7 +15829,7 @@ function renderLiquidacion() {
     var d = new Date(c.fecha);
     return c.tipo==='empleado' && !c.saldado && d >= rangoLiq.desde && d <= rangoLiq.hasta;
   }).forEach(function(c){
-    consEmp[c.empleado]=(consEmp[c.empleado]||0)+c.total;
+    consEmp[c.empleado]=(consEmp[c.empleado]||0)+pendienteConsumo(c);
   });
 
   // Faltantes de caja pendientes de descontar (diferencia negativa en el cierre, no marcada como saldada)
@@ -15935,23 +15941,70 @@ function setValorHoraEmpleado(nombre, valor) {
 }
 
 function marcarConsumosSaldados(nombreEmp) {
-  askConfirm('¿Marcás los consumos de '+nombreEmp+' como ya descontados del sueldo?').then(function(ok){
-    if(!ok) return;
-    var consumos = getConsumos();
-    // Mismo período que muestra la tarjeta (antes marcaba siempre solo el mes
-    // en curso, y con otro período elegido quedaban consumos sin marcar).
-    var rangoC = getRangoLiquidacion();
-    consumos.forEach(function(c){
-      var dc = new Date(c.fecha);
-      if(c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && dc>=rangoC.desde && dc<=rangoC.hasta){
-        c.saldado = true;
-        c.fechaSaldado = new Date().toISOString();
-      }
-    });
-    saveConsumos(consumos);
-    showToast('✅ Consumos de '+nombreEmp+' marcados como descontados');
-    renderLiquidacion();
+  // Mismo período que muestra la tarjeta.
+  var rangoC = getRangoLiquidacion();
+  var pend = getConsumos().filter(function(c){
+    var dc = new Date(c.fecha);
+    return c.tipo==='empleado' && c.empleado===nombreEmp && pendienteConsumo(c) > 0 && dc>=rangoC.desde && dc<=rangoC.hasta;
   });
+  var totalPend = pend.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
+  if(!totalPend){ showToast('No hay consumos pendientes de '+nombreEmp, true); return; }
+  var ov = document.getElementById('descConsumoOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'descConsumoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:2400;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;width:380px;max-width:96vw">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:8px">✓ Descontar consumos de '+nombreEmp.replace(/[<>&"]/g,'')+'</div>'+
+      '<div style="font-size:.8rem;color:var(--light);margin-bottom:12px">Consumos pendientes del período: <b style="color:var(--red)">'+fmt(totalPend)+'</b></div>'+
+      '<label style="font-size:.72rem;color:var(--gray);display:block;margin-bottom:4px">¿Cuánto le descontás del sueldo?</label>'+
+      '<input type="text" inputmode="numeric" id="descConsumoMonto" oninput="formatMontoInput(this)" style="width:100%;box-sizing:border-box;background:var(--black);border:1.5px solid var(--gold);color:var(--white);border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-size:1.3rem;text-align:center">'+
+      '<div style="font-size:.68rem;color:var(--gray);margin:8px 0 12px;line-height:1.4">Si ponés el total, quedan todos descontados. Si ponés menos, se descuenta ese monto (empezando por los más viejos) y el resto queda pendiente para la próxima.</div>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button onclick="document.getElementById(\'descConsumoOverlay\').style.display=\'none\'" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">Cancelar</button>'+
+        '<button id="descConsumoOk" style="flex:1;background:var(--green);border:none;color:var(--black);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-weight:700;font-size:.75rem;letter-spacing:1px;cursor:pointer">✓ Descontar</button>'+
+      '</div>'+
+    '</div>';
+  ov.style.display = 'flex';
+  var inp = document.getElementById('descConsumoMonto');
+  inp.value = String(totalPend); formatMontoInput(inp);
+  setTimeout(function(){ inp.focus(); inp.select(); }, 50);
+  document.getElementById('descConsumoOk').onclick = function(){
+    var monto = getMontoInputValue('descConsumoMonto');
+    if(!(monto > 0)){ showToast('Ingresá cuánto le descontás', true); return; }
+    if(monto > totalPend) monto = totalPend;
+    aplicarDescuentoConsumos(nombreEmp, monto, rangoC);
+    ov.style.display = 'none';
+    showToast(monto >= totalPend
+      ? '✅ Consumos de '+nombreEmp+' marcados como descontados'
+      : '✅ Se descontaron '+fmt(monto)+' de los consumos de '+nombreEmp+' — quedan '+fmt(totalPend-monto)+' pendientes');
+    renderLiquidacion();
+  };
+}
+
+// Descuenta un monto de los consumos pendientes de un empleado, del más viejo
+// al más nuevo: los que se cubren enteros quedan descontados; el último puede
+// quedar descontado en parte (montoDescontado), con el resto pendiente.
+function aplicarDescuentoConsumos(nombreEmp, monto, rango) {
+  var consumos = getConsumos();
+  var ahoraISO = new Date().toISOString();
+  var resto = monto;
+  consumos.filter(function(c){
+    var dc = new Date(c.fecha);
+    return c.tipo==='empleado' && c.empleado===nombreEmp && pendienteConsumo(c) > 0 && (!rango || (dc>=rango.desde && dc<=rango.hasta));
+  }).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); }).forEach(function(c){
+    if(resto <= 0) return;
+    var p = pendienteConsumo(c);
+    var aplica = Math.min(p, resto);
+    resto -= aplica;
+    c.montoDescontado = (c.montoDescontado||0) + aplica;
+    (c.descuentos = c.descuentos || []).push({ fecha: ahoraISO, monto: aplica });
+    if(c.montoDescontado >= (c.total||0)){ c.saldado = true; c.fechaSaldado = ahoraISO; }
+  });
+  saveConsumos(consumos);
 }
 
 // Un solo paso al pagarle a un empleado: marca como pagados sus turnos del
@@ -15969,7 +16022,7 @@ function registrarPagoLiquidacion(nombreEmp) {
   var falt = cierres.filter(function(c){ return c.empleado===nombreEmp && c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado && enRango(c.fecha); });
   var minPago = turnos.reduce(function(s,c){ return s+minutosPagados(c); },0);
   var sueldo = Math.round((minPago/60)*valorHora);
-  var totCons = cons.reduce(function(s,c){ return s+(c.total||0); },0);
+  var totCons = cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var totFalt = falt.reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
   var neto = sueldo - totCons - totFalt;
   var txt = 'Registrar el pago de la liquidación de '+nombreEmp+':\n\n'+
@@ -15990,7 +16043,7 @@ function registrarPagoLiquidacion(nombreEmp) {
     saveCierres(cierres);
     if(cons.length){
       var idsC = {}; cons.forEach(function(c){ idsC[c.id] = true; });
-      consumos.forEach(function(c){ if(idsC[c.id]){ c.saldado = true; c.fechaSaldado = ahoraISO; } });
+      consumos.forEach(function(c){ if(idsC[c.id]){ c.saldado = true; c.fechaSaldado = ahoraISO; c.montoDescontado = c.total||0; } });
       saveConsumos(consumos);
     }
     showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')');
@@ -16040,7 +16093,7 @@ function exportarLiquidacionPDF(nombre) {
   var minPagos   = misCierres.reduce(function(s,c){return s+(c.pagado?0:minutosPagados(c));},0);
   var minAdel    = misCierres.reduce(function(s,c){return s+(c.pagado?minutosPagados(c):0);},0);
   var sueldo     = Math.round((minPagos/60)*valorHora);
-  var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+c.total;},0);
+  var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
   var faltante   = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
     .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
   var neto       = sueldo-consumo-faltante;
@@ -16103,7 +16156,7 @@ function exportarPDFEmpleado(nombre) {
   // Lo que le corresponde cobrar: mismas cuentas que la liquidación del admin
   // (horas a cobrar × valor hora, menos consumos y faltantes sin descontar).
   var sueldo = Math.round((minACobrar/60)*valorHora);
-  var consumoADescontar = misConsumos.filter(function(c){ return !c.saldado; }).reduce(function(s,c){ return s+c.total; },0);
+  var consumoADescontar = misConsumos.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var faltanteADescontar = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
     .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
   var totalACobrar = sueldo - consumoADescontar - faltanteADescontar;
@@ -16313,12 +16366,13 @@ function exportarConsumosEmpPDF(nombre, mesKey) {
         var sub = (i.subtotal != null) ? i.subtotal : (i.precio||0)*(i.qty||1);
         return { nombre: (i.name||'?')+' x'+(i.qty||1), monto: sub };
       }),
-      total: c.total || 0, descontado: !!c.saldado
+      total: c.total || 0, descontado: !!c.saldado,
+      parcial: (!c.saldado && (c.montoDescontado||0) > 0) ? (c.montoDescontado||0) : 0
     });
   });
   var meses = Object.keys(mesesMap).sort().map(function(k){ return mesesMap[k]; });
   var total = lista.reduce(function(s,c){ return s+(c.total||0); },0);
-  var yaDesc = lista.filter(function(c){ return c.saldado; }).reduce(function(s,c){ return s+(c.total||0); },0);
+  var yaDesc = lista.reduce(function(s,c){ return s+((c.total||0) - pendienteConsumo(c)); },0);
 
   var D = {
     nombre: nombre,
@@ -16352,6 +16406,7 @@ function exportarConsumosEmpPDF(nombre, mesKey) {
             '<div style="display:flex;justify-content:space-between;font-size:15px"><b>'+c.fecha+'</b><b>'+$f(c.total)+'</b></div>'+
             c.prods.map(function(p){ return '<div style="display:flex;justify-content:space-between;font-size:13px;color:#666;margin-top:2px"><span>'+p.nombre+'</span><span>'+$f(p.monto)+'</span></div>'; }).join('')+
             (c.descontado ? '<div style="font-size:12px;font-weight:bold;color:#1e7e45;margin-top:3px">✓ Ya descontado</div>' : '')+
+            (c.parcial ? '<div style="font-size:12px;font-weight:bold;color:#b8860b;margin-top:3px">Descontado '+$f(c.parcial)+' · falta '+$f(c.total-c.parcial)+'</div>' : '')+
           '</div>';
         }).join('');
     }).join('')+
@@ -16404,6 +16459,7 @@ function descargarPDFConsumosMovil(D, btn){
             });
           });
           if(c.descontado){ y += 4.4; txt('Ya descontado', M, y, 8.5, 'bold', [39,174,96]); }
+          if(c.parcial){ y += 4.4; txt('Descontado '+$f(c.parcial)+' - falta '+$f(c.total-c.parcial), M, y, 8.5, 'bold', [184,134,11]); }
           y += 2.6; linea();
         });
       });
@@ -18143,8 +18199,7 @@ function abrirMisConsumos() {
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
 
   var total = mios.reduce(function(s,cn){ return s + (cn.total||0); }, 0);
-  var pendiente = mios.filter(function(cn){ return !cn.saldado; })
-                      .reduce(function(s,cn){ return s + (cn.total||0); }, 0);
+  var pendiente = mios.reduce(function(s,cn){ return s + pendienteConsumo(cn); }, 0);
 
   var nombreMes = ahora.toLocaleDateString('es-AR', {month:'long', year:'numeric'});
 
@@ -24638,7 +24693,7 @@ function renderEmpAdmin() {
     // Consumos pendientes del mes
     var consumoPend = consumos.filter(function(c){
       return c.tipo==='empleado' && c.empleado===emp.nombre && !c.saldado && new Date(c.fecha)>=inicioMes;
-    }).reduce(function(s,c){return s+c.total;},0);
+    }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
 
     // Valor hora
     var vh    = parseFloat(emp.valorHora)||0;
