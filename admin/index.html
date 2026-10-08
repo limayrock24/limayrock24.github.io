@@ -481,14 +481,34 @@
   }, 10000);
 
   // Escucha en vivo de inventario/stock
+  // Incremental: la primera vez se arma todo; después solo se tocan los
+  // productos que cambiaron. Antes, cada corrección de stock (o cada venta)
+  // volvía a recorrer y copiar los ~1.200 productos, y en una netbook eso
+  // hacía que "Cargar Stock" se sintiera trabado después de cada guardado.
+  var _invPrimeraVez = true;
   window.__lrDB.collection(window.__lrCOL.inventario).onSnapshot(function(snap){
-    var inv = {};
-    snap.forEach(function(doc){
-      var d = doc.data();
-      inv[d.nombre] = { stock: d.stock, minimo: d.minimo };
-    });
+    var inv, ult;
+    if(_invPrimeraVez || !window.__lrStockInvCache){
+      inv = {};
+      snap.forEach(function(doc){
+        var d = doc.data();
+        inv[d.nombre] = { stock: d.stock, minimo: d.minimo };
+      });
+      ult = JSON.parse(JSON.stringify(inv));
+      _invPrimeraVez = false;
+    } else {
+      inv = window.__lrStockInvCache;
+      ult = window.__lrSync.ultimoInventarioSnapshot || {};
+      snap.docChanges().forEach(function(ch){
+        var d = ch.doc.data();
+        if(!d || d.nombre == null) return;
+        if(ch.type === 'removed'){ delete inv[d.nombre]; delete ult[d.nombre]; return; }
+        inv[d.nombre] = { stock: d.stock, minimo: d.minimo };
+        ult[d.nombre] = { stock: d.stock, minimo: d.minimo };
+      });
+    }
     window.__lrStockInvCache = inv;
-    window.__lrSync.ultimoInventarioSnapshot = JSON.parse(JSON.stringify(inv));
+    window.__lrSync.ultimoInventarioSnapshot = ult;
     window.__lrSync.inventarioListos = true;
     refrescarPantallaVentaSiExiste();
     ocultarCargaSiListo();
@@ -681,7 +701,8 @@
     if(!document.getElementById('searchInput')) return;
 
     var ovAdm = document.getElementById('adminOverlay');
-    if(ovAdm && ovAdm.classList.contains('open')){
+    var ovCarga = document.getElementById('cargaStockOverlay');
+    if((ovAdm && ovAdm.classList.contains('open')) || (ovCarga && ovCarga.classList.contains('open'))){
       window.__lrVentaNecesitaRefresco = true;
       return;
     }
@@ -3245,6 +3266,9 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cat-badge-sin{display:inline-block;background:rgba(204,0,0,.15);color:var(--red);font-size:.6rem;font-family:'Oswald',sans-serif;padding:1px 5px;border-radius:2px;margin-left:4px}
 .prod-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:600;align-items:flex-end;justify-content:center}
 .prod-modal-overlay.open{display:flex}
+/* Con Cargar Stock abierto, lo de atrás (lista de venta de ~1.200 productos o
+   el panel admin) no se dibuja: en una netbook eso hacía lento el escribir. */
+body.carga-stock-abierta #main, body.carga-stock-abierta #adminOverlay > *{content-visibility:hidden}
 .prod-modal-box{background:var(--surface);border-radius:12px 12px 0 0;padding:20px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;animation:up .25s ease}
 .prod-modal-box h3{font-family:'Oswald',sans-serif;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:14px}
 .prod-modal-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
@@ -20518,6 +20542,11 @@ var _scanBuffer = '';
 var _scanTimer  = null;
 
 function puedeEscanearAhora() {
+  // Primero lo más barato: si el foco está en un campo de texto, se está
+  // escribiendo y no hay nada que detectar. Antes esto se chequeaba al final,
+  // después de revisar todas las ventanas de la página en cada tecla.
+  var tag0 = document.activeElement ? document.activeElement.tagName : '';
+  if(tag0 === 'INPUT' || tag0 === 'TEXTAREA' || tag0 === 'SELECT') return false;
   var loginScr = document.getElementById('loginScreen');
   if(loginScr && !loginScr.classList.contains('hidden')) return false;
 
@@ -22850,6 +22879,7 @@ function cerrarTodosLosOverlays() {
     var el = document.getElementById(id);
     if(el) el.classList.remove('open');
   });
+  document.body.classList.remove('carga-stock-abierta');
   var moverCat = document.getElementById('moverCatOverlay');
   if(moverCat) moverCat.style.display = 'none';
   var imgAmpliada = document.getElementById('imgAmpliadaOverlay');
@@ -27324,6 +27354,7 @@ function abrirCargaStock() {
   var enAdminSinTurno = !!window.__lrAdminSinTurno;
   if(!enAdminSinTurno && (!currentEmp || (!currentEmp.accesoStock && currentEmp.rol!=='admin'))) return;
   document.getElementById('cargaStockOverlay').classList.add('open');
+  document.body.classList.add('carga-stock-abierta');
   document.getElementById('cargaStockBuscar').value = '';
   document.getElementById('cargaStockEditor').style.display = 'none';
   _cargaStockProdSel = null;
@@ -27333,6 +27364,10 @@ function abrirCargaStock() {
 
 function cerrarCargaStock() {
   document.getElementById('cargaStockOverlay').classList.remove('open');
+  document.body.classList.remove('carga-stock-abierta');
+  // Mientras estaba abierto no se redibujó la lista de venta de atrás (para
+  // que no se trabe); se pone al día ahora, una sola vez.
+  if(window.__lrVentaNecesitaRefresco && typeof window.__lrRefrescarVenta === 'function') window.__lrRefrescarVenta();
 }
 
 function filtrarCargaStock(term) {
@@ -27342,12 +27377,14 @@ function filtrarCargaStock(term) {
   var productos = PRODUCTS.filter(function(p){
     if(!term) return true;
     return p.name.toLowerCase().includes(term) || (p.codigo && p.codigo.toLowerCase().includes(term));
-  }).sort(function(a,b){ return a.name.localeCompare(b.name,'es'); });
+  });
 
   if(!term){
     lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">Empezá a escribir o escaneá un código para buscar un producto</div>';
     return;
   }
+  if(!window._lrCollatorEs) window._lrCollatorEs = new Intl.Collator('es');
+  productos.sort(function(a,b){ return window._lrCollatorEs.compare(a.name, b.name); });
   productos = productos.slice(0, 60); // no listar de más mientras se escribe
 
   if(!productos.length){
