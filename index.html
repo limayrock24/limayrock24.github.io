@@ -3267,6 +3267,9 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .cat-badge-sin{display:inline-block;background:rgba(204,0,0,.15);color:var(--red);font-size:.6rem;font-family:'Oswald',sans-serif;padding:1px 5px;border-radius:2px;margin-left:4px}
 .prod-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:600;align-items:flex-end;justify-content:center}
 .prod-modal-overlay.open{display:flex}
+.caja-chip{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1px;border-radius:5px}
+.caja-chip-1{background:var(--gold);color:var(--black)}
+.caja-chip-2{background:#1e90ff;color:var(--white)}
 /* Con Cargar Stock abierto, lo de atrás (lista de venta de ~1.200 productos o
    el panel admin) no se dibuja: en una netbook eso hacía lento el escribir. */
 body.carga-stock-abierta #main, body.carga-stock-abierta #adminOverlay > *{content-visibility:hidden}
@@ -10777,7 +10780,17 @@ function prepararSelectorCaja(pre){
   var row = document.getElementById(pre+'CajaRow'), sel = document.getElementById(pre+'Caja');
   if(!row || !sel) return;
   row.style.display = hayVariasCajas() ? '' : 'none';
-  sel.value = String(cajaTurnoActual());
+  // Por defecto: la caja del turno de este equipo. Si este equipo no tiene
+  // turno (admin desde casa) y hay UNA sola caja abierta, esa. Si no, Caja 1.
+  var c;
+  if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.turnoInicio) c = cajaTurnoActual();
+  else {
+    var ses = (window.__lrSesionesVigentes || []);
+    var cajas = {}; ses.forEach(function(x){ cajas[cajaDe(x)] = true; });
+    var k = Object.keys(cajas);
+    c = k.length === 1 ? Number(k[0]) : 1;
+  }
+  sel.value = String(c);
 }
 function cajaElegida(pre){
   var row = document.getElementById(pre+'CajaRow'), sel = document.getElementById(pre+'Caja');
@@ -19143,10 +19156,80 @@ function renderMovimientos() {
       '</div>'+
       (detHtml ? '<div class="consumo-dropdown" id="'+detId+'" style="margin-top:8px">'+detHtml+'</div>' : '');
 
+    // Retiros e ingresos de caja: ver en qué caja quedaron y poder corregirlos
+    var rCaja = retiroDeMovimiento(m);
+    if(rCaja){
+      var cR = cajaDe(rCaja), otraR = cR === 2 ? 1 : 2;
+      var barra = document.createElement('div');
+      barra.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px';
+      barra.innerHTML =
+        '<span class="caja-chip caja-chip-'+cR+'" style="font-size:.66rem;padding:1px 7px">CAJA '+cR+'</span>'+
+        '<button type="button" data-a="caja" style="background:transparent;border:1px solid var(--border);color:var(--light);border-radius:4px;padding:3px 9px;font-size:.66rem;cursor:pointer">↔ Pasar a Caja '+otraR+'</button>'+
+        '<button type="button" data-a="anular" style="background:transparent;border:1px solid rgba(204,0,0,.5);color:var(--red);border-radius:4px;padding:3px 9px;font-size:.66rem;cursor:pointer">🗑 Anular</button>';
+      barra.onclick = function(e){ e.stopPropagation(); };
+      barra.querySelector('[data-a="caja"]').onclick = (function(id){ return function(e){ e.stopPropagation(); cambiarCajaRetiro(id); }; })(m.id);
+      barra.querySelector('[data-a="anular"]').onclick = (function(id){ return function(e){ e.stopPropagation(); anularRetiroCaja(id); }; })(m.id);
+      card.appendChild(barra);
+    }
+
     list.appendChild(card);
   });
 }
 
+
+// ── CORREGIR UN RETIRO / INGRESO DE CAJA YA CARGADO ─────────────────────────
+// Desde Dinero → Movimientos: pasarlo a la otra caja (si se cargó en la caja
+// equivocada) o anularlo. Se ubica el registro real del retiro por su id
+// (refId) o, en los cargados normalmente, por monto y hora (se crean juntos).
+function retiroDeMovimiento(m) {
+  if(!m || (m.tipo !== 'retiro' && m.tipo !== 'ingreso-caja')) return null;
+  var tipoR = m.tipo === 'retiro' ? 'retiro' : 'ingreso';
+  var lista = getRetirosCaja();
+  if(m.refId){
+    var porRef = lista.find(function(r){ return String(r.id) === String(m.refId); });
+    if(porRef) return porRef;
+  }
+  var cand = lista.filter(function(r){
+    return (r.tipo||'retiro') === tipoR && Number(r.monto) === Number(m.total) && Math.abs(Number(r.id) - Number(m.id)) < 10000;
+  });
+  return cand.length === 1 ? cand[0] : null;
+}
+function cambiarCajaRetiro(movId) {
+  var m = getMovimientos().find(function(x){ return String(x.id) === String(movId); });
+  var r = retiroDeMovimiento(m);
+  if(!r){ showToast('No encontré el registro de ese movimiento', true); return; }
+  var actual = cajaDe(r), otra = actual === 2 ? 1 : 2;
+  var que = r.tipo === 'ingreso' ? 'el ingreso' : 'el retiro';
+  askConfirm('¿Pasás '+que+' de '+fmt(r.monto)+' de la CAJA '+actual+' a la CAJA '+otra+'?\n\nSe corrige el efectivo de las dos cajas.').then(function(ok){
+    if(!ok) return;
+    r.caja = otra;
+    m.caja = otra;
+    guardarOperacionProtegida('RetirosCaja', getRetirosCaja, (r.tipo==='ingreso'?'Ingreso':'Retiro')+' pasado a la Caja '+otra);
+    saveMovimientos(getMovimientos());
+    renderMovimientos();
+    if(typeof renderLiquidez==='function') renderLiquidez();
+    if(typeof renderDashboard==='function') renderDashboard();
+  });
+}
+function anularRetiroCaja(movId) {
+  var m = getMovimientos().find(function(x){ return String(x.id) === String(movId); });
+  var r = retiroDeMovimiento(m);
+  if(!r){ showToast('No encontré el registro de ese movimiento', true); return; }
+  var que = r.tipo === 'ingreso' ? 'el ingreso' : 'el retiro';
+  askConfirm('¿Anulás '+que+' de '+fmt(r.monto)+' de la CAJA '+cajaDe(r)+'?\n\nSe borra como si no se hubiera cargado.').then(function(ok){
+    if(!ok) return;
+    window.__lrRetirosCajaCache = getRetirosCaja().filter(function(x){ return x !== r; });
+    window.__lrMovimientosCache = getMovimientos().filter(function(x){ return x !== m; });
+    if(window.__lrDB){
+      window.__lrDB.collection(window.__lrCOL.retirosCaja).doc(String(r.id)).delete().catch(function(e){ console.error('Error anulando retiro', e); });
+      window.__lrDB.collection(window.__lrCOL.movimientos).doc(String(m.id)).delete().catch(function(e){ console.error('Error anulando movimiento', e); });
+    }
+    showToast('✅ '+(r.tipo==='ingreso'?'Ingreso':'Retiro')+' anulado');
+    renderMovimientos();
+    if(typeof renderLiquidez==='function') renderLiquidez();
+    if(typeof renderDashboard==='function') renderDashboard();
+  });
+}
 
 function exportarMovimientosCSV() {
   var movs = getMovimientos().slice().reverse();
