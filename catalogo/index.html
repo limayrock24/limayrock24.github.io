@@ -384,8 +384,8 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
       <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
-      <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación es obligatorio</b> para poder confirmar el pedido — es lo que le llega al repartidor para encontrarte. Los datos de abajo son opcionales, pero ayudan a llegar más rápido.</div>
-      <input type="text" id="clienteDireccion" placeholder="Calle y número (opcional)" style="margin-top:8px">
+      <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación</b> es lo que mejor guía al repartidor. Si no podés, escribí tu dirección abajo y mandanos la ubicación por WhatsApp.</div>
+      <input type="text" id="clienteDireccion" placeholder="Calle y número" style="margin-top:8px">
       <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
     </div>
     <div class="field">
@@ -1832,14 +1832,42 @@ function elegirMedioPago(medio){
   if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
 }
 
-var GPS_OBLIGATORIO = true;    // false = ubicación opcional (alcanza con escribir la dirección)
-document.addEventListener('DOMContentLoaded', function(){
-  if(GPS_OBLIGATORIO) return;
-  var a = document.getElementById('avisoGpsObligatorio');
-  if(a) a.innerHTML = 'Compartí tu ubicación o escribí tu dirección abajo — es lo que le llega al repartidor para encontrarte.';
-  var d = document.getElementById('clienteDireccion');
-  if(d) d.placeholder = 'Calle y número';
-});
+// La ubicación ya NO es obligatoria: hubo clientes que no pudieron
+// compartirla (permiso trabado, GPS que no responde) y se quedaban sin poder
+// pedir. Sin ubicación se pide la dirección escrita y, antes de seguir, un
+// cartel pregunta si confirma así (y le pide mandarla por WhatsApp) o si
+// prefiere compartirla.
+var GPS_OBLIGATORIO = false;
+var _sinUbicacionAceptado = false;
+function preguntarSinUbicacion(){
+  var ov = document.getElementById('sinUbicOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.className = 'overlay'; ov.id = 'sinUbicOverlay'; ov.style.zIndex = '260';
+    ov.innerHTML =
+      '<div class="modal" style="text-align:center">'+
+        '<div style="font-size:2rem;margin-bottom:6px">📍</div>'+
+        '<h3 style="margin-bottom:10px">¿Confirmás sin tu ubicación?</h3>'+
+        '<p style="font-size:.86rem;color:var(--light);line-height:1.5;margin:0 0 6px">No compartiste tu ubicación. Podés seguir igual, pero <b>mandanos tu ubicación por WhatsApp</b> así el repartidor te encuentra rápido.</p>'+
+        '<p style="font-size:.74rem;color:var(--gray);line-height:1.4;margin:0 0 16px">El envío se calcula como zona urbana. Si estás más lejos, te lo confirmamos por WhatsApp.</p>'+
+        '<button type="button" id="sinUbicNo" style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:8px;padding:13px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:8px">📍 No, compartir mi ubicación</button>'+
+        '<button type="button" id="sinUbicSi" style="width:100%;background:transparent;border:1.5px solid var(--border);color:var(--light);border-radius:8px;padding:12px;font-size:.86rem;cursor:pointer">Sí, confirmar sin ubicación</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.classList.add('show');
+  document.getElementById('sinUbicSi').onclick = function(){
+    ov.classList.remove('show');
+    _sinUbicacionAceptado = true;
+    irAConfirmar();
+  };
+  document.getElementById('sinUbicNo').onclick = function(){
+    ov.classList.remove('show');
+    var b = document.getElementById('btnUbicacion');
+    if(b && b.scrollIntoView) b.scrollIntoView({behavior:'smooth', block:'center'});
+    usarMiUbicacion();
+  };
+}
 // GPS OBLIGATORIO para pedir por acá (ver irAConfirmar): sin ubicación
 // compartida no se puede confirmar el pedido — es el dato que hace que le
 // llegue al repartidor en su app con el mapa. La dirección escrita más abajo
@@ -1857,8 +1885,7 @@ function usarMiUbicacion(){
   if(!navigator.geolocation){
     if(est){
       est.style.display='block'; est.style.color='#e74c3c';
-      est.innerHTML = 'Tu navegador no permite compartir ubicación, así que no podemos tomarte el pedido por acá. ' +
-        '<a href="https://wa.me/'+NUMERO_WHATSAPP+'" target="_blank" style="color:#2ecc71;font-weight:600">Escribinos por WhatsApp</a> y te lo tomamos ahí.';
+      est.innerHTML = 'Tu navegador no permite compartir ubicación. Escribí tu dirección abajo y mandanos la ubicación por WhatsApp.';
     }
     return;
   }
@@ -1888,8 +1915,8 @@ function usarMiUbicacion(){
       // candado/info junto a la dirección del sitio. Pasos distintos, así
       // que el mensaje también lo es.
       est.innerHTML = _catEsIOS()
-        ? 'Le dijiste que no al permiso de ubicación. Para pedir por acá es obligatorio: andá a <b>Ajustes del iPhone → Privacidad y seguridad → Localización</b>, buscá Safari (o esta app, si la instalaste en la pantalla de inicio) y activala. Después volvé y tocá "Compartir mi ubicación" de nuevo.'
-        : 'Le dijiste que no al permiso de ubicación. Para pedir por acá es obligatorio: tocá el candado o el ícono de información junto a la dirección del navegador, activá el permiso de Ubicación, y volvé a tocar "Compartir mi ubicación".';
+        ? 'No se pudo usar tu ubicación (el permiso está desactivado). Podés activarla en <b>Ajustes del iPhone → Privacidad y seguridad → Localización</b>, o seguir igual: escribí tu dirección abajo y mandanos la ubicación por WhatsApp.'
+        : 'No se pudo usar tu ubicación (el permiso está desactivado). Podés activarla tocando el candado junto a la dirección del navegador, o seguir igual: escribí tu dirección abajo y mandanos la ubicación por WhatsApp.';
     } else {
       est.innerHTML = 'No pudimos tomar tu ubicación (probá salir a un lugar más abierto o cerca de una ventana). ' +
         '<button type="button" onclick="usarMiUbicacion()" style="background:none;border:none;color:#2ecc71;font-weight:600;text-decoration:underline;cursor:pointer;padding:0;font-size:inherit">Probar de nuevo</button> — ' +
@@ -1910,9 +1937,8 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
-  // GPS_OBLIGATORIO en false (temporal, a pedido del local): sin ubicación
-  // alcanza con escribir la dirección. Para volver a exigirla: true.
-  if(!UBICACION_GPS && !GPS_OBLIGATORIO && !direccion){
+  // Sin ubicación compartida hace falta al menos la dirección escrita.
+  if(!UBICACION_GPS && !direccion){
     errEl.textContent = 'Compartí tu ubicación o escribí tu dirección (calle y número) para que el repartidor te encuentre.';
     errEl.style.display = 'block';
     return;
@@ -1930,6 +1956,12 @@ function irAConfirmar(){
   if(cantidadCarrito() === 0 && cantidadItemsManuales() === 0){
     errEl.textContent = 'Tu carrito está vacío.';
     errEl.style.display = 'block';
+    return;
+  }
+  // Sin ubicación: preguntar antes de seguir (una sola vez por pedido).
+  if(!UBICACION_GPS && !_sinUbicacionAceptado){
+    errEl.style.display = 'none';
+    preguntarSinUbicacion();
     return;
   }
 
@@ -1967,6 +1999,7 @@ function confirmarPedido(){
     direccion: direccion,
     referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
+    sinUbicacion: !UBICACION_GPS,
     medioPago: MEDIO_PAGO_SEL,
     zona: ZONA_ACTUAL,
     distanciaKm: ZONA_ACTUAL ? Math.round(ZONA_DISTANCIA*10)/10 : null,
@@ -2045,6 +2078,8 @@ function confirmarPedido(){
   if(UBICACION_GPS){
     msg += 'Ubicación en el mapa:\n';
     msg += 'https://maps.google.com/?q=' + UBICACION_GPS.lat + ',' + UBICACION_GPS.lng + '\n';
+  } else {
+    msg += '📍 *Les mando mi ubicación por acá* 👇\n';
   }
 
   msg += '\n👤 *CLIENTE*\n';
@@ -2060,6 +2095,9 @@ function confirmarPedido(){
   document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('thanksScreen').classList.add('show');
+  if(!UBICACION_GPS){
+    document.getElementById('thanksMsg').innerHTML = 'Ya se abrió WhatsApp con tu pedido armado — tocá enviar y <b style="color:var(--gold)">mandanos tu ubicación por ahí</b> (📎 → Ubicación), así el repartidor te encuentra rápido. ¡Gracias por elegirnos!';
+  }
   document.getElementById('segThanks').style.display = 'block';
   escucharSeguimiento(codSeguimiento);
 
