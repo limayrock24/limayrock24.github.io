@@ -7317,6 +7317,10 @@ setInterval(function(){
 // así que con un solo puesto todo funciona igual que siempre.
 var SK_CAJA_EQUIPO = 'lr_caja_equipo';
 function cajaEquipo(){
+  // El link del admin nunca es un puesto de venta: ahí no cuenta la marca de
+  // caja que haya quedado guardada en el navegador (si en esa compu alguna vez
+  // se abrió la caja como Caja 2, el admin mostraba dos cajas sin haberlas).
+  if(window.__lrEsPanelAdmin) return 1;
   try{ return parseInt(localStorage.getItem(SK_CAJA_EQUIPO), 10) === 2 ? 2 : 1; }catch(e){ return 1; }
 }
 function cajaDe(r){ return (r && Number(r.caja) === 2) ? 2 : 1; }
@@ -13231,12 +13235,13 @@ function registrarRetiroCaja() {
   if(!monto || monto<=0){ showToast('Ingresá un monto válido',true); return; }
   var nota = notaEl ? notaEl.value.trim() : '';
   var retiros = getRetirosCaja();
+  var idRet = Date.now(), cajaRet = cajaElegida('retiro');
   retiros.push({
-    id: Date.now(),
+    id: idRet,
     monto: monto,
     tipo: 'retiro',
     nota: nota,
-    caja: cajaElegida('retiro'),
+    caja: cajaRet,
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
@@ -13244,7 +13249,7 @@ function registrarRetiroCaja() {
   // Registrar en historial de movimientos
   var notaTxt = nota ? nota : 'Retiro de caja';
   registrarOperacion('retiro', [{name: notaTxt, qty:1, precio:monto, subtotal:monto}], monto,
-    currentEmp ? currentEmp.nombre : 'Admin', 'Retiro de caja');
+    currentEmp ? currentEmp.nombre : 'Admin', 'Retiro de caja', 0, idRet, cajaRet);
   montoEl.value='';
   if(notaEl) notaEl.value='';
   document.getElementById('retiroModal').classList.remove('open');
@@ -13267,19 +13272,20 @@ function registrarIngresoCaja() {
   if(!monto || monto<=0){ showToast('Ingresá un monto válido',true); return; }
   var nota = notaEl ? notaEl.value.trim() : '';
   var retiros = getRetirosCaja();
+  var idIng = Date.now(), cajaIng = cajaElegida('ingreso');
   retiros.push({
-    id: Date.now(),
+    id: idIng,
     monto: monto,
     tipo: 'ingreso',
     nota: nota,
-    caja: cajaElegida('ingreso'),
+    caja: cajaIng,
     empleado: currentEmp ? currentEmp.nombre : '—',
     fecha: new Date().toISOString()
   });
   window.__lrRetirosCajaCache = retiros;
   var notaTxt = nota ? nota : 'Ingreso de efectivo a caja';
   registrarOperacion('ingreso-caja', [{name: notaTxt, qty:1, precio:monto, subtotal:monto}], monto,
-    currentEmp ? currentEmp.nombre : 'Admin', 'Ingreso de efectivo');
+    currentEmp ? currentEmp.nombre : 'Admin', 'Ingreso de efectivo', 0, idIng, cajaIng);
   montoEl.value='';
   if(notaEl) notaEl.value='';
   document.getElementById('ingresoModal').classList.remove('open');
@@ -18931,7 +18937,7 @@ function initMovimientos() {
 
 
 // ── UN MOVIMIENTO POR OPERACIÓN ────────────────────────────────────────────
-function registrarOperacion(tipo, items, total, responsable, extra, recargo, refId) {
+function registrarOperacion(tipo, items, total, responsable, extra, recargo, refId, cajaForzada) {
   var movs    = getMovimientos();
   var resumen = items.map(function(i){ return i.name+' ×'+i.qty; }).join(', ');
 
@@ -18943,7 +18949,7 @@ function registrarOperacion(tipo, items, total, responsable, extra, recargo, ref
     total:       total,
     recargo:     recargo || 0,  // parte del total que es recargo de débito (no es plata "propia")
     responsable: responsable,
-    caja:        cajaTurnoActual(),
+    caja:        cajaForzada || cajaTurnoActual(),
     extra:       extra || '',   // medio de pago / nombre cliente / proveedor
     refId:       refId || null, // id real de la venta, para poder detectar después si se anuló
     // Solo lo que realmente se muestra en el detalle expandible (nombre, cantidad, subtotal) —
@@ -22738,7 +22744,7 @@ function renderDashboard() {
 
   if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦'};
+    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
     // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
@@ -22793,13 +22799,32 @@ function renderDashboard() {
       // plata que entró igual, y así el número refleja todo lo generado.
       totalVentasTurnoVivo += gananciaCargasTurno;
 
+      // Retiros/ingresos: la caja que vale es la del registro real (el renglón
+      // del historial podía quedar con la caja del equipo desde donde se cargó).
+      var deSuCajaMov = function(m){
+        if((m.tipo === 'retiro' || m.tipo === 'ingreso-caja') && typeof retiroDeMovimiento === 'function'){
+          var rr = retiroDeMovimiento(m);
+          if(rr) return deSuCaja(rr);
+        }
+        return deSuCaja(m);
+      };
+      var esStockMov = function(t){ return t === 'ajuste-stock' || t === 'baja-stock' || t === 'ingreso'; };
+      var textoStock = function(m){
+        var nom = {'ajuste-stock':'Ajuste de stock', 'baja-stock':'Baja de stock', 'ingreso':'Ingreso de mercadería'}[m.tipo] || m.tipo;
+        var dif = Number(m.cantidad||0);
+        var cambio = (m.stockAntes != null && m.stockDespues != null) ? ' ('+m.stockAntes+' → '+m.stockDespues+')' : '';
+        return {texto: nom+': '+(m.producto || m.resumen || '—')+cambio, unidades: (dif>0?'+':'')+dif+' u.'};
+      };
       var detalleTurno = getMovimientos().filter(function(m){
         // Excluir los movimientos internos de descuento de stock por ingrediente
         // de combo — no son ventas en sí, la venta real ya aparece como una sola
         // línea con el total. Mostrarlos acá era ruido (aparecían en $0, repetidos).
-        return deSuCaja(m) && new Date(m.fecha).getTime() >= inicioTs && m.tipo !== 'Venta (Combo)';
+        return deSuCajaMov(m) && new Date(m.fecha).getTime() >= inicioTs && m.tipo !== 'Venta (Combo)';
       })
-        .map(function(m){ return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0}; })
+        .map(function(m){
+          if(esStockMov(m.tipo)){ var ts = textoStock(m); return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:ts.texto, extra:'', total:0, recargo:0, unidades:ts.unidades}; }
+          return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0};
+        })
         .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
 
       var detalleHtml = detalleTurno.length
@@ -22818,7 +22843,9 @@ function renderDashboard() {
             }
             return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
               '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+'</span>'+
-              '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>'+
+              (m.unidades != null
+                ? '<span style="color:var(--gold);white-space:nowrap">'+m.unidades+'</span>'
+                : '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>')+
             '</div>';
           }).join('')
         : '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">Todavía no hubo movimientos en este turno</div>';
