@@ -1695,6 +1695,7 @@
     }
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
     window.__lrSync.pedidosWebListos = true;
+    if(!soloUbicacion && typeof sincronizarSeguimiento === 'function') sincronizarSeguimiento(lista);
     if(soloUbicacion){
       if(typeof actualizarUbicacionesEnVivo==='function') actualizarUbicacionesEnVivo();
       return;
@@ -27265,6 +27266,48 @@ function mensajeEnCamino(p){
 }
 
 // Mensaje del LOCAL: los datos para cobrar.
+// ── SEGUIMIENTO DEL PEDIDO PARA EL CLIENTE ──────────────────────────────────
+// Los pedidos del catálogo traen un código secreto (p.seguimiento). Cada vez
+// que un pedido cambia, este equipo publica SOLO su estado en
+// "seguimiento/<código>" (sin nombre, teléfono ni dirección), y el cliente lo
+// ve en vivo en el catálogo. Lo hace cualquier caja/admin abierta; si lo
+// escriben dos a la vez, escriben lo mismo.
+var LINK_SEGUIMIENTO = 'https://limayrock.com.ar/?seguimiento=';
+function etapaSeguimiento(p){
+  if(p.anulado) return 'cancelado';
+  if(p.estadoDelivery === 'entregado' || p.estado === 'resuelto') return 'entregado';
+  if(p.retiradoEn || (p.avisos && p.avisos.salio)) return 'en_camino';
+  if(p.cargadoCaja || p.cobradoEn || p.tomadoEn || p.pagoConfirmado || (p.avisos && p.avisos.confirmado)) return 'preparando';
+  return 'recibido';
+}
+function sincronizarSeguimiento(lista){
+  if(!window.__lrDB || !Array.isArray(lista)) return;
+  var hace2d = Date.now() - 2*24*3600000;
+  var cache = window.__lrSegPublicado || (window.__lrSegPublicado = {});
+  lista.forEach(function(p){
+    if(!p || !p.seguimiento || !/^[a-z0-9]{10,40}$/.test(p.seguimiento)) return;
+    if((Number(p.id) || 0) < hace2d) return;
+    var etapa = etapaSeguimiento(p);
+    var rep = p.repartidor ? String(p.repartidor).split(' ')[0] : null;
+    var firma = etapa + '|' + (rep || '');
+    if(cache[p.seguimiento] === firma) return;
+    cache[p.seguimiento] = firma;
+    var conf = p.avisos && p.avisos.confirmado ? p.avisos.confirmado.ts : null;
+    var salio = p.avisos && p.avisos.salio ? p.avisos.salio.ts : null;
+    window.__lrDB.collection('seguimiento').doc(p.seguimiento).set({
+      etapa: etapa,
+      repartidor: (etapa === 'en_camino' || etapa === 'entregado') ? rep : null,
+      pasos: {
+        recibido: p.fecha || null,
+        preparando: conf || p.cobradoEn || p.tomadoEn || null,
+        en_camino: p.retiradoEn || salio || null,
+        entregado: p.entregadoEn || null
+      },
+      actualizado: new Date().toISOString()
+    }).catch(function(e){ delete cache[p.seguimiento]; console.warn('No se pudo publicar el seguimiento', e); });
+  });
+}
+
 function mensajeConfirmacionPedido(p){
   // Se usan emojis "clásicos" (los que existen desde hace años y están en
   // todos los teclados). Los más nuevos, como el rayo o la moto, salían como
@@ -27291,6 +27334,7 @@ function mensajeConfirmacionPedido(p){
   } else {
     msg += '\n¿Cómo vas a abonar, efectivo o transferencia?';
   }
+  if(p.seguimiento) msg += '\n\n📦 Seguí tu pedido en vivo acá:\n' + LINK_SEGUIMIENTO + p.seguimiento;
   return msg;
 }
 
@@ -27329,7 +27373,8 @@ function textoMensajeCliente(p, tipo, extra) {
   var nombre = (p.nombre || '').split(' ')[0];
   if(tipo === 'salio'){
     return '¡Hola ' + nombre + '! 👋\n\nTu pedido de *LIMAY ROCK* ya salió del local' +
-      (p.repartidor ? ' con *' + p.repartidor + '*' : '') + ' 📦\nEn unos minutos lo tenés en tu casa.\n\n¡Gracias por elegirnos! 🙌';
+      (p.repartidor ? ' con *' + p.repartidor + '*' : '') + ' 📦\nEn unos minutos lo tenés en tu casa.' +
+      (p.seguimiento ? '\n\n📦 Seguilo en vivo: ' + LINK_SEGUIMIENTO + p.seguimiento : '') + '\n\n¡Gracias por elegirnos! 🙌';
   }
   if(tipo === 'falta'){
     var prod = extra && extra.producto ? '*' + extra.producto + '*' : 'uno de los productos';

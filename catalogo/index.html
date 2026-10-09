@@ -221,6 +221,22 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
    "en vivo" mientras conecta — acá se lo pongo al logo. */
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .status-screen.show{display:flex}
+/* ── Seguimiento del pedido ── */
+.seg-box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 16px;margin-top:18px;text-align:left}
+.seg-tit{font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:12px}
+.seg-paso{display:flex;gap:12px;position:relative;padding-bottom:16px}
+.seg-paso:last-child{padding-bottom:0}
+.seg-paso:not(:last-child)::before{content:'';position:absolute;left:13px;top:28px;bottom:2px;width:2px;background:var(--border)}
+.seg-paso.hecho:not(:last-child)::before{background:var(--green)}
+.seg-dot{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.85rem;background:var(--surface);border:2px solid var(--border);color:var(--gray)}
+.seg-paso.hecho .seg-dot{background:var(--green);border-color:var(--green);color:#04231d}
+.seg-paso.actual .seg-dot{background:var(--gold);border-color:var(--gold);color:#000;animation:pulse 1.6s infinite}
+.seg-txt b{display:block;font-family:'Oswald',sans-serif;font-size:.95rem;letter-spacing:.5px;color:var(--white)}
+.seg-paso:not(.hecho):not(.actual) .seg-txt b{color:var(--gray)}
+.seg-txt span{font-size:.8rem;color:var(--gray)}
+.seg-cancel{background:rgba(210,32,31,.12);border:1px solid rgba(210,32,31,.4);color:#ff8a8a;border-radius:10px;padding:12px;font-size:.88rem}
+.seg-chip{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:250;background:var(--gold);color:#000;border:none;border-radius:24px;padding:11px 18px;font-family:'Oswald',sans-serif;font-weight:700;font-size:.85rem;letter-spacing:.5px;box-shadow:0 6px 20px rgba(0,0,0,.6);cursor:pointer;display:none}
+
 .status-screen h2{font-family:'Oswald',sans-serif;font-size:1.1rem;letter-spacing:1px;color:var(--gold);margin:0 0 10px}
 .status-screen p{color:var(--gray);font-size:.85rem;max-width:340px;line-height:1.5}
 .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--red);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}
@@ -273,7 +289,16 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div id="thanksScreen" class="status-screen">
   <h2>✅ ¡Pedido enviado!</h2>
   <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega. ¡Gracias por elegirnos!</p>
+  <div id="segThanks" class="seg-box" style="display:none"></div>
 </div>
+
+<!-- Seguimiento del pedido (al volver a entrar al catálogo o desde el link) -->
+<div id="segScreen" class="status-screen">
+  <h2>📦 Tu pedido</h2>
+  <div id="segVista" class="seg-box"></div>
+  <button onclick="cerrarSeguimiento()" style="margin-top:16px;background:transparent;border:1.5px solid var(--border);color:var(--light);border-radius:8px;padding:11px 24px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;cursor:pointer">Volver al catálogo</button>
+</div>
+<button id="segChip" class="seg-chip" onclick="abrirSeguimiento()">📦 Seguí tu pedido</button>
 
 <div id="mainContent" style="display:none">
   <!-- Botón flotante del carrito: fijo arriba a la derecha, siempre a mano
@@ -1932,6 +1957,7 @@ function confirmarPedido(){
   var envio = COSTO_ENVIO;
   var total = totalConEnvio();
   var pedidoId = Date.now();
+  var codSeguimiento = nuevoCodigoSeguimiento();
 
   var pedido = {
     id: pedidoId,
@@ -1962,9 +1988,11 @@ function confirmarPedido(){
     envio: envio,
     total: total,
     estado: 'pendiente',
-    origen: 'catalogo-web'
+    origen: 'catalogo-web',
+    seguimiento: codSeguimiento
   };
   guardarPedidoNuevo(pedido);
+  guardarSeguimientoLocal(codSeguimiento);
 
   // Mensaje pensado para que el local pueda leerlo de un vistazo a las 3 de la
   // mañana: primero QUÉ pidió, después A DÓNDE va y CÓMO paga, que es lo que
@@ -2032,12 +2060,110 @@ function confirmarPedido(){
   document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('thanksScreen').classList.add('show');
+  document.getElementById('segThanks').style.display = 'block';
+  escucharSeguimiento(codSeguimiento);
 
   CARRITO = {};
   CARRITO_MANUAL = {};
   CARRITO_COMBOS = {};
   _manualModo = {};
 }
+
+// ── SEGUIMIENTO DEL PEDIDO ──────────────────────────────────────────────────
+// Cada pedido lleva un código secreto (imposible de adivinar). Con ese código
+// el cliente ve SOLO el estado de su pedido (recibido → preparando → en
+// camino → entregado), nunca nombres, teléfonos ni direcciones: el local
+// publica el estado aparte, en "seguimiento/<código>".
+var SK_SEGUIMIENTO = 'lr_seguimiento';
+function nuevoCodigoSeguimiento(){
+  var a = new Uint8Array(15), c = 'abcdefghijkmnpqrstuvwxyz23456789', t = '';
+  (window.crypto || window.msCrypto).getRandomValues(a);
+  for(var i=0;i<a.length;i++) t += c[a[i] % c.length];
+  return t;
+}
+function guardarSeguimientoLocal(cod){
+  try{ localStorage.setItem(SK_SEGUIMIENTO, JSON.stringify({cod: cod, ts: Date.now()})); }catch(e){}
+}
+function leerSeguimientoLocal(){
+  try{
+    var d = JSON.parse(localStorage.getItem(SK_SEGUIMIENTO) || 'null');
+    if(d && d.cod && Date.now() - d.ts < 24*3600000) return d.cod;
+  }catch(e){}
+  return null;
+}
+var _segUnsub = null, _segCod = null, _segUltimaEtapa = null;
+function htmlSeguimiento(d){
+  d = d || {};
+  if(d.etapa === 'cancelado'){
+    return '<div class="seg-tit">Seguimiento</div><div class="seg-cancel">❌ Este pedido fue cancelado. Si tenés dudas, escribinos por WhatsApp.</div>';
+  }
+  var orden = ['recibido','preparando','en_camino','entregado'];
+  var idx = Math.max(0, orden.indexOf(d.etapa || 'recibido'));
+  var hora = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : ''; };
+  var pasos = d.pasos || {};
+  var rep = d.repartidor ? String(d.repartidor).replace(/[<>&"]/g,'') : '';
+  var info = [
+    ['recibido',   '🧾', 'Recibido',   d.etapa ? 'El local ya tiene tu pedido' : 'Enviando tu pedido al local…'],
+    ['preparando', '👨‍🍳', 'Preparando', 'Lo estamos armando'],
+    ['en_camino',  '🛵', 'En camino',  rep ? rep+' salió con tu pedido' : 'Tu pedido salió del local'],
+    ['entregado',  '🏠', 'Entregado',  '¡Que lo disfrutes! 🤘']
+  ];
+  return '<div class="seg-tit">Seguimiento en vivo</div>' + info.map(function(p, i){
+    var cls = i < idx ? 'hecho' : (i === idx ? (p[0]==='entregado' ? 'hecho' : 'actual') : '');
+    var h = (i <= idx) ? hora(pasos[p[0]]) : '';
+    return '<div class="seg-paso '+cls+'"><div class="seg-dot">'+(i < idx || (i===idx && p[0]==='entregado') ? '✓' : p[1])+'</div>'+
+      '<div class="seg-txt"><b>'+p[2]+(h ? ' <span style="font-family:Barlow,sans-serif;font-size:.75rem;color:var(--gray);font-weight:400">· '+h+'</span>' : '')+'</b>'+
+      (i <= idx ? '<span>'+p[3]+'</span>' : '')+'</div></div>';
+  }).join('');
+}
+function escucharSeguimiento(cod, contenedorId){
+  if(_segUnsub && _segCod === cod){ return; }
+  if(_segUnsub){ try{ _segUnsub(); }catch(e){} }
+  _segCod = cod;
+  var pintar = function(d){
+    ['segThanks','segVista'].forEach(function(id){ var el = document.getElementById(id); if(el) el.innerHTML = htmlSeguimiento(d); });
+    _segUltimaEtapa = d && d.etapa;
+    // Entregado o cancelado: el chip deja de aparecer al volver a entrar.
+    if(d && (d.etapa === 'entregado' || d.etapa === 'cancelado')){
+      try{ localStorage.removeItem(SK_SEGUIMIENTO); }catch(e){}
+      var chip = document.getElementById('segChip'); if(chip) chip.style.display = 'none';
+    }
+  };
+  pintar(null);
+  try{
+    _segUnsub = db.collection('seguimiento').doc(cod).onSnapshot(function(doc){
+      pintar(doc.exists ? doc.data() : null);
+    }, function(err){ console.warn('Seguimiento no disponible', err); });
+  }catch(e){}
+}
+function abrirSeguimiento(){
+  var cod = _segCod || leerSeguimientoLocal();
+  if(!cod) return;
+  escucharSeguimiento(cod);
+  document.getElementById('segScreen').classList.add('show');
+}
+function cerrarSeguimiento(){
+  document.getElementById('segScreen').classList.remove('show');
+  var chip = document.getElementById('segChip');
+  if(chip && leerSeguimientoLocal()) chip.style.display = 'block';
+}
+// Al entrar: con link (?seguimiento=código) se abre directo; si este celu hizo
+// un pedido en las últimas 24 h y todavía no se entregó, aparece el botón.
+(function(){
+  var cod = null;
+  try{ cod = new URLSearchParams(location.search).get('seguimiento'); }catch(e){}
+  if(cod && /^[a-z0-9]{10,40}$/.test(cod)){
+    guardarSeguimientoLocal(cod);
+    escucharSeguimiento(cod);
+    document.getElementById('segScreen').classList.add('show');
+    return;
+  }
+  cod = leerSeguimientoLocal();
+  if(cod){
+    escucharSeguimiento(cod);
+    var chip = document.getElementById('segChip'); if(chip) chip.style.display = 'block';
+  }
+})();
 </script>
 </body>
 </html>

@@ -31,6 +31,11 @@ service cloud.firestore {
     // Pedidos del catálogo: un cliente solo puede CREAR un pedido nuevo.
     match /pedidosWeb/{id} { allow create: if true; }
 
+    // Seguimiento del pedido: el cliente puede VER el estado de SU pedido si
+    // tiene el código secreto (no puede listar los demás). Solo trae la etapa,
+    // sin datos personales. Lo escriben solo los equipos del local.
+    match /seguimiento/{codigo} { allow get: if true; }
+
     // TEMPORAL — lo que usa el panel de delivery, hasta identificar sus celus.
     match /pedidosWeb/{id} { allow read, update: if true; }
     match /empleados/{id}  { allow read, write: if true; }
