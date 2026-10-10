@@ -28172,12 +28172,18 @@ function actualizarDeliveryPendBadge() {
            p.entregadoEn && new Date(p.entregadoEn) >= hoyIni0;
   }).length;
 
+  // Los ya cobrados que todavía no se entregaron (en preparación o en camino)
+  // también cuentan: el botón no se esconde y se ve en qué anda cada uno.
+  var enCurso = getPedidosWeb().filter(function(p){
+    return p.estado === 'cargado' && !p.anulado && p.estadoDelivery !== 'entregado';
+  }).length;
   var countEl = document.getElementById('deliveryPendCount');
   if(countEl){
     countEl.innerHTML = pendientes.length +
+      (enCurso ? ' <span style="color:#38bdf8;font-size:.9em" title="Cobrados, en camino o por salir">🛵'+enCurso+'</span>' : '') +
       (entregHoy ? ' <span style="color:var(--green);font-size:.9em">✓'+entregHoy+'</span>' : '');
   }
-  btn.style.display = (pendientes.length>0 || entregHoy>0) ? 'inline-block' : 'none';
+  btn.style.display = (pendientes.length>0 || enCurso>0 || entregHoy>0) ? 'inline-block' : 'none';
   // Si la ventana de pedidos pendientes ya estaba abierta, refrescar también
   // su contenido — si no, un pedido resuelto desde otro lado se quedaba
   // "pegado" en la lista hasta cerrar y volver a abrir la ventana.
