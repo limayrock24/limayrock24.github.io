@@ -10438,8 +10438,14 @@ function actualizarUbicacionesEnVivo() {
   // Si un pedido recién empieza a mandar ubicación, la fila todavía no existe:
   // ahí sí se redibuja la lista de pedidos en curso.
   var faltan = getPedidosWeb().some(function(p){
-    return p.ubicacionRep && p.repartidor && p.estadoDelivery !== 'entregado' && !document.querySelector('.gps-fila button[onclick="abrirMapaRepartidor('+p.id+')"]');
+    return p.ubicacionRep && p.repartidor && p.retiradoEn && p.estadoDelivery !== 'entregado' && !document.querySelector('.gps-fila button[onclick="abrirMapaRepartidor('+p.id+')"]');
   });
+  var modalPend = document.getElementById('deliveryPendModal');
+  if(faltan && modalPend && modalPend.classList.contains('open') && typeof abrirDeliveryPendModal==='function'){
+    var y = modalPend.scrollTop;
+    abrirDeliveryPendModal();
+    modalPend.scrollTop = y;
+  }
   if(faltan && typeof renderDeliveryPanel==='function' && document.getElementById('deliveryPedidosActivos')){
     var ae = document.activeElement;
     if(!ae || !document.getElementById('pane-delivery') || !document.getElementById('pane-delivery').contains(ae) || ae.tagName === 'BUTTON') renderDeliveryPanel();
@@ -27036,6 +27042,34 @@ document.addEventListener('keydown', function(e){
   else if(e.key === 'Backspace') dlPinPress('C');
 });
 
+// Avisos de pedido SOLO en el celu con un repartidor adentro: al tocar
+// "Salir" este equipo se pasa a 'repartidor-inactivo' (la función que manda
+// los avisos solo le escribe a 'repartidor'), y al entrar alguien, los
+// registros de OTRAS personas en este mismo equipo también se apagan.
+function _lrDispositivosEsteEquipo(){
+  var ua = navigator.userAgent;
+  return [ua.slice(0,120), ('App Android · '+ua).slice(0,120)];
+}
+function apagarAvisosEsteEquipo(quien, soloOtros){
+  try{
+    _lrDispositivosEsteEquipo().forEach(function(disp){
+      window.__lrDB.collection('fcmTokens').where('dispositivo','==',disp).get().then(function(snap){
+        snap.forEach(function(doc){
+          // Se vuelve a leer adentro de una transacción: si mientras tanto
+          // entró otra persona en este mismo celu, su registro no se toca.
+          window.__lrDB.runTransaction(function(tx){
+            return tx.get(doc.ref).then(function(cur){
+              var d = cur.exists ? cur.data() : null;
+              if(!d || (d.destino !== 'repartidor' && d.destino !== 'repartidor-bloqueado')) return;
+              if(soloOtros ? d.quien === quien : d.quien !== quien) return;
+              tx.update(doc.ref, {destino:'repartidor-inactivo', fecha:new Date().toISOString()});
+            });
+          }).catch(function(){});
+        });
+      }).catch(function(e){ console.warn('No se pudieron apagar los avisos de este equipo:', e); });
+    });
+  }catch(e){}
+}
 // En modo delivery, "Salir" vuelve al login en vez de cerrar el panel y dejar
 // a la vista la pantalla de venta.
 function salirModoDelivery(){
@@ -27048,6 +27082,7 @@ function salirModoDelivery(){
     if(i >= 0){ emps[i].disponibleDelivery = false; saveEmpleados(emps); }
     sincronizarDeliveryConDisponibles();
   }
+  if(currentEmp) apagarAvisosEsteEquipo(currentEmp.nombre, false);
   currentEmp = null;
   _dlPinBuf = '';
   pintarDlDots();
@@ -27065,6 +27100,7 @@ function abrirPanelRepartidor() {
   var saludo = document.getElementById('repartidorSaludo');
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
+  apagarAvisosEsteEquipo(currentEmp.nombre, true);
   restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
   pintarEstadoDisponible();
   setFiltroRepartidor('libres');
@@ -28174,6 +28210,12 @@ function abrirDeliveryPendModal() {
         pasoHtml(tomado, !tomado, tomado ? 'Lo lleva '+p.repartidor : 'Esperando repartidor', hh(p.tomadoEn))+
         pasoHtml(cobrado, tomado && !cobrado, cobrado ? 'Cobrado por '+(p.cobradoPor||'el local') : 'Falta cobrar', hh(p.cobradoEn))+
         pasoHtml(entregado, cobrado && !entregado, entregado ? 'Entregado' : 'En camino al cliente', hh(p.entregadoEn))+
+        // Dónde anda el repartidor (lo mismo que se ve en el panel admin).
+        (tomado && !entregado
+          ? (p.retiradoEn
+              ? htmlFilaGPSPedido(p)
+              : '<div style="font-size:.7rem;color:var(--gray);margin-top:3px">📦 Todavía no lo retiró del local (la ubicación se ve desde que lo retira)</div>')
+          : '')+
       '</div>';
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+

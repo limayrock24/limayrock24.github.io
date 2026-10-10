@@ -599,6 +599,34 @@ function chequearVersionApp(){
 }
 function abrirActualizacionApp(){ location.href = URL_DESCARGA_APP; }
 
+// Avisos de pedido SOLO en el celu con un repartidor adentro: al tocar
+// "Salir" este equipo se pasa a 'repartidor-inactivo' (la función que manda
+// los avisos solo le escribe a 'repartidor'), y al entrar alguien, los
+// registros de OTRAS personas en este mismo equipo también se apagan.
+function _lrDispositivosEsteEquipo(){
+  var ua = navigator.userAgent;
+  return [ua.slice(0,120), ('App Android · '+ua).slice(0,120)];
+}
+function apagarAvisosEsteEquipo(quien, soloOtros){
+  try{
+    _lrDispositivosEsteEquipo().forEach(function(disp){
+      window.__lrDB.collection('fcmTokens').where('dispositivo','==',disp).get().then(function(snap){
+        snap.forEach(function(doc){
+          // Se vuelve a leer adentro de una transacción: si mientras tanto
+          // entró otra persona en este mismo celu, su registro no se toca.
+          window.__lrDB.runTransaction(function(tx){
+            return tx.get(doc.ref).then(function(cur){
+              var d = cur.exists ? cur.data() : null;
+              if(!d || (d.destino !== 'repartidor' && d.destino !== 'repartidor-bloqueado')) return;
+              if(soloOtros ? d.quien === quien : d.quien !== quien) return;
+              tx.update(doc.ref, {destino:'repartidor-inactivo', fecha:new Date().toISOString()});
+            });
+          }).catch(function(){});
+        });
+      }).catch(function(e){ console.warn('No se pudieron apagar los avisos de este equipo:', e); });
+    });
+  }catch(e){}
+}
 function restaurarEstadoNotificaciones(destino, quien, btnId){
   if(esAppDelivery()){
     // Versión vieja de la app (sin avisos propios): no se hace nada.
@@ -743,6 +771,7 @@ function salirModoDelivery(){
     if(i >= 0){ emps[i].disponibleDelivery = false; saveEmpleados(emps); }
     sincronizarDeliveryConDisponibles();
   }
+  if(currentEmp) apagarAvisosEsteEquipo(currentEmp.nombre, false);
   currentEmp = null;
   guardarSesionApp(null);
   _dlPinBuf = ''; pintarDlDots();
@@ -759,6 +788,7 @@ function abrirPanelRepartidor() {
   var saludo = document.getElementById('repartidorSaludo');
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
+  apagarAvisosEsteEquipo(currentEmp.nombre, true);
   restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
   pintarEstadoDisponible();
   chequearVersionApp();
