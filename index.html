@@ -983,6 +983,7 @@
       if(paneDeliv && paneDeliv.classList.contains('active')) renderDeliveryControl();
     }
     if(typeof actualizarEstadoRepartidores==='function') actualizarEstadoRepartidores();
+    if(typeof apagarAvisosNoDisponibles==='function'){ try{ apagarAvisosNoDisponibles(); }catch(e){} }
     // El estado del catálogo (abierto/cerrado) también depende de cuántos
     // repartidores hay disponibles, así que se recalcula acá.
     if(typeof sincronizarDeliveryConDisponibles==='function'){
@@ -1849,6 +1850,7 @@
     var lista = [];
     snap.forEach(function(doc){ lista.push(doc.data()); });
     window.__lrFcmTokensCache = lista;
+    if(typeof apagarAvisosNoDisponibles==='function'){ try{ apagarAvisosNoDisponibles(); }catch(e){} }
     if(typeof renderEmpAdmin==='function'){ try{ renderEmpAdmin(); }catch(e){} }
   }, function(err){ console.error('Error sincronizando fcmTokens:', err); });
 
@@ -27059,6 +27061,54 @@ function _lrDispositivosEsteEquipo(){
   var ua = navigator.userAgent;
   return [ua.slice(0,120), ('App Android · '+ua).slice(0,120)];
 }
+// Avisos de pedido: le llegan a un celu SOLO si el repartidor entró con su
+// PIN y está marcado DISPONIBLE. Si no está disponible, ese celu queda en
+// 'repartidor-inactivo' (la función que manda los avisos solo le escribe a
+// 'repartidor') hasta que se vuelva a marcar disponible.
+// Red de seguridad desde los equipos del local: cualquier celu anotado como
+// 'repartidor' de alguien que NO está disponible (o que ya no es repartidor)
+// se pasa a 'repartidor-inactivo'. Así también se apagan los celus que
+// quedaron anotados de antes. Se deja un margen de 3 minutos a los registros
+// recién hechos, por si el aviso de "disponible" todavía no llegó acá.
+var _avisosApagando = {};
+setInterval(function(){ try{ apagarAvisosNoDisponibles(); }catch(e){} }, 5*60*1000);
+function apagarAvisosNoDisponibles(){
+  if(!window.__lrDB || !Array.isArray(window.__lrFcmTokensCache) || !window.__lrSync || !window.__lrSync.empleadosListos) return;
+  var emps = getEmpleados();
+  if(!emps.length) return;
+  var hace3 = Date.now() - 3*60*1000;
+  window.__lrFcmTokensCache.forEach(function(t){
+    if(!t || t.destino !== 'repartidor' || !t.token) return;
+    var e = emps.find(function(x){ return x.nombre === t.quien; });
+    if(e && e.disponibleDelivery && !e.sinPedidos) return;
+    if(new Date(t.fecha).getTime() > hace3) return;
+    var id = String(t.token).slice(-40);
+    if(_avisosApagando[id]) return;
+    _avisosApagando[id] = true;
+    var ref = window.__lrDB.collection('fcmTokens').doc(id);
+    window.__lrDB.runTransaction(function(tx){
+      return tx.get(ref).then(function(cur){
+        if(!cur.exists || cur.data().destino !== 'repartidor') return;
+        tx.update(ref, {destino:'repartidor-inactivo', fecha:new Date().toISOString()});
+      });
+    }).catch(function(err){ console.warn('No se pudo apagar un aviso viejo', err); })
+      .then(function(){ delete _avisosApagando[id]; });
+  });
+}
+function destinoAvisosRep(emp){
+  if(!emp) return 'repartidor-inactivo';
+  if(emp.sinPedidos) return 'repartidor-bloqueado';
+  return emp.disponibleDelivery ? 'repartidor' : 'repartidor-inactivo';
+}
+var _destinoAvisosAplicado = null;
+function aplicarAvisosRepartidor(forzar){
+  if(!currentEmp) return;
+  var d = destinoAvisosRep(currentEmp);
+  if(!forzar && d === _destinoAvisosAplicado) return;
+  _destinoAvisosAplicado = d;
+  if(d === 'repartidor-inactivo') apagarAvisosEsteEquipo(currentEmp.nombre, false);
+  else restaurarEstadoNotificaciones(d, currentEmp.nombre, 'btnNotifRepartidor');
+}
 function apagarAvisosEsteEquipo(quien, soloOtros){
   try{
     _lrDispositivosEsteEquipo().forEach(function(disp){
@@ -27110,7 +27160,7 @@ function abrirPanelRepartidor() {
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
   apagarAvisosEsteEquipo(currentEmp.nombre, true);
-  restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
+  aplicarAvisosRepartidor(true);
   pintarEstadoDisponible();
   setFiltroRepartidor('libres');
   document.getElementById('repartidorOverlay').classList.add('open');
@@ -27260,6 +27310,7 @@ function toggleDisponibleRepartidor(){
 
   Promise.resolve(saveEmpleados(emps)).then(function(){
     sincronizarDeliveryConDisponibles();
+    aplicarAvisosRepartidor();
     showToast(nuevo ? '🟢 Estás disponible — el catálogo está abierto' : '⚪ Ya no estás disponible');
   }).catch(function(){
     // Si falló la subida, volver atrás el interruptor para no mostrarle un

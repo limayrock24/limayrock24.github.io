@@ -321,6 +321,9 @@ window.__LR_BUILD = "15"; // versión de ESTA página — se bumpea a mano acá 
         salirModoDelivery();
       } else {
         pintarEstadoDisponible();
+        // Si lo marcaron disponible / no disponible desde otro lado.
+        var ovAv = document.getElementById('repartidorOverlay');
+        if(ovAv && ovAv.style.display === 'flex') aplicarAvisosRepartidor();
         // Por si el administrador le sacó o le devolvió la vista de pedidos.
         var ovR = document.getElementById('repartidorOverlay');
         if(ovR && ovR.style.display === 'flex' && typeof renderPanelRepartidor === 'function') renderPanelRepartidor();
@@ -607,6 +610,24 @@ function _lrDispositivosEsteEquipo(){
   var ua = navigator.userAgent;
   return [ua.slice(0,120), ('App Android · '+ua).slice(0,120)];
 }
+// Avisos de pedido: le llegan a un celu SOLO si el repartidor entró con su
+// PIN y está marcado DISPONIBLE. Si no está disponible, ese celu queda en
+// 'repartidor-inactivo' (la función que manda los avisos solo le escribe a
+// 'repartidor') hasta que se vuelva a marcar disponible.
+function destinoAvisosRep(emp){
+  if(!emp) return 'repartidor-inactivo';
+  if(emp.sinPedidos) return 'repartidor-bloqueado';
+  return emp.disponibleDelivery ? 'repartidor' : 'repartidor-inactivo';
+}
+var _destinoAvisosAplicado = null;
+function aplicarAvisosRepartidor(forzar){
+  if(!currentEmp) return;
+  var d = destinoAvisosRep(currentEmp);
+  if(!forzar && d === _destinoAvisosAplicado) return;
+  _destinoAvisosAplicado = d;
+  if(d === 'repartidor-inactivo') apagarAvisosEsteEquipo(currentEmp.nombre, false);
+  else restaurarEstadoNotificaciones(d, currentEmp.nombre, 'btnNotifRepartidor');
+}
 function apagarAvisosEsteEquipo(quien, soloOtros){
   try{
     _lrDispositivosEsteEquipo().forEach(function(disp){
@@ -789,7 +810,7 @@ function abrirPanelRepartidor() {
   if(saludo) saludo.textContent = currentEmp.nombre;
   _repFiltro = 'libres';
   apagarAvisosEsteEquipo(currentEmp.nombre, true);
-  restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
+  aplicarAvisosRepartidor(true);
   pintarEstadoDisponible();
   chequearVersionApp();
   setFiltroRepartidor('libres');
@@ -805,7 +826,7 @@ document.addEventListener('visibilitychange', function(){
   if(!ov || ov.style.display === 'none') return;
   if(Date.now() - _ultReactivAvisos < 10*60*1000) return;
   _ultReactivAvisos = Date.now();
-  restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
+  aplicarAvisosRepartidor(true);
 });
 
 function setFiltroRepartidor(f) {
@@ -1308,6 +1329,7 @@ function toggleDisponibleRepartidor(){
 
   Promise.resolve(saveEmpleados(emps)).then(function(){
     sincronizarDeliveryConDisponibles();
+    aplicarAvisosRepartidor();
     showToast(nuevo ? '🟢 Estás disponible — el catálogo está abierto' : '⚪ Ya no estás disponible');
   }).catch(function(){
     currentEmp.disponibleDelivery = !nuevo;
