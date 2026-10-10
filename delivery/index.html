@@ -796,6 +796,17 @@ function abrirPanelRepartidor() {
   document.getElementById('repartidorOverlay').style.display = 'flex';
 }
 function cerrarPanelRepartidor() { salirModoDelivery(); }
+// Al volver a mirar el celu con la sesión abierta, se confirma que este equipo
+// sigue anotado para los avisos (por si se apagó desde otro lado).
+var _ultReactivAvisos = 0;
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden || !currentEmp) return;
+  var ov = document.getElementById('repartidorOverlay');
+  if(!ov || ov.style.display === 'none') return;
+  if(Date.now() - _ultReactivAvisos < 10*60*1000) return;
+  _ultReactivAvisos = Date.now();
+  restaurarEstadoNotificaciones(currentEmp.sinPedidos ? 'repartidor-bloqueado' : 'repartidor', currentEmp.nombre, 'btnNotifRepartidor');
+});
 
 function setFiltroRepartidor(f) {
   _repFiltro = f;

@@ -1702,6 +1702,14 @@
     if(document.getElementById('searchInput') && typeof actualizarDeliveryPendBadge==='function'){
       actualizarDeliveryPendBadge();
     }
+    // Lista de Delivery del panel de venta abierta: que se vea al instante
+    // cuando el repartidor toma, retira o entrega un pedido (y su ubicación).
+    var modalPendDel = document.getElementById('deliveryPendModal');
+    if(modalPendDel && modalPendDel.classList.contains('open') && typeof abrirDeliveryPendModal==='function'){
+      var yPend = modalPendDel.scrollTop;
+      try{ abrirDeliveryPendModal(); }catch(e){}
+      modalPendDel.scrollTop = yPend;
+    }
     // Panel del repartidor: que un pedido nuevo (o uno que otro repartidor
     // acaba de tomar) se refleje al instante, sin recargar nada.
     if(typeof actualizarContadorRepartidor==='function'){
