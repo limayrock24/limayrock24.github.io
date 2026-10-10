@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791594578";
+window.__LR_BUILD = "1791600352";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -417,7 +417,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       Al confirmar se va a abrir WhatsApp con este pedido ya escrito, listo para que lo envíes.
       Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega.
     </p>
-    <button class="btn-primary" onclick="confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
+    <button class="btn-primary" id="btnEnviarPedido" onclick="if(!this.disabled) confirmarPedido()">📲 Enviar pedido por WhatsApp</button>
     <button class="btn-secondary" onclick="volverAlCarrito()">Volver</button>
   </div>
 </div>
@@ -709,20 +709,51 @@ setInterval(function(){
 // reenviaba el pedido casi una hora después y lo dejaba como recién hecho:
 // se borraba el cobro, el repartidor y la entrega, y volvía a aparecer como
 // disponible. Ahora se guarda solo si todavía no existe; si ya está, no se toca.
+// El pedido queda anotado en ESTE celular hasta que la base confirma que lo
+// recibió. Si el cliente se va a WhatsApp y el navegador se duerme (o cierra)
+// antes de terminar de mandarlo, se vuelve a mandar la próxima vez que abra
+// el catálogo — así ningún pedido se pierde en el camino.
+var SK_PEDIDOS_PEND = 'lr_pedidos_pendientes';
+function _pedidosPend(){
+  try{ var l = JSON.parse(localStorage.getItem(SK_PEDIDOS_PEND) || '[]'); return Array.isArray(l) ? l : []; }catch(e){ return []; }
+}
+function _anotarPedidoPend(pedido){
+  try{
+    var l = _pedidosPend().filter(function(p){ return p.id !== pedido.id; });
+    l.push(pedido);
+    localStorage.setItem(SK_PEDIDOS_PEND, JSON.stringify(l));
+  }catch(e){}
+}
+function _sacarPedidoPend(id){
+  try{ localStorage.setItem(SK_PEDIDOS_PEND, JSON.stringify(_pedidosPend().filter(function(p){ return p.id !== id; }))); }catch(e){}
+}
 function guardarPedidoNuevo(pedido, intento){
   intento = intento || 0;
+  if(!intento) _anotarPedidoPend(pedido);
   var ref = db.collection('pedidosWeb').doc(idSeguro(String(pedido.id)));
-  db.runTransaction(function(t){
+  return db.runTransaction(function(t){
     return t.get(ref).then(function(doc){
       if(doc.exists) return; // ya llegó al local: no se vuelve a escribir
       t.set(ref, pedido);
     });
+  }).then(function(){
+    _sacarPedidoPend(pedido.id);
   }).catch(function(e){
     console.error('Error guardando pedido web (intento '+(intento+1)+')', e);
     // Sin conexión: se reintenta solo, cada vez más espaciado, durante ~1 hora.
     if(intento < 12) setTimeout(function(){ guardarPedidoNuevo(pedido, intento+1); }, Math.min(5000*Math.pow(2, intento), 300000));
+    throw e;
   });
 }
+// Al abrir el catálogo: reenviar los pedidos que quedaron sin llegar (de las
+// últimas 24 h; los más viejos ya no sirven y se descartan).
+setTimeout(function(){
+  var hace24 = Date.now() - 24*3600000;
+  _pedidosPend().forEach(function(p){
+    if((Number(p.id) || 0) < hace24){ _sacarPedidoPend(p.id); return; }
+    guardarPedidoNuevo(p, 1).catch(function(){});
+  });
+}, 1500);
 
 db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
@@ -2024,7 +2055,7 @@ function confirmarPedido(){
     origen: 'catalogo-web',
     seguimiento: codSeguimiento
   };
-  guardarPedidoNuevo(pedido);
+  var guardado = guardarPedidoNuevo(pedido);
   guardarSeguimientoLocal(codSeguimiento);
 
   // Mensaje pensado para que el local pueda leerlo de un vistazo a las 3 de la
@@ -2090,8 +2121,27 @@ function confirmarPedido(){
   msg += '_Pedido enviado desde el catálogo web_';
 
   var url = 'https://wa.me/'+NUMERO_WHATSAPP+'?text='+encodeURIComponent(msg);
-  window.open(url, '_blank');
 
+  // Primero se espera a que el pedido llegue al local (unos segundos como
+  // mucho) y RECIÉN AHÍ se abre WhatsApp. Antes se abría WhatsApp enseguida y,
+  // en el celular, el navegador quedaba dormido de fondo antes de terminar de
+  // mandar el pedido: el WhatsApp llegaba pero el pedido no aparecía en el
+  // panel. Si tarda más de la cuenta, se abre igual y se sigue intentando.
+  var btnEnv = document.getElementById('btnEnviarPedido');
+  if(btnEnv){ btnEnv.disabled = true; btnEnv.textContent = '⏳ Enviando pedido...'; }
+  var abierto = false;
+  var abrirWA = function(){
+    if(abierto) return; abierto = true;
+    if(btnEnv){ btnEnv.disabled = false; btnEnv.textContent = '📲 Enviar pedido por WhatsApp'; }
+    var w = null;
+    try{ w = window.open(url, '_blank'); }catch(e){}
+    if(!w) location.href = url;
+    mostrarGracias();
+  };
+  guardado.then(abrirWA, abrirWA);
+  setTimeout(abrirWA, 8000);
+
+  function mostrarGracias(){
   document.getElementById('confirmOverlay').classList.remove('show');
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('thanksScreen').classList.add('show');
@@ -2100,6 +2150,7 @@ function confirmarPedido(){
   }
   document.getElementById('segThanks').style.display = 'block';
   escucharSeguimiento(codSeguimiento);
+  }
 
   CARRITO = {};
   CARRITO_MANUAL = {};
