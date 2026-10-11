@@ -35,7 +35,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1791739261";
+  window.__LR_BUILD = "1791741217";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -27635,7 +27635,16 @@ var LINK_OPINION = 'https://limayrock.com.ar/?opinion=local';
 // Se prende (true) cuando la regla de /opiniones está publicada en Firebase.
 var OPINIONES_ACTIVAS = true;
 document.addEventListener('DOMContentLoaded', function(){ var b = document.getElementById('sc-opiniones'); if(b && OPINIONES_ACTIVAS) b.style.display = ''; });
-var _opiniones = [], _opFiltro = 'todas';
+var _opiniones = [], _opFiltro = 'todas', _opPeriodo = 'mes';
+// Rango [desde, hasta) del período elegido.
+function _rangoOpiniones(){
+  var h = new Date(), ini = new Date(h); ini.setHours(0,0,0,0);
+  if(_opPeriodo === 'hoy') return [ini, null];
+  if(_opPeriodo === 'semana'){ var d = new Date(ini); d.setDate(d.getDate() - ((d.getDay()+6)%7)); return [d, null]; }
+  if(_opPeriodo === 'mes') return [new Date(h.getFullYear(), h.getMonth(), 1), null];
+  if(_opPeriodo === 'mesPasado') return [new Date(h.getFullYear(), h.getMonth()-1, 1), new Date(h.getFullYear(), h.getMonth(), 1)];
+  return [null, null];
+}
 function cargarOpiniones(){
   var l = document.getElementById('opLista');
   if(l) l.innerHTML = '<div style="color:var(--gray);font-size:.8rem">Cargando...</div>';
@@ -27653,20 +27662,31 @@ function _pedidoDeOpinion(o){
   return getPedidosWeb().find(function(p){ return p.seguimiento === o.pedido; }) || null;
 }
 function renderOpiniones(){
-  var hace30 = Date.now() - 30*24*3600000;
-  var mes = _opiniones.filter(function(o){ return new Date(o.fecha).getTime() >= hace30; });
+  var rg = _rangoOpiniones();
+  var enPeriodo = _opiniones.filter(function(o){
+    var t = new Date(o.fecha).getTime();
+    return (!rg[0] || t >= rg[0].getTime()) && (!rg[1] || t < rg[1].getTime());
+  });
+  var nomPer = {hoy:'hoy', semana:'esta semana', mes:'este mes', mesPasado:'mes pasado', todo:'todo'}[_opPeriodo] || '';
+  var mes = enPeriodo;
   var conE = mes.filter(function(o){ return o.estrellas > 0; });
   var prom = conE.length ? (conE.reduce(function(s,o){ return s+o.estrellas; },0)/conE.length) : 0;
-  var contactos = _opiniones.filter(function(o){ return o.novedades && o.telefono; });
-  var sug = _opiniones.filter(function(o){ return o.producto; });
+  var contactos = enPeriodo.filter(function(o){ return o.novedades && o.telefono; });
+  var sug = enPeriodo.filter(function(o){ return o.producto; });
   var tarjeta = function(t, v, c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px"><div style="font-size:.66rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">'+t+'</div><div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:'+(c||'var(--white)')+';margin-top:2px">'+v+'</div></div>'; };
   var r = document.getElementById('opResumen');
-  if(r) r.innerHTML = tarjeta('Promedio (30 días)', conE.length ? '⭐ '+prom.toFixed(1)+' <span style="font-size:.75rem;color:var(--gray)">('+conE.length+')</span>' : '—', prom && prom < 3.5 ? 'var(--red)' : 'var(--gold)') +
-    tarjeta('Opiniones (30 días)', mes.length) + tarjeta('Pedidos de productos', sug.length) + tarjeta('Contactos para novedades', contactos.length, 'var(--green)');
+  if(r) r.innerHTML = tarjeta('Promedio ('+nomPer+')', conE.length ? '⭐ '+prom.toFixed(1)+' <span style="font-size:.75rem;color:var(--gray)">('+conE.length+')</span>' : '—', prom && prom < 3.5 ? 'var(--red)' : 'var(--gold)') +
+    tarjeta('Opiniones ('+nomPer+')', mes.length) + tarjeta('Pedidos de productos', sug.length) + tarjeta('Contactos para novedades', contactos.length, 'var(--green)');
   var filtros = [['todas','Todas'],['bajas','⚠ 1 a 3 ⭐'],['local','🏪 Del local (QR)'],['pedido','🛵 De pedidos'],['productos','🛒 Qué traer'],['contactos','📲 Contactos']];
   var fz = document.getElementById('opFiltros');
-  if(fz) fz.innerHTML = filtros.map(function(x){ return '<button class="ftbtn'+(_opFiltro===x[0]?' active':'')+'" onclick="_opFiltro=\''+x[0]+'\';renderOpiniones()">'+x[1]+'</button>'; }).join('');
-  var lista = _opiniones.filter(function(o){
+  var periodos = [['hoy','Hoy'],['semana','Esta semana'],['mes','Este mes'],['mesPasado','Mes pasado'],['todo','Todo']];
+  if(fz) fz.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-bottom:2px">'+
+      '<span style="font-size:.66rem;color:var(--gray);align-self:center;text-transform:uppercase;letter-spacing:1px;margin-right:2px">📅</span>'+
+      periodos.map(function(x){ return '<button class="ftbtn'+(_opPeriodo===x[0]?' active':'')+'" onclick="_opPeriodo=\''+x[0]+'\';renderOpiniones()">'+x[1]+'</button>'; }).join('')+
+    '</div><div style="display:flex;gap:6px;flex-wrap:wrap;width:100%">'+
+      filtros.map(function(x){ return '<button class="ftbtn'+(_opFiltro===x[0]?' active':'')+'" onclick="_opFiltro=\''+x[0]+'\';renderOpiniones()">'+x[1]+'</button>'; }).join('')+
+    '</div>';
+  var lista = enPeriodo.filter(function(o){
     if(_opFiltro==='bajas') return o.estrellas > 0 && o.estrellas <= 3;
     if(_opFiltro==='local') return o.origen === 'local';
     if(_opFiltro==='pedido') return o.origen === 'pedido';
@@ -27679,7 +27699,7 @@ function renderOpiniones(){
   if(_opFiltro==='contactos' && lista.length){
     extra = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="ftbtn" onclick="copiarContactosOpinion()">📋 Copiar contactos</button><button class="ftbtn" onclick="descargarContactosOpinion()">⬇ Descargar (Excel)</button></div>';
   }
-  if(!lista.length){ l.innerHTML = '<div style="color:var(--gray);font-size:.82rem;padding:10px 0">Todavía no hay opiniones acá. Imprimí el <b>🖨 Cartel con QR</b> y pegalo en el local.</div>'; return; }
+  if(!lista.length){ l.innerHTML = '<div style="color:var(--gray);font-size:.82rem;padding:10px 0">'+(_opiniones.length ? 'No hay opiniones en este período o con este filtro.' : 'Todavía no hay opiniones. Imprimí el <b>🖨 Cartel con QR</b> y pegalo en el local.')+'</div>'; return; }
   l.innerHTML = extra + lista.map(function(o){
     var baja = o.estrellas > 0 && o.estrellas <= 3;
     var ped = _pedidoDeOpinion(o);
@@ -27688,14 +27708,27 @@ function renderOpiniones(){
     if(tel && tel.length <= 10) tel = '549'+tel;
     return '<div style="background:var(--card);border:1px solid '+(baja?'rgba(231,76,60,.6)':'var(--border)')+';border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:.74rem;color:var(--gray)">'+
-        '<span>'+(o.origen==='pedido'?'🛵 Pedido web':'🏪 Local (QR)')+(ped?' · '+_escOp(ped.nombre)+(ped.repartidor?' · lo llevó '+_escOp(ped.repartidor):''):'')+'</span>'+
-        '<span>'+f.toLocaleDateString('es-AR')+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
+        '<span>'+(o.origen==='pedido'?'🛵 Pedido web':'🏪 Local (QR o link)')+(ped?' · '+_escOp(ped.nombre)+(ped.repartidor?' · lo llevó '+_escOp(ped.repartidor):''):'')+'</span>'+
+        '<span style="display:flex;align-items:center;gap:8px">'+f.toLocaleDateString('es-AR')+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+
+          '<button onclick="borrarOpinion(\''+_escOp(o._id)+'\')" title="Borrar esta opinión" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:.72rem">🗑</button></span></div>'+
       (o.estrellas ? '<div style="font-size:1.05rem;margin-top:4px;color:'+(baja?'#ff6b6b':'var(--gold)')+'">'+'⭐'.repeat(o.estrellas)+'<span style="opacity:.25">'+'⭐'.repeat(5-o.estrellas)+'</span></div>' : '')+
       (o.comentario ? '<div style="font-size:.86rem;color:var(--light);margin-top:4px">💬 '+_escOp(o.comentario)+'</div>' : '')+
       (o.producto ? '<div style="font-size:.84rem;color:#38bdf8;margin-top:4px">🛒 Que traigamos: <b>'+_escOp(o.producto)+'</b></div>' : '')+
       (o.novedades && o.telefono ? '<div style="font-size:.8rem;color:var(--green);margin-top:4px">📲 '+_escOp(o.nombre)+' · <a href="https://wa.me/'+tel+'" target="_blank" style="color:var(--green)">'+_escOp(o.telefono)+'</a> · quiere novedades</div>' : '')+
     '</div>';
   }).join('');
+}
+function borrarOpinion(id){
+  var o = _opiniones.find(function(x){ return x._id === id; });
+  if(!o) return;
+  askConfirm('¿Borrás esta opinión'+(o.comentario ? ' ("'+String(o.comentario).slice(0,60)+'")' : '')+'? No se puede deshacer.').then(function(ok){
+    if(!ok) return;
+    window.__lrDB.collection('opiniones').doc(id).delete().then(function(){
+      _opiniones = _opiniones.filter(function(x){ return x._id !== id; });
+      renderOpiniones();
+      showToast('🗑 Opinión borrada');
+    }).catch(function(e){ console.error(e); showToast('No se pudo borrar. Revisá la conexión.', true); });
+  });
 }
 function _contactosOpinion(){
   var vistos = {};
