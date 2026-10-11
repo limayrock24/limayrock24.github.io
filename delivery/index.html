@@ -146,6 +146,11 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
     </div>
   </div>
+  <div id="repAvisoNoDisp" onclick="toggleDisponibleRepartidor()" style="display:none;margin:10px 16px 0;padding:12px 14px;background:rgba(210,32,31,.16);border:2px solid #e74c3c;border-radius:8px;cursor:pointer;flex-shrink:0;animation:repPulso 1.6s ease-in-out infinite">
+    <div style="font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;color:#ff6b6b;font-weight:700">⚠ NO ESTÁS DISPONIBLE</div>
+    <div style="font-size:.78rem;color:var(--light);margin-top:3px">No te llegan avisos de pedidos. <b style="color:#fff;text-decoration:underline">Tocá acá para marcarte disponible</b></div>
+  </div>
+  <style>@keyframes repPulso{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.0)}50%{box-shadow:0 0 0 6px rgba(231,76,60,.25)}}</style>
   <div id="repDisponibleBox" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0">
     <div>
       <div id="repDisponibleTxt" style="font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:1px"></div>
@@ -187,7 +192,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "16"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "17"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -1302,6 +1307,8 @@ function pintarEstadoDisponible(){
   if(!sw || !txt || !currentEmp) return;
   var disp = !!currentEmp.disponibleDelivery;
   sw.classList.toggle('on', disp);
+  var avisoNo = document.getElementById('repAvisoNoDisp');
+  if(avisoNo) avisoNo.style.display = (disp || currentEmp.sinPedidos) ? 'none' : 'block';
   var modo = _modoDeliveryActual();
   var nota = '';
   if(modo === 'abierto') nota = '<div style="font-size:.66rem;color:var(--gold);margin-top:3px">⚠ El local dejó el catálogo abierto a mano</div>';

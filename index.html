@@ -2747,6 +2747,14 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .op-btns.collapsed{display:block;margin-bottom:8px}
 .op-btns.collapsed>*{display:none}
 .op-btns.collapsed>#op-venta{display:block;width:100%}
+.op-lbl{grid-column:1/-1;font-family:'Oswald',sans-serif;font-size:.56rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin:4px 0 -2px;opacity:.8}
+.op-desc{display:block;font-family:'Barlow',sans-serif;font-size:.6rem;letter-spacing:0;text-transform:none;opacity:.7;margin-top:2px;line-height:1.2}
+.ayuda-item{border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface)}
+.ayuda-item summary{cursor:pointer;padding:10px 12px;font-family:'Oswald',sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--white);list-style:none}
+.ayuda-item summary::-webkit-details-marker{display:none}
+.ayuda-item[open] summary{color:var(--gold)}
+.ayuda-item .ayuda-txt{padding:0 12px 12px;font-size:.82rem;color:var(--light);line-height:1.5}
+.ayuda-item .ayuda-txt b{color:var(--white)}
 .op-more-toggle{width:100%;background:transparent;border:1px dashed var(--border);color:var(--gray);border-radius:4px;padding:5px;font-family:'Oswald',sans-serif;font-size:.64rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;margin-bottom:6px;transition:all .15s}
 .op-more-toggle:hover{border-color:var(--gold);color:var(--gold)}
 .op-more-toggle.expanded{border-style:solid;border-color:var(--gold);color:var(--gold)}
@@ -3730,6 +3738,7 @@ body.night-on{background:#080005}
       <button class="btn" id="btnHistorialMensajes" style="background:var(--surface);border:1px solid rgba(155,89,182,.4);color:#9B59B6;font-size:.72rem;position:relative" onclick="abrirHistorialMensajes()" title="Ver los mensajes de este turno">
         💬 Mensajes<span id="badgeMensajes" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--red);color:var(--white);border-radius:10px;font-size:.6rem;padding:1px 5px;font-family:Oswald,sans-serif"></span>
       </button>
+      <button class="btn" id="btnAyuda" onclick="abrirAyuda()" title="Ayuda: cómo se hace cada cosa" style="background:var(--surface);border:1px solid var(--border);color:var(--light);font-size:.8rem">❓</button>
       <button class="btn btn-admin" onclick="openAdminPin()" style="position:relative">⚙<span class="stock-notif" id="stockNotif" style="display: flex;">2</span></button>
     </div>
     <div class="header-right">
@@ -12421,63 +12430,100 @@ function setupOpButtons() {
   if(!opBtns) return;
 
   // Limpiar botones secundarios previos
-  ['op-propio','op-empleado','op-admin','op-suelto','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep'].forEach(function(id){
+  ['op-propio','op-empleado','op-admin','op-suelto','op-fiado','op-fiado-parcial','op-cobrar-fiado','op-consumo-emp','op-sep','op-lbl-fiados','op-lbl-consumos','op-lbl-stock'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.remove();
   });
 
-  // Ya no hay "Consumo admin" (con su selector de admins / CEFHAS / Limay
-  // Rock) ni "Mi consumo": cualquier consumo de una persona (empleado o
-  // admin) se carga desde "Consumo de empleado", eligiendo su nombre. CEFHAS
-  // ya no se usa. Queda el consumo del local, directo.
-  var btnLocal = document.createElement('button');
-  btnLocal.className = 'op-btn'; btnLocal.id = 'op-admin';
-  btnLocal.innerHTML = '🏪 Consumo del local';
-  btnLocal.onclick = function(){ registrarConsumoDelLocal(); };
-  opBtns.appendChild(btnLocal);
+  // Ordenadas por tema (fiados, consumos, stock) y con una línea que explica
+  // cada una, para que no se elija la que no es.
+  function lbl(id, txt){
+    var d = document.createElement('div');
+    d.className = 'op-lbl'; d.id = id; d.textContent = txt;
+    opBtns.appendChild(d);
+  }
+  function boton(id, titulo, desc, onclick, ancho, color){
+    var b = document.createElement('button');
+    b.className = 'op-btn'; b.id = id;
+    b.innerHTML = titulo + '<span class="op-desc">'+desc+'</span>';
+    b.onclick = onclick;
+    var css = '';
+    if(ancho) css += 'grid-column:1/-1;';
+    if(color) css += 'border-color:'+color+';color:'+color+';';
+    if(css) b.style.cssText = css;
+    opBtns.appendChild(b);
+  }
 
-  // Abrir un atado/paquete para vender suelto: descuenta stock, no suma plata
-  var btnSuelto = document.createElement('button');
-  btnSuelto.className = 'op-btn'; btnSuelto.id = 'op-suelto';
-  btnSuelto.innerHTML = '📦 Abrir para venta suelta';
-  btnSuelto.onclick = function(){ registrarAperturaSuelta(); };
-  opBtns.appendChild(btnSuelto);
+  lbl('op-lbl-fiados', 'Fiados');
+  boton('op-fiado', '📋 Fiado', 'Se lleva y paga después', function(){ selOpFiado(); });
+  boton('op-fiado-parcial', '📋½ Fiado parcial', 'Paga una parte ahora', function(){ abrirFiadoParcial(); });
+  boton('op-cobrar-fiado', '💳 Cobrar fiado', 'Viene a pagar lo que debe', function(){ abrirListaFiadosRecep(); }, true, '#9B59B6');
 
-  // Fiado: disponible para todos
-  var btnF = document.createElement('button');
-  btnF.className = 'op-btn'; btnF.id = 'op-fiado';
-  btnF.innerHTML = '📋 Fiado';
-  btnF.onclick = function(){ selOpFiado(); };
-  opBtns.appendChild(btnF);
+  lbl('op-lbl-consumos', 'Consumos');
+  boton('op-consumo-emp', '👥 Consumo de empleado', 'Va a la cuenta de la persona', function(){ abrirSelectorConsumoEmp(); }, false, '#3498DB');
+  boton('op-admin', '🏪 Consumo del local', 'Uso interno, al costo', function(){ registrarConsumoDelLocal(); });
 
-  // Fiado parcial: paga una parte ahora y queda debiendo el resto
-  var btnFP = document.createElement('button');
-  btnFP.className = 'op-btn'; btnFP.id = 'op-fiado-parcial';
-  btnFP.innerHTML = '📋½ Fiado parcial';
-  btnFP.onclick = function(){ abrirFiadoParcial(); };
-  opBtns.appendChild(btnFP);
+  lbl('op-lbl-stock', 'Stock');
+  boton('op-suelto', '📦 Abrir para venta suelta', 'Solo descuenta stock, no suma plata', function(){ registrarAperturaSuelta(); }, true);
+}
 
-  // Separador visual
-  var sep = document.createElement('div');
-  sep.id = 'op-sep';
-  sep.style.cssText = 'grid-column:1/-1;height:1px;background:var(--border);margin:2px 0';
-  opBtns.appendChild(sep);
-
-  // Cobrar fiado: disponible para todos (acción directa, no cambia tipoOp)
-  var btnCF = document.createElement('button');
-  btnCF.className = 'op-btn'; btnCF.id = 'op-cobrar-fiado';
-  btnCF.innerHTML = '💳 Cobrar fiado';
-  btnCF.style.cssText = 'border-color:#9B59B6;color:#9B59B6;grid-column:1/-1';
-  btnCF.onclick = function(){ abrirListaFiadosRecep(); };
-  opBtns.appendChild(btnCF);
-
-  // Consumo de empleado: disponible para todos (acción directa)
-  var btnCE = document.createElement('button');
-  btnCE.className = 'op-btn'; btnCE.id = 'op-consumo-emp';
-  btnCE.innerHTML = '👥 Consumo de empleado';
-  btnCE.style.cssText = 'border-color:#3498DB;color:#3498DB;grid-column:1/-1';
-  btnCE.onclick = function(){ abrirSelectorConsumoEmp(); };
-  opBtns.appendChild(btnCE);
+// ── AYUDA DENTRO DEL SISTEMA ────────────────────────────────────────────────
+// Explicaciones cortas de cada cosa del panel de venta, para que el equipo no
+// dependa de que alguien se la explique. Botón ❓ arriba, al lado del ⚙.
+var AYUDA_TEMAS = [
+  {t:'🛒 Vender', x:'1. Escaneá el código o buscá el producto y tocalo: se suma al carrito.<br>2. Abrí <b>🛒 Carrito</b> y elegí cómo paga: <b>Efectivo, Débito o Transferencia</b>.<br>3. Tocá <b>CONFIRMAR</b>.<br><br>¿El producto no está o se vende por peso (fiambre, pan)? En el carrito usá <b>+ Ítem manual</b> y poné nombre y precio.'},
+  {t:'🛒 Atender a dos clientes a la vez (Carrito 2)', x:'Si estás cobrando a uno y llega otro, tocá <b>+ Carrito 2</b> en el carrito. Atendés al segundo sin perder lo que tenía cargado el primero.'},
+  {t:'🌙 Precios nocturnos', x:'De <b>00:00 a 08:00</b> se ponen solos los precios nocturnos (cartel rojo arriba) y a las 08:00 vuelven los normales.<br>El botón <b>🌙 Nocturno / Diurno</b> lo cambia a mano. Si hay algo en el carrito, se vacía para no mezclar precios.'},
+  {t:'↩ Me equivoqué en una venta', x:'Tocá <b>↩ Anular venta</b> (arriba a la derecha). Ves las ventas de <b>tu turno</b>: elegí la que estuvo mal y se anula. El stock vuelve solo.<br>Después hacé la venta de nuevo, bien. Queda registrado con tu nombre y la hora.'},
+  {t:'🛵 Pedidos de delivery (catálogo web)', x:'Cuando entra un pedido suena y aparece <b>¡PEDIDO NUEVO!</b> arriba. Tocá <b>🛵 Delivery</b> para verlos:<br>1. <b>💬 Pasar datos de pago</b>: le manda al cliente cómo pagar.<br>2. Para cobrarlo: <b>Cargar al carrito</b> y <b>CONFIRMAR</b> la venta (así se descuenta el stock y queda cobrado).<br>3. El repartidor lo retira y ves dónde anda: <b>📍 Ubicación en vivo · 🗺 Ver en el mapa</b>.<br>4. Cuando lo entrega pasa a <b>Entregados hoy</b>.<br><br>Si el cliente se arrepiente: <b>❌ Cancelar pedido</b>.'},
+  {t:'📋 Fiado (se lleva y paga después)', x:'Cargá los productos, tocá <b>⚙ Otra operación</b> → <b>📋 Fiado</b>, escribí el nombre del cliente y <b>REGISTRAR FIADO</b>.<br><b>📋½ Fiado parcial</b>: paga una parte ahora y queda debiendo el resto.<br><b>💳 Cobrar fiado</b>: cuando viene a pagar lo que debe.'},
+  {t:'👥 Consumos (empleado o del local)', x:'Cargá los productos y tocá <b>⚙ Otra operación</b>:<br>• <b>👥 Consumo de empleado</b>: lo que se lleva alguien del equipo. Elegís su nombre y queda anotado a su cuenta.<br>• <b>🏪 Consumo del local</b>: cosas de uso interno (yerba, papel, regalos). Se registra al costo.<br><br>Para ver lo que consumiste en el mes, tocá <b>tu nombre</b> arriba.'},
+  {t:'📦 Abrir un paquete para vender suelto', x:'Al abrir un atado de cigarrillos o un paquete para vender por unidad:<br>1. Escaneá el producto (queda en el carrito).<br>2. <b>⚙ Otra operación</b> → <b>📦 Abrir para venta suelta</b>.<br>Solo <b>descuenta el stock</b>: no es una venta y no suma plata. Lo que cobres por los sueltos cargalo después con <b>+ Ítem manual</b>.'},
+  {t:'💵 Retiro de efectivo', x:'Cuando se saca plata de la caja (pago a un proveedor, al dueño, etc.): <b>💵 Retiro</b>, poné el monto y el motivo.<br>Fijate que esté elegida <b>la caja de la que sale la plata</b>.'},
+  {t:'📱 Carga virtual', x:'Recargas de celular o DirecTV: <b>📱 Carga virtual</b> y completá los datos. Si te equivocaste, se puede anular.'},
+  {t:'💱 Cambio (transfiere y se lleva efectivo)', x:'El cliente te transfiere y se lleva billetes: <b>💱 Cambio</b>.<br>Ejemplo: quiere $10.000 en efectivo con $500 de comisión → te transfiere <b>$10.500</b> y le das <b>$10.000</b>. La caja lo tiene en cuenta solo, no queda como faltante.'},
+  {t:'💬 Mensajes del administrador', x:'Si te dejan un mensaje, aparece un aviso y un número rojo en <b>💬 Mensajes</b>. Ahí ves los de tu turno.'},
+  {t:'⏹ Cerrar el turno', x:'Al terminar tu turno tocá <b>⏹ Cerrar turno</b>. Contá el efectivo que hay en la caja y cargalo: el sistema lo compara con lo que debería haber.<br>Contá con calma: si hay diferencia queda registrada.'}
+];
+function abrirAyuda(){
+  var ov = document.getElementById('ayudaOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'ayudaOverlay';
+    ov.className = 'overlay';
+    ov.style.zIndex = '760';
+    ov.onclick = function(e){ if(e.target === ov) cerrarAyuda(); };
+    ov.innerHTML =
+      '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;max-width:560px;width:100%;padding:18px 16px;margin:auto">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:2px;color:var(--gold)">❓ AYUDA</div>'+
+          '<button onclick="cerrarAyuda()" style="background:none;border:none;color:var(--gray);font-size:1.3rem;cursor:pointer">✕</button>'+
+        '</div>'+
+        '<input type="text" id="ayudaBuscar" placeholder="¿Qué necesitás hacer? (ej: fiado, anular, delivery)" oninput="filtrarAyuda()" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:10px;font-size:.88rem;margin-bottom:10px">'+
+        '<div id="ayudaLista">'+AYUDA_TEMAS.map(function(a, i){
+          return '<details class="ayuda-item" data-txt="'+(a.t+' '+a.x).replace(/<[^>]+>/g,' ').toLowerCase().replace(/"/g,'')+'"><summary>'+a.t+'</summary><div class="ayuda-txt">'+a.x+'</div></details>';
+        }).join('')+'</div>'+
+        '<div id="ayudaNada" style="display:none;color:var(--gray);font-size:.82rem;text-align:center;padding:10px">No encontré nada con esa palabra. Probá con otra o preguntale al encargado.</div>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  var b = document.getElementById('ayudaBuscar'); if(b) b.value = '';
+  filtrarAyuda();
+  ov.style.display = 'flex';
+}
+function cerrarAyuda(){ var ov = document.getElementById('ayudaOverlay'); if(ov) ov.style.display = 'none'; }
+function filtrarAyuda(){
+  var q = ((document.getElementById('ayudaBuscar')||{}).value || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  var hay = 0;
+  document.querySelectorAll('#ayudaLista .ayuda-item').forEach(function(el){
+    var txt = el.getAttribute('data-txt').normalize('NFD').replace(/[̀-ͯ]/g, '');
+    var ok = !q || txt.indexOf(q) !== -1;
+    el.style.display = ok ? '' : 'none';
+    if(ok) hay++;
+    if(!q) el.open = false;
+  });
+  var n = document.getElementById('ayudaNada'); if(n) n.style.display = hay ? 'none' : 'block';
 }
 
 
