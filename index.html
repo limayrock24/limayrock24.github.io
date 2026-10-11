@@ -27514,7 +27514,14 @@ function sincronizarSeguimiento(lista){
     if((Number(p.id) || 0) < hace2d) return;
     var etapa = etapaSeguimiento(p);
     var rep = p.repartidor ? String(p.repartidor).split(' ')[0] : null;
-    var firma = etapa + '|' + (rep || '');
+    // Datos para transferir: se muestran en el seguimiento recién cuando el
+    // local confirmó el pedido (ya pasó los datos de pago por WhatsApp) y
+    // mientras no esté cobrado. Así el cliente transfiere el monto final,
+    // con los cambios que se hayan hecho, y no antes.
+    var conf0 = p.avisos && p.avisos.confirmado;
+    var pago = (p.medioPago === 'Transferencia' && conf0 && !p.pagoConfirmado && !p.anulado && etapa !== 'entregado')
+      ? {alias: ALIAS_MP, titular: TITULAR_MP, monto: Number(p.total) || 0} : null;
+    var firma = etapa + '|' + (rep || '') + '|' + (pago ? pago.monto : '') + '|' + (p.pagoConfirmado ? 'c' : '');
     if(cache[p.seguimiento] === firma) return;
     cache[p.seguimiento] = firma;
     var conf = p.avisos && p.avisos.confirmado ? p.avisos.confirmado.ts : null;
@@ -27522,6 +27529,8 @@ function sincronizarSeguimiento(lista){
     window.__lrDB.collection('seguimiento').doc(p.seguimiento).set({
       etapa: etapa,
       repartidor: (etapa === 'en_camino' || etapa === 'entregado') ? rep : null,
+      pago: pago,
+      pagado: !!p.pagoConfirmado,
       pasos: {
         recibido: p.fecha || null,
         preparando: conf || p.cobradoEn || p.tomadoEn || null,

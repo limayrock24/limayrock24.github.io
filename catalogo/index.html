@@ -2197,13 +2197,34 @@ function htmlSeguimiento(d){
     ['en_camino',  '🛵', 'En camino',  rep ? rep+' salió con tu pedido' : 'Tu pedido salió del local'],
     ['entregado',  '🏠', 'Entregado',  '¡Que lo disfrutes! 🤘']
   ];
+  var pagoHtml = '';
+  if(d.pago && d.pago.alias){
+    var al = String(d.pago.alias).replace(/[<>&"']/g,'');
+    pagoHtml = '<div style="margin-top:12px;padding:12px;border:1px solid rgba(0,158,227,.5);background:rgba(0,158,227,.08);border-radius:8px">'+
+      '<div style="font-family:Oswald,sans-serif;letter-spacing:1px;color:#38bdf8;font-size:.85rem">💳 YA PODÉS TRANSFERIR</div>'+
+      '<div style="margin-top:6px;font-size:.9rem">Monto: <b style="font-size:1.05rem">'+fmt(d.pago.monto||0)+'</b></div>'+
+      '<div style="margin-top:4px;font-size:.9rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">Alias: <b style="font-size:1.05rem">'+al+'</b>'+
+        '<button type="button" onclick="copiarAliasPago(\''+al+'\', this)" style="background:#009ee3;color:#fff;border:none;border-radius:5px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">📋 COPIAR</button></div>'+
+      (d.pago.titular ? '<div style="margin-top:4px;font-size:.78rem;color:var(--gray)">Mercado Pago · '+String(d.pago.titular).replace(/[<>&"]/g,'')+'</div>' : '')+
+      '<div style="margin-top:8px;font-size:.8rem">✅ Después mandanos el comprobante por WhatsApp y sale tu pedido.</div>'+
+    '</div>';
+  } else if(d.pagado){
+    pagoHtml = '<div style="margin-top:10px;font-size:.82rem;color:#22c55e">✅ Pago recibido. ¡Gracias!</div>';
+  }
   return '<div class="seg-tit">Seguimiento en vivo</div>' + info.map(function(p, i){
     var cls = i < idx ? 'hecho' : (i === idx ? (p[0]==='entregado' ? 'hecho' : 'actual') : '');
     var h = (i <= idx) ? hora(pasos[p[0]]) : '';
     return '<div class="seg-paso '+cls+'"><div class="seg-dot">'+(i < idx || (i===idx && p[0]==='entregado') ? '✓' : p[1])+'</div>'+
       '<div class="seg-txt"><b>'+p[2]+(h ? ' <span style="font-family:Barlow,sans-serif;font-size:.75rem;color:var(--gray);font-weight:400">· '+h+'</span>' : '')+'</b>'+
       (i <= idx ? '<span>'+p[3]+'</span>' : '')+'</div></div>';
-  }).join('');
+  }).join('') + pagoHtml;
+}
+function copiarAliasPago(alias, btn){
+  var ok = function(){ if(btn){ btn.textContent = '✓ COPIADO'; setTimeout(function(){ btn.textContent = '📋 COPIAR'; }, 2000); } };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(alias).then(ok, function(){ prompt('Copiá el alias:', alias); }); return; }
+  }catch(e){}
+  prompt('Copiá el alias:', alias);
 }
 function escucharSeguimiento(cod, contenedorId){
   if(_segUnsub && _segCod === cod){ return; }
