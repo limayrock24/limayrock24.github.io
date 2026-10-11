@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791694327";
+window.__LR_BUILD = "1791739261";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -2412,7 +2412,7 @@ function cerrarSeguimiento(){
 // el público solo puede CREAR (no leer ni cambiar); el local las ve en el admin.
 // Se prende (true) recién cuando la regla de /opiniones está publicada en
 // Firebase; mientras tanto no se muestra nada, para que no dé error al enviar.
-var OPINIONES_ACTIVAS = false;
+var OPINIONES_ACTIVAS = true;
 var _opEstrellas = 0, _opOrigen = 'local', _opPedido = null;
 function pintarEstrellasOpinion(){
   var c = document.getElementById('opEstrellas'); if(!c) return;
