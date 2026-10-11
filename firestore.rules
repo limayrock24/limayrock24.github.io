@@ -36,6 +36,27 @@ service cloud.firestore {
     // sin datos personales. Lo escriben solo los equipos del local.
     match /seguimiento/{codigo} { allow get: if true; }
 
+    // Opiniones (QR del local o "Valorá tu pedido"): el público solo puede
+    // CREAR una opinión, con campos y largos controlados. No puede leer ni
+    // cambiar ninguna: las ve solo el local en el admin. Las de un pedido van
+    // con el código secreto del pedido y se puede dejar una sola por pedido.
+    match /opiniones/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['estrellas','comentario','producto','nombre','telefono','novedades','origen','pedido','fecha'])
+        && request.resource.data.estrellas is int
+        && request.resource.data.estrellas >= 0 && request.resource.data.estrellas <= 5
+        && request.resource.data.comentario is string && request.resource.data.comentario.size() <= 600
+        && request.resource.data.producto is string && request.resource.data.producto.size() <= 200
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 80
+        && request.resource.data.telefono is string && request.resource.data.telefono.size() <= 30
+        && request.resource.data.novedades is bool
+        && request.resource.data.fecha is string && request.resource.data.fecha.size() <= 40
+        && ((request.resource.data.origen == 'local' && request.resource.data.pedido == null)
+          || (request.resource.data.origen == 'pedido'
+              && request.resource.data.pedido is string
+              && id == 'pedido_' + request.resource.data.pedido
+              && exists(/databases/$(database)/documents/seguimiento/$(request.resource.data.pedido))));
+    }
+
     // TEMPORAL — lo que usa el panel de delivery, hasta identificar sus celus.
     match /pedidosWeb/{id} { allow read, update: if true; }
     match /empleados/{id}  { allow read, write: if true; }

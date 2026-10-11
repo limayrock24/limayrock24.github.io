@@ -2433,9 +2433,15 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
   .header-actions{flex:1;min-width:0;justify-content:center}
   .header-right{flex-shrink:0}
 }
-@media(min-width:701px) and (max-width:1500px){
-  .header-actions{gap:4px}
-  .header-actions .btn{padding:7px 7px;letter-spacing:.2px;font-size:.68rem !important}
+/* Con el menú 🧰 Herramientas quedan pocos botones arriba: van más grandes,
+   para que se lean y se toquen fácil. */
+@media(min-width:701px){
+  .header-actions{gap:8px}
+  .header-actions .btn{padding:11px 16px;letter-spacing:1px;font-size:.86rem !important;border-radius:5px}
+}
+@media(min-width:701px) and (max-width:1100px){
+  .header-actions{gap:5px}
+  .header-actions .btn{padding:9px 10px;font-size:.74rem !important}
 }
 .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .herr-wrap{position:relative;display:inline-block}
@@ -4114,6 +4120,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sc-consignacion" onclick="switchTab('consignacion')">📦 Consignación</button>
       <button class="ftbtn" id="sc-puntos"  onclick="switchTab('puntos')">🏆 Puntos</button>
       <button class="ftbtn" id="sc-sorteos" onclick="switchTab('sorteos')">🎁 Sorteos</button>
+      <button class="ftbtn" id="sc-opiniones" onclick="switchTab('opiniones')">⭐ Opiniones</button>
     </div>
 
     <div id="subtabsProductos" class="subnav-bar" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
@@ -5023,6 +5030,18 @@ body.night-on{background:#080005}
     </div>
 
     <!-- SORTEOS -->
+    <div class="tab-pane" id="pane-opiniones">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="section-title" style="margin:0">⭐ Opiniones y sugerencias</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="ftbtn" onclick="imprimirCartelOpinion()">🖨 Cartel con QR</button>
+          <button class="ftbtn" onclick="cargarOpiniones()">↻ Actualizar</button>
+        </div>
+      </div>
+      <div id="opResumen" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px"></div>
+      <div id="opFiltros" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="opLista"><div style="color:var(--gray);font-size:.8rem">Cargando...</div></div>
+    </div>
     <div class="tab-pane" id="pane-sorteos">
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:6px;text-transform:uppercase">🎁 Sorteos por período de compra</div>
       <p style="font-size:.68rem;color:var(--gray);margin-bottom:12px">Elegí un rango de fechas: participan los clientes que compraron en ese período, con más chances cuantos más puntos ganaron. Ej: "compraron esta semana" → participan del sorteo.</p>
@@ -8597,7 +8616,7 @@ function switchTab(tab) {
   // Cierres arranca siempre en "Hoy" cada vez que se entra desde otra pantalla
   var paneCierresPrev = document.getElementById('pane-cierres');
   if(tab==='cierres' && !(paneCierresPrev && paneCierresPrev.classList.contains('active'))) window._cierresPeriodo = 'hoy';
-  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
+  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','opiniones','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     // El botón de la sección Productos se maneja aparte: tiene que quedar
@@ -8633,7 +8652,7 @@ function switchTab(tab) {
   if(btnGrupo) btnGrupo.classList.toggle('active', esProductos);
 
   // Sección Clientes: lo que deben, los puntos que acumulan y los sorteos.
-  var pantallasClientes = ['fiados','consignacion','puntos','sorteos'];
+  var pantallasClientes = ['fiados','consignacion','puntos','sorteos','opiniones'];
   var esClientes = pantallasClientes.indexOf(tab) !== -1;
 
   var subC = document.getElementById('subtabsClientes');
@@ -8700,6 +8719,7 @@ function switchTab(tab) {
   if(tab==='consignacion') renderConsignaciones();
   if(tab==='puntos') renderPuntos();
   if(tab==='sorteos') renderSorteos();
+  if(tab==='opiniones') cargarOpiniones();
   if(tab==='movimientos') initMovimientos();
   if(tab==='pedidos') renderPedidos();
   // Al entrar a Combos, se republican en el catálogo del cliente sin comparar
@@ -27602,6 +27622,137 @@ function htmlAvisosCliente(p) {
       return AVISOS_CLIENTE[t]+' <span style="color:var(--gray)">'+new Date(a[t].ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span>';
     }).join(' · ')+'</div>';
 }
+// ── OPINIONES DE CLIENTES (QR del local y pedidos web) ──────────────────────
+// Llegan del catálogo (limayrock.com.ar/?opinion=local con el QR del local, o
+// "Valorá tu pedido" en el seguimiento). Se leen al entrar a la pantalla.
+var LINK_OPINION = 'https://limayrock.com.ar/?opinion=local';
+var _opiniones = [], _opFiltro = 'todas';
+function cargarOpiniones(){
+  var l = document.getElementById('opLista');
+  if(l) l.innerHTML = '<div style="color:var(--gray);font-size:.8rem">Cargando...</div>';
+  window.__lrDB.collection('opiniones').orderBy('fecha','desc').limit(500).get().then(function(snap){
+    _opiniones = []; snap.forEach(function(d){ var x = d.data(); x._id = d.id; _opiniones.push(x); });
+    renderOpiniones();
+  }).catch(function(e){
+    console.error('Error cargando opiniones', e);
+    if(l) l.innerHTML = '<div style="color:var(--red);font-size:.8rem">No se pudieron cargar las opiniones. Revisá la conexión.</div>';
+  });
+}
+function _escOp(t){ return String(t||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function _pedidoDeOpinion(o){
+  if(o.origen !== 'pedido' || !o.pedido) return null;
+  return getPedidosWeb().find(function(p){ return p.seguimiento === o.pedido; }) || null;
+}
+function renderOpiniones(){
+  var hace30 = Date.now() - 30*24*3600000;
+  var mes = _opiniones.filter(function(o){ return new Date(o.fecha).getTime() >= hace30; });
+  var conE = mes.filter(function(o){ return o.estrellas > 0; });
+  var prom = conE.length ? (conE.reduce(function(s,o){ return s+o.estrellas; },0)/conE.length) : 0;
+  var contactos = _opiniones.filter(function(o){ return o.novedades && o.telefono; });
+  var sug = _opiniones.filter(function(o){ return o.producto; });
+  var tarjeta = function(t, v, c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px"><div style="font-size:.66rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">'+t+'</div><div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:'+(c||'var(--white)')+';margin-top:2px">'+v+'</div></div>'; };
+  var r = document.getElementById('opResumen');
+  if(r) r.innerHTML = tarjeta('Promedio (30 días)', conE.length ? '⭐ '+prom.toFixed(1)+' <span style="font-size:.75rem;color:var(--gray)">('+conE.length+')</span>' : '—', prom && prom < 3.5 ? 'var(--red)' : 'var(--gold)') +
+    tarjeta('Opiniones (30 días)', mes.length) + tarjeta('Pedidos de productos', sug.length) + tarjeta('Contactos para novedades', contactos.length, 'var(--green)');
+  var filtros = [['todas','Todas'],['bajas','⚠ 1 a 3 ⭐'],['local','🏪 Del local (QR)'],['pedido','🛵 De pedidos'],['productos','🛒 Qué traer'],['contactos','📲 Contactos']];
+  var fz = document.getElementById('opFiltros');
+  if(fz) fz.innerHTML = filtros.map(function(x){ return '<button class="ftbtn'+(_opFiltro===x[0]?' active':'')+'" onclick="_opFiltro=\''+x[0]+'\';renderOpiniones()">'+x[1]+'</button>'; }).join('');
+  var lista = _opiniones.filter(function(o){
+    if(_opFiltro==='bajas') return o.estrellas > 0 && o.estrellas <= 3;
+    if(_opFiltro==='local') return o.origen === 'local';
+    if(_opFiltro==='pedido') return o.origen === 'pedido';
+    if(_opFiltro==='productos') return !!o.producto;
+    if(_opFiltro==='contactos') return o.novedades && o.telefono;
+    return true;
+  });
+  var l = document.getElementById('opLista'); if(!l) return;
+  var extra = '';
+  if(_opFiltro==='contactos' && lista.length){
+    extra = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><button class="ftbtn" onclick="copiarContactosOpinion()">📋 Copiar contactos</button><button class="ftbtn" onclick="descargarContactosOpinion()">⬇ Descargar (Excel)</button></div>';
+  }
+  if(!lista.length){ l.innerHTML = '<div style="color:var(--gray);font-size:.82rem;padding:10px 0">Todavía no hay opiniones acá. Imprimí el <b>🖨 Cartel con QR</b> y pegalo en el local.</div>'; return; }
+  l.innerHTML = extra + lista.map(function(o){
+    var baja = o.estrellas > 0 && o.estrellas <= 3;
+    var ped = _pedidoDeOpinion(o);
+    var f = new Date(o.fecha);
+    var tel = String(o.telefono||'').replace(/\D/g,'');
+    if(tel && tel.length <= 10) tel = '549'+tel;
+    return '<div style="background:var(--card);border:1px solid '+(baja?'rgba(231,76,60,.6)':'var(--border)')+';border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:.74rem;color:var(--gray)">'+
+        '<span>'+(o.origen==='pedido'?'🛵 Pedido web':'🏪 Local (QR)')+(ped?' · '+_escOp(ped.nombre)+(ped.repartidor?' · lo llevó '+_escOp(ped.repartidor):''):'')+'</span>'+
+        '<span>'+f.toLocaleDateString('es-AR')+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
+      (o.estrellas ? '<div style="font-size:1.05rem;margin-top:4px;color:'+(baja?'#ff6b6b':'var(--gold)')+'">'+'⭐'.repeat(o.estrellas)+'<span style="opacity:.25">'+'⭐'.repeat(5-o.estrellas)+'</span></div>' : '')+
+      (o.comentario ? '<div style="font-size:.86rem;color:var(--light);margin-top:4px">💬 '+_escOp(o.comentario)+'</div>' : '')+
+      (o.producto ? '<div style="font-size:.84rem;color:#38bdf8;margin-top:4px">🛒 Que traigamos: <b>'+_escOp(o.producto)+'</b></div>' : '')+
+      (o.novedades && o.telefono ? '<div style="font-size:.8rem;color:var(--green);margin-top:4px">📲 '+_escOp(o.nombre)+' · <a href="https://wa.me/'+tel+'" target="_blank" style="color:var(--green)">'+_escOp(o.telefono)+'</a> · quiere novedades</div>' : '')+
+    '</div>';
+  }).join('');
+}
+function _contactosOpinion(){
+  var vistos = {};
+  return _opiniones.filter(function(o){
+    if(!o.novedades || !o.telefono) return false;
+    var k = String(o.telefono).replace(/\D/g,''); if(vistos[k]) return false; vistos[k] = 1; return true;
+  });
+}
+function copiarContactosOpinion(){
+  var txt = _contactosOpinion().map(function(o){ return o.nombre+' — '+o.telefono; }).join('\n');
+  try{ navigator.clipboard.writeText(txt).then(function(){ showToast('📋 Contactos copiados'); }); }catch(e){ prompt('Copiá los contactos:', txt); }
+}
+function descargarContactosOpinion(){
+  var filas = ['Nombre;WhatsApp;Fecha'].concat(_contactosOpinion().map(function(o){
+    return [o.nombre, o.telefono, new Date(o.fecha).toLocaleDateString('es-AR')].map(function(c){ return '"'+String(c||'').replace(/"/g,'""')+'"'; }).join(';');
+  }));
+  var blob = new Blob(['﻿'+filas.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'contactos-limay-rock.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function imprimirCartelOpinion(){
+  // El QR se arma acá (con /lib/qrcode.js, guardado en el propio sitio) y el
+  // cartel lo recibe ya dibujado: no depende de nada externo para imprimir.
+  var w = window.open('', '_blank');
+  if(!w){ showToast('Permití las ventanas emergentes para imprimir el cartel', true); return; }
+  var armar = function(){
+    var svg = '';
+    try{ var q = qrcode(0, 'M'); q.addData(LINK_OPINION); q.make(); svg = q.createSvgTag({cellSize:8, margin:2, scalable:true}); }
+    catch(e){ console.error('No se pudo armar el QR', e); }
+    _escribirCartelOpinion(w, svg);
+  };
+  if(typeof qrcode === 'function'){ armar(); return; }
+  var sc = document.createElement('script');
+  sc.src = '/lib/qrcode.js';
+  sc.onload = armar;
+  sc.onerror = function(){ _escribirCartelOpinion(w, ''); };
+  document.head.appendChild(sc);
+}
+function _escribirCartelOpinion(w, svg){
+  var base = location.origin;
+  // El logo va incrustado (copiado del que ya está cargado en la barra), así el
+  // cartel no depende de que la ventana nueva lo descargue.
+  var logoSrc = base + '/logo.png';
+  try{
+    var li = document.querySelector('.logo-wrap img');
+    if(li && li.complete && li.naturalWidth){
+      var cv = document.createElement('canvas'); cv.width = li.naturalWidth; cv.height = li.naturalHeight;
+      cv.getContext('2d').drawImage(li, 0, 0); logoSrc = cv.toDataURL('image/png');
+    }
+  }catch(e){}
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Cartel QR — Limay Rock</title>'+
+    '<style>@page{size:A4;margin:12mm}body{margin:0;font-family:Arial,Helvetica,sans-serif;text-align:center;color:#111}'+
+    '.c{border:6px solid #d2201f;border-radius:24px;padding:28px 24px;max-width:170mm;margin:0 auto}'+
+    'h1{font-size:44px;margin:16px 0 4px;letter-spacing:1px}h2{font-size:24px;margin:0 0 18px;color:#d2201f}'+
+    '.qr svg{width:105mm;height:105mm}ul{list-style:none;padding:0;font-size:22px;line-height:1.7;margin:18px 0 6px}'+
+    '.u{font-size:16px;color:#555;margin-top:10px}.b{display:inline-block;margin-top:14px;font-size:14px;color:#777}'+
+    '@media print{.np{display:none}}</style></head><body>'+
+    '<div class="np" style="padding:10px"><button onclick="window.print()" style="font-size:18px;padding:10px 24px;cursor:pointer">🖨 Imprimir</button></div>'+
+    '<div class="c"><div style="background:#111;border-radius:14px;padding:14px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact"><img src="'+logoSrc+'" style="max-width:120mm;max-height:40mm" onerror="this.parentNode.style.display=\'none\'"></div>'+
+    '<h1>¡TU OPINIÓN NOS IMPORTA!</h1><h2>Escaneá el código con la cámara del celu</h2>'+
+    '<div class="qr" id="qr">'+(svg || '<div style="padding:40px;border:2px dashed #999">No se pudo armar el QR. Revisá la conexión y volvé a tocar 🖨 Cartel con QR.</div>')+'</div>'+
+    '<ul><li>⭐ Contanos cómo te atendimos</li><li>💬 Dejanos tus sugerencias</li><li>🛒 Decinos qué te gustaría que traigamos</li><li>📲 Sumate para recibir novedades y promos</li></ul>'+
+    '<div class="u">limayrock.com.ar</div><div class="b">Limay Rock Minimarket 24hs</div></div>'+
+    '</body></html>');
+  w.document.close();
+}
 function textoMensajeCliente(p, tipo, extra) {
   var nombre = (p.nombre || '').split(' ')[0];
   if(tipo === 'salio'){
@@ -27618,7 +27769,9 @@ function textoMensajeCliente(p, tipo, extra) {
     return msg + 'Avisanos por acá y seguimos con tu pedido 👍';
   }
   if(tipo === 'gracias'){
-    return '¡Gracias por tu compra, ' + nombre + '! 🙌\n\nEsperamos que disfrutes tu pedido de *LIMAY ROCK* 🔥\nCualquier cosa que necesites, escribinos por acá. ¡Estamos las 24 hs!';
+    return '¡Gracias por tu compra, ' + nombre + '! 🙌\n\nEsperamos que disfrutes tu pedido de *LIMAY ROCK* 🔥' +
+      (p.seguimiento ? '\n\n⭐ ¿Nos contás cómo te fue? Son 10 segundos:\n' + LINK_SEGUIMIENTO + p.seguimiento : '') +
+      '\n\nCualquier cosa que necesites, escribinos por acá. ¡Estamos las 24 hs!';
   }
   return '';
 }
