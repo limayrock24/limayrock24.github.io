@@ -192,7 +192,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "17"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "18"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -994,7 +994,18 @@ function renderHistorialRepartidor(){
       '<div style="font-size:.72rem;color:var(--gold);margin-top:1px">'+fmt(t.ganancia)+'</div>'+
     '</div>';
   }
-  var resumen = '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+  // Lo que el local ya le pagó y lo que todavía le debe (lo marca el admin con
+  // "💵 Registrar pago"). El repartidor solo lo ve, no lo puede cambiar.
+  var pendientes = mios.filter(function(p){ return (p.envio||0) > 0 && !p.pagadoRepartidor; });
+  var montoPend = pendientes.reduce(function(s,p){ return s+(p.envio||0); }, 0);
+  var cajaPago = pendientes.length
+    ? '<div style="background:rgba(245,194,0,.1);border:1.5px solid rgba(245,194,0,.6);border-radius:8px;padding:11px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><div style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--gold)">⏳ TE FALTA COBRAR</div>'+
+        '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+pendientes.length+' envío'+(pendientes.length===1?'':'s')+' que el local todavía no marcó como pagados. Si ya te los pagaron, avisale para que lo registre.</div></div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:var(--gold);white-space:nowrap">'+fmt(montoPend)+'</div>'+
+      '</div>'
+    : '<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.4);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:.8rem;color:#22c55e">✓ Estás al día: el local te pagó todos tus envíos.</div>';
+  var resumen = cajaPago + '<div style="display:flex;gap:8px;margin-bottom:16px">'+
     tarjeta('Hoy', tHoy, true) + tarjeta('Esta semana', tSemana, false) + tarjeta('Este mes', tMes, false) +
   '</div>';
 
@@ -1014,6 +1025,7 @@ function renderHistorialRepartidor(){
     var g = grupos[clave];
     var cantDia = g.items.length;
     var gananciaDia = g.items.reduce(function(s,p){ return s+(p.envio||0); }, 0);
+    var pendDia = g.items.filter(function(p){ return (p.envio||0) > 0 && !p.pagadoRepartidor; }).length;
     var esHoy = clave === claveHoy;
     var etiquetaFecha = esHoy
       ? 'Hoy'
@@ -1035,7 +1047,14 @@ function renderHistorialRepartidor(){
           '<div style="font-size:.82rem;color:var(--light)">'+p.nombre+'</div>'+
           '<div style="font-size:.66rem;color:var(--gray)">'+hora+(p.envio>0?' · envío '+fmt(p.envio):' · sin envío')+(p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(ajustado, antes '+fmt(p.envioOriginal)+')</span>' : '')+'</div>'+
         '</div>'+
-        '<div style="font-family:Oswald,sans-serif;color:#22c55e;white-space:nowrap">'+fmt(p.total)+'</div>'+
+        '<div style="text-align:right;white-space:nowrap">'+
+          '<div style="font-family:Oswald,sans-serif;color:#22c55e">'+fmt(p.total)+'</div>'+
+          ((p.envio||0) > 0
+            ? (p.pagadoRepartidor
+                ? '<div style="font-size:.64rem;color:#22c55e;margin-top:2px">✓ Envío pagado'+(p.pagadoRepartidorEn?' '+new Date(p.pagadoRepartidorEn).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}):'')+'</div>'
+                : '<div style="font-size:.64rem;color:var(--gold);margin-top:2px">⏳ Envío sin pagar</div>')
+            : '')+
+        '</div>'+
       '</div>';
     }).join('');
 
@@ -1045,6 +1064,7 @@ function renderHistorialRepartidor(){
           '<span style="font-size:.7rem;color:var(--gray);transform:rotate('+(abierto?'90':'0')+'deg);transition:transform .15s;flex-shrink:0">▶</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:.82rem;color:'+(esHoy?'#22c55e':'var(--white)')+'">'+etiquetaFecha+'</span>'+
           '<span style="font-size:.7rem;color:var(--gray)">· '+cantDia+' envío'+(cantDia===1?'':'s')+'</span>'+
+          (pendDia ? '<span style="font-size:.64rem;color:var(--gold)">· ⏳ '+pendDia+' sin pagar</span>' : (gananciaDia > 0 ? '<span style="font-size:.64rem;color:#22c55e">· ✓ pagado</span>' : ''))+
         '</div>'+
         '<span style="font-family:Oswald,sans-serif;font-size:.85rem;color:var(--gold);white-space:nowrap">'+fmt(gananciaDia)+'</span>'+
       '</div>'+
