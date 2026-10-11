@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791680889";
+window.__LR_BUILD = "1791693499";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -1581,6 +1581,107 @@ function quitarItemManual(id){
 
 function cantidadItemsManuales(){ return Object.keys(CARRITO_MANUAL).length; }
 
+// ── COMBOS AUTOMÁTICOS ──────────────────────────────────────────────────────
+// Si en el carrito están todos los productos de un combo (cargados sueltos),
+// se arma el combo solo, al precio de combo. No aplica a combos con ítems que
+// se pesan a mano, ni si el combo no sale más barato que los productos sueltos.
+// Para los grupos con sabor a elegir, sirve cualquiera de las opciones.
+function _matchComboAuto(cb, disp, precioDe){
+  var items = cb && cb.items || [];
+  if(!items.length || !(Number(cb.precio) > 0)) return null;
+  if(items.some(function(it){ return it.tipo === 'manual'; })) return null;
+  var quedan = Object.assign({}, disp), usar = {}, resueltos = [], selecciones = {}, separado = 0;
+  for(var i = 0; i < items.length; i++){
+    var it = items[i], need = Number(it.qty) || 1, nom = null;
+    if(it.tipo === 'variable'){
+      var mejor = 0;
+      (it.opciones || []).forEach(function(op){
+        var n = typeof op === 'string' ? op : (op && op.nombre);
+        if(n && (quedan[n] || 0) >= need && (quedan[n] || 0) > mejor){ mejor = quedan[n]; nom = n; }
+      });
+      if(!nom) return null;
+      selecciones[i] = nom;
+      resueltos.push({ nombre: nom, qty: need });
+    } else {
+      nom = it.nombre;
+      if(!nom || (quedan[nom] || 0) < need) return null;
+      resueltos.push(it);
+    }
+    quedan[nom] -= need;
+    usar[nom] = (usar[nom] || 0) + need;
+    separado += (Number(precioDe(nom)) || 0) * need;
+  }
+  if(Number(cb.precio) >= separado) return null;
+  return { usar: usar, resueltos: resueltos, selecciones: selecciones, separado: separado, ahorro: separado - Number(cb.precio) };
+}
+function _unidadesCombo(cb){ return (cb.items||[]).reduce(function(s,it){ return s + (Number(it.qty)||1); }, 0); }
+function _mostrarAvisoCombo(texto, onSeparar){
+  var el = document.getElementById('comboAutoAviso');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'comboAutoAviso';
+    el.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:3000;background:#1a1405;border:2px solid #f5c200;color:#fff;border-radius:10px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:min(520px,calc(100vw - 24px));box-sizing:border-box;justify-content:space-between;font-size:.9rem';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<span>'+texto+'</span>';
+  var b = document.createElement('button');
+  b.textContent = 'Separar';
+  b.style.cssText = 'background:transparent;border:1px solid #f5c200;color:#f5c200;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;white-space:nowrap';
+  b.onclick = function(){ el.style.display = 'none'; onSeparar(); };
+  el.appendChild(b);
+  el.style.display = 'flex';
+  clearTimeout(el._t); el._t = setTimeout(function(){ el.style.display = 'none'; }, 8000);
+}
+var _combosSeparadosCat = {}, _autoCombosCat = [];
+function armarCombosAutoCatalogo(){
+  var combos = (COMBOS||[]).filter(function(cb){ return cb && cb.nombre && !_combosSeparadosCat[cb.nombre]; })
+    .sort(function(a,b){ return _unidadesCombo(b) - _unidadesCombo(a); });
+  var hechos = [];
+  for(var vuelta = 0; vuelta < 30; vuelta++){
+    var disp = {}, precio = {};
+    Object.keys(CARRITO).forEach(function(k){ var l = CARRITO[k]; if(l.cantidad > 0){ disp[l.nombre] = l.cantidad; precio[l.nombre] = l.precio; } });
+    var armado = null;
+    for(var c = 0; c < combos.length && !armado; c++){
+      var m = _matchComboAuto(combos[c], disp, function(n){ return precio[n]; });
+      if(m) armado = { cb: combos[c], m: m };
+    }
+    if(!armado) break;
+    var cb = armado.cb, m = armado.m, precios = {};
+    Object.keys(m.usar).forEach(function(n){
+      precios[n] = precio[n];
+      CARRITO[n].cantidad -= m.usar[n];
+      if(CARRITO[n].cantidad <= 0) delete CARRITO[n];
+    });
+    var tieneVar = (cb.items||[]).some(function(it){ return it.tipo === 'variable'; });
+    if(tieneVar){
+      if(!Array.isArray(CARRITO_COMBOS[cb.nombre])) CARRITO_COMBOS[cb.nombre] = [];
+      CARRITO_COMBOS[cb.nombre].push({ selecciones: m.selecciones });
+    } else {
+      CARRITO_COMBOS[cb.nombre] = (Number(CARRITO_COMBOS[cb.nombre]) || 0) + 1;
+    }
+    var h = { cb: cb, ahorro: m.ahorro, usar: m.usar, precios: precios, tieneVar: tieneVar };
+    _autoCombosCat.push(h); hechos.push(h);
+  }
+  if(hechos.length){
+    var ult = hechos[hechos.length-1];
+    _mostrarAvisoCombo('🎁 ¡Se armó el combo <b>'+ult.cb.nombre+'</b>! Ahorrás '+fmt(hechos.reduce(function(s,h){ return s+h.ahorro; },0)), function(){ separarComboAutoCatalogo(ult); });
+  }
+  return hechos;
+}
+function separarComboAutoCatalogo(h){
+  _combosSeparadosCat[h.cb.nombre] = true;
+  var v = CARRITO_COMBOS[h.cb.nombre];
+  if(!v) return;
+  if(Array.isArray(v)){ v.pop(); if(!v.length) delete CARRITO_COMBOS[h.cb.nombre]; }
+  else { CARRITO_COMBOS[h.cb.nombre]--; if(CARRITO_COMBOS[h.cb.nombre] <= 0) delete CARRITO_COMBOS[h.cb.nombre]; }
+  Object.keys(h.usar).forEach(function(n){
+    if(!CARRITO[n]) CARRITO[n] = { nombre: n, precio: h.precios[n], cantidad: 0 };
+    CARRITO[n].cantidad += h.usar[n];
+  });
+  renderList(); actualizarCartBar();
+  if(document.getElementById('cartOverlay').classList.contains('show')) abrirCarrito();
+}
+
 function cambiarCantidad(nombre, delta){
   var prod = PRODUCTOS.find(function(p){ return p.name === nombre; });
   if(!prod) return;
@@ -1588,8 +1689,10 @@ function cambiarCantidad(nombre, delta){
   if(!CARRITO[nombre]) CARRITO[nombre] = {nombre:nombre, precio:precioUsar, cantidad:0};
   CARRITO[nombre].cantidad += delta;
   if(CARRITO[nombre].cantidad <= 0) delete CARRITO[nombre];
+  if(delta > 0) armarCombosAutoCatalogo();
   renderList();
   actualizarCartBar();
+  if(delta > 0 && document.getElementById('cartOverlay').classList.contains('show')) abrirCarrito();
 }
 
 function subtotalCarrito(){
@@ -2198,6 +2301,7 @@ function confirmarPedido(){
   CARRITO_MANUAL = {};
   CARRITO_COMBOS = {};
   _manualModo = {};
+  _combosSeparadosCat = {}; _autoCombosCat = [];
 }
 
 // ── SEGUIMIENTO DEL PEDIDO ──────────────────────────────────────────────────
@@ -2259,7 +2363,7 @@ function htmlSeguimiento(d){
     return '<div class="seg-paso '+cls+'"><div class="seg-dot">'+(i < idx || (i===idx && p[0]==='entregado') ? '✓' : p[1])+'</div>'+
       '<div class="seg-txt"><b>'+p[2]+(h ? ' <span style="font-family:Barlow,sans-serif;font-size:.75rem;color:var(--gray);font-weight:400">· '+h+'</span>' : '')+'</b>'+
       (i <= idx ? '<span>'+p[3]+'</span>' : '')+'</div></div>';
-  }).join('') + pagoHtml + (d.etapa === 'entregado' && _segCod && !_yaValorado(_segCod)
+  }).join('') + pagoHtml + (d.etapa === 'entregado' && OPINIONES_ACTIVAS && _segCod && !_yaValorado(_segCod)
     ? '<button type="button" onclick="abrirOpinion(\'pedido\', _segCod)" style="margin-top:14px;width:100%;background:var(--gold);color:#000;border:none;border-radius:8px;padding:12px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer;font-weight:700">⭐ VALORÁ TU PEDIDO</button>' : '');
 }
 function _yaValorado(cod){ try{ return localStorage.getItem('lr_valorado_'+cod) === '1'; }catch(e){ return false; } }
@@ -2306,6 +2410,9 @@ function cerrarSeguimiento(){
 // Se entra con el QR del local (?opinion=local) o desde el seguimiento de un
 // pedido entregado (una sola opinión por pedido). Se guarda en "opiniones":
 // el público solo puede CREAR (no leer ni cambiar); el local las ve en el admin.
+// Se prende (true) recién cuando la regla de /opiniones está publicada en
+// Firebase; mientras tanto no se muestra nada, para que no dé error al enviar.
+var OPINIONES_ACTIVAS = false;
 var _opEstrellas = 0, _opOrigen = 'local', _opPedido = null;
 function pintarEstrellasOpinion(){
   var c = document.getElementById('opEstrellas'); if(!c) return;
@@ -2362,7 +2469,7 @@ function enviarOpinion(){
 (function(){
   var o = null;
   try{ o = new URLSearchParams(location.search).get('opinion'); }catch(e){}
-  if(o) abrirOpinion('local');
+  if(o && OPINIONES_ACTIVAS) abrirOpinion('local');
 })();
 // Al entrar: con link (?seguimiento=código) se abre directo; si este celu hizo
 // un pedido en las últimas 24 h y todavía no se entregó, aparece el botón.

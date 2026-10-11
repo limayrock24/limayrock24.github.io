@@ -35,7 +35,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1791680889";
+  window.__LR_BUILD = "1791693499";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -4120,7 +4120,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sc-consignacion" onclick="switchTab('consignacion')">📦 Consignación</button>
       <button class="ftbtn" id="sc-puntos"  onclick="switchTab('puntos')">🏆 Puntos</button>
       <button class="ftbtn" id="sc-sorteos" onclick="switchTab('sorteos')">🎁 Sorteos</button>
-      <button class="ftbtn" id="sc-opiniones" onclick="switchTab('opiniones')">⭐ Opiniones</button>
+      <button class="ftbtn" id="sc-opiniones" onclick="switchTab('opiniones')" style="display:none">⭐ Opiniones</button>
     </div>
 
     <div id="subtabsProductos" class="subnav-bar" style="display:none;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
@@ -7963,6 +7963,7 @@ function updateCart() {
   // Si el carrito quedó vacío (por haber sacado todos los productos), limpiar
   // cualquier medio de pago / tipo de operación que hubiera quedado seleccionado
   // de un intento de venta anterior que se abandonó sin confirmar.
+  if(cart.length===0 && typeof _combosSeparados!=='undefined') _combosSeparados[1] = {};
   if(cart.length===0 && typeof resetOpButtons==='function'){
     resetOpButtons();
     if(typeof resetClientePuntosBox==='function') resetClientePuntosBox();
@@ -8008,6 +8009,7 @@ function changeQty(i,delta) {
   cart[i].qty+=delta;
   if(cart[i].qty<=0){ cart.splice(i,1); }
   else { cart[i].subtotal=cart[i].precio*cart[i].qty; }
+  if(delta > 0 && typeof armarCombosAuto==='function') armarCombosAuto(cart);
   updateCart();
 }
 function removeItem(i) { cart.splice(i,1); updateCart(); }
@@ -8060,6 +8062,7 @@ function updateCart2() {
   document.getElementById('cartTotal2').textContent = fmt(total);
   document.getElementById('cartTotalMini2').textContent = fmt(total);
   renderCartItems2();
+  if(cart2.length===0 && typeof _combosSeparados!=='undefined') _combosSeparados[2] = {};
   if(cart2.length===0){
     pagoSel2 = null;
     document.querySelectorAll('#cartPanel2 .pago-btn').forEach(function(b){ b.classList.remove('selected'); });
@@ -8099,6 +8102,7 @@ function changeQty2(i,delta) {
   cart2[i].qty += delta;
   if(cart2[i].qty<=0){ cart2.splice(i,1); }
   else { cart2[i].subtotal = cart2[i].precio*cart2[i].qty; }
+  if(delta > 0 && typeof armarCombosAuto==='function') armarCombosAuto(cart2);
   updateCart2();
 }
 function removeItem2(i) { cart2.splice(i,1); updateCart2(); }
@@ -17260,9 +17264,10 @@ function addToCart(p) {
   var precio   = useNight ? p.pnoc : p.pventa;
 
   var destino = (_carritoActivo===2 && _carrito2Abierto) ? cart2 : cart;
-  var existing = destino.find(function(i){ return i.name===p.name; });
+  var existing = destino.find(function(i){ return i.name===p.name && !i.esCombo; });
   if(existing){ existing.qty++; existing.subtotal=existing.precio*existing.qty; }
   else { destino.push({name:p.name, precio:precio, qty:1, subtotal:precio, cat:p.cat}); }
+  var combosArmados = (typeof armarCombosAuto==='function') ? armarCombosAuto(destino) : [];
 
   if(destino===cart2){
     updateCart2();
@@ -17278,7 +17283,7 @@ function addToCart(p) {
   // Flash visual en favoritos
   buildFavs();
   if(avisoStock) showToast(avisoStock+(destino===cart2?' (Carrito 2)':''), s.stock <= 0);
-  else showToast('⚡ '+p.name+' agregado'+(destino===cart2?' (Carrito 2)':''));
+  else if(!combosArmados.length) showToast('⚡ '+p.name+' agregado'+(destino===cart2?' (Carrito 2)':''));
 }
 
 
@@ -27626,6 +27631,9 @@ function htmlAvisosCliente(p) {
 // Llegan del catálogo (limayrock.com.ar/?opinion=local con el QR del local, o
 // "Valorá tu pedido" en el seguimiento). Se leen al entrar a la pantalla.
 var LINK_OPINION = 'https://limayrock.com.ar/?opinion=local';
+// Se prende (true) cuando la regla de /opiniones está publicada en Firebase.
+var OPINIONES_ACTIVAS = false;
+document.addEventListener('DOMContentLoaded', function(){ var b = document.getElementById('sc-opiniones'); if(b && OPINIONES_ACTIVAS) b.style.display = ''; });
 var _opiniones = [], _opFiltro = 'todas';
 function cargarOpiniones(){
   var l = document.getElementById('opLista');
@@ -27770,7 +27778,7 @@ function textoMensajeCliente(p, tipo, extra) {
   }
   if(tipo === 'gracias'){
     return '¡Gracias por tu compra, ' + nombre + '! 🙌\n\nEsperamos que disfrutes tu pedido de *LIMAY ROCK* 🔥' +
-      (p.seguimiento ? '\n\n⭐ ¿Nos contás cómo te fue? Son 10 segundos:\n' + LINK_SEGUIMIENTO + p.seguimiento : '') +
+      (p.seguimiento && OPINIONES_ACTIVAS ? '\n\n⭐ ¿Nos contás cómo te fue? Son 10 segundos:\n' + LINK_SEGUIMIENTO + p.seguimiento : '') +
       '\n\nCualquier cosa que necesites, escribinos por acá. ¡Estamos las 24 hs!';
   }
   return '';
@@ -29353,6 +29361,122 @@ function addPromoToCart(promo) {
   updateCart();
   syncConfirmarBtn();
   showToast('🔥 '+promo.nombre+' agregada');
+}
+
+// ── COMBOS AUTOMÁTICOS ──────────────────────────────────────────────────────
+// Si en el carrito están todos los productos de un combo (cargados sueltos),
+// se arma el combo solo, al precio de combo. No aplica a combos con ítems que
+// se pesan a mano, ni si el combo no sale más barato que los productos sueltos.
+// Para los grupos con sabor a elegir, sirve cualquiera de las opciones.
+function _matchComboAuto(cb, disp, precioDe){
+  var items = cb && cb.items || [];
+  if(!items.length || !(Number(cb.precio) > 0)) return null;
+  if(items.some(function(it){ return it.tipo === 'manual'; })) return null;
+  var quedan = Object.assign({}, disp), usar = {}, resueltos = [], selecciones = {}, separado = 0;
+  for(var i = 0; i < items.length; i++){
+    var it = items[i], need = Number(it.qty) || 1, nom = null;
+    if(it.tipo === 'variable'){
+      var mejor = 0;
+      (it.opciones || []).forEach(function(op){
+        var n = typeof op === 'string' ? op : (op && op.nombre);
+        if(n && (quedan[n] || 0) >= need && (quedan[n] || 0) > mejor){ mejor = quedan[n]; nom = n; }
+      });
+      if(!nom) return null;
+      selecciones[i] = nom;
+      resueltos.push({ nombre: nom, qty: need });
+    } else {
+      nom = it.nombre;
+      if(!nom || (quedan[nom] || 0) < need) return null;
+      resueltos.push(it);
+    }
+    quedan[nom] -= need;
+    usar[nom] = (usar[nom] || 0) + need;
+    separado += (Number(precioDe(nom)) || 0) * need;
+  }
+  if(Number(cb.precio) >= separado) return null;
+  return { usar: usar, resueltos: resueltos, selecciones: selecciones, separado: separado, ahorro: separado - Number(cb.precio) };
+}
+function _unidadesCombo(cb){ return (cb.items||[]).reduce(function(s,it){ return s + (Number(it.qty)||1); }, 0); }
+function _mostrarAvisoCombo(texto, onSeparar){
+  var el = document.getElementById('comboAutoAviso');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'comboAutoAviso';
+    el.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:3000;background:#1a1405;border:2px solid #f5c200;color:#fff;border-radius:10px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:min(520px,calc(100vw - 24px));box-sizing:border-box;justify-content:space-between;font-size:.9rem';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<span>'+texto+'</span>';
+  var b = document.createElement('button');
+  b.textContent = 'Separar';
+  b.style.cssText = 'background:transparent;border:1px solid #f5c200;color:#f5c200;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;white-space:nowrap';
+  b.onclick = function(){ el.style.display = 'none'; onSeparar(); };
+  el.appendChild(b);
+  el.style.display = 'flex';
+  clearTimeout(el._t); el._t = setTimeout(function(){ el.style.display = 'none'; }, 8000);
+}
+var _combosSeparados = {1:{}, 2:{}};
+function armarCombosAuto(arr){
+  var key = arr === cart2 ? 2 : 1;
+  if(arr === cart && _pedidoWebEnCarrito) return [];
+  var combos = getCombos().filter(function(cb){ return cb && cb.activo !== false && cb.nombre && !_combosSeparados[key][cb.nombre]; })
+    .sort(function(a,b){ return _unidadesCombo(b) - _unidadesCombo(a); });
+  var hechos = [];
+  for(var vuelta = 0; vuelta < 30; vuelta++){
+    var disp = {}, precio = {};
+    arr.forEach(function(l){
+      if(l.esCombo || l.esPromo || l.manual || !(l.qty > 0)) return;
+      disp[l.name] = (disp[l.name] || 0) + l.qty;
+      if(precio[l.name] == null) precio[l.name] = l.precio;
+    });
+    var armado = null;
+    for(var c = 0; c < combos.length && !armado; c++){
+      var m = _matchComboAuto(combos[c], disp, function(n){ return precio[n]; });
+      if(m) armado = { cb: combos[c], m: m };
+    }
+    if(!armado) break;
+    var cb = armado.cb, m = armado.m, precios = {};
+    Object.keys(m.usar).forEach(function(n){
+      var falta = m.usar[n];
+      precios[n] = precio[n];
+      for(var i = arr.length - 1; i >= 0 && falta > 0; i--){
+        var l = arr[i];
+        if(l.name !== n || l.esCombo || l.esPromo || l.manual) continue;
+        var saco = Math.min(falta, l.qty);
+        l.qty -= saco; falta -= saco;
+        if(l.qty <= 0) arr.splice(i, 1); else l.subtotal = l.precio * l.qty;
+      }
+    });
+    var nombreLinea = (cb.emoji||'🎁')+' '+cb.nombre;
+    var igual = arr.find(function(l){ return l.esCombo && l.name === nombreLinea && JSON.stringify(l.comboItems) === JSON.stringify(m.resueltos); });
+    if(igual){ igual.qty++; igual.subtotal = igual.precio * igual.qty; igual.autoCombo = true; igual.autoPrecios = precios; }
+    else arr.push({ name: nombreLinea, precio: cb.precio, qty: 1, subtotal: cb.precio, cat: 'Combo', esCombo: true, comboItems: m.resueltos, autoCombo: true, autoPrecios: precios });
+    hechos.push({ cb: cb, ahorro: m.ahorro, linea: nombreLinea, usar: m.usar, precios: precios });
+  }
+  if(hechos.length){
+    var ult = hechos[hechos.length-1];
+    _mostrarAvisoCombo('🎁 Se armó el combo <b>'+ult.cb.nombre+'</b>'+(hechos.length>1?' ×'+hechos.length:'')+' — ahorra '+fmt(hechos.reduce(function(s,h){ return s+h.ahorro; },0)), function(){ separarComboAuto(arr, ult); });
+  }
+  return hechos;
+}
+// "Separar": el cliente no quiere el combo. Vuelven los productos sueltos a su
+// precio y ese combo no se vuelve a armar solo en esta venta.
+function separarComboAuto(arr, h){
+  var key = arr === cart2 ? 2 : 1;
+  _combosSeparados[key][h.cb.nombre] = true;
+  var lin = null;
+  for(var i = arr.length - 1; i >= 0; i--){ if(arr[i].esCombo && arr[i].name === h.linea){ lin = arr[i]; break; } }
+  if(!lin) return;
+  lin.qty--; if(lin.qty <= 0) arr.splice(arr.indexOf(lin), 1); else lin.subtotal = lin.precio * lin.qty;
+  Object.keys(h.usar).forEach(function(n){
+    var l = arr.find(function(x){ return x.name === n && !x.esCombo && !x.esPromo && !x.manual; });
+    if(l){ l.qty += h.usar[n]; l.subtotal = l.precio * l.qty; }
+    else {
+      var p = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(function(x){ return x.name === n; });
+      arr.push({ name: n, precio: h.precios[n], qty: h.usar[n], subtotal: h.precios[n] * h.usar[n], cat: p ? p.cat : '' });
+    }
+  });
+  if(arr === cart2) updateCart2(); else { updateCart(); syncConfirmarBtn(); }
+  showToast('✂ Combo separado: quedan los productos sueltos');
 }
 
 function addComboToCart(combo) {
