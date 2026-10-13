@@ -5390,7 +5390,6 @@ body.night-on{background:#080005}
       <!-- Centro de control del delivery: todo lo operativo junto, en vez de
            repartido entre Inicio y el historial -->
       <div id="deliveryControl" style="margin-bottom:12px"></div>
-      <div id="deliveryMensajes" style="margin-bottom:12px"></div>
       <!-- Pedidos en curso: arriba de todo, apenas llegan -->
       <div id="deliveryPedidosActivos"></div>
       <div id="deliveryZonas" style="margin-bottom:12px"></div>
@@ -5445,6 +5444,29 @@ body.night-on{background:#080005}
         <button class="btn-save" style="width:100%;margin-top:8px" onclick="enviarMensajePuntual()">✉️ Enviar</button>
       </div>
       <div id="mpListaHoy" style="margin-bottom:20px"></div>
+
+      <!-- MENSAJES A REPARTIDORES -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px">
+        <div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;color:var(--white);margin-bottom:4px;text-transform:uppercase">🛵 Mensaje a repartidores</div>
+        <div style="font-size:.66rem;color:var(--gray);margin-bottom:8px">Les aparece como cartel al abrir la app de delivery, estén disponibles o no.</div>
+        <div class="field">
+          <label>Para</label>
+          <select id="mdelPara" onchange="mdelCambioPara()" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box"></select>
+          <div id="mdelElegidos" style="display:none;margin-top:8px"></div>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label>Mensaje</label>
+          <textarea id="mdelTexto" maxlength="500" placeholder="Ej: Hoy es fin de semana y suelen salir varios pedidos. ¡Atentos!" style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:4px;padding:9px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;box-sizing:border-box;min-height:60px;resize:vertical"></textarea>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">
+            <button type="button" onclick="document.getElementById('mdelTexto').value=this.title" title="Hoy es fin de semana y suelen salir varios pedidos. ¡Atentos! 🛵" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:12px;padding:4px 9px;font-size:.66rem;cursor:pointer">🛵 Fin de semana</button>
+            <button type="button" onclick="document.getElementById('mdelTexto').value=this.title" title="Ayudemos con la difusión de nuestros flyers 🙌 Compártanlos en sus estados de WhatsApp." style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:12px;padding:4px 9px;font-size:.66rem;cursor:pointer">📢 Difusión flyers</button>
+            <button type="button" onclick="document.getElementById('mdelTexto').value=this.title" title="Hoy hay mucho movimiento: estén atentos a los avisos y tomen los pedidos rápido. ¡Gracias!" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:12px;padding:4px 9px;font-size:.66rem;cursor:pointer">⚡ Mucho movimiento</button>
+            <button type="button" onclick="document.getElementById('mdelTexto').value=this.title" title="Recuerden marcarse DISPONIBLE cuando estén para salir, así les llegan los pedidos." style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:12px;padding:4px 9px;font-size:.66rem;cursor:pointer">🟢 Marcarse disponible</button>
+          </div>
+        </div>
+        <button class="btn-save" style="width:100%;margin-top:8px" onclick="enviarMensajeDelivery()">✉️ Enviar</button>
+      </div>
+      <div id="mdelLista" style="margin-bottom:20px"></div>
 
       <!-- MENSAJES PROGRAMADOS -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -31121,6 +31143,7 @@ function saveMensajesPunt(m) { window.__lrMensajesPuntCache = m; if(window.__lrS
 
 // ── ADMIN: panel de mensajes ──
 function renderMensajesPanel() {
+  if(typeof renderDeliveryMensajes === 'function') renderDeliveryMensajes();
   var sel = document.getElementById('mpEmpleado');
   if(sel){
     var elegidoAntes = sel.value;
@@ -31573,9 +31596,9 @@ function getRangoDelivery() {
 // y ajustes, todo en un lugar. Antes había que ir a Inicio para el estado y
 // los precios, y no había forma de saber quién estaba disponible.
 // ── MENSAJES A LOS REPARTIDORES ─────────────────────────────────────────────
-// El local le manda un aviso a los repartidores que elija (todos, solo los
-// disponibles, o algunos). Les aparece en la app de delivery como cartel al
-// abrirla, estén disponibles o no, y acá se ve quién ya lo leyó.
+// Están en la pestaña Mensajes, con el mismo formato que los de empleados. Le
+// aparecen como cartel en la app de delivery (estén disponibles o no) y acá
+// se ve quién ya lo vio.
 var _msgDelCache = [], _msgDelSub = null;
 function _escMsg(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function suscribirMensajesDelivery(){
@@ -31588,88 +31611,78 @@ function suscribirMensajesDelivery(){
 }
 function _repartidoresMsg(){ return (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery; }); }
 function renderDeliveryMensajes(){
-  var el = document.getElementById('deliveryMensajes');
-  if(!el) return;
   suscribirMensajesDelivery();
-  var lista = _msgDelCache.slice(0, 5);
-  el.innerHTML = '<div style="background:var(--card);border:1px solid rgba(56,189,248,.4);border-radius:8px;padding:12px 14px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
-      '<div style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:2px;color:#38bdf8;text-transform:uppercase">📣 Mensajes a los repartidores</div>'+
-      '<button onclick="abrirMensajeDelivery()" style="background:#38bdf8;color:#052e16;border:none;border-radius:5px;padding:8px 12px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">✍ Nuevo mensaje</button>'+
-    '</div>'+
-    (lista.length ? lista.map(function(m){
+  var sel = document.getElementById('mdelPara');
+  if(sel){
+    var antes = sel.value || 'todos';
+    var reps = _repartidoresMsg();
+    var disp = reps.filter(function(e){ return e.disponibleDelivery; });
+    sel.innerHTML = '<option value="todos">👥 Todos los repartidores ('+reps.length+')</option>'+
+      '<option value="disponibles">🟢 Solo los disponibles ahora ('+disp.length+')</option>'+
+      '<option value="elegidos">☑ Elegir a quién…</option>'+
+      reps.map(function(e){ return '<option value="uno:'+_escMsg(e.nombre)+'">'+_escMsg(e.nombre)+(e.disponibleDelivery?' (disponible)':'')+'</option>'; }).join('');
+    if(Array.prototype.some.call(sel.options, function(o){ return o.value === antes; })) sel.value = antes;
+    var chk = document.getElementById('mdelElegidos');
+    if(chk){
+      var marcados = Array.prototype.map.call(chk.querySelectorAll('input:checked'), function(c){ return c.value; });
+      chk.innerHTML = reps.map(function(e){ return '<label style="display:inline-flex;gap:5px;align-items:center;margin:0 12px 6px 0;font-size:.8rem;color:var(--light);cursor:pointer"><input type="checkbox" value="'+_escMsg(e.nombre)+'"'+(marcados.indexOf(e.nombre)!==-1?' checked':'')+'> '+_escMsg(e.nombre)+'</label>'; }).join('');
+      chk.style.display = sel.value === 'elegidos' ? 'block' : 'none';
+    }
+  }
+  var lista = document.getElementById('mdelLista');
+  if(!lista) return;
+  if(!_msgDelCache.length){ lista.innerHTML = ''; return; }
+  lista.innerHTML = '<div style="font-size:.68rem;color:var(--gray);margin-bottom:6px">Mensajes enviados a repartidores (últimos 7 días):</div>' +
+    _msgDelCache.map(function(m){
       var leidos = Object.keys(m.leidoPor||{});
       var faltan = (m.para||[]).filter(function(n){ return leidos.indexOf(n) === -1; });
-      return '<div style="border-top:1px solid rgba(255,255,255,.06);margin-top:8px;padding-top:8px">'+
-        '<div style="font-size:.82rem;color:var(--white);white-space:pre-wrap">'+_escMsg(m.texto)+'</div>'+
-        '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">'+new Date(m.ts).toLocaleString('es-AR',{weekday:'short',hour:'2-digit',minute:'2-digit'})+' · para '+_escMsg(m.modoTxt||((m.para||[]).length+' repartidores'))+'</div>'+
-        '<div style="font-size:.68rem;margin-top:2px"><span style="color:var(--green)">✓ Lo vieron: '+(leidos.length?_escMsg(leidos.join(', ')):'nadie todavía')+'</span>'+
-          (faltan.length ? ' <span style="color:var(--gold)">· Falta: '+_escMsg(faltan.join(', '))+'</span>' : '')+'</div>'+
+      var d = new Date(m.ts), hoy = new Date();
+      var fechaTxt = d.toDateString() === hoy.toDateString() ? 'Hoy '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : d.toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      var paraTxt = m.modo === 'todos' ? 'Todos los repartidores' : (m.modo === 'disponibles' ? 'Disponibles ('+(m.para||[]).join(', ')+')' : (m.para||[]).join(', '));
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin-bottom:6px">'+
+        '<div><div style="font-size:.78rem;color:var(--white)">🛵 '+_escMsg(paraTxt)+' <span style="color:var(--green);font-size:.65rem">· '+fechaTxt+'</span></div>'+
+        '<div style="font-size:.72rem;color:var(--gray);margin-top:2px;line-height:1.4">'+formatearTextoMensaje(m.texto)+'</div>'+
+        '<div style="font-size:.64rem;margin-top:3px"><span style="color:var(--green)">✓ Visto: '+(leidos.length?_escMsg(leidos.join(', ')):'nadie todavía')+'</span>'+
+          (faltan.length ? ' <span style="color:var(--gold)">· Falta: '+_escMsg(faltan.join(', '))+'</span>' : '')+'</div></div>'+
+        '<button onclick="eliminarMensajeDelivery('+m.ts+')" style="background:none;border:none;color:rgba(204,0,0,.5);font-size:.85rem;cursor:pointer">🗑</button>'+
       '</div>';
-    }).join('') : '<div style="font-size:.74rem;color:var(--gray);margin-top:6px">Todavía no mandaste mensajes. Les aparecen al abrir la app de delivery, estén disponibles o no.</div>')+
-  '</div>';
+    }).join('');
+}
+function mdelCambioPara(){
+  var sel = document.getElementById('mdelPara'), chk = document.getElementById('mdelElegidos');
+  if(chk) chk.style.display = (sel && sel.value === 'elegidos') ? 'block' : 'none';
 }
 function abrirMensajeDelivery(){
-  var reps = _repartidoresMsg();
-  var ov = document.getElementById('msgDelOverlay');
-  if(!ov){
-    ov = document.createElement('div');
-    ov.id = 'msgDelOverlay'; ov.className = 'overlay'; ov.style.zIndex = '1600';
-    ov.addEventListener('click', function(e){ if(e.target === ov) ov.classList.remove('open'); });
-    document.body.appendChild(ov);
-  }
-  var plantillas = [
-    'Hoy es fin de semana y suelen salir varios pedidos. ¡Atentos! 🛵',
-    'Ayudemos con la difusión de nuestros flyers 🙌 Compártanlos en sus estados de WhatsApp.',
-    'Hoy hay mucho movimiento: estén atentos a los avisos y tomen los pedidos rápido. ¡Gracias!',
-    'Recuerden marcarse DISPONIBLE cuando estén para salir, así les llegan los pedidos.'
-  ];
-  var chip = function(t){ return '<button type="button" onclick="document.getElementById(\'msgDelTexto\').value=this.dataset.t" data-t="'+_escMsg(t)+'" style="text-align:left;background:var(--card);border:1px solid var(--border);color:var(--light);border-radius:6px;padding:7px 9px;margin:0 0 6px;font-size:.74rem;cursor:pointer;width:100%">'+_escMsg(t)+'</button>'; };
-  var opcion = function(v, txt, sub, sel){ return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;cursor:pointer"><input type="radio" name="msgDelModo" value="'+v+'"'+(sel?' checked':'')+' onchange="_msgDelModo()" style="margin-top:3px"><span style="font-size:.84rem;color:var(--white)">'+txt+'<span style="display:block;font-size:.7rem;color:var(--gray)">'+sub+'</span></span></label>'; };
-  var disp = reps.filter(function(e){ return e.disponibleDelivery; });
-  ov.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:440px;width:100%;max-height:92vh;overflow-y:auto;margin:auto">'+
-    '<h3 style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;text-transform:uppercase;color:#38bdf8;margin:0 0 4px">📣 Mensaje a los repartidores</h3>'+
-    '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Les aparece como cartel en la app de delivery (estén disponibles o no) y ves quién lo leyó.</div>'+
-    '<textarea id="msgDelTexto" rows="4" maxlength="500" placeholder="Escribí el mensaje…" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:9px;font-size:.9rem;resize:vertical"></textarea>'+
-    '<div style="font-size:.66rem;color:var(--gray);letter-spacing:1px;text-transform:uppercase;margin:8px 0 5px">Mensajes rápidos (tocá uno)</div>'+
-    plantillas.map(chip).join('')+
-    '<div style="font-size:.66rem;color:var(--gray);letter-spacing:1px;text-transform:uppercase;margin:10px 0 2px">¿A quién le llega?</div>'+
-    opcion('todos', '👥 A todos los repartidores', reps.length+' en total', true)+
-    opcion('disponibles', '🟢 Solo a los disponibles ahora', disp.length ? disp.map(function(e){ return e.nombre; }).join(', ') : 'ahora no hay ninguno disponible', false)+
-    opcion('elegidos', '☑ Elegir a quién', 'uno o varios', false)+
-    '<div id="msgDelLista" style="display:none;padding:4px 0 4px 24px">'+
-      reps.map(function(e){ return '<label style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:.82rem;color:var(--light);cursor:pointer"><input type="checkbox" class="msgDelChk" value="'+_escMsg(e.nombre)+'"> '+_escMsg(e.nombre)+(e.disponibleDelivery?' <span style="font-size:.66rem;color:var(--green)">● disponible</span>':'')+'</label>'; }).join('')+
-    '</div>'+
-    '<div style="display:flex;gap:8px;margin-top:12px">'+
-      '<button type="button" onclick="document.getElementById(\'msgDelOverlay\').classList.remove(\'open\')" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px;cursor:pointer">Cancelar</button>'+
-      '<button type="button" onclick="enviarMensajeDelivery()" style="flex:2;background:#38bdf8;color:#052e16;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer">📣 Enviar</button>'+
-    '</div>'+
-  '</div>';
-  ov.classList.add('open');
-}
-function _msgDelModo(){
-  var m = document.querySelector('input[name="msgDelModo"]:checked');
-  var l = document.getElementById('msgDelLista');
-  if(l) l.style.display = (m && m.value === 'elegidos') ? 'block' : 'none';
+  if(typeof switchTab === 'function') switchTab('mensajes');
+  setTimeout(function(){ var t = document.getElementById('mdelTexto'); if(t){ t.scrollIntoView({block:'center'}); t.focus(); } }, 150);
 }
 function enviarMensajeDelivery(){
-  var texto = (document.getElementById('msgDelTexto').value || '').trim();
+  var texto = (document.getElementById('mdelTexto').value || '').trim();
   if(!texto){ showToast('Escribí el mensaje', true); return; }
-  var modo = (document.querySelector('input[name="msgDelModo"]:checked') || {}).value || 'todos';
-  var reps = _repartidoresMsg(), para, modoTxt;
-  if(modo === 'disponibles'){ para = reps.filter(function(e){ return e.disponibleDelivery; }).map(function(e){ return e.nombre; }); modoTxt = 'los disponibles ('+para.join(', ')+')'; }
-  else if(modo === 'elegidos'){ para = Array.prototype.map.call(document.querySelectorAll('.msgDelChk:checked'), function(c){ return c.value; }); modoTxt = para.join(', '); }
-  else { para = reps.map(function(e){ return e.nombre; }); modoTxt = 'todos'; }
-  if(!para.length){ showToast(modo === 'disponibles' ? 'Ahora no hay ningún repartidor disponible' : 'Elegí al menos un repartidor', true); return; }
+  var v = document.getElementById('mdelPara').value || 'todos';
+  var reps = _repartidoresMsg(), para, modo = v;
+  if(v === 'disponibles') para = reps.filter(function(e){ return e.disponibleDelivery; }).map(function(e){ return e.nombre; });
+  else if(v === 'elegidos') para = Array.prototype.map.call(document.querySelectorAll('#mdelElegidos input:checked'), function(c){ return c.value; });
+  else if(v.indexOf('uno:') === 0){ para = [v.slice(4)]; modo = 'elegidos'; }
+  else para = reps.map(function(e){ return e.nombre; });
+  if(!para.length){ showToast(v === 'disponibles' ? 'Ahora no hay ningún repartidor disponible' : 'Elegí al menos un repartidor', true); return; }
   var ts = Date.now();
-  var doc = { id: ts, ts: ts, fecha: new Date(ts).toISOString(), texto: texto, de: currentEmp ? currentEmp.nombre : 'Local', para: para, modo: modo, modoTxt: modoTxt, leidoPor: {} };
-  window.__lrDB.collection('avisosDelivery').doc(String(ts)).set(doc).then(function(){
-    showToast('📣 Mensaje enviado a '+para.length+' repartidor'+(para.length>1?'es':''));
-  }).catch(function(e){
+  var doc = { id: ts, ts: ts, fecha: new Date(ts).toISOString(), texto: texto, de: currentEmp ? currentEmp.nombre : 'Local', para: para, modo: modo, leidoPor: {} };
+  window.__lrDB.collection('avisosDelivery').doc(String(ts)).set(doc).catch(function(e){
     showToast('No se pudo enviar el mensaje: '+(e && e.message || e), true);
   });
-  _msgDelCache.unshift(doc); renderDeliveryMensajes();
-  document.getElementById('msgDelOverlay').classList.remove('open');
+  _msgDelCache.unshift(doc);
+  document.getElementById('mdelTexto').value = '';
+  showToast('✉️ Mensaje enviado a '+(para.length === 1 ? para[0] : para.length+' repartidores')+' — le aparece al abrir la app');
+  renderDeliveryMensajes();
+}
+function eliminarMensajeDelivery(ts){
+  askConfirm('¿Borrar este mensaje? Si alguno todavía no lo vio, ya no le va a aparecer.').then(function(ok){
+    if(!ok) return;
+    _msgDelCache = _msgDelCache.filter(function(m){ return m.ts !== ts; });
+    window.__lrDB.collection('avisosDelivery').doc(String(ts)).delete().catch(function(e){ showToast('No se pudo borrar: '+(e && e.message || e), true); });
+    renderDeliveryMensajes();
+  });
 }
 
 function renderDeliveryControl() {
@@ -32077,7 +32090,6 @@ function toggleHistorialDelivery() {
 }
 function renderDeliveryPanel() {
   renderDeliveryControl();
-  renderDeliveryMensajes();
   var deliveriesTodas = getDeliveries();
   var rango = getRangoDelivery();
   var deliveries = deliveriesTodas.filter(function(d){
