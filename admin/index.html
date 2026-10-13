@@ -30066,6 +30066,58 @@ function _matchComboAuto(cb, disp, precioDe){
   if(Number(cb.precio) >= separado) return null;
   return { usar: usar, resueltos: resueltos, selecciones: selecciones, separado: separado, ahorro: separado - Number(cb.precio) };
 }
+// Todas las formas de armar un combo con lo que hay (cada sabor posible de
+// los grupos "a elegir").
+function _formasCombo(cb, disp){
+  var items = cb && cb.items || [];
+  if(!items.length || !(Number(cb.precio) > 0)) return [];
+  if(items.some(function(it){ return it.tipo === 'manual'; })) return [];
+  var res = [], quedan = Object.assign({}, disp), usar = {}, resueltos = [], sel = {};
+  (function rec(i){
+    if(res.length >= 40) return;
+    if(i === items.length){ res.push({ usar: Object.assign({}, usar), resueltos: resueltos.slice(), selecciones: Object.assign({}, sel) }); return; }
+    var it = items[i], need = Number(it.qty) || 1;
+    var noms = it.tipo === 'variable'
+      ? (it.opciones || []).map(function(op){ return typeof op === 'string' ? op : (op && op.nombre); })
+      : [it.nombre];
+    var vistos = {};
+    noms.forEach(function(nom){
+      if(!nom || vistos[nom] || (quedan[nom] || 0) < need) return;
+      vistos[nom] = true;
+      quedan[nom] -= need; usar[nom] = (usar[nom] || 0) + need;
+      resueltos.push(it.tipo === 'variable' ? { nombre: nom, qty: need } : it);
+      if(it.tipo === 'variable') sel[i] = nom;
+      rec(i + 1);
+      resueltos.pop(); if(it.tipo === 'variable') delete sel[i];
+      usar[nom] -= need; if(!usar[nom]) delete usar[nom]; quedan[nom] += need;
+    });
+  })(0);
+  return res;
+}
+// La mejor combinación de combos para todo lo que hay cargado: la que más
+// ahorra. Se calcula de cero cada vez, así da lo mismo en qué orden se
+// pasaron los productos.
+function _mejorArmadoCombos(combos, disp, precio){
+  var nodos = 0, mejor = { ahorro: 0, lista: [] }, lista = [];
+  (function rec(desde, disp, ahorro){
+    if(++nodos > 3000) return;
+    if(ahorro > mejor.ahorro || (ahorro === mejor.ahorro && lista.length > mejor.lista.length)) mejor = { ahorro: ahorro, lista: lista.slice() };
+    for(var c = desde; c < combos.length; c++){
+      _formasCombo(combos[c], disp).forEach(function(f){
+        var separado = 0;
+        Object.keys(f.usar).forEach(function(n){ separado += (Number(precio[n]) || 0) * f.usar[n]; });
+        var ah = separado - Number(combos[c].precio);
+        if(!(ah > 0)) return;
+        var d2 = Object.assign({}, disp);
+        Object.keys(f.usar).forEach(function(n){ d2[n] -= f.usar[n]; });
+        lista.push({ cb: combos[c], m: { usar: f.usar, resueltos: f.resueltos, selecciones: f.selecciones, separado: separado, ahorro: ah } });
+        rec(c, d2, ahorro + ah);
+        lista.pop();
+      });
+    }
+  })(0, disp, 0);
+  return mejor.lista;
+}
 function _unidadesCombo(cb){ return (cb.items||[]).reduce(function(s,it){ return s + (Number(it.qty)||1); }, 0); }
 function _mostrarAvisoCombo(texto, onSeparar){
   var el = document.getElementById('comboAutoAviso');
@@ -30090,21 +30142,36 @@ function armarCombosAuto(arr){
   if(arr === cart && _pedidoWebEnCarrito) return [];
   var combos = getCombos().filter(function(cb){ return cb && cb.activo !== false && cb.nombre && !_combosSeparados[key][cb.nombre]; })
     .sort(function(a,b){ return _unidadesCombo(b) - _unidadesCombo(a); });
-  var hechos = [];
-  for(var vuelta = 0; vuelta < 30; vuelta++){
-    var disp = {}, precio = {};
-    arr.forEach(function(l){
-      if(l.esCombo || l.esPromo || l.manual || !(l.qty > 0)) return;
-      disp[l.name] = (disp[l.name] || 0) + l.qty;
-      if(precio[l.name] == null) precio[l.name] = l.precio;
+  // 1) Se desarman los combos que se armaron solos, para recalcular todo de
+  // cero (si no, el primer combo que se completaba se quedaba con productos
+  // que a otro le servían más, y el resultado dependía del orden).
+  var antes = {};
+  for(var i = arr.length - 1; i >= 0; i--){
+    var lc = arr[i];
+    if(!(lc.esCombo && lc.autoCombo)) continue;
+    antes[lc.name] = (antes[lc.name] || 0) + lc.qty;
+    (lc.comboItems || []).forEach(function(ci){
+      var n = ci.nombre, q = (Number(ci.qty) || 1) * lc.qty, pr = (lc.autoPrecios || {})[n];
+      var s = arr.find(function(x){ return x.name === n && !x.esCombo && !x.esPromo && !x.manual; });
+      if(s){ s.qty += q; s.subtotal = s.precio * s.qty; }
+      else {
+        var p = (typeof PRODUCTS !== 'undefined' ? PRODUCTS : []).find(function(x){ return x.name === n; });
+        if(pr == null) pr = p ? ((isNocturno() && p.pnoc) ? p.pnoc : p.pventa) : 0;
+        arr.push({ name: n, precio: pr, qty: q, subtotal: pr * q, cat: p ? p.cat : '' });
+      }
     });
-    var armado = null;
-    for(var c = 0; c < combos.length && !armado; c++){
-      var m = _matchComboAuto(combos[c], disp, function(n){ return precio[n]; });
-      if(m) armado = { cb: combos[c], m: m };
-    }
-    if(!armado) break;
-    var cb = armado.cb, m = armado.m, precios = {};
+    arr.splice(i, 1);
+  }
+  // 2) La mejor combinación con todo lo que hay.
+  var disp = {}, precio = {};
+  arr.forEach(function(l){
+    if(l.esCombo || l.esPromo || l.manual || !(l.qty > 0)) return;
+    disp[l.name] = (disp[l.name] || 0) + l.qty;
+    if(precio[l.name] == null) precio[l.name] = l.precio;
+  });
+  var todos = [];
+  _mejorArmadoCombos(combos, disp, precio).forEach(function(a){
+    var cb = a.cb, m = a.m, precios = {};
     Object.keys(m.usar).forEach(function(n){
       var falta = m.usar[n];
       precios[n] = precio[n];
@@ -30117,11 +30184,17 @@ function armarCombosAuto(arr){
       }
     });
     var nombreLinea = (cb.emoji||'🎁')+' '+cb.nombre;
-    var igual = arr.find(function(l){ return l.esCombo && l.name === nombreLinea && JSON.stringify(l.comboItems) === JSON.stringify(m.resueltos); });
-    if(igual){ igual.qty++; igual.subtotal = igual.precio * igual.qty; igual.autoCombo = true; igual.autoPrecios = precios; }
+    var igual = arr.find(function(l){ return l.esCombo && l.autoCombo && l.name === nombreLinea && JSON.stringify(l.comboItems) === JSON.stringify(m.resueltos); });
+    if(igual){ igual.qty++; igual.subtotal = igual.precio * igual.qty; }
     else arr.push({ name: nombreLinea, precio: cb.precio, qty: 1, subtotal: cb.precio, cat: 'Combo', esCombo: true, comboItems: m.resueltos, autoCombo: true, autoPrecios: precios });
-    hechos.push({ cb: cb, ahorro: m.ahorro, linea: nombreLinea, usar: m.usar, precios: precios });
-  }
+    todos.push({ cb: cb, ahorro: m.ahorro, linea: nombreLinea, usar: m.usar, precios: precios });
+  });
+  // 3) Aviso solo si apareció un combo que antes no estaba.
+  var cuenta = {}, hechos = [];
+  todos.forEach(function(h){
+    cuenta[h.linea] = (cuenta[h.linea] || 0) + 1;
+    if(cuenta[h.linea] > (antes[h.linea] || 0)) hechos.push(h);
+  });
   if(hechos.length){
     var ult = hechos[hechos.length-1];
     _mostrarAvisoCombo('🎁 Se armó el combo <b>'+ult.cb.nombre+'</b>'+(hechos.length>1?' ×'+hechos.length:'')+' — ahorra '+fmt(hechos.reduce(function(s,h){ return s+h.ahorro; },0)), function(){ separarComboAuto(arr, ult); });
