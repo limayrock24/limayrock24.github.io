@@ -35,7 +35,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1791741217";
+  window.__LR_BUILD = "1791855154";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -25204,26 +25204,40 @@ function guardarEmpModal() {
     alert('⚠️ Ya existe '+(esRepDup?'un repartidor':'un empleado')+' llamado "'+emps[nomDup].nombre+'".\n\nNo puede haber dos personas con el mismo nombre (uno pisaría al otro). Usá otro nombre, por ejemplo con la inicial del apellido.');
     return;
   }
-  // 2) Cambiar el nombre de alguien que YA trabajó separaría su historial
-  //    (ventas, consumos, pedidos y cierres quedan con el nombre viejo), así
-  //    que no se permite. A alguien sin historial (ej. recién creado con un
-  //    error de tipeo) sí se le puede cambiar, y se borra el registro viejo
-  //    para que no quede duplicado.
+  // 2) Cambiar el nombre = RENOMBRAR de verdad (igual que un producto): se
+  //    pasan al nombre nuevo sus ventas, cierres, consumos, pedidos de
+  //    delivery y avisos del celu, y se borra la ficha vieja — así no queda
+  //    duplicado ni se parte su historial.
   var nombreViejo = (idx>=0 && EMPLEADOS[idx]) ? EMPLEADOS[idx].nombre : null;
   var renombrado = !!(nombreViejo && nombreViejo !== nombre);
-  if(renombrado){
+  if(renombrado && !window.__lrRenombreListo){
+    var cuenta = function(lista, f){ return (lista||[]).filter(function(x){ return x && x[f] === nombreViejo; }).length; };
     var usos = [];
     try{
-      if((window.VENTAS||[]).some(function(v){ return v.empleado === nombreViejo; })) usos.push('ventas');
-      if(getConsumos().some(function(c){ return c.empleado === nombreViejo; })) usos.push('consumos');
-      if(getPedidosWeb().some(function(p){ return p.repartidor === nombreViejo; })) usos.push('pedidos de delivery');
-      if((window.__lrCierresCache||[]).some(function(c){ return c.empleado === nombreViejo; })) usos.push('cierres de caja');
+      var nV = cuenta(window.VENTAS, 'empleado'), nC = cuenta(getConsumos(), 'empleado'),
+          nP = cuenta(getPedidosWeb(), 'repartidor'), nCi = cuenta(window.__lrCierresCache, 'empleado');
+      if(nV) usos.push(nV+' venta'+(nV>1?'s':''));
+      if(nCi) usos.push(nCi+' cierre'+(nCi>1?'s':''));
+      if(nC) usos.push(nC+' consumo'+(nC>1?'s':''));
+      if(nP) usos.push(nP+' pedido'+(nP>1?'s':'')+' de delivery');
     }catch(e){}
-    if(usos.length){
-      alert('⚠️ No se puede cambiar el nombre de "'+nombreViejo+'": ya tiene '+usos.join(', ')+' registrados con ese nombre, y cambiarlo separaría su historial.\n\nSi lo querías cambiar para que el cliente no vea el nombre: ya no hace falta, el cliente no ve quién le lleva el pedido.\n\nPodés cambiar todo lo demás (PIN, rol, accesos) sin problema.');
-      document.getElementById('emNombre').value = nombreViejo;
+    var ses = window.__lrSesionesActivasCache || {};
+    if(ses[String(nombreViejo).replace(/\//g, '-')]){
+      alert('⚠️ "'+nombreViejo+'" tiene un turno abierto ahora.\n\nCambiale el nombre cuando cierre el turno, así su cierre queda con el nombre correcto.');
       return;
     }
+    askConfirm('Vas a cambiar el nombre de "'+nombreViejo+'" a "'+nombre+'".\n\n'+(usos.length ? 'Todo su historial pasa al nombre nuevo: '+usos.join(', ')+'.' : 'No tiene historial todavía.')+'\n\n¿Seguimos?').then(function(ok){
+      if(!ok) return;
+      showToast('⏳ Pasando el historial de '+nombreViejo+' a '+nombre+'...');
+      migrarNombreEmpleado(nombreViejo, nombre).then(function(){
+        window.__lrRenombreListo = true;
+        try{ guardarEmpModal(); } finally { window.__lrRenombreListo = false; }
+      }).catch(function(e){
+        console.error('Renombre de empleado', e);
+        alert('❌ No se pudo pasar el historial (revisá la conexión). El nombre NO se cambió todavía: volvé a tocar Guardar para reintentar.');
+      });
+    });
+    return;
   }
 
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
@@ -25276,6 +25290,27 @@ function guardarEmpModal() {
   intentarGuardarEmp();
   closeEmpModal();
   renderEmpAdmin();
+}
+
+// Pasa todo lo que está a nombre de una persona al nombre nuevo (renombre).
+// Se puede repetir sin problema: si se corta a mitad, al reintentar sigue con
+// lo que quedó con el nombre viejo.
+function migrarNombreEmpleado(viejo, nuevo){
+  var db = window.__lrDB;
+  var col = function(k, def){ return (window.__lrCOL && window.__lrCOL[k]) || def; };
+  var donde = [[col('ventas','ventas'),'empleado'], [col('cierres','cierres'),'empleado'], [col('consumos','consumos'),'empleado'],
+               ['pedidosWeb','repartidor'], ['fcmTokens','quien']];
+  return Promise.all(donde.map(function(d){
+    return db.collection(d[0]).where(d[1], '==', viejo).get().then(function(snap){
+      var docs = snap.docs, tandas = [];
+      for(var i = 0; i < docs.length; i += 400){
+        var b = db.batch();
+        docs.slice(i, i+400).forEach(function(doc){ var u = {}; u[d[1]] = nuevo; b.update(doc.ref, u); });
+        tandas.push(b.commit());
+      }
+      return Promise.all(tandas).then(function(){ return docs.length; });
+    });
+  }));
 }
 
 function saveEmpleados(emps, nombresABorrar) {
