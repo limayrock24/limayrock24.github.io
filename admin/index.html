@@ -527,6 +527,36 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
+  // ── HISTORIAL DE CAMBIOS (para poder "Deshacer" desde el admin) ──────────
+  // Cada vez que se guarda en la nube un cambio de productos, stock,
+  // empleados, proveedores o combos, se anota cómo estaba ANTES y cómo quedó.
+  // Los guardados que salen juntos (ej. renombrar un producto toca producto,
+  // stock y proveedores) quedan en el mismo grupo y se deshacen juntos.
+  // Se guardan solo los últimos 7 días.
+  window.__lrIdSeguro = idSeguro;
+  window.__lrStringOrd = stringifyOrdenado;
+  function _histClon(o){ try{ return o == null ? null : JSON.parse(JSON.stringify(o)); }catch(e){ return null; } }
+  window.__lrHistAnotar = function(coleccion, cambios){
+    try{
+      if(!cambios || !cambios.length || window.__lrHistPausado) return;
+      var ahora = Date.now();
+      var ctx = window.__lrHistCtx;
+      if(!ctx || ahora - ctx.ts > 4000) ctx = window.__lrHistCtx = { id: 'g'+ahora+Math.random().toString(36).slice(2,6), ts: ahora };
+      else ctx.ts = ahora;
+      var extra = window.__lrHistExtra || null; window.__lrHistExtra = null;
+      var quien = 'Sistema';
+      try{ quien = (typeof currentEmp !== 'undefined' && currentEmp) ? currentEmp.nombre : (window.__lrAdminSinTurno || window.__lrEsPanelAdmin ? 'Admin' : 'Sistema'); }catch(e){}
+      var doc = { ts: ahora, fecha: new Date(ahora).toISOString(), quien: quien,
+        equipo: window.__lrEsPanelAdmin ? 'Admin' : ('Caja '+(typeof cajaEquipo === 'function' ? cajaEquipo() : '')),
+        grupo: ctx.id, coleccion: coleccion, cambios: _histClon(cambios) };
+      if(extra) doc.extra = extra;
+      var tam = JSON.stringify(doc).length;
+      if(tam > 900000){ doc.cambios = doc.cambios.slice(0, Math.floor(doc.cambios.length * 900000 / tam)); doc.incompleto = true; }
+      window.__lrDB.collection('historialCambios').add(limpiarUndefined(doc)).catch(function(e){ console.warn('Historial: no se pudo anotar', e); });
+    }catch(e){ console.warn('Historial', e); }
+  };
+  window.__lrHistClon = _histClon;
+
   // Firestore no permite "/" en el ID de un documento (lo interpreta como
   // separador de ruta) — algunos nombres de producto lo tienen (ej. "C/choco").
   // Esto sanitiza solo el ID; el campo real adentro del documento conserva
@@ -823,11 +853,13 @@
       filtroTocados = {};
       nombresTocados.forEach(function(n){ filtroTocados[n] = true; });
     }
+    var _hist = [];
     lista.forEach(function(p){
       if(filtroTocados && !filtroTocados[p.name]) return;
       try{
         var antes = prev[p.name];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
+          _hist.push({ id: p.name, antes: _histClon(antes), despues: _histClon(p) });
           promesas.push(
             window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(p.name)).set(limpiarUndefined(p)).catch(function(e){
               console.error('Error guardando producto', p.name, e);
@@ -838,6 +870,7 @@
       }catch(e){ console.error('Error preparando producto', p && p.name, e); }
     });
     (nombresABorrar || []).forEach(function(nombre){
+      _hist.push({ id: nombre, antes: _histClon(prev[nombre]), despues: null });
       promesas.push(
         window.__lrDB.collection(window.__lrCOL.productos).doc(idSeguro(nombre)).delete().catch(function(e){
           console.error('Error borrando producto', nombre, e);
@@ -845,6 +878,7 @@
         })
       );
     });
+    window.__lrHistAnotar('productos', _hist);
     return Promise.all(promesas);
   };
 
@@ -900,6 +934,8 @@
     //    último en guardar borraba lo del otro.
     var fijar = window.__lrStockFijar || {};
     window.__lrStockFijar = {};
+    var _hist = [];
+    (nombresABorrar || []).forEach(function(nombre){ if(prev[nombre]) _hist.push({ id: nombre, antes: _histClon(prev[nombre]), despues: null }); });
     Object.keys(inv).forEach(function(nombre){
       try{
         var antes = prev[nombre];
@@ -908,6 +944,7 @@
         var ref = window.__lrDB.collection(window.__lrCOL.inventario).doc(idSeguro(nombre));
         if(!antes || fijar[nombre]){
           if(antes && antes.stock === ahora.stock && antes.minimo === ahora.minimo) return;
+          _hist.push({ id: nombre, antes: antes ? { stock: antes.stock, minimo: antes.minimo } : null, despues: { stock: ahora.stock, minimo: ahora.minimo }, modo: 'fijo' });
           __promesas.push(ref.set(limpiarUndefined({ nombre: nombre, stock: ahora.stock, minimo: ahora.minimo })));
           return;
         }
@@ -915,6 +952,7 @@
         var cambioMin = antes.minimo !== ahora.minimo;
         if(!delta && !cambioMin) return;
         var dato = { nombre: nombre };
+        _hist.push({ id: nombre, antes: { stock: antes.stock, minimo: antes.minimo }, despues: { stock: ahora.stock, minimo: ahora.minimo }, modo: 'suma' });
         if(delta) dato.stock = firebase.firestore.FieldValue.increment(delta);
         if(cambioMin && ahora.minimo !== undefined) dato.minimo = ahora.minimo;
         // Lo que ya se mandó pasa a ser la base: si se vuelve a guardar antes
@@ -923,6 +961,7 @@
         __promesas.push(ref.set(dato, {merge: true}));
       }catch(e){ console.error('Error preparando stock', nombre, e); }
     });
+    window.__lrHistAnotar('inventario', _hist);
       return Promise.all(__promesas);
   };
   // Escucha en vivo de empleados (PINes, roles) — si agregás/sacás uno desde
@@ -1031,10 +1070,15 @@
   window.__lrSaveEmpleados = function(lista, nombresABorrar){
     var prev = window.__lrSync.ultimoEmpleadosSnapshot || {};
     var promesas = [];
+    var _hist = [];
+    // El "disponible / no disponible" del repartidor cambia todo el tiempo:
+    // no se anota en el historial (no es una edición de la ficha).
+    var _sinDisp = function(o){ var c = _histClon(o) || {}; delete c.disponibleDelivery; return stringifyOrdenado(c); };
     lista.forEach(function(e){
       try{
         var antes = prev[e.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
+          if(!antes || _sinDisp(antes) !== _sinDisp(e)) _hist.push({ id: e.nombre, antes: _histClon(antes), despues: _histClon(e) });
           promesas.push(
             window.__lrDB.collection(window.__lrCOL.empleados).doc(e.nombre).set(limpiarUndefined(e)).catch(function(err){
               console.error('Error guardando empleado', e.nombre, err);
@@ -1045,6 +1089,7 @@
       }catch(err){ console.error('Error preparando empleado', e && e.nombre, err); promesas.push(Promise.reject(err)); }
     });
     (nombresABorrar || []).forEach(function(nombre){
+      _hist.push({ id: nombre, antes: _histClon(prev[nombre]), despues: null });
       promesas.push(
         window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).delete().catch(function(err){
           console.error('Error borrando empleado', nombre, err);
@@ -1052,6 +1097,7 @@
         })
       );
     });
+    window.__lrHistAnotar('empleados', _hist);
     // Antes esta función no devolvía nada: quien la llamaba no tenía forma
     // de saber si el guardado realmente llegó a la nube o no, y por eso
     // podía avisar "actualizado" aunque el cambio (ej. sacarle el acceso a
@@ -2175,17 +2221,21 @@
   window.__lrSaveProveedores = function(lista, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoProveedoresSnapshot || {};
+    var _hist = [];
     lista.forEach(function(p){
       try{
         var antes = prev[p.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(p)){
+          _hist.push({ id: p.nombre, antes: _histClon(antes), despues: _histClon(p) });
           __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(p.nombre)).set(limpiarUndefined(p)));
         }
       }catch(e){ console.error('Error preparando proveedor', p && p.nombre, e); }
     });
     (nombresABorrar || []).forEach(function(nombre){
+      _hist.push({ id: nombre, antes: _histClon(prev[nombre]), despues: null });
       __promesas.push(window.__lrDB.collection(window.__lrCOL.proveedores).doc(idSeguro(nombre)).delete());
     });
+    window.__lrHistAnotar('proveedores', _hist);
       return Promise.all(__promesas);
   };
 
@@ -2266,17 +2316,21 @@
   window.__lrSaveCombos = function(lista, nombresABorrar){
     var __promesas = [];
     var prev = window.__lrSync.ultimoCombosSnapshot || {};
+    var _hist = [];
     lista.forEach(function(c){
       try{
         var antes = prev[c.nombre];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(c)){
+          _hist.push({ id: c.nombre, antes: _histClon(antes), despues: _histClon(c) });
           __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(c.nombre)).set(limpiarUndefined(c)));
         }
       }catch(e){ console.error('Error preparando combo', c && c.nombre, e); }
     });
     (nombresABorrar || []).forEach(function(nombre){
+      _hist.push({ id: nombre, antes: _histClon(prev[nombre]), despues: null });
       __promesas.push(window.__lrDB.collection(window.__lrCOL.combos).doc(idSeguro(nombre)).delete());
     });
+    window.__lrHistAnotar('combos', _hist);
       return Promise.all(__promesas);
   };
 
@@ -4102,6 +4156,7 @@ body.night-on{background:#080005}
         <h3>⚙ Panel de <span style="color:var(--red)">Admin</span></h3>
         <div class="subtitle">Estadísticas · Productos · Empleados</div>
       </div>
+      <button onclick="abrirHistorialCambios()" title="Historial de cambios (deshacer)" style="background:transparent;border:1px solid rgba(245,194,0,.5);color:var(--gold);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:1px">🕘 Deshacer</button>
       <button onclick="descargarBackup()" id="btnBackup" title="Backup" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">💾</button>
       <button class="btn-instalar-app" onclick="instalarApp()" title="Instalar en la pantalla de inicio" style="display:none;background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">📲</button>
       <button onclick="activarNotifsDueno()" id="btnNotifDueno" title="Recibir avisos en este dispositivo" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">🔔</button>
@@ -25252,6 +25307,7 @@ function guardarEmpModal() {
       if(!ok) return;
       showToast('⏳ Pasando el historial de '+nombreViejo+' a '+nombre+'...');
       migrarNombreEmpleado(nombreViejo, nombre).then(function(){
+        window.__lrHistExtra = { renombreEmpleado: { de: nombreViejo, a: nombre } };
         window.__lrRenombreListo = true;
         try{ guardarEmpModal(); } finally { window.__lrRenombreListo = false; }
       }).catch(function(e){
@@ -25333,6 +25389,187 @@ function migrarNombreEmpleado(viejo, nuevo){
       return Promise.all(tandas).then(function(){ return docs.length; });
     });
   }));
+}
+
+// ── HISTORIAL DE CAMBIOS · DESHACER ─────────────────────────────────────────
+// Lista lo que se cambió en los últimos 7 días (productos, stock, empleados,
+// proveedores, combos) y permite volver atrás un cambio. Las ventas no van
+// acá: se corrigen anulándolas, como siempre.
+var HIST_DIAS = 7;
+var _histEntradas = [];
+var _histNombreCol = { productos:'producto', inventario:'stock', empleados:'empleado', proveedores:'proveedor', combos:'combo' };
+function _histEsc(t){ return String(t==null?'':t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function _histTexto(col, c){
+  var n = '<b>'+_histEsc(c.id)+'</b>';
+  var tipo = _histNombreCol[col] || col;
+  if(col === 'inventario'){
+    if(!c.despues) return 'Sacó del stock '+n;
+    if(!c.antes) return 'Stock de '+n+': '+c.despues.stock;
+    var d = (Number(c.despues.stock)||0) - (Number(c.antes.stock)||0);
+    var t = 'Stock de '+n+': '+c.antes.stock+' → '+c.despues.stock+(d ? ' ('+(d>0?'+':'')+d+')' : '');
+    if(c.antes.minimo !== c.despues.minimo) t += ' · mínimo '+c.antes.minimo+' → '+c.despues.minimo;
+    return t + (c.modo === 'fijo' ? ' <span style="color:var(--gray)">(conteo)</span>' : '');
+  }
+  if(!c.antes) return 'Agregó '+tipo+' '+n;
+  if(!c.despues) return 'Borró '+tipo+' '+n;
+  var a = c.antes, b = c.despues, partes = [];
+  if(col === 'productos'){
+    if(a.pventa !== b.pventa) partes.push('precio '+fmt(a.pventa||0)+' → '+fmt(b.pventa||0));
+    if((a.pnoc||null) !== (b.pnoc||null)) partes.push('nocturno '+fmt(a.pnoc||0)+' → '+fmt(b.pnoc||0));
+    if((a.costo||null) !== (b.costo||null)) partes.push('costo '+fmt(a.costo||0)+' → '+fmt(b.costo||0));
+    if(a.cat !== b.cat) partes.push('categoría '+_histEsc(a.cat)+' → '+_histEsc(b.cat));
+    if((a.codigo||null) !== (b.codigo||null)) partes.push('código');
+  } else if(col === 'empleados'){
+    if(a.pin !== b.pin) partes.push('cambió el PIN');
+    if(a.rol !== b.rol) partes.push('rol '+_histEsc(a.rol)+' → '+_histEsc(b.rol));
+    ['accesoRecepcion','accesoPedidos','accesoStock','accesoDelivery','permCargaVirtual','permCambio','permAnular'].forEach(function(k){ if(!!a[k] !== !!b[k]) partes.push(k.replace(/^acceso|^perm/,'').replace(/([A-Z])/g,' $1').trim().toLowerCase()+(b[k]?' ✓':' ✗')); });
+    if((a.topeConsumo||null) !== (b.topeConsumo||null)) partes.push('tope de consumo');
+    if(!!a.sinPedidos !== !!b.sinPedidos) partes.push(b.sinPedidos ? 'le sacó la vista de pedidos' : 'le devolvió la vista de pedidos');
+  }
+  return 'Editó '+tipo+' '+n+(partes.length ? ': '+partes.join(' · ') : '');
+}
+function abrirHistorialCambios(){
+  var ov = document.getElementById('histOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'histOverlay';
+    ov.className = 'overlay';
+    ov.style.zIndex = '1700';
+    ov.onclick = function(e){ if(e.target === ov) ov.style.display = 'none'; };
+    ov.innerHTML = '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;max-width:720px;width:100%;padding:16px;margin:auto">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:2px;color:var(--gold)">🕘 HISTORIAL DE CAMBIOS</div>'+
+        '<button onclick="document.getElementById(\'histOverlay\').style.display=\'none\'" style="background:none;border:none;color:var(--gray);font-size:1.3rem;cursor:pointer">✕</button></div>'+
+      '<div style="font-size:.74rem;color:var(--gray);margin-bottom:10px">Lo que se cambió en los últimos '+HIST_DIAS+' días en productos, stock, empleados, proveedores y combos. <b>↩ Deshacer</b> lo deja como estaba. (Las ventas se corrigen anulándolas.)</div>'+
+      '<div id="histFiltros" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>'+
+      '<div id="histLista"><div style="color:var(--gray);font-size:.82rem">Cargando...</div></div></div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  cargarHistorialCambios();
+}
+var _histFiltro = 'todo';
+function cargarHistorialCambios(){
+  var desde = Date.now() - HIST_DIAS*24*3600000;
+  var db = window.__lrDB;
+  db.collection('historialCambios').where('ts', '>=', desde).orderBy('ts', 'desc').limit(800).get().then(function(snap){
+    _histEntradas = []; snap.forEach(function(d){ var x = d.data(); x._id = d.id; _histEntradas.push(x); });
+    renderHistorialCambios();
+  }).catch(function(e){
+    console.error('Historial', e);
+    var l = document.getElementById('histLista'); if(l) l.innerHTML = '<div style="color:var(--red);font-size:.82rem">No se pudo cargar el historial. Revisá la conexión.</div>';
+  });
+  // Limpieza: lo de más de 7 días se borra.
+  db.collection('historialCambios').where('ts', '<', desde).limit(300).get().then(function(snap){
+    if(snap.empty) return; var b = db.batch(); snap.forEach(function(d){ b.delete(d.ref); }); return b.commit();
+  }).catch(function(){});
+}
+function renderHistorialCambios(){
+  var fz = document.getElementById('histFiltros');
+  var opts = [['todo','Todo'],['productos','📦 Productos'],['inventario','📊 Stock'],['empleados','👥 Empleados'],['proveedores','🚚 Proveedores'],['combos','🎁 Combos']];
+  if(fz) fz.innerHTML = opts.map(function(o){ return '<button class="ftbtn'+(_histFiltro===o[0]?' active':'')+'" onclick="_histFiltro=\''+o[0]+'\';renderHistorialCambios()">'+o[1]+'</button>'; }).join('');
+  var grupos = {}, orden = [];
+  _histEntradas.forEach(function(e){
+    if(!grupos[e.grupo]){ grupos[e.grupo] = { id: e.grupo, ts: e.ts, quien: e.quien, equipo: e.equipo, entradas: [] }; orden.push(e.grupo); }
+    grupos[e.grupo].entradas.push(e);
+  });
+  var lista = orden.map(function(k){ return grupos[k]; }).filter(function(g){
+    return _histFiltro === 'todo' || g.entradas.some(function(e){ return e.coleccion === _histFiltro; });
+  });
+  var l = document.getElementById('histLista'); if(!l) return;
+  if(!lista.length){ l.innerHTML = '<div style="color:var(--gray);font-size:.82rem;padding:8px 0">No hay cambios en los últimos '+HIST_DIAS+' días.</div>'; return; }
+  l.innerHTML = lista.map(function(g){
+    var lineas = [];
+    g.entradas.slice().sort(function(a,b){ return a.ts-b.ts; }).forEach(function(e){
+      var ren = e.extra && e.extra.renombreEmpleado;
+      if(ren){ lineas.push('Cambió el nombre de <b>'+_histEsc(ren.de)+'</b> a <b>'+_histEsc(ren.a)+'</b> (con todo su historial)'); return; }
+      (e.cambios||[]).forEach(function(c){ lineas.push(_histTexto(e.coleccion, c)); });
+    });
+    var deshecho = g.entradas.every(function(e){ return e.deshecho; });
+    var quienDeshizo = (g.entradas.find(function(e){ return e.deshechoPor; })||{}).deshechoPor;
+    var f = new Date(g.ts);
+    var mostrar = lineas.slice(0, 6);
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;'+(deshecho?'opacity:.55':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<span style="font-size:.74rem;color:var(--gray)">'+f.toLocaleDateString('es-AR')+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+' · <b style="color:var(--light)">'+_histEsc(g.quien)+'</b> · '+_histEsc(g.equipo)+'</span>'+
+        (deshecho ? '<span style="font-size:.72rem;color:var(--green)">✓ Deshecho'+(quienDeshizo?' por '+_histEsc(quienDeshizo):'')+'</span>'
+                  : '<button onclick="deshacerGrupoHist(\''+g.id+'\')" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:4px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">↩ Deshacer</button>')+
+      '</div>'+
+      '<div style="font-size:.82rem;color:var(--light);margin-top:5px;line-height:1.55">'+mostrar.map(function(t){ return '• '+t; }).join('<br>')+
+        (lineas.length > mostrar.length ? '<br><span style="color:var(--gray)">… y '+(lineas.length-mostrar.length)+' cambio'+(lineas.length-mostrar.length>1?'s':'')+' más</span>' : '')+'</div>'+
+    '</div>';
+  }).join('');
+}
+function _histMapaActual(col){
+  var s = window.__lrSync || {};
+  return ({ productos: s.ultimoProductosSnapshot, inventario: s.ultimoInventarioSnapshot, empleados: s.ultimoEmpleadosSnapshot,
+            proveedores: s.ultimoProveedoresSnapshot, combos: s.ultimoCombosSnapshot })[col] || {};
+}
+function deshacerGrupoHist(grupoId){
+  var entradas = _histEntradas.filter(function(e){ return e.grupo === grupoId && !e.deshecho; }).sort(function(a,b){ return b.ts - a.ts; });
+  if(!entradas.length) return;
+  var ord = window.__lrStringOrd || JSON.stringify;
+  // ¿Algo se volvió a tocar después? Se avisa antes de pisarlo.
+  var tocados = [];
+  entradas.forEach(function(e){
+    var mapa = _histMapaActual(e.coleccion);
+    (e.cambios||[]).forEach(function(c){
+      if(e.coleccion === 'inventario' && c.modo === 'suma' && c.antes && c.despues) return; // se resta/suma la diferencia: no pisa nada
+      var actual = mapa[c.id] || null;
+      var esperado = c.despues || null;
+      if(e.coleccion === 'inventario' && actual && esperado){ if(Number(actual.stock) !== Number(esperado.stock)) tocados.push(c.id); return; }
+      if((actual ? ord(actual) : 'null') !== (esperado ? ord(esperado) : 'null')) tocados.push(c.id);
+    });
+  });
+  var msg = '¿Deshacés este cambio? Vuelve todo a como estaba antes.';
+  if(tocados.length) msg += '\n\n⚠️ Ojo: '+tocados.slice(0,5).join(', ')+(tocados.length>5?' y otros':'')+' se modificó después. Si seguís, también se pierde ese cambio posterior.';
+  askConfirm(msg).then(function(ok){
+    if(!ok) return;
+    var db = window.__lrDB, idS = window.__lrIdSeguro || function(x){ return String(x).replace(/\//g,'-'); };
+    var col = function(k){ return (window.__lrCOL && window.__lrCOL[k]) || k; };
+    var previo = Promise.resolve();
+    entradas.forEach(function(e){
+      if(e.extra && e.extra.renombreEmpleado){
+        var r = e.extra.renombreEmpleado;
+        previo = previo.then(function(){ return migrarNombreEmpleado(r.a, r.de); });
+      }
+    });
+    previo.then(function(){
+      var b = db.batch(), n = 0, tandas = [];
+      var poner = function(fn){ fn(b); n++; if(n >= 400){ tandas.push(b.commit()); b = db.batch(); n = 0; } };
+      entradas.forEach(function(e){
+        (e.cambios||[]).forEach(function(c){
+          var ref = db.collection(col(e.coleccion)).doc(e.coleccion === 'empleados' ? c.id : idS(c.id));
+          if(e.coleccion === 'inventario'){
+            if(c.antes && c.despues){
+              var delta = (Number(c.antes.stock)||0) - (Number(c.despues.stock)||0);
+              var dato = { nombre: c.id };
+              if(delta) dato.stock = firebase.firestore.FieldValue.increment(delta);
+              if(c.antes.minimo !== c.despues.minimo && c.antes.minimo !== undefined) dato.minimo = c.antes.minimo;
+              poner(function(bb){ bb.set(ref, dato, {merge:true}); });
+            } else if(!c.antes){ poner(function(bb){ bb.delete(ref); }); }
+            else { poner(function(bb){ bb.set(ref, { nombre: c.id, stock: c.antes.stock, minimo: c.antes.minimo }); }); }
+            return;
+          }
+          if(!c.antes) poner(function(bb){ bb.delete(ref); });
+          else poner(function(bb){ bb.set(ref, c.antes); });
+        });
+      });
+      var quien = currentEmp ? currentEmp.nombre : 'Admin';
+      entradas.forEach(function(e){
+        poner(function(bb){ bb.update(db.collection('historialCambios').doc(e._id), { deshecho: true, deshechoPor: quien, deshechoEn: new Date().toISOString() }); });
+      });
+      tandas.push(b.commit());
+      return Promise.all(tandas);
+    }).then(function(){
+      entradas.forEach(function(e){ e.deshecho = true; e.deshechoPor = currentEmp ? currentEmp.nombre : 'Admin'; });
+      renderHistorialCambios();
+      showToast('↩ Cambio deshecho');
+    }).catch(function(err){
+      console.error('Deshacer', err);
+      alert('❌ No se pudo deshacer (revisá la conexión). No se marcó como deshecho: podés volver a intentarlo.');
+    });
+  });
 }
 
 function saveEmpleados(emps, nombresABorrar) {
