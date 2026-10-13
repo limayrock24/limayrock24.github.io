@@ -1104,10 +1104,57 @@
     // Recepción a un empleado) nunca se hubiera guardado de verdad.
     return Promise.all(promesas);
   };
+  // ── CAJA LIVIANA: solo lo reciente ────────────────────────────────────────
+  // Ventas y movimientos son el 80% de lo que baja la caja (todo el historial
+  // desde el primer día, y crece unos 3 MB por mes). La caja trae solo los
+  // últimos DIAS_CAJA días: alcanza de sobra para vender, anular, cerrar el
+  // turno y el Inicio del admin. Cuando se abre el admin desde la caja, se
+  // trae el historial completo (reportes de meses anteriores). El panel de
+  // admin propio (/admin/) trae todo desde el principio, como siempre.
+  var DIAS_CAJA = 45;
+  window.__lrHistorialCompleto = !!window.__lrEsPanelAdmin;
+  window.__lrHistorialCompletoListo = window.__lrHistorialCompleto;
+  var _histListos = { ventas: false, movimientos: false };
+  function _consultaReciente(nombreCol){
+    var q = window.__lrDB.collection(nombreCol);
+    if(!window.__lrHistorialCompleto) q = q.where('id', '>=', Date.now() - DIAS_CAJA*24*3600000);
+    return q;
+  }
+  function _marcarHistListo(cual){
+    if(!window.__lrHistorialCompleto || window.__lrHistorialCompletoListo) return;
+    _histListos[cual] = true;
+    if(_histListos.ventas && _histListos.movimientos){
+      window.__lrHistorialCompletoListo = true;
+      var av = document.getElementById('lrAvisoHistCompleto'); if(av) av.remove();
+      // Si el admin está abierto, se redibuja la pantalla que se está viendo
+      // (salvo que haya una ventana abierta encima, para no cerrarla).
+      try{
+        var ovA = document.getElementById('adminOverlay');
+        var hayModal = Array.prototype.some.call(document.querySelectorAll('.overlay.open, .arqueo-modal.open'), function(e){ return e.id !== 'adminOverlay'; });
+        var pane = ovA && ovA.classList.contains('open') ? ovA.querySelector('.tab-pane.active') : null;
+        if(pane && !hayModal && typeof switchTab === 'function') switchTab(pane.id.replace('pane-',''));
+      }catch(e){}
+    }
+  }
+  window.__lrCargarHistorialCompleto = function(){
+    if(window.__lrHistorialCompleto) return;
+    window.__lrHistorialCompleto = true;
+    window.__lrMovResuscrito = true;
+    suscribirVentas();
+    suscribirMovimientos();
+    // Sin conexión no llega la respuesta de la nube: a los 20 s se sigue con
+    // lo que haya, para no dejar el admin esperando para siempre.
+    setTimeout(function(){ _histListos.ventas = _histListos.movimientos = true; _marcarHistListo('ventas'); }, 20000);
+  };
   // Escucha en vivo de ventas.
   // Incremental: ver crearListaIncremental (el mapa sigue guardando un clon
   // independiente de cada venta, para que mutar la lista no lo afecte).
-  window.__lrDB.collection(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ return function(snap){
+  var _desuscribirVentas = null;
+  function suscribirVentas(){
+  if(_desuscribirVentas){ try{ _desuscribirVentas(); }catch(e){} }
+  var _esCompleta = window.__lrHistorialCompleto;
+  _desuscribirVentas = _consultaReciente(window.__lrCOL.ventas).onSnapshot({includeMetadataChanges:true}, (function(inc){ var _primera = true; return function(snap){
+    if(_primera && _esCompleta && !snap.metadata.fromCache){ _primera = false; _marcarHistListo('ventas'); }
     // Si solo cambió el "de dónde vino" (copia del equipo → nube) no hay
     // documentos nuevos: se anota y listo, sin rearmar nada.
     window.__lrVentasDesdeNube = !snap.metadata.fromCache;
@@ -1120,8 +1167,11 @@
   }; })(crearListaIncremental()), function(err){
     console.error('Error sincronizando ventas:', err);
     window.__lrSync.ventasListos = true;
+    _marcarHistListo('ventas');
     ocultarCargaSiListo();
   });
+  }
+  suscribirVentas();
 
   // Guarda solo las ventas nuevas o modificadas (ej. una anulación) —
   // nunca reescribe el historial completo.
@@ -1513,8 +1563,17 @@
 
   // Movimientos (registro general de operaciones — ventas, cargas virtuales,
   // préstamos, etc. Usado sobre todo para Rentabilidad).
-  window.__lrDB.collection(window.__lrCOL.movimientos).onSnapshot((function(inc){ return function(snap){
+  var _desuscribirMov = null;
+  function suscribirMovimientos(){
+  if(_desuscribirMov){ try{ _desuscribirMov(); }catch(e){} }
+  var _esCompletaM = window.__lrHistorialCompleto;
+  _desuscribirMov = _consultaReciente(window.__lrCOL.movimientos).onSnapshot({includeMetadataChanges:true}, (function(inc){ var _primeraM = true; return function(snap){
+    if(_primeraM && _esCompletaM && !snap.metadata.fromCache){ _primeraM = false; _marcarHistListo('movimientos'); }
+    if(window.__lrSync.movimientosListos && !snap.docChanges().length) return;
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
+    // Al traer el historial completo llegan de golpe los movimientos viejos:
+    // no son "nuevos", así que no se avisa de ninguna mercadería recibida.
+    if(window.__lrMovResuscrito){ window.__lrMovResuscrito = false; window.__lrSync.ultimoMovimientosSnapshot = mapa; }
 
     // Avisar de mercadería recibida (movimientos tipo 'ingreso'), en
     // cualquier dispositivo que tenga el panel abierto — no solo en el que
@@ -1545,7 +1604,9 @@
     var paneMovProd = document.getElementById('pane-logcat');
     if(typeof renderLogCatalogo==='function' && paneMovProd && paneMovProd.classList.contains('active')) renderLogCatalogo();
     ocultarCargaSiListo();
-  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; ocultarCargaSiListo(); });
+  }; })(crearListaIncremental()), function(err){ console.error('Error sincronizando movimientos:', err); window.__lrSync.movimientosListos = true; _marcarHistListo('movimientos'); ocultarCargaSiListo(); });
+  }
+  suscribirMovimientos();
 
   window.__lrSaveMovimientos = function(lista){
     var __promesas = [];
@@ -8637,8 +8698,18 @@ function esperarCargaCompleta(fn) {
 
 function openAdmin() {
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
-  // historial completo: si todavía está llegando, se espera.
+  // historial completo: si todavía está llegando, se espera. En la caja,
+  // que trae solo lo reciente, al abrir el admin se pide el resto.
+  if(window.__lrCargarHistorialCompleto) window.__lrCargarHistorialCompleto();
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
+  // Mientras llega el historial viejo (solo pasa en la caja), un aviso arriba.
+  if(!window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
+    var _av = document.createElement('div');
+    _av.id = 'lrAvisoHistCompleto';
+    _av.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:6px 14px;font-size:.74rem;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    _av.textContent = '⏳ Trayendo el historial completo… los reportes de meses anteriores se completan en unos segundos';
+    document.body.appendChild(_av);
+  }
   cerrarTodosLosOverlays();
   document.getElementById('adminOverlay').classList.add('open');
   try { updateFSAStatus("sin-arch"); } catch(e) { console.error('updateFSAStatus falló:', e); }
