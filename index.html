@@ -8107,6 +8107,7 @@ function updateCart() {
     resetOpButtons();
     if(typeof resetClientePuntosBox==='function') resetClientePuntosBox();
   }
+  if(typeof programarSyncPedidoCarrito==='function') programarSyncPedidoCarrito();
 }
 
 function renderCartItems() {
@@ -10819,45 +10820,15 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p || p.pagoConfirmado) return;
+  clearTimeout(_syncPedidoTimer);
   // Si en el local se cobró otro envío que el que calculó el catálogo, el
   // pedido queda con el monto real (es lo que cobra el repartidor), y se
   // guarda el original para que se vea que cambió.
-  if(typeof envioCobrado === 'number' && envioCobrado !== (p.envio||0)){
-    if(p.envioOriginal === undefined) p.envioOriginal = p.envio || 0;
-    var subtotalProd = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
-    p.envio = envioCobrado;
-    p.total = subtotalProd + envioCobrado;
-    p.envioCambiadoPor = currentEmp ? currentEmp.nombre : 'Local';
-  }
+  _aplicarEnvioAlPedido(p, envioCobrado);
   // Lo que se vendió de verdad contra lo que pidió por el catálogo: si en el
   // local se sumaron cosas (o se sacaron), el pedido queda con esa diferencia
   // y con el total real, así el repartidor ve el pedido completo.
-  if(Array.isArray(itemsVenta) && itemsVenta.length){
-    var original = {};
-    (p.items||[]).forEach(function(it){ original[it.nombre] = (original[it.nombre]||0) + (it.cantidad||1); });
-    (p.combos||[]).forEach(function(cb){ var k = (cb.emoji||'🎁')+' '+cb.nombre; original[k] = (original[k]||0) + (cb.cantidad||1); });
-    (p.notasManuales||[]).forEach(function(n){ var k = n.nombre + (n.texto ? ' ('+n.texto+')' : ''); original[k] = (original[k]||0) + 1; });
-    var vendido = {}, precioDe = {};
-    itemsVenta.forEach(function(i){ vendido[i.name] = (vendido[i.name]||0) + (i.qty||1); precioDe[i.name] = i.precio; });
-    var agregados = [], quitados = [];
-    Object.keys(vendido).forEach(function(n){
-      var extra = vendido[n] - (original[n]||0);
-      if(extra > 0) agregados.push({ nombre: n, cantidad: extra, precio: precioDe[n] || 0 });
-    });
-    Object.keys(original).forEach(function(n){
-      var falta = original[n] - (vendido[n]||0);
-      if(falta > 0) quitados.push({ nombre: n, cantidad: falta });
-    });
-    if(agregados.length || quitados.length){
-      var subtotalVenta = itemsVenta.reduce(function(s,i){ return s + (i.subtotal || (i.precio||0)*(i.qty||1)); }, 0);
-      if(p.subtotalOriginal === undefined) p.subtotalOriginal = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
-      p.itemsAgregados = agregados;
-      p.itemsQuitados = quitados;
-      p.subtotal = subtotalVenta;
-      p.total = subtotalVenta + (p.envio||0);
-      p.modificadoEnLocalPor = currentEmp ? currentEmp.nombre : 'Local';
-    }
-  }
+  _aplicarCarritoAlPedido(p, itemsVenta);
   p.pagoConfirmado = true;
   p.cobradoEn = new Date().toISOString();
   p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
@@ -29022,7 +28993,9 @@ function abrirDeliveryPendModal() {
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
         (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : (p.zona==='lejos' ? '<div style="font-size:.72rem;color:#f97316;margin-top:2px">🛣️ Zona más lejos'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : ''))+
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
+        htmlAjusteEnvio(p)+
         repHtml+
+        htmlArmadoPedido(p)+
         htmlAvisosCliente(p)+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         htmlCambiosPedidoWeb(p)+
@@ -29120,6 +29093,18 @@ function cargarPedidoAlCarrito(id) {
     else { cart.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
   });
 
+  // Si el pedido ya se había cambiado en el local (se volvió a cargar), se
+  // carga como quedó, no como vino del catálogo.
+  (pedido.itemsAgregados||[]).forEach(function(it){
+    var ex = cart.find(function(i){ return i.name===it.nombre; });
+    if(ex){ ex.qty += it.cantidad; ex.subtotal = ex.precio*ex.qty; }
+    else {
+      var prod = PRODUCTS.find(function(x){ return x.name===it.nombre; });
+      cart.push({name:it.nombre, precio:it.precio||0, qty:it.cantidad, subtotal:(it.precio||0)*it.cantidad, cat: prod?prod.cat:''});
+    }
+  });
+  var _quitarDespues = (pedido.itemsQuitados||[]).slice();
+
   // Sueltos pedidos desde el catálogo web (fiambrería, pan, frutas/verduras,
   // etc.) — antes se perdían: quedaban solo como texto en la ventana de
   // Pedidos, no se sumaban al carrito ni al total a cobrar. Ahora se cargan
@@ -29142,6 +29127,15 @@ function cargarPedidoAlCarrito(id) {
   if(faltaConfirmarPrecio > 0){
     showToast('⚠️ '+faltaConfirmarPrecio+' producto(s) suelto(s) sin precio — cargalo a mano en el carrito antes de cobrar', true);
   }
+  _quitarDespues.forEach(function(it){
+    for(var k = cart.length-1, resta = it.cantidad; k >= 0 && resta > 0; k--){
+      if(cart[k].name !== it.nombre) continue;
+      var saca = Math.min(resta, cart[k].qty);
+      cart[k].qty -= saca; resta -= saca;
+      cart[k].subtotal = cart[k].precio*cart[k].qty;
+      if(cart[k].qty <= 0) cart.splice(k, 1);
+    }
+  });
 
   // El costo de envío que ya se le cobró a este cliente en el catálogo.
   // Se usa el campo guardado directamente (más confiable que recalcularlo
@@ -29178,6 +29172,247 @@ function cargarPedidoAlCarrito(id) {
   document.getElementById('deliveryPendModal').classList.remove('open');
   showToast('🛵 Pedido de '+pedido.nombre+' cargado al carrito');
   actualizarDeliveryPendBadge();
+}
+
+// ── ENVÍO DE PEDIDOS SIN UBICACIÓN ─────────────────────────────────────────
+// Si el cliente no compartió la ubicación, el catálogo le pone el envío de la
+// zona urbana "a confirmar". Desde acá el local lo corrige antes de pasarle
+// los datos de pago: tocando la zona, o pegando la ubicación que el cliente
+// mande por WhatsApp (se calculan los km igual que en el catálogo).
+function _cfgZonaNum(k){
+  var c = window.__lrZonaCfg || {};
+  var v = c[k];
+  if(v === undefined || v === null || v === '') return null;
+  v = Number(v);
+  return isNaN(v) ? null : v;
+}
+function costoEnvioZona(zona){
+  var base = zona === 'lejos' ? 'costoLejos' : (zona === 'rural' ? 'costoRural' : 'costoUrbano');
+  var v = nocturnoSegunHora() ? _cfgZonaNum(base+'Noc') : null;
+  if(v == null || !(v > 0)) v = _cfgZonaNum(base);
+  return v || 0;
+}
+function hayZonaLejos(){
+  var radio = _cfgZonaNum('radioKm'); if(radio == null) radio = 2;
+  var lejos = _cfgZonaNum('radioLejosKm');
+  return lejos != null && lejos > radio && (_cfgZonaNum('costoLejos') || 0) > 0;
+}
+function zonaSegunKm(km){
+  var radio = _cfgZonaNum('radioKm'); if(radio == null) radio = 2;
+  var lejos = _cfgZonaNum('radioLejosKm');
+  return km <= radio ? 'urbana' : ((hayZonaLejos() && km > lejos) ? 'lejos' : 'rural');
+}
+function _kmEntre(lat1, lng1, lat2, lng2){
+  var R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLng = (lng2-lng1)*Math.PI/180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function nombreZonaEnvio(z){ return z === 'lejos' ? 'Más lejos' : (z === 'rural' ? 'Chacra/rural' : 'Urbana'); }
+
+function htmlAjusteEnvio(p){
+  if(p.pagoConfirmado) return '';
+  var sinUbic = !p.gps || p.ubicacionPegada;
+  if(!sinUbic && !p.envioConfirmado) return '';            // con GPS el catálogo ya calculó la zona
+  if(!(p.envio > 0) && !p.envioAConfirmar && !p.envioConfirmado) return '';
+  var boton = function(z, txt){
+    var sel = p.envioConfirmado && (p.zona || 'urbana') === z;
+    return '<button onclick="ajustarEnvioPedido('+p.id+',\''+z+'\')" style="flex:1;min-width:84px;background:'+(sel?'#F4B400':'transparent')+';color:'+(sel?'#1a1200':'var(--light)')+';border:1px solid #F4B400;border-radius:5px;padding:7px 4px;font-size:.7rem;font-weight:700;cursor:pointer;line-height:1.25">'+txt+'<br><span style="font-weight:400">'+fmt(costoEnvioZona(z))+'</span></button>';
+  };
+  var titulo = p.envioConfirmado
+    ? '<div style="font-size:.76rem;color:var(--green);font-weight:700">✓ Envío confirmado: '+nombreZonaEnvio(p.zona)+(p.distanciaKm?' · '+String(p.distanciaKm).replace('.',',')+' km':'')+' · '+fmt(p.envio||0)+'</div>'
+    : '<div style="font-size:.76rem;color:#F4B400;font-weight:700">📍 Mandó el pedido SIN ubicación — envío a confirmar</div>'+
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">El catálogo le puso la zona urbana ('+fmt(p.envio||0)+'). Pedile la ubicación y elegí la zona <b>antes</b> de pasarle los datos de pago.</div>';
+  return '<div style="background:rgba(244,180,0,.08);border:1px solid rgba(244,180,0,.45);border-radius:6px;padding:8px 10px;margin-top:7px">'+
+    titulo+
+    '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">'+
+      boton('urbana','🏘 Urbana')+boton('rural','🚜 Chacra')+(hayZonaLejos() ? boton('lejos','🛣️ Más lejos') : '')+
+    '</div>'+
+    '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">'+
+      '<button onclick="pedirUbicacionCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:7px;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pedirle la ubicación</button>'+
+      '<button onclick="pegarUbicacionPedido('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #38bdf8;color:#38bdf8;border-radius:5px;padding:7px;font-size:.7rem;font-weight:700;cursor:pointer">📋 Pegar ubicación (calcula km)</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function pedirUbicacionCliente(id){
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!p) return;
+  whatsappCliente(p, 'Hola '+p.nombre+'! 👋 Recibimos tu pedido en Limay Rock 🙌\n'+
+    'Para confirmarte el costo del envío, ¿nos compartís tu ubicación por acá? (📎 → Ubicación → Enviar mi ubicación actual)\n¡Gracias!');
+}
+
+function ajustarEnvioPedido(id, zona, gps, km){
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p) return;
+  if(p.pagoConfirmado){ showToast('Ese pedido ya está cobrado — el envío ya no se puede cambiar desde acá', true); return; }
+  var costo = costoEnvioZona(zona);
+  var subtotalProd = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
+  if(p.envioOriginal === undefined) p.envioOriginal = p.envio || 0;
+  p.envio = costo;
+  p.total = subtotalProd + costo;
+  if(p.envioOriginal === costo) delete p.envioOriginal;
+  p.zona = zona;
+  if(gps){
+    p.gps = gps;
+    p.ubicacionPegada = true;
+    p.sinUbicacion = false;
+  }
+  if(typeof km === 'number') p.distanciaKm = Math.round(km*10)/10;
+  else if(!p.gps) delete p.distanciaKm;
+  p.envioConfirmado = true;
+  p.envioAConfirmar = false;
+  p.envioCambiadoPor = currentEmp ? currentEmp.nombre : 'Local';
+  savePedidosWeb(pedidos);
+  // Si el pedido ya está en el carrito, el envío del carrito se corrige solo.
+  if(_pedidoWebEnCarrito === id){
+    _deliveryActivo = costo > 0;
+    _deliveryMonto = costo;
+    var box = document.getElementById('deliveryBox');
+    var btn = document.getElementById('btnDelivery');
+    var inp = document.getElementById('deliveryMonto');
+    if(box) box.classList.toggle('show', costo > 0);
+    if(btn) btn.classList.toggle('active', costo > 0);
+    if(inp) inp.value = costo;
+    updateCart();
+  }
+  showToast('🛵 Envío: '+nombreZonaEnvio(zona)+' '+fmt(costo)+' — total del pedido '+fmt(p.total));
+  var m = document.getElementById('deliveryPendModal');
+  if(m && m.classList.contains('open')) abrirDeliveryPendModal();
+}
+
+// Saca latitud y longitud de lo que mande el cliente: un link de Google Maps
+// (el que arma WhatsApp al compartir la ubicación) o las coordenadas sueltas.
+function _coordsDeTexto(txt){
+  var t = String(txt||'');
+  try{ t = decodeURIComponent(t); }catch(e){}
+  var m = t.match(/(-?\d{1,2}\.\d+)\s*[,;\s]\s*(-?\d{1,3}\.\d+)/);
+  if(!m) return null;
+  var lat = Number(m[1]), lng = Number(m[2]);
+  if(isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return {lat: lat, lng: lng};
+}
+function pegarUbicacionPedido(id){
+  var cfg = window.__lrZonaCfg || {};
+  if(_cfgZonaNum('lat') == null || _cfgZonaNum('lng') == null){
+    showToast('Falta cargar la ubicación del local en la configuración de zonas', true);
+    return;
+  }
+  var txt = prompt('Pegá acá la ubicación que mandó el cliente por WhatsApp\n(el link de Google Maps o las coordenadas, ej: -38.95, -68.06)');
+  if(txt === null) return;
+  var c = _coordsDeTexto(txt);
+  if(!c){
+    alert(/goo\.gl|maps\.app/i.test(txt)
+      ? 'Ese es un link corto y no trae las coordenadas.\n\nAbrilo, mantené apretado el punto rojo en el mapa y copiá los números que aparecen (ej: -38.95, -68.06). Pegá esos números acá.'
+      : 'No encontré coordenadas en lo que pegaste.\n\nTiene que ser el link de Google Maps o los números (ej: -38.95, -68.06).');
+    return;
+  }
+  var km = _kmEntre(_cfgZonaNum('lat'), _cfgZonaNum('lng'), c.lat, c.lng);
+  if(km > 60){ alert('Esa ubicación queda a '+Math.round(km)+' km del local. Revisá que sea la correcta.'); return; }
+  var zona = zonaSegunKm(km);
+  askConfirm('📍 El cliente está a '+String(Math.round(km*10)/10).replace('.',',')+' km del local\n\nZona: '+nombreZonaEnvio(zona)+' → envío '+fmt(costoEnvioZona(zona))+'\n\n¿Aplicar este envío al pedido?').then(function(ok){
+    if(ok) ajustarEnvioPedido(id, zona, c, km);
+  });
+}
+
+// ── CAMBIOS DEL CARRITO → PEDIDO, EN VIVO ─────────────────────────────────
+// Mientras un pedido web está cargado en el carrito, lo que se suma, se saca
+// o el envío que se cambia se guarda en el pedido a los pocos segundos: el
+// repartidor lo ve en su app antes de que se cobre (ya no recién al cobrar).
+var _syncPedidoTimer = null;
+function programarSyncPedidoCarrito(){
+  if(!_pedidoWebEnCarrito) return;
+  clearTimeout(_syncPedidoTimer);
+  _syncPedidoTimer = setTimeout(syncPedidoDesdeCarrito, 1200);
+}
+function syncPedidoDesdeCarrito(){
+  var id = _pedidoWebEnCarrito;
+  if(!id || !cart.length) return;
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p || p.pagoConfirmado || p.anulado || p.estadoDelivery === 'entregado') return;
+  var antes = JSON.stringify(p);
+  _aplicarEnvioAlPedido(p, _deliveryActivo ? (_deliveryMonto||0) : 0);
+  _aplicarCarritoAlPedido(p, cart);
+  if(JSON.stringify(p) === antes) return;
+  p.actualizadoEnLocalEn = new Date().toISOString();
+  savePedidosWeb(pedidos);
+}
+function _aplicarEnvioAlPedido(p, envioCobrado){
+  if(typeof envioCobrado !== 'number' || envioCobrado === (p.envio||0)) return;
+  if(p.envioOriginal === undefined) p.envioOriginal = p.envio || 0;
+  var subtotalProd = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
+  p.envio = envioCobrado;
+  p.total = subtotalProd + envioCobrado;
+  if(p.envioOriginal === envioCobrado) delete p.envioOriginal;
+  p.envioCambiadoPor = currentEmp ? currentEmp.nombre : 'Local';
+}
+// Foto del producto con dirección completa, para que la app del repartidor
+// la encuentre esté en la carpeta que esté.
+function imgAbsProducto(nombre){
+  try{
+    var u = imgProducto(nombre);
+    return u ? new URL(u, location.href).href : null;
+  }catch(e){ return null; }
+}
+// Lo que hay en el carrito contra lo que pidió por el catálogo: lo que se
+// sumó y lo que se sacó queda en el pedido, con el total real. Si el carrito
+// vuelve a quedar igual que el pedido, se borran las diferencias.
+function _aplicarCarritoAlPedido(p, itemsVenta){
+  if(!Array.isArray(itemsVenta) || !itemsVenta.length) return;
+  var original = {};
+  (p.items||[]).forEach(function(it){ original[it.nombre] = (original[it.nombre]||0) + (it.cantidad||1); });
+  (p.combos||[]).forEach(function(cb){ var k = (cb.emoji||'🎁')+' '+cb.nombre; original[k] = (original[k]||0) + (cb.cantidad||1); });
+  (p.notasManuales||[]).forEach(function(n){ var k = n.nombre + (n.texto ? ' ('+n.texto+')' : ''); original[k] = (original[k]||0) + 1; });
+  var vendido = {}, precioDe = {};
+  itemsVenta.forEach(function(i){ vendido[i.name] = (vendido[i.name]||0) + (i.qty||1); precioDe[i.name] = i.precio; });
+  var agregados = [], quitados = [];
+  Object.keys(vendido).forEach(function(n){
+    var extra = vendido[n] - (original[n]||0);
+    if(extra > 0){
+      var a = { nombre: n, cantidad: extra, precio: precioDe[n] || 0 };
+      var img = imgAbsProducto(n);
+      if(img) a.img = img;
+      agregados.push(a);
+    }
+  });
+  Object.keys(original).forEach(function(n){
+    var falta = original[n] - (vendido[n]||0);
+    if(falta > 0) quitados.push({ nombre: n, cantidad: falta });
+  });
+  if(agregados.length || quitados.length){
+    var subtotalVenta = itemsVenta.reduce(function(s,i){ return s + (i.subtotal || (i.precio||0)*(i.qty||1)); }, 0);
+    if(p.subtotalOriginal === undefined) p.subtotalOriginal = (typeof p.subtotal === 'number') ? p.subtotal : ((p.total||0) - (p.envio||0));
+    p.itemsAgregados = agregados;
+    p.itemsQuitados = quitados;
+    p.subtotal = subtotalVenta;
+    p.total = subtotalVenta + (p.envio||0);
+    p.modificadoEnLocalPor = currentEmp ? currentEmp.nombre : 'Local';
+  } else if(p.itemsAgregados || p.itemsQuitados){
+    var base = (p.subtotalOriginal !== undefined) ? p.subtotalOriginal : p.subtotal;
+    delete p.itemsAgregados;
+    delete p.itemsQuitados;
+    delete p.subtotalOriginal;
+    delete p.modificadoEnLocalPor;
+    p.subtotal = base;
+    p.total = base + (p.envio||0);
+  }
+}
+
+// Lo que va armando el repartidor (lo tengo / no hay), para que la caja lo
+// vea y saque del carrito lo que falta antes de cobrar.
+function htmlArmadoPedido(p){
+  var arm = p.armado || {};
+  var claves = Object.keys(arm);
+  if(!claves.length) return '';
+  var ok = claves.filter(function(k){ return arm[k] === 'ok'; }).length;
+  var faltan = claves.filter(function(k){ return arm[k] === 'falta'; });
+  var total = (typeof p.armadoTotal === 'number') ? p.armadoTotal : claves.length;
+  var listo = (ok + faltan.length) >= total;
+  return '<div style="margin-top:6px;padding:6px 9px;border-radius:5px;background:'+(faltan.length?'rgba(210,32,31,.10)':'rgba(46,204,113,.08)')+';border:1px solid '+(faltan.length?'rgba(210,32,31,.45)':'rgba(46,204,113,.35)')+'">'+
+    '<div style="font-size:.74rem;color:'+(listo&&!faltan.length?'var(--green)':'var(--light)')+';font-weight:700">🧺 '+(listo ? 'Pedido armado por '+(p.armadoPor||'el repartidor') : 'Armando'+(p.armadoPor?' ('+p.armadoPor+')':''))+' · '+ok+'/'+total+' listos</div>'+
+    (faltan.length ? '<div style="font-size:.74rem;color:#f87171;margin-top:2px;font-weight:700">❌ No hay: '+faltan.join(', ')+' — sacalo del carrito antes de cobrar</div>' : '')+
+  '</div>';
 }
 
 function abrirRecepDesdeApp() {
@@ -31704,6 +31939,7 @@ function renderDeliveryPanel() {
               '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · <a href="https://wa.me/549'+p.telefono.replace(/\D/g,'')+'" target="_blank" style="color:var(--green);text-decoration:none">📞 '+p.telefono+'</a></div>'+
               '<div style="font-size:.76rem;color:var(--gray);margin-top:2px">'+itemsTxt+'</div>'+
               htmlCambiosPedidoWeb(p)+
+              htmlArmadoPedido(p)+
               envioTxt+
               notasTxt+
               htmlEstadoPedidoWeb(p)+

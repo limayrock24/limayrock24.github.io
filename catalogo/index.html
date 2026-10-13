@@ -535,7 +535,10 @@ let DELIVERY_ACTIVO = true;
 // PRECIO_NOCTURNO se declara más abajo, pero para cuando esta función se
 // llama de verdad (siempre async, tras el primer onSnapshot) ya está definida.
 function costoSegunHorario(base, baseNoc){
-  return (PRECIO_NOCTURNO && baseNoc != null) ? baseNoc : base;
+  // Number(): si la configuración quedara guardada como texto ("4000"), el
+  // total se armaba pegando los números en vez de sumarlos.
+  var v = (PRECIO_NOCTURNO && baseNoc != null && baseNoc !== '') ? baseNoc : base;
+  return Number(v) || 0;
 }
 
 // Actualiza el banner de arriba y el aviso de pausa según el estado del
@@ -614,7 +617,19 @@ let ZONA_DISTANCIA = 0;
 function actualizarCartelZona(){
   var el = document.getElementById('zonaEnvioAviso');
   if(!el) return;
-  if(!ZONA_ACTUAL){ el.style.display = 'none'; return; }
+  if(!ZONA_ACTUAL){
+    // Sin ubicación no se puede saber la distancia: se avisa que el envío
+    // mostrado es el de la zona urbana y que se confirma por WhatsApp.
+    if(ZONA_CFG && ZONA_CFG.lat != null && !UBICACION_GPS && COSTO_ENVIO > 0){
+      el.style.display = 'block';
+      el.style.background = 'rgba(244,180,0,.10)';
+      el.style.borderColor = 'rgba(244,180,0,.45)';
+      el.innerHTML = '<b style="color:#F4B400">📍 Envío a confirmar</b><br>'+
+        '<span style="color:var(--gray)">Sin tu ubicación tomamos el envío de la zona urbana (<b style="color:#F4B400">'+fmt(COSTO_ENVIO)+'</b>). '+
+        'Si estás a más de '+String(ZONA_CFG.radioKm != null ? ZONA_CFG.radioKm : 2).replace('.',',')+' km del local, te confirmamos el envío por WhatsApp.</span>';
+    } else el.style.display = 'none';
+    return;
+  }
   el.style.display = 'block';
   if(ZONA_ACTUAL === 'lejos'){
     el.style.background = 'rgba(249,115,22,.12)';
@@ -2142,7 +2157,10 @@ function irAConfirmar(){
   }
 
   document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml() + armarListaManualHtml();
-  document.getElementById('confirmTotal').textContent = fmt(totalConEnvio());
+  document.getElementById('confirmTotal').textContent = fmt(totalConEnvio()) + (!UBICACION_GPS && COSTO_ENVIO > 0 ? ' *' : '');
+  var _avEnv = document.getElementById('confirmEnvioAviso');
+  if(!_avEnv){ _avEnv = document.createElement('div'); _avEnv.id = 'confirmEnvioAviso'; _avEnv.style.cssText = 'font-size:.74rem;color:#F4B400;margin-top:6px;text-align:right'; var _tr = document.getElementById('confirmTotal').parentNode; _tr.parentNode.insertBefore(_avEnv, _tr.nextSibling); }
+  _avEnv.textContent = (!UBICACION_GPS && COSTO_ENVIO > 0) ? '* El envío se confirma por WhatsApp según tu ubicación' : '';
   document.getElementById('datosOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.add('show');
 }
@@ -2176,10 +2194,18 @@ function confirmarPedido(){
     referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
     sinUbicacion: !UBICACION_GPS,
+    envioAConfirmar: !UBICACION_GPS && COSTO_ENVIO > 0,
     medioPago: MEDIO_PAGO_SEL,
     zona: ZONA_ACTUAL,
     distanciaKm: ZONA_ACTUAL ? Math.round(ZONA_DISTANCIA*10)/10 : null,
-    items: items.map(function(it){ return {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio}; }),
+    // Con la foto de cada producto: el repartidor arma el pedido mirándola.
+    items: items.map(function(it){
+      var pr = (PRODUCTOS||[]).find(function(x){ return x.name === it.nombre; });
+      var img = pr ? (pr.imgUrl ? pr.imgUrl : (pr.imgUrl === null ? null : fotoDelMapa(pr.name))) : null;
+      var o = {nombre:it.nombre, cantidad:it.cantidad, precio:it.precio};
+      if(img) o.img = img;
+      return o;
+    }),
     // Combos pedidos, con el detalle de lo que trae cada uno. Al cargarlo en el
     // panel de venta se descuenta el stock de cada producto por separado, pero
     // se cobra el precio del combo.
@@ -2240,7 +2266,7 @@ function confirmarPedido(){
 
   msg += '\n💰 *TOTAL*\n';
   msg += 'Subtotal: '+fmt(subtotal)+'\n';
-  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':(ZONA_ACTUAL==='lejos'?' (zona alejada)':''))+': '+fmt(envio)+'\n';
+  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':(ZONA_ACTUAL==='lejos'?' (zona alejada)':''))+': '+fmt(envio)+(!UBICACION_GPS?' _(a confirmar según mi ubicación)_':'')+'\n';
   msg += '*Total: '+fmt(total)+'*';
   if(notasSinPrecio.length) msg += ' _(sin lo que falta confirmar)_';
   msg += '\n';

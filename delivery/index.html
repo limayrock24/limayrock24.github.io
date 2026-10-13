@@ -42,6 +42,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="../lr-identificacion.js?v=2"></script>
+<script src="../imagenes-productos.js" async></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <style>
@@ -192,7 +193,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "18"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "19"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -881,6 +882,7 @@ function renderPanelRepartidor() {
   lista.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
 
   cont.innerHTML = lista.map(function(p){
+    var arm = '';
     var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     // Un renglón por producto con la cantidad grande adelante ("2  Manaos Pomelo 3L"),
     // para que el repartidor no se confunda al armar o controlar el pedido.
@@ -889,6 +891,12 @@ function renderPanelRepartidor() {
       .concat((p.notasManuales||[]).map(function(n){ return filaProdDelivery('✍', n.nombre+(n.texto?' ('+n.texto+')':'')); }))
       .join('');
     var mio = p.repartidor === yo;
+    // El repartidor que lo tomó arma el pedido: lista con foto, y "lo tengo" /
+    // "no hay" en cada producto (la caja ve en vivo lo que falta).
+    if(mio && !p.retiradoEn){
+      arm = htmlArmarPedido(p);
+      if(arm) itemsTxt = '';
+    }
     var dir = p.direccion || p.domicilio || '';
     var telLimpio = (p.telefono||'').replace(/\D/g,'');
     if(telLimpio.length<=10) telLimpio = '549'+telLimpio;
@@ -913,8 +921,9 @@ function renderPanelRepartidor() {
         (p.pagoConfirmado ? ' · <b style="color:var(--green)">✓ COBRADO</b>' : ' · <b style="color:var(--gold)">⏳ sin cobrar</b>')+'</div>' : '')+
       (itemsTxt ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">'+
         '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">🛍 Productos</div>'+itemsTxt+'</div>' : '')+
-      ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#22c55e;font-weight:700;margin-bottom:2px">➕ SUMADO EN EL LOCAL</div>'+p.itemsAgregados.map(function(it){ return filaProdDelivery(it.cantidad, it.nombre, '#22c55e'); }).join('')+'</div>' : '')+
-      ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:2px">➖ SACADO (no va)</div>'+p.itemsQuitados.map(function(it){ return filaProdDelivery(it.cantidad, '<s>'+it.nombre+'</s>', '#f87171'); }).join('')+'</div>' : '')+
+      (arm || '')+
+      (arm ? '' : ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#22c55e;font-weight:700;margin-bottom:2px">➕ SUMADO EN EL LOCAL</div>'+p.itemsAgregados.map(function(it){ return filaProdDelivery(it.cantidad, it.nombre, '#22c55e'); }).join('')+'</div>' : '')+
+      ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:2px">➖ SACADO (no va)</div>'+p.itemsQuitados.map(function(it){ return filaProdDelivery(it.cantidad, '<s>'+it.nombre+'</s>', '#f87171'); }).join('')+'</div>' : ''))+
       ((p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
         (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
@@ -931,6 +940,103 @@ function renderPanelRepartidor() {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// ── ARMAR EL PEDIDO (con fotos) ────────────────────────────────────────────
+// Lo que hay que llevar de verdad: lo que pidió el cliente, menos lo que el
+// local sacó, más lo que sumó. Cada renglón con su foto para encontrarlo
+// rápido en la góndola.
+function fotoProdDelivery(nombre, img){
+  if(img) return img;
+  var mapa = window.IMAGENES_PRODUCTOS;
+  return (mapa && mapa[nombre]) ? '../catalogo/' + mapa[nombre] : null;
+}
+function listaParaArmar(p){
+  var filas = [], porNombre = {};
+  function sumar(nombre, cant, img, tipo){
+    if(porNombre[nombre]){ porNombre[nombre].cant += cant; if(!porNombre[nombre].img && img) porNombre[nombre].img = img; return; }
+    var f = {nombre: nombre, cant: cant, img: img || null, tipo: tipo};
+    porNombre[nombre] = f; filas.push(f);
+  }
+  (p.items||[]).forEach(function(it){ sumar(it.nombre, it.cantidad||1, it.img, 'item'); });
+  (p.combos||[]).forEach(function(cb){ sumar((cb.emoji||'🎁')+' '+cb.nombre, cb.cantidad||1, null, 'combo'); });
+  (p.notasManuales||[]).forEach(function(n){ sumar(n.nombre+(n.texto?' ('+n.texto+')':''), 1, null, 'suelto'); });
+  (p.itemsQuitados||[]).forEach(function(it){ if(porNombre[it.nombre]) porNombre[it.nombre].cant -= it.cantidad; });
+  (p.itemsAgregados||[]).forEach(function(it){ sumar(it.nombre, it.cantidad, it.img, 'agregado'); if(porNombre[it.nombre]) porNombre[it.nombre].agregado = true; });
+  return filas.filter(function(f){ return f.cant > 0; });
+}
+function _escDel(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;'); }
+function htmlArmarPedido(p){
+  var filas = listaParaArmar(p);
+  if(!filas.length) return '';
+  var arm = p.armado || {};
+  var listos = filas.filter(function(f){ return arm[f.nombre] === 'ok'; }).length;
+  var faltan = filas.filter(function(f){ return arm[f.nombre] === 'falta'; }).length;
+  var todo = (listos + faltan) === filas.length;
+  var h = '<div style="margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.08)">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">🧺 Armá el pedido</div>'+
+      '<div style="font-size:.74rem;font-weight:700;color:'+(todo?(faltan?'#f87171':'#22c55e'):'var(--gray)')+'">'+listos+'/'+filas.length+' listos'+(faltan?' · '+faltan+' no hay':'')+'</div>'+
+    '</div>';
+  var cambios = (p.itemsAgregados && p.itemsAgregados.length) || (p.itemsQuitados && p.itemsQuitados.length);
+  if(cambios) h += '<div style="font-size:.72rem;color:#38bdf8;margin-bottom:6px">🔄 El local cambió el pedido — esta lista ya está actualizada'+
+    ((p.itemsQuitados && p.itemsQuitados.length) ? ' (sacó: '+p.itemsQuitados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+')' : '')+'</div>';
+  filas.forEach(function(f){
+    var est = arm[f.nombre];
+    var foto = fotoProdDelivery(f.nombre, f.img);
+    var n = _escDel(f.nombre);
+    h += '<div style="display:flex;align-items:center;gap:9px;padding:7px;margin-bottom:6px;border-radius:7px;background:'+(est==='ok'?'rgba(34,197,94,.12)':(est==='falta'?'rgba(248,113,113,.12)':'rgba(255,255,255,.03)'))+';border:1px solid '+(est==='ok'?'rgba(34,197,94,.5)':(est==='falta'?'rgba(248,113,113,.5)':'rgba(255,255,255,.07)'))+'">'+
+      (foto
+        ? '<img src="'+_escDel(foto)+'" loading="lazy" onclick="verFotoProd(this.src)" onerror="this.style.visibility=\'hidden\'" style="width:58px;height:58px;object-fit:contain;background:#fff;border-radius:6px;flex-shrink:0;cursor:zoom-in">'
+        : '<div style="width:58px;height:58px;border-radius:6px;flex-shrink:0;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:1.4rem">'+(f.tipo==='combo'?'🎁':(f.tipo==='suelto'?'✍':'📦'))+'</div>')+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+          '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;font-weight:700;color:#052e16;background:'+(f.agregado?'#22c55e':'var(--gold)')+';border-radius:5px;padding:0 7px">'+f.cant+'</span>'+
+          (f.agregado ? '<span style="font-size:.62rem;color:#22c55e;font-weight:700">SUMADO</span>' : '')+
+        '</div>'+
+        '<div style="font-size:.86rem;color:var(--white);line-height:1.25;margin-top:3px;'+(est==='falta'?'text-decoration:line-through;color:#f87171':'')+'">'+n+'</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'+
+        '<button data-n="'+n+'" onclick="marcarArmado('+p.id+',this.dataset.n,\'ok\')" style="background:'+(est==='ok'?'#22c55e':'transparent')+';color:'+(est==='ok'?'#052e16':'#22c55e')+';border:1px solid #22c55e;border-radius:5px;padding:7px 9px;font-size:.7rem;font-weight:700;cursor:pointer">✓ Lo tengo</button>'+
+        '<button data-n="'+n+'" onclick="marcarArmado('+p.id+',this.dataset.n,\'falta\')" style="background:'+(est==='falta'?'#f87171':'transparent')+';color:'+(est==='falta'?'#2a0505':'#f87171')+';border:1px solid #f87171;border-radius:5px;padding:5px 9px;font-size:.66rem;font-weight:700;cursor:pointer">No hay</button>'+
+      '</div>'+
+    '</div>';
+  });
+  if(faltan) h += '<div style="font-size:.74rem;color:#f87171;font-weight:700">❌ Avisale a la caja lo que no hay: ya lo ve en su pantalla, tiene que sacarlo antes de cobrar.</div>';
+  else if(todo) h += '<div style="font-size:.76rem;color:#22c55e;font-weight:700">✅ Pedido armado completo</div>';
+  return h + '</div>';
+}
+function marcarArmado(id, nombre, estado){
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p) return;
+  var arm = JSON.parse(JSON.stringify(p.armado || {}));
+  if(arm[nombre] === estado) delete arm[nombre]; else arm[nombre] = estado;
+  var filas = listaParaArmar(p);
+  // Solo se guardan los productos que siguen en el pedido.
+  Object.keys(arm).forEach(function(k){ if(!filas.some(function(f){ return f.nombre === k; })) delete arm[k]; });
+  p.armado = arm;
+  p.armadoTotal = filas.length;
+  p.armadoPor = currentEmp ? currentEmp.nombre : '';
+  var hechos = filas.filter(function(f){ return arm[f.nombre]; }).length;
+  if(hechos === filas.length){ if(!p.armadoEn) p.armadoEn = new Date().toISOString(); }
+  else delete p.armadoEn;
+  savePedidosWeb(pedidos);
+  if(estado === 'falta' && arm[nombre] === 'falta') showToast('❌ Marcado "no hay": la caja lo ve en su pantalla');
+  renderPanelRepartidor();
+}
+function verFotoProd(src){
+  var ov = document.getElementById('fotoProdOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'fotoProdOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.onclick = function(){ ov.style.display = 'none'; };
+    ov.innerHTML = '<img style="max-width:100%;max-height:90vh;background:#fff;border-radius:10px">';
+    document.body.appendChild(ov);
+  }
+  ov.querySelector('img').src = src;
+  ov.style.display = 'flex';
 }
 
 function filaProdDelivery(cant, nombre, color) {
