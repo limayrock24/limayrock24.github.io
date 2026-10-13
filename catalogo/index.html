@@ -2336,11 +2336,11 @@ function htmlSeguimiento(d){
   var idx = Math.max(0, orden.indexOf(d.etapa || 'recibido'));
   var hora = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : ''; };
   var pasos = d.pasos || {};
-  var rep = d.repartidor ? String(d.repartidor).replace(/[<>&"]/g,'') : '';
+  var rep = ''; // no se muestra quién lleva el pedido
   var info = [
     ['recibido',   '🧾', 'Recibido',   d.etapa ? 'El local ya tiene tu pedido' : 'Enviando tu pedido al local…'],
     ['preparando', '👨‍🍳', 'Preparando', 'Lo estamos armando'],
-    ['en_camino',  '🛵', 'En camino',  rep ? rep+' salió con tu pedido' : 'Tu pedido salió del local'],
+    ['en_camino',  '🛵', 'En camino',  'Nuestro delivery ya salió con tu pedido'],
     ['entregado',  '🏠', 'Entregado',  '¡Que lo disfrutes! 🤘']
   ];
   var pagoHtml = '';

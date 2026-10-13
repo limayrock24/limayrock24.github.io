@@ -25192,6 +25192,39 @@ function guardarEmpModal() {
   var pinDup = emps.findIndex(function(e,i){ return e.pin===pin && i!==idx; });
   if(pinDup>-1){ showToast('Ese PIN ya lo usa '+emps[pinDup].nombre,true); return; }
 
+  // Cada persona se guarda con su NOMBRE como identificador. Por eso:
+  // 1) No puede haber dos con el mismo nombre (sin importar mayúsculas,
+  //    acentos o espacios): si no, uno pisa al otro — así se perdió el perfil
+  //    de un empleado al renombrar a un repartidor con su mismo nombre.
+  var normNom = function(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase(); };
+  var nomDup = emps.findIndex(function(e,i){ return i!==idx && normNom(e.nombre) === normNom(nombre); });
+  if(nomDup>-1){
+    var esRepDup = emps[nomDup].rol === 'repartidor' || emps[nomDup].accesoDelivery;
+    alert('⚠️ Ya existe '+(esRepDup?'un repartidor':'un empleado')+' llamado "'+emps[nomDup].nombre+'".\n\nNo puede haber dos personas con el mismo nombre (uno pisaría al otro). Usá otro nombre, por ejemplo con la inicial del apellido.');
+    return;
+  }
+  // 2) Cambiar el nombre de alguien que YA trabajó separaría su historial
+  //    (ventas, consumos, pedidos y cierres quedan con el nombre viejo), así
+  //    que no se permite. A alguien sin historial (ej. recién creado con un
+  //    error de tipeo) sí se le puede cambiar, y se borra el registro viejo
+  //    para que no quede duplicado.
+  var nombreViejo = (idx>=0 && EMPLEADOS[idx]) ? EMPLEADOS[idx].nombre : null;
+  var renombrado = !!(nombreViejo && nombreViejo !== nombre);
+  if(renombrado){
+    var usos = [];
+    try{
+      if((window.VENTAS||[]).some(function(v){ return v.empleado === nombreViejo; })) usos.push('ventas');
+      if(getConsumos().some(function(c){ return c.empleado === nombreViejo; })) usos.push('consumos');
+      if(getPedidosWeb().some(function(p){ return p.repartidor === nombreViejo; })) usos.push('pedidos de delivery');
+      if((window.__lrCierresCache||[]).some(function(c){ return c.empleado === nombreViejo; })) usos.push('cierres de caja');
+    }catch(e){}
+    if(usos.length){
+      alert('⚠️ No se puede cambiar el nombre de "'+nombreViejo+'": ya tiene '+usos.join(', ')+' registrados con ese nombre, y cambiarlo separaría su historial.\n\nSi lo querías cambiar para que el cliente no vea el nombre: ya no hace falta, el cliente no ve quién le lleva el pedido.\n\nPodés cambiar todo lo demás (PIN, rol, accesos) sin problema.');
+      document.getElementById('emNombre').value = nombreViejo;
+      return;
+    }
+  }
+
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
   var pedidosOn = !!(document.getElementById('emPedidosToggle') && document.getElementById('emPedidosToggle').classList.contains('on'));
   var stockOn = document.getElementById('emStockToggle').classList.contains('on');
@@ -25211,7 +25244,9 @@ function guardarEmpModal() {
     permCambio: !!(document.getElementById('emPermCambioToggle') && document.getElementById('emPermCambioToggle').classList.contains('on')),
     permAnular: !!(document.getElementById('emPermAnularToggle') && document.getElementById('emPermAnularToggle').classList.contains('on'))};
   if(idx>=0 && EMPLEADOS[idx]){
-    EMPLEADOS[idx] = empData;
+    // Se conservan los datos que no están en esta ficha (ej. si el repartidor
+    // está disponible o si tiene sacada la vista de pedidos).
+    EMPLEADOS[idx] = Object.assign({}, EMPLEADOS[idx], empData);
   } else {
     EMPLEADOS.push(empData);
   }
@@ -25222,7 +25257,7 @@ function guardarEmpModal() {
   // siempre si la conexión falla.
   function intentarGuardarEmp(){
     showToast('⏳ Guardando en la nube...');
-    var promesaEmp = saveEmpleados(EMPLEADOS);
+    var promesaEmp = saveEmpleados(EMPLEADOS, renombrado ? [nombreViejo] : undefined);
     if(!window.__lrConTimeoutAviso){ promesaEmp.then(function(){ showToast('✅ '+nombre+' guardado y confirmado'); }); return; }
     window.__lrConTimeoutAviso(promesaEmp, 15000, intentarGuardarEmp).then(function(r){
       if(r.pendiente){
@@ -27537,7 +27572,8 @@ function sincronizarSeguimiento(lista){
     if(!p || !p.seguimiento || !/^[a-z0-9]{10,40}$/.test(p.seguimiento)) return;
     if((Number(p.id) || 0) < hace2d) return;
     var etapa = etapaSeguimiento(p);
-    var rep = p.repartidor ? String(p.repartidor).split(' ')[0] : null;
+    // El cliente NO ve quién le lleva el pedido: solo que salió.
+    var rep = null;
     // Datos para transferir: se muestran en el seguimiento recién cuando el
     // local confirmó el pedido (ya pasó los datos de pago por WhatsApp) y
     // mientras no esté cobrado. Así el cliente transfiere el monto final,
@@ -27797,8 +27833,7 @@ function _escribirCartelOpinion(w, svg){
 function textoMensajeCliente(p, tipo, extra) {
   var nombre = (p.nombre || '').split(' ')[0];
   if(tipo === 'salio'){
-    return '¡Hola ' + nombre + '! 👋\n\nTu pedido de *LIMAY ROCK* ya salió del local' +
-      (p.repartidor ? ' con *' + p.repartidor + '*' : '') + ' 📦\nEn unos minutos lo tenés en tu casa.' +
+    return '¡Hola ' + nombre + '! 👋\n\nTu pedido de *LIMAY ROCK* ya salió del local 📦\nEn unos minutos lo tenés en tu casa.' +
       (p.seguimiento ? '\n\n📦 Seguilo en vivo: ' + LINK_SEGUIMIENTO + p.seguimiento : '') + '\n\n¡Gracias por elegirnos! 🙌';
   }
   if(tipo === 'falta'){
