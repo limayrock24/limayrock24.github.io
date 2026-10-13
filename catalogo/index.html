@@ -1657,20 +1657,20 @@ function _formasCombo(cb, disp){
   })(0);
   return res;
 }
-// La mejor combinación de combos para todo lo que hay cargado: la que más
-// ahorra. Se calcula de cero cada vez, así da lo mismo en qué orden se
-// pasaron los productos.
+// La mejor combinación de combos para todo lo que hay cargado: la que arma
+// más combos (aunque alguno no salga más barato que suelto) y, entre esas,
+// la que más ahorra. Se calcula de cero cada vez, así da lo mismo en qué
+// orden se pasaron los productos.
 function _mejorArmadoCombos(combos, disp, precio){
   var nodos = 0, mejor = { ahorro: 0, lista: [] }, lista = [];
   (function rec(desde, disp, ahorro){
     if(++nodos > 3000) return;
-    if(ahorro > mejor.ahorro || (ahorro === mejor.ahorro && lista.length > mejor.lista.length)) mejor = { ahorro: ahorro, lista: lista.slice() };
+    if(lista.length > mejor.lista.length || (lista.length === mejor.lista.length && ahorro > mejor.ahorro)) mejor = { ahorro: ahorro, lista: lista.slice() };
     for(var c = desde; c < combos.length; c++){
       _formasCombo(combos[c], disp).forEach(function(f){
         var separado = 0;
         Object.keys(f.usar).forEach(function(n){ separado += (Number(precio[n]) || 0) * f.usar[n]; });
         var ah = separado - Number(combos[c].precio);
-        if(!(ah > 0)) return;
         var d2 = Object.assign({}, disp);
         Object.keys(f.usar).forEach(function(n){ d2[n] -= f.usar[n]; });
         lista.push({ cb: combos[c], m: { usar: f.usar, resueltos: f.resueltos, selecciones: f.selecciones, separado: separado, ahorro: ah } });
@@ -1754,7 +1754,8 @@ function armarCombosAutoCatalogo(){
   });
   if(hechos.length){
     var ult = hechos[hechos.length-1];
-    _mostrarAvisoCombo('🎁 ¡Se armó el combo <b>'+ult.cb.nombre+'</b>! Ahorrás '+fmt(hechos.reduce(function(s,h){ return s+h.ahorro; },0)), function(){ separarComboAutoCatalogo(ult); });
+    var ahorroTot = hechos.reduce(function(s,h){ return s+h.ahorro; },0);
+    _mostrarAvisoCombo('🎁 ¡Se armó el combo <b>'+ult.cb.nombre+'</b>!'+(ahorroTot > 0 ? ' Ahorrás '+fmt(ahorroTot) : ''), function(){ separarComboAutoCatalogo(ult); });
   }
   return hechos;
 }
