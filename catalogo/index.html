@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1791858616";
+window.__LR_BUILD = "1791862643";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -2442,7 +2442,7 @@ function abrirOpinion(origen, pedido){
 }
 function cerrarOpinion(){
   document.getElementById('opinionScreen').classList.remove('show');
-  try{ if(new URLSearchParams(location.search).get('opinion')) history.replaceState(null, '', location.pathname); }catch(e){}
+  try{ var _q2 = new URLSearchParams(location.search); if(_q2.get('opinion') || _q2.has('valora') || _q2.has('o')) history.replaceState(null, '', location.pathname); }catch(e){}
 }
 function _opError(t){ var e=document.getElementById('opError'); e.textContent=t; e.style.display='block'; }
 function enviarOpinion(){
@@ -2467,8 +2467,10 @@ function enviarOpinion(){
   });
 }
 (function(){
-  var o = null;
-  try{ o = new URLSearchParams(location.search).get('opinion'); }catch(e){}
+  // Links aceptados: ?opinion=local (QR del cartel), y los cortos ?valora / ?o
+  // para mandar por WhatsApp.
+  var o = false;
+  try{ var _q = new URLSearchParams(location.search); o = !!_q.get('opinion') || _q.has('valora') || _q.has('o'); }catch(e){}
   if(o && OPINIONES_ACTIVAS) abrirOpinion('local');
 })();
 // Al entrar: con link (?seguimiento=código) se abre directo; si este celu hizo
