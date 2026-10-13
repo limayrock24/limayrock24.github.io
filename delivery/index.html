@@ -193,7 +193,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "20"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "21"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -873,9 +873,14 @@ function renderPanelRepartidor() {
     ? (currentEmp.sinPedidos ? [] : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; }))
     : todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; });
 
+  // En "Disponibles" quedan a la vista los que otro repartidor tomó hace
+  // poco: si te llegó el aviso y entrás, ves que ya lo tomaron (y quién), en
+  // vez de que el pedido "desaparezca" sin explicación.
+  var tomadosHtml = (_repFiltro === 'libres' && !currentEmp.sinPedidos) ? htmlTomadosPorOtros(yo) : '';
+
   if(!lista.length){
     cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 20px;font-size:.85rem">'+
-      (_repFiltro==='libres' ? 'No hay pedidos disponibles ahora mismo' : 'No tenés pedidos tomados')+'</div>';
+      (_repFiltro==='libres' ? 'No hay pedidos disponibles ahora mismo' : 'No tenés pedidos tomados')+'</div>' + tomadosHtml;
     return;
   }
 
@@ -939,7 +944,7 @@ function renderPanelRepartidor() {
           : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
       '</div>'+
     '</div>';
-  }).join('');
+  }).join('') + tomadosHtml;
 }
 
 // ── ARMAR EL PEDIDO (con fotos) ────────────────────────────────────────────
@@ -1169,19 +1174,68 @@ function toggleHistDia(clave){
   renderHistorialRepartidor();
 }
 
+function htmlTomadosPorOtros(yo){
+  var hace60 = Date.now() - 60*60*1000;
+  var hh = function(iso){ return new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); };
+  var tomados = getPedidosWeb().filter(function(p){
+    return !p.anulado && p.repartidor && p.repartidor !== yo && p.tomadoEn && new Date(p.tomadoEn).getTime() >= hace60;
+  }).sort(function(a,b){ return new Date(b.tomadoEn) - new Date(a.tomadoEn); });
+  if(!tomados.length) return '';
+  return '<div style="margin-top:14px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:6px">✋ Ya los tomaron (última hora)</div>'+
+    tomados.map(function(p){
+      var estado = p.estadoDelivery === 'entregado' ? '✅ Entregado' : (p.retiradoEn ? '🛵 En camino' : '📦 Preparando');
+      return '<div style="background:rgba(255,255,255,.03);border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;opacity:.85">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.82rem;color:var(--light)">'+
+          '<span>👤 '+_escDel(p.nombre||'Cliente')+' · pedido de las '+hh(p.fecha)+'</span>'+
+          '<span style="color:var(--gray);white-space:nowrap">'+estado+'</span>'+
+        '</div>'+
+        '<div style="font-size:.8rem;color:var(--gold);margin-top:4px;font-weight:700">✋ Lo tomó '+_escDel(p.repartidor)+' a las '+hh(p.tomadoEn)+' — no hace falta que lo lleves</div>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+
 function tomarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p) return;
   if(p.repartidor){ showToast('Ese pedido ya lo tomó '+p.repartidor, true); renderPanelRepartidor(); return; }
   if(currentEmp.sinPedidos){ showToast('No hay pedidos disponibles ahora mismo', true); renderPanelRepartidor(); return; }
-  p.repartidor = currentEmp.nombre;
-  p.estadoDelivery = 'aceptado';
-  p.tomadoEn = new Date().toISOString();
-  savePedidosWeb(pedidos);
-  showToast('🛵 Tomaste el pedido de '+p.nombre);
-  setFiltroRepartidor('mios');
+  if(_tomando[id]) return;
+  _tomando[id] = true;
+  var yo = currentEmp.nombre, ahora = new Date().toISOString();
+  // Se toma con una transacción en la nube: si dos repartidores tocan
+  // "Tomar" casi al mismo tiempo, solo uno se lo queda y al otro le avisa
+  // quién lo tomó (antes podían quedar los dos creyendo que era suyo).
+  var ref = window.__lrDB.collection('pedidosWeb').doc(idSeguro(String(id)));
+  window.__lrDB.runTransaction(function(tx){
+    return tx.get(ref).then(function(d){
+      if(!d.exists) throw {noExiste: true};
+      var x = d.data();
+      if(x.repartidor && x.repartidor !== yo) throw {tomadoPor: x.repartidor};
+      tx.update(ref, {repartidor: yo, estadoDelivery: 'aceptado', tomadoEn: ahora});
+    });
+  }).then(function(){
+    delete _tomando[id];
+    var q = getPedidosWeb().find(function(x){ return x.id === id; });
+    if(q && !q.repartidor){ q.repartidor = yo; q.estadoDelivery = 'aceptado'; q.tomadoEn = ahora; }
+    showToast('🛵 Tomaste el pedido de '+p.nombre);
+    setFiltroRepartidor('mios');
+  }).catch(function(e){
+    delete _tomando[id];
+    if(e && e.tomadoPor){ showToast('✋ Ese pedido ya lo tomó '+e.tomadoPor, true); renderPanelRepartidor(); return; }
+    if(e && e.noExiste){ showToast('Ese pedido ya no está disponible', true); renderPanelRepartidor(); return; }
+    // Sin conexión con la nube: se toma como antes (se guarda cuando vuelve).
+    p.repartidor = yo;
+    p.estadoDelivery = 'aceptado';
+    p.tomadoEn = ahora;
+    savePedidosWeb(pedidos);
+    showToast('🛵 Tomaste el pedido de '+p.nombre);
+    setFiltroRepartidor('mios');
+  });
 }
+var _tomando = {};
 function soltarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
