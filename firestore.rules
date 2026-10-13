@@ -57,6 +57,14 @@ service cloud.firestore {
               && exists(/databases/$(database)/documents/seguimiento/$(request.resource.data.pedido))));
     }
 
+    // Mensajes del local a los repartidores: los manda solo un equipo del
+    // local (regla general de abajo). La app de delivery los puede VER y solo
+    // marcar que los leyó (no puede cambiar el texto ni a quién va).
+    match /avisosDelivery/{id} {
+      allow read: if true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leidoPor']);
+    }
+
     // TEMPORAL — lo que usa el panel de delivery, hasta identificar sus celus.
     match /pedidosWeb/{id} { allow read, update: if true; }
     match /empleados/{id}  { allow read, write: if true; }
