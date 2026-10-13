@@ -193,7 +193,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "19"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "20"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -893,7 +893,7 @@ function renderPanelRepartidor() {
     var mio = p.repartidor === yo;
     // El repartidor que lo tomó arma el pedido: lista con foto, y "lo tengo" /
     // "no hay" en cada producto (la caja ve en vivo lo que falta).
-    if(mio && !p.retiradoEn){
+    if(mio){
       arm = htmlArmarPedido(p);
       if(arm) itemsTxt = '';
     }
@@ -967,43 +967,26 @@ function listaParaArmar(p){
 }
 function _escDel(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;'); }
 function htmlArmarPedido(p){
+  // Lista final (lo que pidió el cliente con los cambios del local ya
+  // aplicados), con la foto de cada producto para encontrarlo rápido.
   var filas = listaParaArmar(p);
   if(!filas.length) return '';
-  var arm = p.armado || {};
-  var listos = filas.filter(function(f){ return arm[f.nombre] === 'ok'; }).length;
-  var faltan = filas.filter(function(f){ return arm[f.nombre] === 'falta'; }).length;
-  var todo = (listos + faltan) === filas.length;
   var h = '<div style="margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.08)">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-      '<div style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">🧺 Armá el pedido</div>'+
-      '<div style="font-size:.74rem;font-weight:700;color:'+(todo?(faltan?'#f87171':'#22c55e'):'var(--gray)')+'">'+listos+'/'+filas.length+' listos'+(faltan?' · '+faltan+' no hay':'')+'</div>'+
-    '</div>';
+    '<div style="font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:6px">🛍 Productos a llevar</div>';
   var cambios = (p.itemsAgregados && p.itemsAgregados.length) || (p.itemsQuitados && p.itemsQuitados.length);
-  if(cambios) h += '<div style="font-size:.72rem;color:#38bdf8;margin-bottom:6px">🔄 El local cambió el pedido — esta lista ya está actualizada'+
-    ((p.itemsQuitados && p.itemsQuitados.length) ? ' (sacó: '+p.itemsQuitados.map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ')+')' : '')+'</div>';
+  if(cambios) h += '<div style="font-size:.72rem;color:#38bdf8;margin-bottom:6px">🔄 El local cambió el pedido — esta lista ya está actualizada</div>';
   filas.forEach(function(f){
-    var est = arm[f.nombre];
     var foto = fotoProdDelivery(f.nombre, f.img);
-    var n = _escDel(f.nombre);
-    h += '<div style="display:flex;align-items:center;gap:9px;padding:7px;margin-bottom:6px;border-radius:7px;background:'+(est==='ok'?'rgba(34,197,94,.12)':(est==='falta'?'rgba(248,113,113,.12)':'rgba(255,255,255,.03)'))+';border:1px solid '+(est==='ok'?'rgba(34,197,94,.5)':(est==='falta'?'rgba(248,113,113,.5)':'rgba(255,255,255,.07)'))+'">'+
+    h += '<div style="display:flex;align-items:center;gap:10px;padding:7px;margin-bottom:6px;border-radius:7px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)">'+
       (foto
-        ? '<img src="'+_escDel(foto)+'" loading="lazy" onclick="verFotoProd(this.src)" onerror="this.style.visibility=\'hidden\'" style="width:58px;height:58px;object-fit:contain;background:#fff;border-radius:6px;flex-shrink:0;cursor:zoom-in">'
-        : '<div style="width:58px;height:58px;border-radius:6px;flex-shrink:0;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:1.4rem">'+(f.tipo==='combo'?'🎁':(f.tipo==='suelto'?'✍':'📦'))+'</div>')+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="display:flex;align-items:center;gap:6px">'+
-          '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;font-weight:700;color:#052e16;background:'+(f.agregado?'#22c55e':'var(--gold)')+';border-radius:5px;padding:0 7px">'+f.cant+'</span>'+
-          (f.agregado ? '<span style="font-size:.62rem;color:#22c55e;font-weight:700">SUMADO</span>' : '')+
-        '</div>'+
-        '<div style="font-size:.86rem;color:var(--white);line-height:1.25;margin-top:3px;'+(est==='falta'?'text-decoration:line-through;color:#f87171':'')+'">'+n+'</div>'+
-      '</div>'+
-      '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'+
-        '<button data-n="'+n+'" onclick="marcarArmado('+p.id+',this.dataset.n,\'ok\')" style="background:'+(est==='ok'?'#22c55e':'transparent')+';color:'+(est==='ok'?'#052e16':'#22c55e')+';border:1px solid #22c55e;border-radius:5px;padding:7px 9px;font-size:.7rem;font-weight:700;cursor:pointer">✓ Lo tengo</button>'+
-        '<button data-n="'+n+'" onclick="marcarArmado('+p.id+',this.dataset.n,\'falta\')" style="background:'+(est==='falta'?'#f87171':'transparent')+';color:'+(est==='falta'?'#2a0505':'#f87171')+';border:1px solid #f87171;border-radius:5px;padding:5px 9px;font-size:.66rem;font-weight:700;cursor:pointer">No hay</button>'+
+        ? '<img src="'+_escDel(foto)+'" loading="lazy" onclick="verFotoProd(this.src)" onerror="this.style.visibility=\'hidden\'" style="width:64px;height:64px;object-fit:contain;background:#fff;border-radius:6px;flex-shrink:0;cursor:zoom-in">'
+        : '<div style="width:64px;height:64px;border-radius:6px;flex-shrink:0;background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:1.5rem">'+(f.tipo==='combo'?'🎁':(f.tipo==='suelto'?'✍':'📦'))+'</div>')+
+      '<span style="font-family:Oswald,sans-serif;font-size:1.2rem;font-weight:700;color:#052e16;background:'+(f.agregado?'#22c55e':'var(--gold)')+';border-radius:5px;padding:0 8px;flex-shrink:0">'+f.cant+'</span>'+
+      '<div style="flex:1;min-width:0;font-size:.9rem;color:var(--white);line-height:1.25">'+_escDel(f.nombre)+
+        (f.agregado ? '<div style="font-size:.64rem;color:#22c55e;font-weight:700;margin-top:2px">SUMADO POR EL LOCAL</div>' : '')+
       '</div>'+
     '</div>';
   });
-  if(faltan) h += '<div style="font-size:.74rem;color:#f87171;font-weight:700">❌ Avisale a la caja lo que no hay: ya lo ve en su pantalla, tiene que sacarlo antes de cobrar.</div>';
-  else if(todo) h += '<div style="font-size:.76rem;color:#22c55e;font-weight:700">✅ Pedido armado completo</div>';
   return h + '</div>';
 }
 function marcarArmado(id, nombre, estado){
