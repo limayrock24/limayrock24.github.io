@@ -193,7 +193,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "22"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "23"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -439,6 +439,10 @@ window.__LR_BUILD = "22"; // versión de ESTA página — se bumpea a mano acá 
   window.__lrDB.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
     window.__lrModoDelivery = doc.exists ? (doc.data().modo || 'auto') : 'auto';
+    // Cuántos pedidos puede tener tomados a la vez cada repartidor (0 = sin límite).
+    var _mx = doc.exists ? doc.data().maxPedidosRep : undefined;
+    window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
+    if(typeof renderPanelRepartidor === 'function' && currentEmp) renderPanelRepartidor();
     window.__lrDeliveryConfigListo = true;
     window.__lrSync.deliveryActivoListos = true;
     if(typeof pintarEstadoDisponible === 'function') pintarEstadoDisponible();
@@ -879,16 +883,23 @@ function renderPanelRepartidor() {
   // poco: si te llegó el aviso y entrás, ves que ya lo tomaron (y quién), en
   // vez de que el pedido "desaparezca" sin explicación.
   var tomadosHtml = (_repFiltro === 'libres' && !currentEmp.sinPedidos) ? htmlTomadosPorOtros(yo) : '';
+  var enLimite = _repFiltro === 'libres' && !currentEmp.sinPedidos && llegoAlLimite();
+  var limiteHtml = enLimite
+    ? '<div style="background:rgba(56,189,248,.10);border:1.5px solid rgba(56,189,248,.55);border-radius:8px;padding:11px 13px;margin-bottom:12px">'+
+        '<div style="font-size:.88rem;color:#38bdf8;font-weight:700">✋ '+textoLimite()+'</div>'+
+        '<div style="font-size:.74rem;color:var(--light);margin-top:3px">Podés ver los pedidos nuevos, pero para tomarlos primero marcá ✓ Entregado en uno de los tuyos.</div>'+
+      '</div>'
+    : '';
 
   if(!lista.length){
-    cont.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 20px;font-size:.85rem">'+
+    cont.innerHTML = limiteHtml + '<div style="text-align:center;color:var(--gray);padding:40px 20px;font-size:.85rem">'+
       (_repFiltro==='libres' ? 'No hay pedidos disponibles ahora mismo' : 'No tenés pedidos tomados')+'</div>' + tomadosHtml;
     return;
   }
 
   lista.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
 
-  cont.innerHTML = lista.map(function(p){
+  cont.innerHTML = limiteHtml + lista.map(function(p){
     var arm = '';
     var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     // Un renglón por producto con la cantidad grande adelante ("2  Manaos Pomelo 3L"),
@@ -943,7 +954,9 @@ function renderPanelRepartidor() {
               ? '<button onclick="marcarEntregado('+p.id+')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ Entregado</button>'
               : '<button disabled title="El local todavía no confirmó el cobro" style="flex:1;background:rgba(255,255,255,.06);color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:not-allowed">⏳ Falta cobrar</button>')+
             '<button onclick="soltarPedido('+p.id+')" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:10px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">Soltar</button>'
-          : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>')+
+          : (enLimite
+              ? '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:rgba(255,255,255,.06);color:var(--gray);border:1px solid var(--border);border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:not-allowed">✋ Entregá uno de los tuyos primero</button>'
+              : '<button onclick="tomarPedido('+p.id+')" style="flex:1;background:#22c55e;color:#052e16;border:none;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;font-size:.76rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 Tomar este pedido</button>'))+
       '</div>'+
     '</div>';
   }).join('') + tomadosHtml;
@@ -1243,13 +1256,30 @@ function marcarMensajeLeido(ts){
   mostrarMensajeRep();
 }
 
+function _maxPedidosRep(){ var n = window.__lrMaxPedidosRep; return (n === undefined || n === null || isNaN(n)) ? 2 : Number(n); }
+function pedidosEnCursoDe(nombre){
+  return getPedidosWeb().filter(function(p){
+    return p.repartidor === nombre && !p.anulado && p.estadoDelivery !== 'entregado' && p.estado !== 'resuelto';
+  }).length;
+}
+function llegoAlLimite(){
+  var max = _maxPedidosRep();
+  return !!(currentEmp && max > 0 && pedidosEnCursoDe(currentEmp.nombre) >= max);
+}
+function textoLimite(){
+  var max = _maxPedidosRep();
+  return 'Ya tenés '+max+' pedido'+(max>1?'s':'')+' en curso. Entregá uno para poder tomar otro.';
+}
+
 function tomarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p) return;
   if(p.repartidor){ showToast('✋ Ese pedido ya fue tomado — ¡estate atento a los próximos!', true); renderPanelRepartidor(); return; }
   if(currentEmp.sinPedidos){ showToast('No hay pedidos disponibles ahora mismo', true); renderPanelRepartidor(); return; }
-  if(_tomando[id]) return;
+  if(llegoAlLimite()){ showToast('✋ '+textoLimite(), true); renderPanelRepartidor(); return; }
+  // De a un pedido por vez: si toca dos "Tomar" seguidos, el segundo espera.
+  if(_tomando[id] || Object.keys(_tomando).length) return;
   _tomando[id] = true;
   var yo = currentEmp.nombre, ahora = new Date().toISOString();
   // Se toma con una transacción en la nube: si dos repartidores tocan

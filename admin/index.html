@@ -1675,6 +1675,9 @@
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
+    // Cuántos pedidos puede tener tomados a la vez cada repartidor (0 = sin límite).
+    var _mx = doc.exists ? doc.data().maxPedidosRep : undefined;
+    window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
     // El costo de envío urbano es UNO SOLO. Manda el de la configuración de
     // zonas: es el que se edita en la sección Delivery y el que usa el catálogo
     // para cobrarle al cliente. El campo suelto de la pantalla Inicio es el
@@ -28333,6 +28336,11 @@ function tomarPedido(id) {
   if(!p) return;
   if(p.repartidor){ showToast('Ese pedido ya lo tomó '+p.repartidor, true); renderPanelRepartidor(); return; }
   if(currentEmp.sinPedidos){ showToast('No hay pedidos disponibles ahora mismo', true); renderPanelRepartidor(); return; }
+  var _max = _maxPedidosRep();
+  if(_max > 0 && pedidosEnCursoDe(currentEmp.nombre) >= _max){
+    showToast('Ya tenés '+_max+' pedido'+(_max>1?'s':'')+' en curso — entregá uno para poder tomar otro', true);
+    return;
+  }
   p.repartidor = currentEmp.nombre;
   p.estadoDelivery = 'aceptado';
   p.tomadoEn = new Date().toISOString();
@@ -31685,6 +31693,20 @@ function eliminarMensajeDelivery(ts){
   });
 }
 
+function _maxPedidosRep(){ var n = window.__lrMaxPedidosRep; return (n === undefined || n === null || isNaN(n)) ? 2 : Number(n); }
+function cambiarMaxPedidosRep(v){
+  var n = Number(v) || 0;
+  window.__lrMaxPedidosRep = n;
+  window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({ maxPedidosRep: n }, { merge: true })
+    .then(function(){ showToast(n ? '🛵 Cada repartidor puede tener hasta '+n+' pedido'+(n>1?'s':'')+' a la vez' : '🛵 Sin límite de pedidos por repartidor'); })
+    .catch(function(e){ showToast('No se pudo guardar: '+(e && e.message || e), true); });
+}
+function pedidosEnCursoDe(nombre){
+  return getPedidosWeb().filter(function(p){
+    return p.repartidor === nombre && !p.anulado && p.estadoDelivery !== 'entregado' && p.estado !== 'resuelto';
+  }).length;
+}
+
 function renderDeliveryControl() {
   var el = document.getElementById('deliveryControl');
   if(!el) return;
@@ -31787,6 +31809,14 @@ function renderDeliveryControl() {
 
       '</div>'+
 
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--dark);border-radius:6px;padding:9px 12px;margin-bottom:8px">'+
+        '<div><div style="font-size:.78rem;color:var(--light)">🛵 Pedidos a la vez por repartidor</div>'+
+          '<div style="font-size:.64rem;color:var(--gray)">Con ese número en curso, tiene que entregar uno para tomar otro</div></div>'+
+        '<select onchange="cambiarMaxPedidosRep(this.value)" style="background:var(--card);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:7px 9px;font-family:Barlow,sans-serif;font-size:.8rem;outline:none">'+
+          [1,2,3,4].map(function(n){ return '<option value="'+n+'"'+(_maxPedidosRep()===n?' selected':'')+'>'+n+' pedido'+(n>1?'s':'')+'</option>'; }).join('')+
+          '<option value="0"'+(_maxPedidosRep()===0?' selected':'')+'>Sin límite</option>'+
+        '</select>'+
+      '</div>'+
       '<div onclick="window._repDelivAbierto=!window._repDelivAbierto;renderDeliveryPanel()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;background:var(--dark);border-radius:6px;padding:10px 12px">'+
         '<span style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--light);text-transform:uppercase">'+(window._repDelivAbierto?'▼':'▶')+' Repartidores ('+repartidores.length+')</span>'+
         '<span style="font-size:.7rem;color:'+(disponibles.length?'#22c55e':'var(--gray)')+'">'+disponibles.length+' disponible'+(disponibles.length===1?'':'s')+'</span>'+
