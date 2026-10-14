@@ -247,42 +247,50 @@ exports.avisoTurnoCerrado = onDocumentCreated(
 // Se manda desde Admin → Mensajes. Le llega a cada repartidor elegido en todos
 // sus celulares registrados, esté DISPONIBLE o no (por eso no se filtra por
 // destino 'repartidor'). Solo se saltean los celulares bloqueados.
+//
+// El aviso de "documento creado" se usa solo para despertar la función: se
+// buscan los mensajes de los últimos minutos que todavía no se avisaron y se
+// marcan (pushEnviado) dentro de una transacción, así cada uno se manda una
+// sola vez aunque la función se despierte dos veces. No depende del formato en
+// que llega el evento (publicada con gcloud llega sin los datos del documento).
 exports.avisoMensajeRepartidor = onDocumentCreated(
   { document: 'avisosDelivery/{id}', region: REGION },
-  async (event) => {
-    // Se lee el mensaje directo de la base por su id: no depende del formato
-    // en que llega el evento (según cómo se publicó la función, puede venir
-    // sin los datos del documento).
-    const id = (event.params && event.params.id) ||
-      String(event.document || event.subject || '').split('/').pop();
-    let m = null;
-    try { m = event.data && typeof event.data.data === 'function' ? event.data.data() : null; } catch (e) { m = null; }
-    if ((!m || !m.texto) && id) {
-      const doc = await db.collection('avisosDelivery').doc(id).get();
-      m = doc.exists ? doc.data() : null;
-    }
-    console.log(`Mensaje a repartidores, id ${id}: ${m ? 'leído' : 'no encontrado'}`);
-    if (!m || !m.texto) return;
-    const para = Array.isArray(m.para) ? m.para.filter(n => typeof n === 'string' && n) : [];
-    console.log(`Para: ${para.join(', ') || '(nadie)'}`);
-    if (!para.length) return;
+  async () => {
+    const desde = Date.now() - 15 * 60 * 1000;
+    const snap = await db.collection('avisosDelivery').where('ts', '>=', desde).get();
+    const pendientes = snap.docs.filter(d => !d.data().pushEnviado);
+    console.log(`Mensajes a repartidores sin avisar: ${pendientes.length}`);
 
-    const tokens = [];
-    // "in" acepta hasta 30 nombres por consulta.
-    for (let i = 0; i < para.length; i += 30) {
-      const snap = await db.collection('fcmTokens').where('quien', 'in', para.slice(i, i + 30)).get();
-      snap.forEach(doc => {
-        const d = doc.data();
-        if (d.token && d.destino !== 'repartidor-bloqueado' && d.destino !== 'dueno' && tokens.indexOf(d.token) === -1) {
-          tokens.push(d.token);
-        }
+    for (const doc of pendientes) {
+      const tomado = await db.runTransaction(async (tx) => {
+        const fresco = await tx.get(doc.ref);
+        if (!fresco.exists || fresco.data().pushEnviado) return null;
+        tx.update(doc.ref, { pushEnviado: new Date().toISOString() });
+        return fresco.data();
       });
+      if (!tomado || !tomado.texto) continue;
+      await avisarMensaje(doc.id, tomado);
     }
-    if (!tokens.length) {
-      console.log(`Mensaje a ${para.join(', ')}: ningún celular registrado`);
-      return;
-    }
-    const cuerpo = String(m.texto).slice(0, 400);
-    await enviarATokens(tokens, '📣 Mensaje del local', cuerpo, { tag: 'mensaje', url: '/delivery/' });
   }
 );
+
+async function avisarMensaje(id, m) {
+  const para = Array.isArray(m.para) ? m.para.filter(n => typeof n === 'string' && n) : [];
+  if (!para.length) return;
+
+  const tokens = [];
+  // "in" acepta hasta 30 nombres por consulta.
+  for (let i = 0; i < para.length; i += 30) {
+    const snap = await db.collection('fcmTokens').where('quien', 'in', para.slice(i, i + 30)).get();
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.token && d.destino !== 'repartidor-bloqueado' && d.destino !== 'dueno' && tokens.indexOf(d.token) === -1) {
+        tokens.push(d.token);
+      }
+    });
+  }
+  console.log(`Mensaje ${id} para ${para.join(', ')}: ${tokens.length} celular(es)`);
+  if (!tokens.length) return;
+  const cuerpo = String(m.texto).slice(0, 400);
+  await enviarATokens(tokens, '📣 Mensaje del local', cuerpo, { tag: 'mensaje', url: '/delivery/' });
+}
