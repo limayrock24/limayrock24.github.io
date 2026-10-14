@@ -424,6 +424,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
         style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:6px;padding:13px;font-size:.85rem;font-weight:600;cursor:pointer">
         📍 Compartir mi ubicación
       </button>
+      <button type="button" onclick="abrirMapaUbicacion()" id="btnMapaUbic"
+        style="width:100%;margin-top:7px;background:transparent;border:1.5px solid #F4B400;color:#F4B400;border-radius:6px;padding:11px;font-size:.82rem;font-weight:600;cursor:pointer">
+        🗺️ Marcarla en el mapa
+      </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
       <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
       <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación</b> es lo que mejor guía al repartidor. Si no podés, escribí tu dirección abajo y mandanos la ubicación por WhatsApp.</div>
@@ -603,7 +607,7 @@ function recalcularEnvioPorZona(){
   // cliente vea el envío corregido en el momento en que comparte su ubicación.
   var envEl = document.getElementById('cartEnvioModal');
   if(envEl){
-    envEl.textContent = fmt(COSTO_ENVIO);
+    envEl.textContent = textoEnvioCarrito();
     var fila = document.getElementById('envioRow');
     if(fila) fila.style.display = COSTO_ENVIO > 0 ? 'flex' : 'none';
     var totEl = document.getElementById('cartTotalModal');
@@ -624,9 +628,9 @@ function actualizarCartelZona(){
       el.style.display = 'block';
       el.style.background = 'rgba(244,180,0,.10)';
       el.style.borderColor = 'rgba(244,180,0,.45)';
-      el.innerHTML = '<b style="color:#F4B400">📍 Envío a confirmar</b><br>'+
-        '<span style="color:var(--gray)">Sin tu ubicación tomamos el envío de la zona urbana (<b style="color:#F4B400">'+fmt(COSTO_ENVIO)+'</b>). '+
-        'Si estás a más de '+String(ZONA_CFG.radioKm != null ? ZONA_CFG.radioKm : 2).replace('.',',')+' km del local, te confirmamos el envío por WhatsApp.</span>';
+      el.innerHTML = '<b style="color:#F4B400">📍 Envío según tu ubicación</b><br>'+
+        '<span style="color:var(--gray)">Compartí tu ubicación o marcala en el mapa y te mostramos el envío exacto. '+
+        'Si seguís sin ubicación, el local te confirma el envío por WhatsApp.</span>';
     } else el.style.display = 'none';
     return;
   }
@@ -1801,7 +1805,13 @@ function subtotalCarrito(){
   entradasCombosCarrito().forEach(function(e){ total += e.cb.precio * e.cantidad; });
   return total;
 }
-function totalConEnvio(){ return subtotalCarrito() + (cantidadCarrito()>0 ? COSTO_ENVIO : 0); }
+// Sin ubicación no se sabe la distancia: el envío queda "a confirmar por el
+// local" y no se suma al total (antes se sumaba el de zona urbana y el cliente
+// veía un total que después podía cambiar).
+function envioPendiente(){ return !!(ZONA_CFG && ZONA_CFG.lat != null && !UBICACION_GPS && COSTO_ENVIO > 0); }
+function envioACobrar(){ return envioPendiente() ? 0 : COSTO_ENVIO; }
+function totalConEnvio(){ return subtotalCarrito() + (cantidadCarrito()>0 ? envioACobrar() : 0); }
+function textoEnvioCarrito(){ return envioPendiente() ? 'Según tu ubicación' : fmt(COSTO_ENVIO); }
 function cantidadCarrito(){
   var cant = 0;
   Object.keys(CARRITO).forEach(function(k){ cant += CARRITO[k].cantidad; });
@@ -2038,7 +2048,7 @@ function abrirCarrito(){
   if(!DELIVERY_ACTIVO){ alert('El delivery está en pausa ahora — no podemos tomar pedidos, pero podés acercarte al local a comprar directo.'); return; }
   document.getElementById('cartItemsList').innerHTML = armarListaCombosHtml() + armarListaItemsHtml() + armarListaManualHtml();
   document.getElementById('cartSubtotalModal').textContent = fmt(subtotalCarrito());
-  document.getElementById('cartEnvioModal').textContent = fmt(COSTO_ENVIO);
+  document.getElementById('cartEnvioModal').textContent = textoEnvioCarrito();
   document.getElementById('envioRow').style.display = COSTO_ENVIO>0 ? 'flex' : 'none';
   document.getElementById('cartTotalModal').textContent = fmt(totalConEnvio());
   document.getElementById('checkoutError').style.display = 'none';
@@ -2115,14 +2125,15 @@ function preguntarSinUbicacion(){
     ov.className = 'overlay'; ov.id = 'sinUbicOverlay'; ov.style.zIndex = '260';
     ov.innerHTML =
       '<div class="modal" style="text-align:center">'+
-        '<div style="font-size:2rem;margin-bottom:6px">📍</div>'+
-        '<h3 style="margin-bottom:10px">¿Confirmás sin tu ubicación?</h3>'+
-        '<p style="font-size:.86rem;color:var(--light);line-height:1.5;margin:0 0 6px">No compartiste tu ubicación. Podés seguir igual, pero <b>mandanos tu ubicación por WhatsApp</b> así el repartidor te encuentra rápido.</p>'+
-        '<p style="font-size:.74rem;color:var(--gray);line-height:1.4;margin:0 0 16px">El envío se calcula como zona urbana. Si estás más lejos, te lo confirmamos por WhatsApp.</p>'+
-        '<button type="button" id="sinUbicNo" style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:8px;padding:13px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:8px">📍 No, compartir mi ubicación</button>'+
-        '<button type="button" id="sinUbicSi" style="width:100%;background:transparent;border:1.5px solid var(--border);color:var(--light);border-radius:8px;padding:12px;font-size:.86rem;cursor:pointer">Sí, confirmar sin ubicación</button>'+
+        '<div style="font-size:2.2rem;margin-bottom:4px">📍</div>'+
+        '<h3 style="margin-bottom:8px">Compartí tu ubicación</h3>'+
+        '<p style="font-size:.88rem;color:var(--light);line-height:1.5;margin:0 0 16px">Así te mostramos el <b>envío exacto</b> y el repartidor <b>te encuentra rápido</b>.</p>'+
+        '<button type="button" id="sinUbicNo" style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:8px;padding:14px;font-size:.95rem;font-weight:700;cursor:pointer;margin-bottom:8px">📍 Usar mi ubicación actual</button>'+
+        '<button type="button" id="sinUbicMapa" style="width:100%;background:transparent;border:1.5px solid #F4B400;color:#F4B400;border-radius:8px;padding:13px;font-size:.92rem;font-weight:700;cursor:pointer;margin-bottom:14px">🗺️ Marcarla en el mapa</button>'+
+        '<button type="button" id="sinUbicSi" style="background:none;border:none;color:var(--gray);font-size:.78rem;text-decoration:underline;cursor:pointer;padding:4px">Seguir sin ubicación (el local te confirma el envío por WhatsApp)</button>'+
       '</div>';
     document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.classList.remove('show'); });
   }
   ov.classList.add('show');
   document.getElementById('sinUbicSi').onclick = function(){
@@ -2136,7 +2147,117 @@ function preguntarSinUbicacion(){
     if(b && b.scrollIntoView) b.scrollIntoView({behavior:'smooth', block:'center'});
     usarMiUbicacion();
   };
+  document.getElementById('sinUbicMapa').onclick = function(){
+    ov.classList.remove('show');
+    _venirDeConfirmar = true;
+    abrirMapaUbicacion();
+  };
 }
+
+// ── MARCAR LA UBICACIÓN EN EL MAPA ──────────────────────────────────────────
+// Para el que no puede (o no quiere) usar el GPS: mueve el mapa hasta su casa
+// y confirma. Con vista satelital, que sirve mucho en las chacras.
+var _mapaUbic = null;
+function _cargarLeaflet(){
+  if(window.L) return Promise.resolve();
+  return new Promise(function(ok, mal){
+    var css = document.createElement('link');
+    css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    var js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = function(){ ok(); }; js.onerror = mal;
+    document.head.appendChild(js);
+  });
+}
+function abrirMapaUbicacion(){
+  var ov = document.getElementById('mapaUbicOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'mapaUbicOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:300;background:#000;display:flex;flex-direction:column';
+    ov.innerHTML =
+      '<div style="padding:12px 14px;background:#111;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+        '<div><div style="font-weight:700;color:#fff;font-size:.95rem">🗺️ Mové el mapa hasta tu casa</div>'+
+        '<div style="font-size:.72rem;color:#aaa">El pin rojo del centro marca dónde te lo llevamos</div></div>'+
+        '<button type="button" onclick="cerrarMapaUbicacion()" style="background:none;border:none;color:#aaa;font-size:1.5rem;cursor:pointer">✕</button>'+
+      '</div>'+
+      '<div style="position:relative;flex:1">'+
+        '<div id="mapaUbicDiv" style="position:absolute;inset:0"></div>'+
+        '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);z-index:500;pointer-events:none;font-size:2.4rem;line-height:1;filter:drop-shadow(0 2px 3px rgba(0,0,0,.6))">📍</div>'+
+        '<div style="position:absolute;top:10px;right:10px;z-index:500;display:flex;gap:6px">'+
+          '<button type="button" id="mapaBtnCalle" onclick="capaMapaUbic(\'calle\')" style="background:#fff;color:#111;border:none;border-radius:6px;padding:7px 10px;font-size:.78rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer">Mapa</button>'+
+          '<button type="button" id="mapaBtnSat" onclick="capaMapaUbic(\'sat\')" style="background:#333;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:.78rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer">Satélite</button>'+
+        '</div>'+
+      '</div>'+
+      '<div style="padding:12px 14px;background:#111;border-top:1px solid #333">'+
+        '<div id="mapaUbicInfo" style="font-size:.78rem;color:#ccc;margin-bottom:8px;min-height:1.1em"></div>'+
+        '<button type="button" onclick="confirmarMapaUbicacion()" style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:8px;padding:14px;font-size:.95rem;font-weight:700;cursor:pointer">✓ Usar esta ubicación</button>'+
+      '</div>';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  var info = document.getElementById('mapaUbicInfo');
+  info.textContent = 'Cargando mapa…';
+  _cargarLeaflet().then(function(){
+    var centro = UBICACION_GPS ? [UBICACION_GPS.lat, UBICACION_GPS.lng]
+      : (ZONA_CFG && ZONA_CFG.lat != null ? [Number(ZONA_CFG.lat), Number(ZONA_CFG.lng)] : [-38.95, -68.06]);
+    if(!_mapaUbic){
+      _mapaUbic = L.map('mapaUbicDiv', { zoomControl: true, attributionControl: true }).setView(centro, 16);
+      _mapaUbic._capas = {
+        calle: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
+        sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imágenes © Esri' })
+      };
+      _mapaUbic._capas.calle.addTo(_mapaUbic);
+      _mapaUbic.on('move', infoMapaUbic);
+    } else {
+      _mapaUbic.setView(centro, Math.max(_mapaUbic.getZoom(), 16));
+    }
+    setTimeout(function(){ _mapaUbic.invalidateSize(); infoMapaUbic(); }, 150);
+  }).catch(function(){
+    info.textContent = 'No se pudo cargar el mapa. Probá con "Compartir mi ubicación" o mandanos la ubicación por WhatsApp.';
+  });
+}
+function capaMapaUbic(cual){
+  if(!_mapaUbic) return;
+  var c = _mapaUbic._capas;
+  Object.keys(c).forEach(function(k){ if(_mapaUbic.hasLayer(c[k])) _mapaUbic.removeLayer(c[k]); });
+  c[cual].addTo(_mapaUbic);
+  document.getElementById('mapaBtnCalle').style.cssText += cual === 'calle' ? ';background:#fff;color:#111' : ';background:#333;color:#fff';
+  document.getElementById('mapaBtnSat').style.cssText += cual === 'sat' ? ';background:#fff;color:#111' : ';background:#333;color:#fff';
+}
+function infoMapaUbic(){
+  var info = document.getElementById('mapaUbicInfo');
+  if(!_mapaUbic || !info) return;
+  if(!(ZONA_CFG && ZONA_CFG.lat != null)){ info.textContent = ''; return; }
+  var c = _mapaUbic.getCenter();
+  var km = distanciaKm(Number(ZONA_CFG.lat), Number(ZONA_CFG.lng), c.lat, c.lng);
+  info.innerHTML = 'Estás a <b style="color:#fff">' + km.toFixed(1).replace('.', ',') + ' km</b> del local';
+}
+function cerrarMapaUbicacion(){
+  var ov = document.getElementById('mapaUbicOverlay');
+  if(ov) ov.style.display = 'none';
+}
+function confirmarMapaUbicacion(){
+  if(!_mapaUbic) return;
+  var c = _mapaUbic.getCenter();
+  UBICACION_GPS = { lat: Math.round(c.lat*1e6)/1e6, lng: Math.round(c.lng*1e6)/1e6, precision: null, mapa: true };
+  cerrarMapaUbicacion();
+  var btn = document.getElementById('btnUbicacion');
+  if(btn){ btn.textContent = '📍 Usar mi ubicación actual'; btn.style.background = '#D2201F'; btn.style.color = '#fff'; }
+  var bm = document.getElementById('btnMapaUbic');
+  if(bm){ bm.textContent = '✓ Ubicación marcada en el mapa (tocá para cambiarla)'; bm.style.background = '#2ecc71'; bm.style.color = '#052e16'; bm.style.borderColor = '#2ecc71'; }
+  recalcularEnvioPorZona();
+  var est = document.getElementById('ubicacionEstado');
+  if(est){
+    est.style.display = 'block'; est.style.color = '#2ecc71';
+    est.innerHTML = '✓ Listo, marcaste tu ubicación en el mapa.<br><span style="color:var(--gray)">Si podés, agregá la calle y una referencia — nos ayuda a llegar más rápido.</span>';
+  }
+  // Si venía del cartel de "confirmar sin ubicación", seguir al resumen.
+  var datos = document.getElementById('datosOverlay');
+  if(datos && datos.classList.contains('show') && _venirDeConfirmar){ _venirDeConfirmar = false; irAConfirmar(); }
+}
+var _venirDeConfirmar = false;
 // GPS OBLIGATORIO para pedir por acá (ver irAConfirmar): sin ubicación
 // compartida no se puede confirmar el pedido — es el dato que hace que le
 // llegue al repartidor en su app con el mapa. La dirección escrita más abajo
@@ -2166,6 +2287,8 @@ function usarMiUbicacion(){
       precision: Math.round(pos.coords.accuracy)
     };
     if(btn){ btn.textContent = '✓ Ubicación compartida'; btn.style.background = '#2ecc71'; btn.style.color = '#052e16'; btn.disabled = false; }
+    var bm = document.getElementById('btnMapaUbic');
+    if(bm){ bm.textContent = '🗺️ Ajustarla en el mapa'; bm.style.background = 'transparent'; bm.style.color = '#F4B400'; bm.style.borderColor = '#F4B400'; }
     recalcularEnvioPorZona();
     if(est){
       est.style.display = 'block';
@@ -2235,10 +2358,10 @@ function irAConfirmar(){
   }
 
   document.getElementById('confirmItemsList').innerHTML = armarListaItemsHtml() + armarListaManualHtml();
-  document.getElementById('confirmTotal').textContent = fmt(totalConEnvio()) + (!UBICACION_GPS && COSTO_ENVIO > 0 ? ' *' : '');
+  document.getElementById('confirmTotal').textContent = fmt(totalConEnvio()) + (envioPendiente() ? ' + envío' : '');
   var _avEnv = document.getElementById('confirmEnvioAviso');
   if(!_avEnv){ _avEnv = document.createElement('div'); _avEnv.id = 'confirmEnvioAviso'; _avEnv.style.cssText = 'font-size:.74rem;color:#F4B400;margin-top:6px;text-align:right'; var _tr = document.getElementById('confirmTotal').parentNode; _tr.parentNode.insertBefore(_avEnv, _tr.nextSibling); }
-  _avEnv.textContent = (!UBICACION_GPS && COSTO_ENVIO > 0) ? '* El envío se confirma por WhatsApp según tu ubicación' : '';
+  _avEnv.textContent = envioPendiente() ? 'El envío te lo confirma el local por WhatsApp según tu ubicación' : '';
   document.getElementById('datosOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.add('show');
 }
@@ -2258,7 +2381,8 @@ function confirmarPedido(){
   var notasManuales = Object.keys(CARRITO_MANUAL).map(function(k){ return CARRITO_MANUAL[k]; });
   var notasSinPrecio = notasManuales.filter(function(it){ return !it.precio; });
   var subtotal = subtotalCarrito();
-  var envio = COSTO_ENVIO;
+  var _pend = envioPendiente();
+  var envio = envioACobrar();
   var total = totalConEnvio();
   var pedidoId = Date.now();
   var codSeguimiento = nuevoCodigoSeguimiento();
@@ -2272,7 +2396,9 @@ function confirmarPedido(){
     referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
     sinUbicacion: !UBICACION_GPS,
-    envioAConfirmar: !UBICACION_GPS && COSTO_ENVIO > 0,
+    envioAConfirmar: _pend,
+    envioEstimado: _pend ? COSTO_ENVIO : null,
+    ubicacionMarcadaEnMapa: !!(UBICACION_GPS && UBICACION_GPS.mapa),
     medioPago: MEDIO_PAGO_SEL,
     zona: ZONA_ACTUAL,
     distanciaKm: ZONA_ACTUAL ? Math.round(ZONA_DISTANCIA*10)/10 : null,
@@ -2344,8 +2470,9 @@ function confirmarPedido(){
 
   msg += '\n💰 *TOTAL*\n';
   msg += 'Subtotal: '+fmt(subtotal)+'\n';
-  if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':(ZONA_ACTUAL==='lejos'?' (zona alejada)':''))+': '+fmt(envio)+(!UBICACION_GPS?' _(a confirmar según mi ubicación)_':'')+'\n';
-  msg += '*Total: '+fmt(total)+'*';
+  if(_pend) msg += 'Envío: _a confirmar por el local según mi ubicación_\n';
+  else if(envio>0) msg += 'Envío'+(ZONA_ACTUAL==='rural'?' (chacra/rural)':(ZONA_ACTUAL==='lejos'?' (zona alejada)':''))+': '+fmt(envio)+'\n';
+  msg += _pend ? '*Total productos: '+fmt(total)+'* + envío' : '*Total: '+fmt(total)+'*';
   if(notasSinPrecio.length) msg += ' _(sin lo que falta confirmar)_';
   msg += '\n';
 
@@ -2356,7 +2483,7 @@ function confirmarPedido(){
   var refTxt = (document.getElementById('clienteReferencia').value||'').trim();
   if(refTxt) msg += '_' + refTxt + '_\n';
   if(UBICACION_GPS){
-    msg += 'Ubicación en el mapa:\n';
+    msg += (UBICACION_GPS.mapa ? 'Ubicación (marcada en el mapa):\n' : 'Ubicación en el mapa:\n');
     msg += 'https://maps.google.com/?q=' + UBICACION_GPS.lat + ',' + UBICACION_GPS.lng + '\n';
   } else {
     msg += '📍 *Les mando mi ubicación por acá* 👇\n';

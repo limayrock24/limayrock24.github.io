@@ -194,7 +194,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "23"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "24"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -950,7 +950,8 @@ function renderPanelRepartidor() {
       (arm || '')+
       (arm ? '' : ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#22c55e;font-weight:700;margin-bottom:2px">➕ SUMADO EN EL LOCAL</div>'+p.itemsAgregados.map(function(it){ return filaProdDelivery(it.cantidad, it.nombre, '#22c55e'); }).join('')+'</div>' : '')+
       ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:2px">➖ SACADO (no va)</div>'+p.itemsQuitados.map(function(it){ return filaProdDelivery(it.cantidad, '<s>'+it.nombre+'</s>', '#f87171'); }).join('')+'</div>' : ''))+
-      ((p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
+      ((p.envioAConfirmar && !p.envioConfirmado) ? '<div style="font-size:.74rem;color:#F4B400;margin-top:5px">Envío: a confirmar por el local (el cliente no mandó la ubicación)</div>' : '')+
+      ((!(p.envioAConfirmar && !p.envioConfirmado)) && (p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
         (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
       '<div style="display:flex;gap:8px;margin-top:11px">'+

@@ -13112,9 +13112,15 @@ function savePedidosWeb(p) {
 // El LOCAL le pasa al cliente los datos para pagar: si es transferencia, el
 // alias y el titular; si es efectivo, la pregunta de con cuánto abona para
 // preparar el vuelto. Lo hace el local porque es quien cobra y verifica.
-function enviarDatosCobro(id) {
+function enviarDatosCobro(id, yaConfirmado) {
   var p = getPedidosWeb().find(function(x){ return x.id===id; });
   if(!p) return;
+  // Sin ubicación el envío quedó a confirmar: no mandar los datos de pago con
+  // un total que todavía no incluye el envío.
+  if(!yaConfirmado && p.envioAConfirmar && !p.envioConfirmado){
+    askConfirm('⚠️ El envío de este pedido todavía no está confirmado (el cliente no mandó la ubicación).\n\nElegí la zona o pegá la ubicación antes de pasarle los datos de pago.\n\n¿Mandar igual los datos de pago SIN envío?').then(function(ok){ if(ok) enviarDatosCobro(id, true); });
+    return;
+  }
   var tel = (p.telefono||'').replace(/\D/g,'');
   if(tel.length <= 10) tel = '549' + tel;
   window.open('https://wa.me/' + tel + '?text=' + encodeURIComponent(mensajeConfirmacionPedido(p)), '_blank');
@@ -28982,7 +28988,8 @@ function abrirDeliveryPendModal() {
     cont.innerHTML = pendientes.map(function(p){
       var hora = new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       var itemsTxt = (p.items||[]).map(function(it){ return it.nombre+' ×'+it.cantidad; }).join(', ');
-      var envioTxt = p.envio>0 ? ' <span style="color:var(--gray)">(productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+')</span>' : '';
+      var envioTxt = (p.envioAConfirmar && !p.envioConfirmado) ? ' <span style="color:#F4B400">(productos — falta confirmar el envío)</span>'
+        : p.envio>0 ? ' <span style="color:var(--gray)">(productos '+fmt(p.subtotal||(p.total-p.envio))+' + envío '+fmt(p.envio)+')</span>' : '';
       var notasHtml = (p.notasManuales && p.notasManuales.length)
         ? '<div style="background:rgba(210,32,31,.08);border:1px solid rgba(210,32,31,.3);border-radius:6px;padding:8px 10px;margin:6px 0;font-size:.76rem">'+
             '<div style="color:var(--red);font-weight:700;margin-bottom:3px">📝 Cargar a mano:</div>'+
@@ -29097,6 +29104,9 @@ function cargarPedidoAlCarrito(id) {
     if(!confirm('⚠️ El carrito ya tiene productos cargados.\n\n¿Agregamos el pedido de '+pedido.nombre+' arriba de lo que ya está?')) return;
   }
   _pedidoWebEnCarrito = id;
+  if(pedido.envioAConfirmar && !pedido.envioConfirmado){
+    setTimeout(function(){ showToast('⚠️ Este pedido llegó sin ubicación: falta confirmar el envío (elegí la zona en Pedidos)', true); }, 600);
+  }
 
   // Combos pedidos desde el catálogo web: se cargan igual que si se hubieran
   // tocado desde el panel de venta — se cobra el precio del combo y el stock de
@@ -29251,7 +29261,7 @@ function htmlAjusteEnvio(p){
   var titulo = p.envioConfirmado
     ? '<div style="font-size:.76rem;color:var(--green);font-weight:700">✓ Envío confirmado: '+nombreZonaEnvio(p.zona)+(p.distanciaKm?' · '+String(p.distanciaKm).replace('.',',')+' km':'')+' · '+fmt(p.envio||0)+'</div>'
     : '<div style="font-size:.76rem;color:#F4B400;font-weight:700">📍 Mandó el pedido SIN ubicación — envío a confirmar</div>'+
-      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">El catálogo le puso la zona urbana ('+fmt(p.envio||0)+'). Pedile la ubicación y elegí la zona <b>antes</b> de pasarle los datos de pago.</div>';
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">'+(p.envio > 0 ? 'El catálogo le puso la zona urbana ('+fmt(p.envio)+').' : 'El envío quedó a confirmar.')+' Pedile la ubicación y elegí la zona <b>antes</b> de pasarle los datos de pago.</div>';
   return '<div style="background:rgba(244,180,0,.08);border:1px solid rgba(244,180,0,.45);border-radius:6px;padding:8px 10px;margin-top:7px">'+
     titulo+
     '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">'+
