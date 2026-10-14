@@ -3,7 +3,7 @@
 <script>document.write('<script src="imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="lr-identificacion.js?v=2"></script>
+<script src="lr-identificacion.js?v=3"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
@@ -5394,6 +5394,7 @@ body.night-on{background:#080005}
       <!-- Centro de control del delivery: todo lo operativo junto, en vez de
            repartido entre Inicio y el historial -->
       <div id="deliveryControl" style="margin-bottom:12px"></div>
+      <div id="deliveryEquipos" style="margin-bottom:12px"></div>
       <!-- Pedidos en curso: arriba de todo, apenas llegan -->
       <div id="deliveryPedidosActivos"></div>
       <div id="deliveryZonas" style="margin-bottom:12px"></div>
@@ -31718,6 +31719,71 @@ function pedidosEnCursoDe(nombre){
   }).length;
 }
 
+// ── CELULARES DE REPARTIDORES (seguridad) ─────────────────────────────────
+// Lista de los celulares que usan la app de delivery y si ya están
+// identificados con la cuenta delivery@. Cuando estén todos, se puede cerrar
+// la base para que nadie de afuera pueda leer empleados ni pedidos.
+var _equiposDel = null, _tokensDel = null, _equiposDelTs = 0;
+function renderDeliveryEquipos(forzar){
+  var el = document.getElementById('deliveryEquipos');
+  if(!el || !window.__lrDB) return;
+  if(forzar || !_equiposDel || Date.now() - _equiposDelTs > 60000){
+    _equiposDelTs = Date.now();
+    Promise.all([
+      window.__lrDB.collection('dispositivos').where('panel', '==', 'delivery').get(),
+      window.__lrDB.collection('fcmTokens').get()
+    ]).then(function(r){
+      _equiposDel = r[0].docs.map(function(d){ return d.data(); });
+      _tokensDel = r[1].docs.map(function(d){ return d.data(); });
+      pintarDeliveryEquipos();
+    }).catch(function(e){ console.warn('equipos delivery', e && e.message); });
+  }
+  pintarDeliveryEquipos();
+}
+// Por repartidor: los que trabajaron o se conectaron en los últimos 30 días, y
+// si tienen al menos un celular identificado con la cuenta delivery@.
+function pintarDeliveryEquipos(){
+  var el = document.getElementById('deliveryEquipos');
+  if(!el || !_equiposDel) return;
+  var hace30 = Date.now() - 30*24*60*60*1000;
+  var reciente = function(iso){ return iso && new Date(iso).getTime() >= hace30; };
+  var reps = (window.EMPLEADOS||[]).filter(function(e){ return e.accesoDelivery; });
+  var activos = reps.filter(function(e){
+    if(e.disponibleDelivery) return true;
+    if((_tokensDel||[]).some(function(t){ return t.quien === e.nombre && reciente(t.fecha || t.actualizado); })) return true;
+    return getPedidosWeb().some(function(p){ return p.repartidor === e.nombre && reciente(p.tomadoEn || p.fecha); });
+  });
+  var filas = activos.map(function(e){
+    var devs = _equiposDel.filter(function(d){ return d.quien === e.nombre && d.cuenta && reciente(d.ultimaVez); });
+    return { nombre: e.nombre, ok: devs.length > 0, devs: devs };
+  }).sort(function(a,b){ return (a.ok?1:0) - (b.ok?1:0) || a.nombre.localeCompare(b.nombre); });
+  var ok = filas.filter(function(f){ return f.ok; }).length, faltan = filas.length - ok;
+  var hace = function(iso){
+    var m = Math.round((Date.now() - new Date(iso).getTime())/60000);
+    return m < 60 ? 'hace '+m+' min' : (m < 1440 ? 'hace '+Math.round(m/60)+' h' : 'hace '+Math.round(m/1440)+' días');
+  };
+  var abierto = !!window._equiposDelAbierto;
+  el.innerHTML = '<div style="background:var(--card);border:1px solid '+(faltan ? 'rgba(244,180,0,.45)' : 'rgba(34,197,94,.4)')+';border-radius:8px;padding:12px 14px">'+
+    '<div onclick="window._equiposDelAbierto=!window._equiposDelAbierto;pintarDeliveryEquipos()" style="display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:2px;color:var(--light);text-transform:uppercase">'+(abierto?'▼':'▶')+' 🔒 Celulares de repartidores</div>'+
+      '<div style="font-size:.74rem;font-weight:700;color:'+(faltan ? '#F4B400' : 'var(--green)')+'">'+(filas.length ? ok+' de '+filas.length+' identificados' : 'sin repartidores activos')+'</div>'+
+    '</div>'+
+    (abierto ? (
+      '<div style="font-size:.7rem;color:var(--gray);margin:6px 0 8px">En el celular del repartidor, con la app actualizada: tocá <b>🔒 Equipo sin identificar</b> y poné la cuenta <b>delivery@limayrock.app</b> con su clave. Se hace una sola vez. Se listan los repartidores que trabajaron o se conectaron en los últimos 30 días.</div>'+
+      filas.map(function(f){
+        var d = f.devs.sort(function(a,b){ return new Date(b.ultimaVez) - new Date(a.ultimaVez); })[0];
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,.06)">'+
+          '<div style="min-width:0"><div style="font-size:.84rem;color:var(--white)">'+(f.ok ? '✅' : '❌')+' '+String(f.nombre).replace(/</g,'&lt;')+'</div>'+
+          '<div style="font-size:.66rem;color:var(--gray)">'+(d ? (d.nombre ? String(d.nombre).replace(/</g,'&lt;')+' · ' : '')+(f.devs.length > 1 ? f.devs.length+' celulares · ' : '')+'versión '+(d.version||'?')+' · usado '+hace(d.ultimaVez) : 'Ningún celular identificado todavía')+'</div></div>'+
+          '<div style="font-size:.7rem;font-weight:700;white-space:nowrap;color:'+(f.ok ? 'var(--green)' : '#F4B400')+'">'+(f.ok ? 'Identificado' : 'Falta identificar')+'</div>'+
+        '</div>';
+      }).join('')+
+      (filas.length && !faltan ? '<div style="font-size:.74rem;color:var(--green);margin-top:8px;font-weight:700">✅ Están todos identificados: ya se puede cerrar la base.</div>' : '')+
+      '<button onclick="renderDeliveryEquipos(true)" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:6px 10px;font-size:.7rem;cursor:pointer">↻ Actualizar</button>'
+    ) : '')+
+  '</div>';
+}
+
 function renderDeliveryControl() {
   var el = document.getElementById('deliveryControl');
   if(!el) return;
@@ -32131,6 +32197,7 @@ function toggleHistorialDelivery() {
 }
 function renderDeliveryPanel() {
   renderDeliveryControl();
+  if(typeof renderDeliveryEquipos === 'function') renderDeliveryEquipos();
   var deliveriesTodas = getDeliveries();
   var rango = getRangoDelivery();
   var deliveries = deliveriesTodas.filter(function(d){

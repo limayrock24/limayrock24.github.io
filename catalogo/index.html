@@ -802,6 +802,10 @@ function guardarPedidoNuevo(pedido, intento){
   }).then(function(){
     _sacarPedidoPend(pedido.id);
   }).catch(function(e){
+    // Con la base cerrada, el público solo puede consultar un pedido que
+    // todavía NO existe. "Sin permiso" quiere decir que ya está guardado en
+    // el local (llegó en un intento anterior): no hay que reintentar.
+    if(e && e.code === 'permission-denied'){ _sacarPedidoPend(pedido.id); return; }
     console.error('Error guardando pedido web (intento '+(intento+1)+')', e);
     // Sin conexión: se reintenta solo, cada vez más espaciado, durante ~1 hora.
     if(intento < 12) setTimeout(function(){ guardarPedidoNuevo(pedido, intento+1); }, Math.min(5000*Math.pow(2, intento), 300000));

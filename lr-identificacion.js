@@ -99,10 +99,14 @@
   function registrarDispositivo(){
     try{
       if(!window.__lrDB) return;
+      try{ if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) guardar('lr_dispositivo_quien', currentEmp.nombre); }catch(e){}
       window.__lrDB.collection('dispositivos').doc(idDispositivo()).set({
         panel: window.__lrPanel || '',
         cuenta: window.__lrUsuario || null,
         nombre: leer('lr_dispositivo_nombre') || '',
+        // Quién lo está usando (en la app de delivery: el repartidor que
+        // entró con su PIN), para saber de quién es cada celular.
+        quien: (function(){ try{ return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) ? currentEmp.nombre : (leer('lr_dispositivo_quien') || ''); }catch(e){ return ''; } })(),
         ultimaVez: new Date().toISOString(),
         version: String(window.__LR_BUILD || ''),
         navegador: navigator.userAgent.slice(0, 140)
@@ -167,6 +171,7 @@
     setTimeout(function(){ document.getElementById('lrIdentPass').focus(); }, 50);
   }
   window.__lrAbrirIdentificacion = abrirVentana;
+  window.__lrRegistrarDispositivo = function(){ registrarDispositivo(); };
 
   function abrirVentanaCuandoSePueda(){
     if(document.getElementById('lrIdentOverlay')) abrirVentana();
