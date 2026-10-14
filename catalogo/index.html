@@ -301,8 +301,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 </div>
 
 <div id="thanksScreen" class="status-screen">
-  <h2>✅ ¡Pedido enviado!</h2>
-  <p id="thanksMsg">Ya se abrió WhatsApp con tu pedido armado — solo tenés que tocar enviar. Nosotros te confirmamos ahí mismo la compra, el medio de pago y la entrega. ¡Gracias por elegirnos!</p>
+  <h2>✅ ¡Tu pedido ya llegó al local!</h2>
+  <p id="thanksMsg">En WhatsApp te quedó el pedido armado: <b style="color:var(--gold)">tocá ENVIAR</b> así te confirmamos ahí mismo el pago y la entrega. ¡Gracias por elegirnos!</p>
+  <a id="thanksWaBtn" href="#" target="_blank" rel="noopener" style="display:none;margin:14px auto 4px;max-width:340px;background:#25D366;color:#052e16;text-decoration:none;border-radius:10px;padding:14px 18px;font-weight:700;font-size:.95rem">📲 Abrir WhatsApp con mi pedido</a>
+  <div id="thanksWaNota" style="display:none;font-size:.74rem;color:var(--gray);margin-bottom:6px">¿No se abrió WhatsApp o no lo enviaste? Tocá el botón verde.</div>
   <div id="segThanks" class="seg-box" style="display:none"></div>
 </div>
 
@@ -2522,8 +2524,15 @@ function confirmarPedido(){
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('thanksScreen').classList.add('show');
   if(!UBICACION_GPS){
-    document.getElementById('thanksMsg').innerHTML = 'Ya se abrió WhatsApp con tu pedido armado — tocá enviar y <b style="color:var(--gold)">mandanos tu ubicación por ahí</b> (📎 → Ubicación), así el repartidor te encuentra rápido. ¡Gracias por elegirnos!';
+    document.getElementById('thanksMsg').innerHTML = 'En WhatsApp te quedó el pedido armado: <b style="color:var(--gold)">tocá ENVIAR y mandanos tu ubicación por ahí</b> (📎 → Ubicación), así te confirmamos el envío y el repartidor te encuentra rápido. ¡Gracias por elegirnos!';
   }
+  // Botón para volver a abrir WhatsApp: si el celular bloqueó que se abra
+  // solo (iPhone, o el catálogo abierto desde Instagram/Facebook) o el cliente
+  // no tocó enviar, el pedido igual ya llegó, pero así nos puede escribir.
+  var waBtn = document.getElementById('thanksWaBtn');
+  if(waBtn){ waBtn.href = url; waBtn.style.display = 'block'; }
+  var waNota = document.getElementById('thanksWaNota');
+  if(waNota) waNota.style.display = 'block';
   document.getElementById('segThanks').style.display = 'block';
   escucharSeguimiento(codSeguimiento);
   }
