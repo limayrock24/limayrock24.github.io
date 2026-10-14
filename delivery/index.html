@@ -144,6 +144,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn-instalar-app" onclick="instalarApp()" style="background:#22c55e;border:none;color:#052e16;font-weight:700;border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">📲 Instalar app</button>
       <button id="btnNotifRepartidor" onclick="activarNotifsRepartidor()" style="background:transparent;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">🔔 Activar avisos</button>
+      <button onclick="abrirAyudaRep()" style="background:transparent;border:1px solid #38bdf8;color:#38bdf8;border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">❓ Ayuda</button>
       <button onclick="cerrarPanelRepartidor()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✕ Salir</button>
     </div>
   </div>
@@ -870,6 +871,12 @@ function renderPanelRepartidor() {
   }
   var yo = currentEmp.nombre;
   var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; });
+  // Contadores en las pestañas: de un vistazo se ve si hay algo nuevo.
+  var nLibres = currentEmp.sinPedidos ? 0 : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; }).length;
+  var nMios = todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; }).length;
+  var bL = document.getElementById('repFiltroLibres'), bM = document.getElementById('repFiltroMios');
+  if(bL) bL.textContent = 'Disponibles' + (nLibres ? ' ('+nLibres+')' : '');
+  if(bM) bM.textContent = 'Mis pedidos' + (nMios ? ' ('+nMios+')' : '');
 
   if(_repFiltro === 'historial'){ renderHistorialRepartidor(); return; }
 
@@ -923,6 +930,7 @@ function renderPanelRepartidor() {
         '<div style="font-size:.9rem;color:var(--white);font-weight:600">👤 '+p.nombre+'</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;white-space:nowrap">'+fmt(p.total)+'</div>'+
       '</div>'+
+      (mio ? htmlProgresoPedido(p) : '')+
       (p.retiradoEn
         ? '<div style="font-size:.78rem;margin-top:5px;color:#052e16;background:#38bdf8;border-radius:5px;padding:6px 9px;font-weight:700;text-align:center">🛵 EN CAMINO — lo retiraste a las '+new Date(p.retiradoEn).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</div>'
         : p.pagoConfirmado
@@ -1039,6 +1047,76 @@ function verFotoProd(src){
     document.body.appendChild(ov);
   }
   ov.querySelector('img').src = src;
+  ov.style.display = 'flex';
+}
+
+// Barrita de pasos del pedido (Tomado → Pagado → Retirado → Entregado) con el
+// próximo paso escrito, para que nadie dude qué tiene que hacer.
+function htmlProgresoPedido(p){
+  var pasos = [
+    { t: 'Tomado',    ok: true },
+    { t: 'Pagado',    ok: !!p.pagoConfirmado },
+    { t: 'Retirado',  ok: !!p.retiradoEn },
+    { t: 'Entregado', ok: p.estadoDelivery === 'entregado' }
+  ];
+  var actual = pasos.findIndex(function(x){ return !x.ok; });
+  var sig = !p.pagoConfirmado ? '⏳ Esperá a que el local lo cobre — te avisa cuando esté listo'
+          : !p.retiradoEn ? '👉 Pasá por el local, retiralo y tocá 📦 Retiré el pedido'
+          : '👉 Llevalo al cliente y al dárselo tocá ✓ Entregado';
+  return '<div style="margin-top:10px">'+
+    '<div style="display:flex;gap:4px">'+
+      pasos.map(function(x, i){
+        var col = x.ok ? '#22c55e' : (i === actual ? '#38bdf8' : 'rgba(255,255,255,.12)');
+        return '<div style="flex:1;text-align:center">'+
+          '<div style="height:5px;border-radius:3px;background:'+col+'"></div>'+
+          '<div style="font-size:.6rem;margin-top:3px;letter-spacing:.5px;color:'+(x.ok ? '#22c55e' : (i === actual ? '#38bdf8' : 'var(--gray)'))+';font-weight:'+(i === actual ? '700' : '400')+'">'+(x.ok ? '✓ ' : '')+x.t+'</div>'+
+        '</div>';
+      }).join('')+
+    '</div>'+
+    '<div style="font-size:.76rem;color:#38bdf8;margin-top:6px;font-weight:600">'+sig+'</div>'+
+  '</div>';
+}
+
+// ── AYUDA ──────────────────────────────────────────────────────────────────
+function abrirAyudaRep(){
+  var ov = document.getElementById('ayudaRepOverlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'ayudaRepOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:4500;background:rgba(0,0,0,.85);display:none;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    ov.addEventListener('click', function(e){ if(e.target === ov) ov.style.display = 'none'; });
+    document.body.appendChild(ov);
+  }
+  var max = (typeof _maxPedidosRep === 'function') ? _maxPedidosRep() : 2;
+  var paso = function(n, titulo, txt){
+    return '<div style="display:flex;gap:11px;margin-bottom:13px">'+
+      '<div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:#22c55e;color:#052e16;font-family:Oswald,sans-serif;font-weight:700;display:flex;align-items:center;justify-content:center">'+n+'</div>'+
+      '<div><div style="font-size:.9rem;color:var(--white);font-weight:700">'+titulo+'</div>'+
+      '<div style="font-size:.8rem;color:var(--light);line-height:1.45;margin-top:2px">'+txt+'</div></div>'+
+    '</div>';
+  };
+  var dato = function(titulo, txt){
+    return '<div style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:7px;padding:9px 11px;margin-bottom:8px">'+
+      '<div style="font-size:.82rem;color:var(--white);font-weight:700">'+titulo+'</div>'+
+      '<div style="font-size:.76rem;color:var(--light);line-height:1.45;margin-top:2px">'+txt+'</div></div>';
+  };
+  ov.innerHTML = '<div style="background:#111;border:1.5px solid #38bdf8;border-radius:12px;padding:18px;max-width:440px;width:100%;margin:auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px;color:#38bdf8">❓ CÓMO FUNCIONA</div>'+
+      '<button onclick="document.getElementById(\'ayudaRepOverlay\').style.display=\'none\'" style="background:none;border:none;color:var(--gray);font-size:1.3rem;cursor:pointer">✕</button>'+
+    '</div>'+
+    paso(1, '🟢 Marcate DISPONIBLE', 'Así te llegan los avisos de pedidos nuevos. Si no hay ningún repartidor disponible, el catálogo web se cierra solo.')+
+    paso(2, '🛵 Tomá el pedido', 'En <b>Disponibles</b> tocá "Tomar este pedido". Podés tener hasta <b>'+(max > 0 ? max : 'los que quieras')+'</b> a la vez: para tomar otro, entregá uno.')+
+    paso(3, '🛍 Mirá qué lleva', 'En <b>Mis pedidos</b> ves cada producto con su foto (tocala para agrandarla). Si el local cambia algo, la lista se actualiza sola.')+
+    paso(4, '📦 Retiralo del local', 'Cuando diga <b>PAGADO Y LISTO</b>, pasá por el local, retiralo y tocá <b>📦 Retiré el pedido</b>. Desde ahí el local ve tu ubicación hasta que lo entregás.')+
+    paso(5, '✓ Entregalo', 'Al dárselo al cliente tocá <b>✓ Entregado</b>. Con <b>💬 Avisar que llegué</b> le escribís por WhatsApp que estás en la puerta.')+
+    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gray);margin:14px 0 8px">BUENO SABER</div>'+
+    dato('💵 Tus envíos', 'En <b>Historial</b> ves cuántos hiciste y cuáles te faltan cobrar. El pago de tus envíos lo coordinás con el local.')+
+    dato('✋ Si no podés llevarlo', 'Tocá <b>Soltar</b> y el pedido vuelve a Disponibles para que lo tome otro.')+
+    dato('📣 Mensajes del local', 'Te aparecen como cartel (y te suena el celular). Tocá <b>Entendido</b> cuando lo leas.')+
+    dato('🔕 No me llegan avisos', 'Fijate de estar <b>DISPONIBLE</b> y de tener los avisos activados. Si sigue sin sonar, avisale al local.')+
+    '<button onclick="document.getElementById(\'ayudaRepOverlay\').style.display=\'none\'" style="width:100%;margin-top:8px;background:#38bdf8;color:#052e16;border:none;border-radius:7px;padding:12px;font-family:Oswald,sans-serif;font-size:.88rem;font-weight:700;letter-spacing:1px;cursor:pointer">👍 Entendido</button>'+
+  '</div>';
   ov.style.display = 'flex';
 }
 
