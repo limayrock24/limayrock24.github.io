@@ -250,9 +250,21 @@ exports.avisoTurnoCerrado = onDocumentCreated(
 exports.avisoMensajeRepartidor = onDocumentCreated(
   { document: 'avisosDelivery/{id}', region: REGION },
   async (event) => {
-    const m = event.data && event.data.data();
+    // Se lee el mensaje directo de la base por su id: no depende del formato
+    // en que llega el evento (según cómo se publicó la función, puede venir
+    // sin los datos del documento).
+    const id = (event.params && event.params.id) ||
+      String(event.document || event.subject || '').split('/').pop();
+    let m = null;
+    try { m = event.data && typeof event.data.data === 'function' ? event.data.data() : null; } catch (e) { m = null; }
+    if ((!m || !m.texto) && id) {
+      const doc = await db.collection('avisosDelivery').doc(id).get();
+      m = doc.exists ? doc.data() : null;
+    }
+    console.log(`Mensaje a repartidores, id ${id}: ${m ? 'leído' : 'no encontrado'}`);
     if (!m || !m.texto) return;
     const para = Array.isArray(m.para) ? m.para.filter(n => typeof n === 'string' && n) : [];
+    console.log(`Para: ${para.join(', ') || '(nadie)'}`);
     if (!para.length) return;
 
     const tokens = [];
