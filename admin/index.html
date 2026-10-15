@@ -35,7 +35,7 @@
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1792022206";
+  window.__LR_BUILD = "1792024156";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -31763,8 +31763,23 @@ function pintarDeliveryEquipos(){
     if((_tokensDel||[]).some(function(t){ return t.quien === e.nombre && reciente(t.fecha || t.actualizado); })) return true;
     return getPedidosWeb().some(function(p){ return p.repartidor === e.nombre && reciente(p.tomadoEn || p.fecha); });
   });
+  // De quién es cada equipo: lo anota la app (versión 25 en adelante). Los
+  // identificados antes no lo tienen: se reconocen por el mismo celular en el
+  // registro de avisos (fcmTokens) o por el nombre que se le puso al equipo.
+  var norm = function(t){ return String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); };
+  var quienDe = function(d){
+    if(d.quien) return d.quien;
+    var ua = String(d.navegador||'').slice(0,120);
+    var t = ua && (_tokensDel||[]).filter(function(t){ return t.quien && t.dispositivo && String(t.dispositivo).slice(0,120) === ua; })
+      .sort(function(a,b){ return new Date(b.fecha||0) - new Date(a.fecha||0); })[0];
+    if(t) return t.quien;
+    var nom = norm(d.nombre);
+    var r = nom && reps.find(function(e){ var pn = norm(e.nombre).split(' ')[0]; return pn.length >= 3 && nom.indexOf(pn) !== -1; });
+    return r ? r.nombre : '';
+  };
+  _equiposDel.forEach(function(d){ d._quien = quienDe(d); });
   var filas = activos.map(function(e){
-    var devs = _equiposDel.filter(function(d){ return d.quien === e.nombre && d.cuenta && reciente(d.ultimaVez); });
+    var devs = _equiposDel.filter(function(d){ return d._quien === e.nombre && d.cuenta && reciente(d.ultimaVez); });
     return { nombre: e.nombre, ok: devs.length > 0, devs: devs };
   }).sort(function(a,b){ return (a.ok?1:0) - (b.ok?1:0) || a.nombre.localeCompare(b.nombre); });
   var ok = filas.filter(function(f){ return f.ok; }).length, faltan = filas.length - ok;
@@ -31788,6 +31803,11 @@ function pintarDeliveryEquipos(){
           '<div style="font-size:.7rem;font-weight:700;white-space:nowrap;color:'+(f.ok ? 'var(--green)' : '#F4B400')+'">'+(f.ok ? 'Identificado' : 'Falta identificar')+'</div>'+
         '</div>';
       }).join('')+
+      (function(){
+        var sueltos = _equiposDel.filter(function(d){ return d.cuenta && reciente(d.ultimaVez) && !activos.some(function(e){ return e.nombre === d._quien; }); });
+        return sueltos.length ? '<div style="font-size:.7rem;color:var(--gray);margin-top:8px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.1)">Otros equipos identificados (todavía no se sabe de qué repartidor son; se completa solo cuando el repartidor entra a la app actualizada): '+
+          sueltos.map(function(d){ return '✅ '+String(d.nombre || d._quien || 'sin nombre').replace(/</g,'&lt;'); }).join(' · ')+'</div>' : '';
+      })()+
       (filas.length && !faltan ? '<div style="font-size:.74rem;color:var(--green);margin-top:8px;font-weight:700">✅ Están todos identificados: ya se puede cerrar la base.</div>' : '')+
       '<button onclick="renderDeliveryEquipos(true)" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:6px 10px;font-size:.7rem;cursor:pointer">↻ Actualizar</button>'
     ) : '')+
