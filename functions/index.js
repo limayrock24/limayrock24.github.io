@@ -150,10 +150,26 @@ exports.avisoMovimientoStock = onDocumentCreated(
     const cfg = tiposAvisar[m.tipo];
     if (!cfg) return; // ventas, consumos, fiados, etc: no se avisan
 
-    const cant = Number(m.cantidad) || 0;
-    const cuerpo = `${m.producto || '—'} · ${cant > 0 ? '+' : ''}${cant} u.` +
-      (m.stockAntes != null ? ` (${m.stockAntes} → ${m.stockDespues})` : '') +
-      (m.responsable ? `\nPor ${m.responsable}` : '');
+    let cuerpo;
+    if (Array.isArray(m.items) && m.items.length) {
+      // Recepción de mercadería: un solo movimiento con la lista de productos.
+      const MAX = 8;
+      const lineas = m.items.slice(0, MAX).map(it => {
+        const q = Number(it.qty != null ? it.qty : it.cantidad) || 0;
+        return `• ${it.nombre || it.name || '—'} ×${q}` + (it.stock != null ? ` (queda ${it.stock})` : '');
+      });
+      if (m.items.length > MAX) lineas.push(`… y ${m.items.length - MAX} producto${m.items.length - MAX === 1 ? '' : 's'} más`);
+      const unidades = m.items.reduce((t, it) => t + (Number(it.qty != null ? it.qty : it.cantidad) || 0), 0);
+      cuerpo = `${m.extra || m.resumen || 'Mercadería'} · ${m.items.length} producto${m.items.length === 1 ? '' : 's'}, ${unidades} u.` +
+        (Number(m.total) > 0 ? ` · costo ${pesos(m.total)}` : '') +
+        '\n' + lineas.join('\n') +
+        (m.responsable ? `\nPor ${m.responsable}` : '');
+    } else {
+      const cant = Number(m.cantidad) || 0;
+      cuerpo = `${m.producto || m.resumen || '—'} · ${cant > 0 ? '+' : ''}${cant} u.` +
+        (m.stockAntes != null ? ` (${m.stockAntes} → ${m.stockDespues})` : '') +
+        (m.responsable ? `\nPor ${m.responsable}` : '');
+    }
     await notificar('dueno', cfg.titulo, cuerpo, { tag: cfg.tag, url: '/admin/' });
   }
 );
