@@ -24,6 +24,7 @@ service cloud.firestore {
     match /combos/{id}                { allow read: if true; }
     match /promos/{id}                { allow read: if true; }
     match /itemsManualesCatalogo/{id} { allow read: if true; }
+    match /catalogoResumen/{id}       { allow read: if true; }   // lo escriben la caja y el admin
     match /config/{id} {
       allow read: if id in ['categoriasVista', 'gruposCategorias', 'deliveryActivo'];
     }
