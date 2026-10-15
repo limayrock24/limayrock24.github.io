@@ -339,6 +339,10 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
     <div style="font-size:2.4rem">🙌</div>
     <div style="font-family:Oswald,sans-serif;font-size:1.15rem;color:var(--gold);margin-top:6px">¡Gracias por tu opinión!</div>
     <div style="font-size:.9rem;color:var(--light);margin-top:6px">La leemos todas. ¡Nos vemos pronto en Limay Rock!</div>
+    <div id="opGoogle" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:.9rem;color:var(--light)">¿Nos dejás tu reseña en Google? Son 30 segundos y nos ayuda un montón a que más vecinos nos conozcan 🙏</div>
+      <a id="opGoogleBtn" href="#" target="_blank" rel="noopener" style="display:block;margin-top:12px;background:#fff;color:#1a1a1a;border-radius:8px;padding:12px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;text-decoration:none;font-weight:700">⭐ DEJAR RESEÑA EN GOOGLE</a>
+    </div>
   </div>
   <button onclick="cerrarOpinion()" style="margin-top:16px;background:transparent;border:1.5px solid var(--border);color:var(--light);border-radius:8px;padding:11px 24px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;cursor:pointer">🛒 Ver el catálogo</button>
 </div>
@@ -2657,6 +2661,11 @@ function cerrarSeguimiento(){
 // Se prende (true) recién cuando la regla de /opiniones está publicada en
 // Firebase; mientras tanto no se muestra nada, para que no dé error al enviar.
 var OPINIONES_ACTIVAS = true;
+// Link para escribir una reseña del local en Google (Perfil de Empresa →
+// "Pedir reseñas"). Vacío = no se muestra el botón. Se ofrece a TODOS los que
+// mandan su opinión, no solo a los que ponen 4 o 5 estrellas: Google prohíbe
+// pedir reseñas solo a los clientes contentos y puede borrar las reseñas.
+var GOOGLE_RESENA_URL = '';
 var _opEstrellas = 0, _opOrigen = 'local', _opPedido = null;
 function pintarEstrellasOpinion(){
   var c = document.getElementById('opEstrellas'); if(!c) return;
@@ -2679,6 +2688,7 @@ function abrirOpinion(origen, pedido){
   document.getElementById('opError').style.display = 'none';
   document.getElementById('opForm').style.display = 'block';
   document.getElementById('opGracias').style.display = 'none';
+  var _g = document.getElementById('opGoogle'); if(_g) _g.style.display = 'none';
   var b = document.getElementById('opEnviar'); b.disabled = false; b.textContent = 'ENVIAR';
   pintarEstrellasOpinion();
   document.getElementById('segScreen').classList.remove('show');
@@ -2704,6 +2714,8 @@ function enviarOpinion(){
     if(_opPedido){ try{ localStorage.setItem('lr_valorado_'+_opPedido, '1'); }catch(e){} }
     document.getElementById('opForm').style.display = 'none';
     document.getElementById('opGracias').style.display = 'block';
+    var g = document.getElementById('opGoogle');
+    if(g && GOOGLE_RESENA_URL){ document.getElementById('opGoogleBtn').href = GOOGLE_RESENA_URL; g.style.display = 'block'; }
   }).catch(function(e){
     console.error('No se pudo guardar la opinión', e);
     b.disabled = false; b.textContent = 'ENVIAR';

@@ -207,7 +207,7 @@ exports.avisoTurnoAbierto = onDocumentCreated(
     const s = event.data && event.data.data();
     if (!s) return;
     const hora = s.turnoInicio
-      ? new Date(s.turnoInicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      ? new Date(s.turnoInicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })
       : '—';
     const cuerpo = `${s.nombre || '—'} · ${s.turno || ''} · ${pesos(s.efectivoInicial)} en caja`;
     await notificar('dueno', `🟢 Turno abierto — ${hora}`, cuerpo, { tag: 'turno', url: '/admin/' });
@@ -224,7 +224,7 @@ exports.avisoTurnoCerrado = onDocumentCreated(
     const c = event.data && event.data.data();
     if (!c) return;
     const hora = c.horaFin
-      ? new Date(c.horaFin).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      ? new Date(c.horaFin).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })
       : '—';
 
     let estado;
@@ -238,10 +238,53 @@ exports.avisoTurnoCerrado = onDocumentCreated(
       else estado = `🟡 Sobran ${pesos(dif)}`;
     }
 
-    const cuerpo = `${c.empleado || '—'} · ${c.turno || ''}\n${estado}`;
-    await notificar('dueno', `🔴 Turno cerrado — ${hora}`, cuerpo, { tag: 'turno', url: '/admin/' });
+    const lineas = [`${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
+    try { lineas.push(...(await resumenDelTurno(c))); }
+    catch (e) { console.error('No se pudo armar el resumen del turno', e); }
+    await notificar('dueno', `🔴 Turno cerrado — ${hora}`, lineas.join('\n'), { tag: 'turno', url: '/admin/' });
   }
 );
+
+function duracion(min) {
+  const m = Number(min) || 0;
+  if (m <= 0) return '';
+  const h = Math.floor(m / 60);
+  return ' · ' + (h ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m} min`);
+}
+
+// Resumen corto del turno para el aviso de cierre: lo vendido, cómo se cobró,
+// los pedidos web que entraron y lo que salió de la caja. Todo sale del mismo
+// documento del cierre, salvo los pedidos web (se buscan por la hora).
+async function resumenDelTurno(c) {
+  const out = [];
+  const ventas = Array.isArray(c.ventas) ? c.ventas : [];
+  const total = Number(c.total) || 0;
+  const cant = Number(c.cantVentas) || ventas.length;
+  if (cant) out.push(`💰 Vendió ${pesos(total)} en ${cant} venta${cant === 1 ? '' : 's'} (prom. ${pesos(Math.round(total / cant))})`);
+  else out.push('💰 Sin ventas en el turno');
+
+  const porMedio = {};
+  ventas.forEach(v => { const m = v.medio || 'Otro'; porMedio[m] = (porMedio[m] || 0) + (Number(v.total) || 0); });
+  const iconos = { Efectivo: '💵', 'Débito': '💳', 'Crédito': '💳', Transferencia: '📲', MercadoPago: '📲', Mixto: '🔀' };
+  const medios = Object.keys(porMedio).sort((a, b) => porMedio[b] - porMedio[a])
+    .map(m => `${iconos[m] || '•'} ${m === 'Transferencia' ? 'Transf.' : m} ${pesos(porMedio[m])}`);
+  if (medios.length) out.push(medios.join(' · '));
+
+  const ini = Date.parse(c.horaInicio), fin = Date.parse(c.horaFin);
+  if (ini && fin && fin > ini) {
+    const snap = await db.collection('pedidosWeb').where('id', '>=', ini).where('id', '<=', fin).get();
+    let n = 0, suma = 0;
+    snap.forEach(d => { const p = d.data(); if (p.anulado) return; n++; suma += Number(p.total) || 0; });
+    if (n) out.push(`🛵 ${n} pedido${n === 1 ? '' : 's'} web (${pesos(suma)})`);
+  }
+
+  const a = c.arqueo || {};
+  const sal = [];
+  if (Number(a.egresosEfectivo) > 0) sal.push(`Egresos ${pesos(a.egresosEfectivo)}`);
+  if (Number(a.retirosCaja) > 0) sal.push(`Retiros ${pesos(a.retirosCaja)}`);
+  if (sal.length) out.push('🧾 ' + sal.join(' · '));
+  return out;
+}
 
 // ── MENSAJE DEL LOCAL A LOS REPARTIDORES ───────────────────────────────────
 // Se manda desde Admin → Mensajes. Le llega a cada repartidor elegido en todos
