@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LR Admin</string>
+    <string name="title_activity_main">Limay Rock Admin</string>
+    <string name="package_name">com.limayrock.admin</string>
+    <string name="custom_url_scheme">com.limayrock.admin</string>
+</resources>

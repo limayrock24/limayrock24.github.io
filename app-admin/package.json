@@ -1,0 +1,12 @@
+{
+  "name": "limayrock-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App del dueño de Limay Rock: abre el panel de admin y recibe los avisos del local con el logo propio.",
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/push-notifications": "^6.0.5"
+  }
+}

@@ -1,0 +1,68 @@
+# Compila la app del dueño (Android) y la deja para descargar en "Releases"
+# del repositorio, SIEMPRE en la misma etiqueta "app-admin". Link fijo:
+# https://github.com/limayrock24/limayrock24.github.io/releases/download/app-admin/LimayRock-Admin.apk
+# No se marca como "última versión": esa la usa la app de delivery para saber
+# si hay una actualización.
+name: App admin (Android)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app-admin/**'
+      - '.github/workflows/app-admin.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        working-directory: app-admin
+        run: npm ci
+
+      - name: Marcar el número de versión
+        working-directory: app-admin
+        run: |
+          node -e "const f='capacitor.config.json';const c=require('./'+f);c.android.appendUserAgent='LimayRockAdminApp/${{ github.run_number }}';require('fs').writeFileSync(f,JSON.stringify(c,null,2))"
+          grep appendUserAgent capacitor.config.json
+
+      - name: Sincronizar proyecto Android
+        working-directory: app-admin
+        run: npx cap sync android
+
+      - name: Compilar APK
+        working-directory: app-admin/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../../LimayRock-Admin.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LimayRock-Admin
+          path: LimayRock-Admin.apk
+
+      - name: Publicar versión
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-admin
+          name: App Admin (dueño)
+          body: App del dueño de Limay Rock. Descargar e instalar LimayRock-Admin.apk en el celular.
+          files: LimayRock-Admin.apk
+          make_latest: false
+          overwrite_files: true

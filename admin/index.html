@@ -101,7 +101,43 @@
   // Deja registrado este dispositivo para recibir avisos. "destino" define qué
   // tipo de avisos le llegan: 'dueno' (todo el movimiento del local) o
   // 'repartidor' (solo pedidos de delivery).
+  // App "Limay Rock Admin" (Android): los avisos llegan por la app, con el
+  // logo propio, en vez de por Chrome. El celular se anota en la misma lista
+  // (fcmTokens) con el mismo "destino", así las funciones no cambian.
+  window.__lrEsAppAdmin = function(){
+    try{
+      return /LimayRockAdminApp/.test(navigator.userAgent) && !!window.Capacitor &&
+        !!(Capacitor.isNativePlatform && Capacitor.isNativePlatform()) &&
+        !!(Capacitor.Plugins && Capacitor.Plugins.PushNotifications);
+    }catch(e){ return false; }
+  };
+  window.__lrActivarNotifsApp = function(destino, quien){
+    var PN = Capacitor.Plugins.PushNotifications;
+    return PN.checkPermissions().then(function(p){
+      return p.receive === 'granted' ? p : PN.requestPermissions();
+    }).then(function(p){
+      if(p.receive !== 'granted') throw new Error('No diste permiso para recibir avisos');
+      return PN.removeAllListeners().catch(function(){}).then(function(){
+        return new Promise(function(resolve, reject){
+          PN.addListener('registration', function(t){ resolve(t.value); });
+          PN.addListener('registrationError', function(e){ reject(new Error((e && e.error) || 'No se pudo registrar el celular')); });
+          PN.register().catch(reject);
+        });
+      });
+    }).then(function(token){
+      if(!token) throw new Error('No se pudo registrar el celular');
+      var disp = ('App Android · '+navigator.userAgent).slice(0, 120);
+      try{
+        window.__lrDB.collection('fcmTokens').where('dispositivo', '==', disp).where('quien', '==', quien || '')
+          .get().then(function(snap){ snap.forEach(function(doc){ if(doc.id !== token.slice(-40)) doc.ref.delete(); }); }).catch(function(){});
+      }catch(e){}
+      return window.__lrDB.collection('fcmTokens').doc(token.slice(-40)).set({
+        token: token, destino: destino, quien: quien || '', dispositivo: disp, app: true, fecha: new Date().toISOString()
+      }).then(function(){ return token; });
+    });
+  };
   window.__lrActivarNotificaciones = function(destino, quien){
+    if(window.__lrEsAppAdmin()) return window.__lrActivarNotifsApp(destino, quien);
     return new Promise(function(resolve, reject){
       if(!('Notification' in window) || !firebase.messaging){
         reject(new Error('Este navegador no soporta notificaciones'));
@@ -172,6 +208,8 @@
   // Aviso que llega mientras la app está ABIERTA (el service worker solo se
   // ocupa de cuando está cerrada). Se muestra como un cartelito interno.
   window.__lrEscucharNotifsEnVivo = function(){
+    // En la app los avisos los muestra Android aunque esté abierta.
+    if(window.__lrEsAppAdmin && window.__lrEsAppAdmin()) return;
     try{
       var messaging = firebase.messaging();
       messaging.onMessage(function(payload){
@@ -27461,7 +27499,9 @@ function _lrActivarNotifs(destino, quien, btnId){
 // del navegador), y si no se vuelve a registrar, los avisos dejan de llegar de
 // verdad sin que nadie se entere. Re-registrar en cada arranque lo evita.
 function restaurarEstadoNotificaciones(destino, quien, btnId){
-  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  // En la app de admin se registra siempre (el permiso lo pide la app).
+  var _enApp = !!(window.__lrEsAppAdmin && window.__lrEsAppAdmin());
+  if(!_enApp && (!('Notification' in window) || Notification.permission !== 'granted')) return;
   var btn = document.getElementById(btnId);
   if(btn){
     btn.textContent = '🔔 Avisos activados';

@@ -1,0 +1,19 @@
+{
+  "appId": "com.limayrock.admin",
+  "appName": "Limay Rock Admin",
+  "webDir": "www",
+  "server": {
+    "url": "https://limayrock24.github.io/admin/",
+    "allowNavigation": [
+      "limayrock24.github.io",
+      "limayrock.com.ar",
+      "*.limayrock.com.ar"
+    ],
+    "errorPath": "sin-conexion.html"
+  },
+  "android": {
+    "useLegacyBridge": true,
+    "backgroundColor": "#0a0a0a",
+    "appendUserAgent": "LimayRockAdminApp"
+  }
+}
