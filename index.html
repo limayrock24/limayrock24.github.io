@@ -1143,7 +1143,6 @@
     window.__lrMovResuscrito = true;
     suscribirVentas();
     suscribirMovimientos();
-    suscribirPedidosWeb();
     // Sin conexión no llega la respuesta de la nube: a los 20 s se sigue con
     // lo que haya, para no dejar el admin esperando para siempre.
     setTimeout(function(){ _histListos.ventas = _histListos.movimientos = true; _marcarHistListo('ventas'); }, 20000);
@@ -1805,13 +1804,7 @@
 
   // Pedidos hechos desde el catálogo público (sin login, por eso van en su
   // propia colección — no se mezclan con nada que dependa de un empleado)
-  // Como ventas y movimientos: la caja escucha solo los últimos DIAS_CAJA
-  // días (cada lectura se cobra); al abrir el admin se carga todo el
-  // historial para los reportes y los pagos a repartidores.
-  var _desuscribirPedidosWeb = null;
-  function suscribirPedidosWeb(){
-  if(_desuscribirPedidosWeb){ try{ _desuscribirPedidosWeb(); }catch(e){} }
-  _desuscribirPedidosWeb = _consultaReciente('pedidosWeb').onSnapshot(function(snap){
+  window.__lrDB.collection('pedidosWeb').onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
@@ -1865,8 +1858,6 @@
     }
     ocultarCargaSiListo();
   }, function(err){ console.error('Error sincronizando pedidos web:', err); window.__lrSync.pedidosWebListos = true; ocultarCargaSiListo(); });
-  }
-  suscribirPedidosWeb();
 
   window.__lrSavePedidosWeb = function(lista){
     var __promesas = [];

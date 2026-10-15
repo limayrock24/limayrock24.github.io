@@ -194,7 +194,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "25"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -364,9 +364,7 @@ window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá 
   function saveEmpleados(emps){ window.EMPLEADOS = emps; return window.__lrSaveEmpleados(emps); }
 
   // ── PEDIDOS WEB ──────────────────────────────────────────────────────────
-  // Solo los pedidos de los últimos 45 días (cada documento leído se cobra):
-  // alcanza para el historial de hoy / semana / mes del repartidor.
-  window.__lrDB.collection('pedidosWeb').where('id','>=',Date.now()-45*24*3600*1000).onSnapshot(function(snap){
+  window.__lrDB.collection('pedidosWeb').onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
