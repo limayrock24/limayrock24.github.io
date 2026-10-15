@@ -861,39 +861,6 @@ function fotoDelMapa(nombre){
   return BASE_FOTOS_MAPA + r.replace(/^\//, '');
 }
 
-// ── PRODUCTOS Y STOCK ───────────────────────────────────────────────────
-// Antes cada visita leía las ~1.200 fichas de productos y las ~1.200 de stock
-// (cada documento leído se cobra). Ahora la caja y el admin publican un solo
-// documento con lo que el catálogo necesita (catalogoResumen/actual) y se lee
-// solo ese. Si no está, no se puede leer o viene mal, se vuelve a leer todo
-// como antes, así el catálogo nunca queda vacío.
-var _lecturaCompleta = false, _desuscribirResumen = null;
-_desuscribirResumen = db.collection('catalogoResumen').doc('actual').onSnapshot(function(doc){
-  if(_lecturaCompleta) return;
-  var r = null;
-  try{ r = doc.exists ? JSON.parse(doc.data().datos) : null; }catch(e){ r = null; }
-  if(!r || !Array.isArray(r.p) || !r.p.length || !Array.isArray(r.a)){ iniciarLecturaCompleta(); return; }
-  var lista = r.p.map(function(x){ return {name:x[0], precio:x[1], precioNoc:x[2], cat:x[3], imgUrl:x[4]||undefined, destacado:!!x[5], etiquetaDestacado:x[6]||''}; });
-  lista.sort(function(a,b){ return a.name.localeCompare(b.name); });
-  var inv = {};
-  r.a.forEach(function(n){ inv[n] = 0; });
-  PRODUCTOS = lista;
-  STOCK = inv;
-  window.__lrFuenteProductos = 'resumen';
-  productosListos = true;
-  stockListos = true;
-  chequearListo();
-  if(document.getElementById('mainContent').style.display==='block'){ renderCatPills(); renderList(); }
-}, function(err){
-  console.warn('Resumen del catálogo no disponible, se lee todo:', err);
-  iniciarLecturaCompleta();
-});
-
-function iniciarLecturaCompleta(){
-if(_lecturaCompleta) return;
-_lecturaCompleta = true;
-window.__lrFuenteProductos = 'completo';
-if(_desuscribirResumen){ try{ _desuscribirResumen(); }catch(e){} }
 db.collection('productos').onSnapshot(function(snap){
   var lista = [];
   snap.forEach(function(doc){
@@ -918,7 +885,6 @@ db.collection('inventario').onSnapshot(function(snap){
   chequearListo();
   if(document.getElementById('mainContent').style.display==='block') renderList();
 });
-}
 
 // Combos y promos: una sola lectura para las dos cosas. Antes había dos
 // suscripciones a la misma colección y se pisaban entre sí, y el listado viejo

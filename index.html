@@ -446,7 +446,6 @@
 
     window.__lrSync.ultimoProductosSnapshot = mapa;
     window.__lrSync.productosListos = true;
-    if(window.__lrProgramarResumenCatalogo) window.__lrProgramarResumenCatalogo('productos', snap);
     window.__lrSync.conexionRealOk = true;
     var banner = document.getElementById('lrSinConexionBanner');
     if(banner) banner.style.display = 'none';
@@ -512,7 +511,6 @@
     window.__lrStockInvCache = inv;
     window.__lrSync.ultimoInventarioSnapshot = ult;
     window.__lrSync.inventarioListos = true;
-    if(window.__lrProgramarResumenCatalogo) window.__lrProgramarResumenCatalogo('inventario', snap);
     refrescarPantallaVentaSiExiste();
     ocultarCargaSiListo();
   }, function(err){
@@ -520,46 +518,6 @@
     window.__lrSync.inventarioListos = true;
     ocultarCargaSiListo();
   });
-
-  // ── RESUMEN PARA EL CATÁLOGO WEB ─────────────────────────────────────────
-  // El catálogo leía las ~1.200 fichas de productos y las ~1.200 de stock en
-  // cada visita (cada documento leído se cobra). La caja y el admin ya tienen
-  // todo eso en memoria, así que publican UN documento con lo que el catálogo
-  // necesita: nombre, precios, categoría, foto, destacado y cuáles están
-  // agotados. Solo se escribe si cambió algo (con dos cajas abiertas no se
-  // repite) y solo con datos que llegaron de la nube, nunca de la copia
-  // guardada sin conexión (podría pisar precios nuevos con viejos).
-  var _resumenCat = { remoto: undefined, timer: null, nube: {} };
-  window.__lrDB.collection('catalogoResumen').doc('actual').onSnapshot(function(doc){
-    _resumenCat.remoto = doc.exists ? (doc.data().datos || null) : null;
-  }, function(err){ console.warn('Resumen del catálogo:', err); });
-  function _armarResumenCatalogo(){
-    var prods = window.__lrSync.ultimoProductosSnapshot || {}, inv = window.__lrSync.ultimoInventarioSnapshot || {};
-    var p = [];
-    Object.keys(prods).forEach(function(n){
-      var d = prods[n];
-      if(d && d.name && d.pventa > 0) p.push([d.name, d.pventa, d.pnoc || d.pventa, d.cat || 'General', d.imgUrl || '', d.destacado ? 1 : 0, d.etiquetaDestacado || '']);
-    });
-    p.sort(function(x, y){ return x[0] < y[0] ? -1 : (x[0] > y[0] ? 1 : 0); });
-    var agotados = Object.keys(inv).filter(function(n){ return !((inv[n] && inv[n].stock) > 0); }).sort();
-    return JSON.stringify({p: p, a: agotados});
-  }
-  function _publicarResumenCatalogo(){
-    _resumenCat.timer = null;
-    if(!_resumenCat.nube.productos || !_resumenCat.nube.inventario) return;
-    if(!Object.keys(window.__lrSync.ultimoProductosSnapshot || {}).length) return;
-    var datos = _armarResumenCatalogo();
-    if(datos === _resumenCat.remoto) return;
-    var ref = window.__lrDB.collection('catalogoResumen').doc('actual');
-    // Un documento no puede pasar de 1 MB: si algún día no entra, se borra y
-    // el catálogo vuelve solo a leer todo como antes.
-    if(datos.length > 900000){ if(_resumenCat.remoto !== null) ref.delete().catch(function(){}); return; }
-    ref.set({datos: datos, actualizado: Date.now(), version: 1}).catch(function(e){ console.warn('No se pudo publicar el resumen del catálogo:', e); });
-  }
-  window.__lrProgramarResumenCatalogo = function(cual, snap){
-    _resumenCat.nube[cual] = !(snap && snap.metadata && snap.metadata.fromCache);
-    if(!_resumenCat.timer) _resumenCat.timer = setTimeout(_publicarResumenCatalogo, 15000);
-  };
 
   // Guarda solo lo que cambió desde el último snapshot conocido — evita
   // reescribir el catálogo entero (1000+ productos) en cada edición.
