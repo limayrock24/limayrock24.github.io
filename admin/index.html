@@ -521,6 +521,9 @@
   // Red de seguridad: si a los 10 segundos todavía no hubo ni éxito ni
   // error explícito (conexión "colgada" en silencio), avisar igual.
   setTimeout(function(){
+    // En la app LR Admin la primera carga es lenta: ahí el cartel rojo sale solo
+    // si de verdad no hay internet (un error real lo muestra igual, arriba).
+    if(window.__lrAppLiviana && navigator.onLine !== false) return;
     if(!window.__lrSync.conexionRealOk){
       var banner = document.getElementById('lrSinConexionBanner');
       if(banner) banner.style.display = 'block';
@@ -3941,7 +3944,9 @@ body.night-on{background:#080005}
     var pend = Object.keys(s).filter(function(k){ return /List[oa]s$/.test(k) && s[k] === false; }).map(function(k){ return k.replace(/List[oa]s$/,''); });
     var ident = '';
     try{ var u = window.firebase && firebase.auth && firebase.auth().currentUser; ident = u ? ' · equipo: '+String(u.email||'').split('@')[0] : ' · equipo sin identificar'; }catch(e){}
-    return '('+Math.round((Date.now()-t0)/1000)+' s) Falta: '+(pend.join(', ') || '—')+ident+(window.__lrPersistInfo ? ' · '+window.__lrPersistInfo : '')+(extra.length ? ' · '+extra.join(' · ') : '')+(navigator.onLine === false ? ' · SIN INTERNET' : '')+(errs.length ? ' · Error: '+errs.slice(-2).join(' | ') : '');
+    var total = Object.keys(s).filter(function(k){ return /List[oa]s$/.test(k); }).length;
+    var faltaTxt = pend.length > 6 ? 'Cargando: '+(total-pend.length)+' de '+total : 'Falta: '+(pend.join(', ') || '—');
+    return '('+Math.round((Date.now()-t0)/1000)+' s) '+faltaTxt+ident+(window.__lrPersistInfo ? ' · '+window.__lrPersistInfo : '')+(extra.length ? ' · '+extra.join(' · ') : '')+(navigator.onLine === false ? ' · SIN INTERNET' : '')+(errs.length ? ' · Error: '+errs.slice(-2).join(' | ') : '');
   }
   setInterval(function(){
     var b = document.getElementById('lrSinConexionBanner'), d = document.getElementById('lrSinConexionDetalle');
