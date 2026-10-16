@@ -242,17 +242,14 @@
   // bajar todo de internet antes de mostrar nada y en el celular no terminaba
   // de abrir (se probó el 30/9 y se volvió atrás).
   window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
-  // En la app LR Admin (Android) va sin copia local: el navegador interno de
-  // Android se puede quedar trabado con ella y no conecta (igual que la app de
-  // delivery, que funciona sin copia).
-  if(/LimayRockAdminApp/.test(navigator.userAgent)){
-    window.__lrPersistInfo = 'app sin copia local';
-  } else {
-    window.__lrDB.enablePersistence({synchronizeTabs:true}).catch(function(e){
-      window.__lrPersistInfo = 'copia local: '+e.code;
-      console.warn('Persistencia offline no disponible:', e.code);
-    });
-  }
+  // También en la app LR Admin: la primera vez baja todo y queda guardado en
+  // el celu, así las veces siguientes abre rápido y solo trae lo nuevo.
+  window.__lrDB.enablePersistence({synchronizeTabs:true}).then(function(){
+    window.__lrPersistInfo = 'copia local ok';
+  }).catch(function(e){
+    window.__lrPersistInfo = 'copia local: '+e.code;
+    console.warn('Persistencia offline no disponible:', e.code);
+  });
 
   // Recuperación de un cambio de catálogo que quedó sin confirmar de una
   // sesión anterior (ej: se cerró la pestaña, se cortó la luz, o el
@@ -1163,9 +1160,9 @@
   // trae el historial completo (reportes de meses anteriores). El panel de
   // admin propio (/admin/) trae todo desde el principio, como siempre.
   var DIAS_CAJA = 45;
-  // En la app LR Admin del celu también se trae solo lo reciente al abrir (bajar
-  // todo el historial de una vez la dejaba trabada); el completo se pide con
-  // el botón "📚 Historial completo".
+  // En la app LR Admin del celu se arranca con lo reciente (bajar todo de una
+  // vez la dejaba trabada) y, al abrir el admin, se trae el historial completo
+  // de fondo, igual que cuando se abre el admin desde la caja.
   window.__lrAppLiviana = /LimayRockAdminApp/.test(navigator.userAgent);
   window.__lrHistorialCompleto = !!window.__lrEsPanelAdmin && !window.__lrAppLiviana;
   window.__lrHistorialCompletoListo = window.__lrHistorialCompleto;
@@ -8892,20 +8889,10 @@ function openAdmin() {
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
   // historial completo: si todavía está llegando, se espera. En la caja,
   // que trae solo lo reciente, al abrir el admin se pide el resto.
-  if(window.__lrCargarHistorialCompleto && !window.__lrAppLiviana) window.__lrCargarHistorialCompleto();
+  if(window.__lrCargarHistorialCompleto) window.__lrCargarHistorialCompleto();
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
-  // En la app del celu: botón para traer el historial completo cuando haga falta.
-  if(window.__lrAppLiviana && !window.__lrHistorialCompleto && !document.getElementById('lrBtnHistCompleto')){
-    var _bh = document.createElement('button');
-    _bh.id = 'lrBtnHistCompleto';
-    _bh.textContent = '📚 Historial completo';
-    _bh.title = 'Por ahora se ven los últimos 45 días. Tocá para traer todo (tarda un rato).';
-    _bh.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:8px 14px;font-size:.74rem;font-family:Oswald,sans-serif;letter-spacing:1px;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer';
-    _bh.onclick = function(){ _bh.remove(); window.__lrCargarHistorialCompleto(); openAdmin(); };
-    document.body.appendChild(_bh);
-  }
   // Mientras llega el historial viejo (solo pasa en la caja), un aviso arriba.
-  if(window.__lrHistorialCompleto && !window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
+  if(!window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
     var _av = document.createElement('div');
     _av.id = 'lrAvisoHistCompleto';
     _av.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:6px 14px;font-size:.74rem;box-shadow:0 4px 16px rgba(0,0,0,.5)';
