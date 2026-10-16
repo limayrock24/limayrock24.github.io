@@ -351,5 +351,6 @@ async function avisarMensaje(id, m) {
   console.log(`Mensaje ${id} para ${para.join(', ')}: ${tokens.length} celular(es)`);
   if (!tokens.length) return;
   const cuerpo = String(m.texto).slice(0, 400);
-  await enviarATokens(tokens, '📣 Mensaje del local', cuerpo, { tag: 'mensaje', url: '/delivery/' });
+  const titulo = (typeof m.titulo === 'string' && m.titulo.trim()) ? m.titulo.trim().slice(0, 60) : '📣 Mensaje del local';
+  await enviarATokens(tokens, titulo, cuerpo, { tag: 'mensaje', url: '/delivery/' });
 }

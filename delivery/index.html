@@ -194,7 +194,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "25"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -1318,11 +1318,12 @@ function mostrarMensajeRep(){
     ov.style.cssText = 'position:fixed;inset:0;z-index:4000;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:18px';
     document.body.appendChild(ov);
   }
-  ov.innerHTML = '<div style="background:#111;border:2px solid #38bdf8;border-radius:12px;padding:20px;max-width:420px;width:100%">'+
-    '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px;color:#38bdf8;text-transform:uppercase">📣 Mensaje del local</div>'+
+  var esPago = m.tipo === 'pago', colMsg = esPago ? '#22c55e' : '#38bdf8';
+  ov.innerHTML = '<div style="background:#111;border:2px solid '+colMsg+';border-radius:12px;padding:20px;max-width:420px;width:100%">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px;color:'+colMsg+';text-transform:uppercase">'+(esPago ? '💵 Pago recibido' : '📣 Mensaje del local')+'</div>'+
     '<div style="font-size:.72rem;color:var(--gray);margin-top:2px">'+new Date(m.ts).toLocaleString('es-AR',{weekday:'long',hour:'2-digit',minute:'2-digit'})+'</div>'+
     '<div style="font-size:1rem;color:var(--white);line-height:1.45;margin:14px 0 18px;white-space:pre-wrap">'+_escDel(m.texto)+'</div>'+
-    '<button onclick="marcarMensajeLeido('+m.ts+')" style="width:100%;background:#38bdf8;color:#052e16;border:none;border-radius:7px;padding:13px;font-family:Oswald,sans-serif;font-size:.9rem;font-weight:700;letter-spacing:1px;cursor:pointer">👍 Entendido</button>'+
+    '<button onclick="marcarMensajeLeido('+m.ts+')" style="width:100%;background:'+colMsg+';color:#052e16;border:none;border-radius:7px;padding:13px;font-family:Oswald,sans-serif;font-size:.9rem;font-weight:700;letter-spacing:1px;cursor:pointer">👍 Entendido</button>'+
   '</div>';
   ov.style.display = 'flex';
 }

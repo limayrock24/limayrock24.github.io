@@ -32668,7 +32668,19 @@ function registrarPagoRepartidor(nombre) {
       if(ids[p.id]){ p.pagadoRepartidor = true; p.pagadoRepartidorEn = ahora; p.pagadoRepartidorPor = currentEmp ? currentEmp.nombre : 'Admin'; }
     });
     savePedidosWeb(pedidos);
-    showToast('💵 Pago a '+nombre+' registrado: '+fmt(monto));
+    // Aviso al repartidor: va como mensaje del local (le llega la notificación
+    // al celu y el cartel en la app, aunque no esté disponible).
+    try{
+      var tsPago = Date.now();
+      var docPago = { id: tsPago, ts: tsPago, fecha: new Date(tsPago).toISOString(),
+        texto: '💵 Tu pago de '+fmt(monto)+' fue saldado ('+aPagar.length+' envío'+(aPagar.length===1?'':'s')+'). ¡Gracias! 🤘',
+        titulo: '💵 Pago recibido', tipo: 'pago', monto: monto, envios: aPagar.length,
+        de: currentEmp ? currentEmp.nombre : 'Local', para: [nombre], modo: 'elegidos', leidoPor: {} };
+      window.__lrDB.collection('avisosDelivery').doc(String(tsPago)).set(docPago)
+        .catch(function(e){ console.error('No se pudo avisar el pago a '+nombre, e); });
+      if(typeof _msgDelCache !== 'undefined' && Array.isArray(_msgDelCache)) _msgDelCache.unshift(docPago);
+    }catch(e){ console.error('Aviso de pago', e); }
+    showToast('💵 Pago a '+nombre+' registrado: '+fmt(monto)+' — le llega el aviso al celu');
     renderDeliveryPanel();
   });
 }
