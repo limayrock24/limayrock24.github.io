@@ -31986,7 +31986,7 @@ function abrirLimpiezaPruebas(){
       '<button type="button" onclick="document.getElementById(\'limpiezaPruebasOv\').remove()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--white);border-radius:6px;padding:11px;font-family:Oswald,sans-serif;cursor:pointer">Cancelar</button>'+
       '<button type="button" id="lpBorrarBtn" onclick="confirmarLimpiezaPruebas()" style="flex:2;background:var(--red);border:none;color:#fff;border-radius:6px;padding:11px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer"></button>'+
     '</div></div>';
-  var actualizar = function(){ var n = ov.querySelectorAll('.lpCheck:checked').length; var b = document.getElementById('lpBorrarBtn'); b.textContent = '🗑 BORRAR '+n+' PEDIDO'+(n===1?'':'S'); b.disabled = !n; b.style.opacity = n ? 1 : .5; };
+  var actualizar = function(){ var n = ov.querySelectorAll('.lpCheck:checked').length; var b = document.getElementById('lpBorrarBtn'); delete b.dataset.armado; b.style.background = 'var(--red)'; b.textContent = '🗑 BORRAR '+n+' PEDIDO'+(n===1?'':'S'); b.disabled = !n; b.style.opacity = n ? 1 : .5; };
   ov.addEventListener('change', actualizar);
   actualizar();
 }
@@ -31995,9 +31995,19 @@ function confirmarLimpiezaPruebas(){
   var ids = Array.prototype.map.call(ov.querySelectorAll('.lpCheck:checked'), function(c){ return c.value; });
   if(!ids.length) return;
   var borrar = getPedidosWeb().filter(function(p){ return ids.indexOf(String(p.id)) !== -1; });
-  askConfirm('¿Borrás '+borrar.length+' pedido'+(borrar.length===1?'':'s')+' de prueba? Desaparecen del historial de delivery (tuyo y de los repartidores). No se puede deshacer desde la pantalla, pero queda una copia de respaldo.').then(function(ok){
+  // Confirmación en el mismo botón (la ventana de confirmar quedaba detrás de
+  // esta lista y no se veía): primer toque arma, el segundo borra.
+  var b = document.getElementById('lpBorrarBtn');
+  if(b && !b.dataset.armado){
+    b.dataset.armado = '1';
+    b.textContent = '⚠️ TOCÁ DE NUEVO PARA BORRAR '+borrar.length;
+    b.style.background = '#7f1d1d';
+    setTimeout(function(){ if(b && b.dataset.armado && !b.disabled){ delete b.dataset.armado; b.style.background = 'var(--red)'; b.textContent = '🗑 BORRAR '+borrar.length+' PEDIDO'+(borrar.length===1?'':'S'); } }, 6000);
+    return;
+  }
+  Promise.resolve(true).then(function(ok){
     if(!ok) return;
-    var b = document.getElementById('lpBorrarBtn'); if(b){ b.disabled = true; b.textContent = '⏳ Borrando...'; }
+    if(b){ b.disabled = true; b.textContent = '⏳ Borrando...'; }
     var ts = Date.now();
     window.__lrDB.collection('respaldoPedidosBorrados').doc(String(ts)).set({
       fecha: new Date(ts).toISOString(), por: currentEmp ? currentEmp.nombre : 'Admin', cantidad: borrar.length,
