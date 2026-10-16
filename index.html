@@ -962,7 +962,9 @@
     return Promise.all(Object.keys(deltas).map(function(nombre){
       var cant = deltas[nombre];
       if(!cant) return Promise.resolve();
-      return col.doc(idSeguro(nombre)).update({ stock: firebase.firestore.FieldValue.increment(-cant) })
+      // set+merge (no update): si al producto le faltara la ficha de stock, se
+      // crea en vez de fallar en silencio.
+      return col.doc(idSeguro(nombre)).set({ nombre: nombre, stock: firebase.firestore.FieldValue.increment(-cant) }, { merge: true })
         .catch(function(e){ console.error('Error descontando stock', nombre, e); });
     }));
   };
@@ -23421,6 +23423,7 @@ function renderDashboard() {
     })()+
 
     '<div class="dash-section-title">⚠ Alertas</div>'+
+    (function(){ var sf = productosSinFichaStock(); return sf.length ? '<div class="dash-alert danger" onclick="crearFichasStockFaltantes()" style="cursor:pointer">📦 '+sf.length+' producto'+(sf.length>1?'s':'')+' SIN FICHA DE STOCK (figuran siempre disponibles en el catálogo) — '+sf.slice(0,3).join(', ')+(sf.length>3?'...':'')+' · tocá para crearlas</div>' : ''; })()+
     (sinStock.length>0?'<div class="dash-alert danger" data-tab="stock" style="cursor:pointer">🔴 '+sinStock.length+' SIN STOCK — '+sinStock.slice(0,3).map(function(a){return a.nombre;}).join(', ')+(sinStock.length>3?'...':'')+'</div>':'')+
     (pocoStock.length>0?'<div class="dash-alert warn" data-tab="stock" style="cursor:pointer">🟡 '+pocoStock.length+' con poco stock</div>':'')+
     (sinStock.length===0&&pocoStock.length===0?'<div class="dash-alert ok">✓ Sin alertas de stock</div>':'')+
@@ -24840,6 +24843,7 @@ function guardarProdModal() {
   }
   else {
     PRODUCTS.push(prod);
+    asegurarFichaStock(prod.name);
     // Queda anotado como "creado pero sin confirmar en la nube", para que no
     // desaparezca de la lista cuando llegue la próxima sincronización.
     if(window.registrarAltaPendiente) window.registrarAltaPendiente(prod);
@@ -27217,6 +27221,7 @@ function guardarRecepNuevo() {
   if(esBebAlc && !pnoc && pventa>0) pnoc = pventa+1000;
 
   PRODUCTS.push({name:nombre, cat:cat, costo:costo||null, margin:margen, pventa:pventa, pnoc:pnoc||null, codigo:codigo||null});
+  asegurarFichaStock(nombre);
   registrarCambioCatalogo('nuevo', nombre, [
     {campo:'Categoría',antes:'—',despues:cat},
     {campo:'Costo',antes:'—',despues:costo||0},
@@ -33153,6 +33158,36 @@ function existeEnCatalogo(nombre) {
 }
 
 function getStockInv() { return window.__lrStockInvCache || {}; }
+// Producto nuevo = ficha de stock nueva, en el momento (en 0). Antes la ficha
+// se creaba recién con el primer ingreso y, si ese guardado se perdía, el
+// producto quedaba sin ficha: figuraba siempre "disponible" en el catálogo y
+// sin stock en el sistema. Con increment(0) no pisa una ficha que ya exista.
+function asegurarFichaStock(nombre){
+  try{
+    if(!nombre || !window.__lrDB) return;
+    var inv = getStockInv();
+    if(!inv[nombre]){ inv[nombre] = { stock: 0, minimo: 5 }; window.__lrStockInvCache = inv; }
+    window.__lrDB.collection(window.__lrCOL.inventario).doc(String(nombre).replace(/\//g, '-'))
+      .set({ nombre: nombre, stock: firebase.firestore.FieldValue.increment(0) }, { merge: true })
+      .catch(function(e){ console.error('No se pudo crear la ficha de stock de', nombre, e); });
+  }catch(e){ console.error('Ficha de stock', nombre, e); }
+}
+// Productos del catálogo sin ficha de stock (para el aviso del Inicio).
+function productosSinFichaStock(){
+  if(!(window.__lrSync && window.__lrSync.inventarioListos && window.__lrSync.productosListos)) return [];
+  var inv = getStockInv();
+  return (PRODUCTS || []).filter(function(p){ return p && p.name && inv[p.name] === undefined; }).map(function(p){ return p.name; });
+}
+function crearFichasStockFaltantes(){
+  var faltan = productosSinFichaStock();
+  if(!faltan.length){ showToast('✅ Todos los productos tienen ficha de stock'); return; }
+  askConfirm('¿Creás la ficha de stock (en 0) para '+faltan.length+' producto'+(faltan.length===1?'':'s')+'?\n\n'+faltan.slice(0,15).join('\n')+(faltan.length>15?'\n…':'')+'\n\nDespués cargá las cantidades reales en Cargar stock.').then(function(ok){
+    if(!ok) return;
+    faltan.forEach(asegurarFichaStock);
+    showToast('📦 Fichas creadas: '+faltan.length+' — cargá las cantidades en Cargar stock');
+    if(typeof switchTab === 'function') setTimeout(function(){ try{ switchTab('dashboard'); }catch(e){} }, 1500);
+  });
+}
 function saveStockInv(s, nombresABorrar) {
   window.__lrStockInvCache = s;
   if(window.__lrSaveStockInv) return window.__lrSaveStockInv(s, nombresABorrar);
