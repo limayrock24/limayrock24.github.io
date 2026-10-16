@@ -29836,7 +29836,10 @@ function limpiarProductosFantasma() {
 
   var inv = getStockInv();
   Object.keys(inv).forEach(function(k){
-    if(!existeEnCatalogo(k)) plan.stock.push(k);
+    // En el stock el nombre tiene que coincidir EXACTO con el del producto
+    // (así se lo busca al vender o cargar): una ficha con otra mayúscula o un
+    // espacio de más es una ficha vieja que no usa nadie, aunque se "parezca".
+    if(!PRODUCTS.some(function(p){ return p && p.name === k; })) plan.stock.push(k);
   });
 
   _limpiezaPlan = plan;
