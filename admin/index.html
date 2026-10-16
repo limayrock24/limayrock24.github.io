@@ -230,7 +230,12 @@
   // automáticamente "long polling" cuando haga falta, mucho más tolerante
   // a este tipo de redes inestables. Agregado el 11/8 tras varios cuelgues
   // de guardado reportados en 4G.
-  window.__lrDB.settings({ experimentalAutoDetectLongPolling: true });
+  // En la app LR Admin (navegador interno de Android) la conexión por
+  // defecto no recibía respuestas: ahí se fuerza "long polling", el modo más
+  // simple y compatible.
+  window.__lrDB.settings(/LimayRockAdminApp/.test(navigator.userAgent)
+    ? { experimentalForceLongPolling: true }
+    : { experimentalAutoDetectLongPolling: true });
   // Persistencia offline: si se corta el wifi un rato, el sistema sigue andando
   // con lo último sincronizado y se pone al día solo cuando vuelve la conexión.
   // Va en TODOS los paneles, admin incluido: sin esta copia el admin tenía que
@@ -3909,12 +3914,28 @@ body.night-on{background:#080005}
       return ce.apply(console, arguments);
     };
   }catch(x){}
+  // Pruebas de conexión (una sola vez, si la carga se demora): si el celu
+  // llega a la base por internet y si la identificación entrega su llave.
+  var extra = [], probado = false;
+  function probarConexion(){
+    if(probado) return; probado = true;
+    var conTiempo = function(p, ms){ return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('sin respuesta')); }, ms); })]); };
+    conTiempo(fetch('https://firestore.googleapis.com/v1/projects/limay-rock-852cb/databases/(default)/documents/config/deliveryActivo', {cache:'no-store'}), 12000)
+      .then(function(r){ extra.push('red '+(r.ok ? 'ok' : r.status)); })
+      .catch(function(e){ extra.push('red: '+(e && e.message || e)); });
+    try{
+      var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+      if(u) conTiempo(u.getIdToken(), 12000).then(function(){ extra.push('llave ok'); }).catch(function(e){ extra.push('llave: '+(e && (e.code || e.message) || e)); });
+      else extra.push('sin llave');
+    }catch(e){ extra.push('llave: '+e.message); }
+  }
   function textoDiag(){
+    if(Date.now()-t0 > 12000) probarConexion();
     var s = window.__lrSync || {};
     var pend = Object.keys(s).filter(function(k){ return /List[oa]s$/.test(k) && s[k] === false; }).map(function(k){ return k.replace(/List[oa]s$/,''); });
     var ident = '';
     try{ var u = window.firebase && firebase.auth && firebase.auth().currentUser; ident = u ? ' · equipo: '+String(u.email||'').split('@')[0] : ' · equipo sin identificar'; }catch(e){}
-    return '('+Math.round((Date.now()-t0)/1000)+' s) Falta: '+(pend.join(', ') || '—')+ident+(window.__lrPersistInfo ? ' · '+window.__lrPersistInfo : '')+(navigator.onLine === false ? ' · SIN INTERNET' : '')+(errs.length ? ' · Error: '+errs.slice(-2).join(' | ') : '');
+    return '('+Math.round((Date.now()-t0)/1000)+' s) Falta: '+(pend.join(', ') || '—')+ident+(window.__lrPersistInfo ? ' · '+window.__lrPersistInfo : '')+(extra.length ? ' · '+extra.join(' · ') : '')+(navigator.onLine === false ? ' · SIN INTERNET' : '')+(errs.length ? ' · Error: '+errs.slice(-2).join(' | ') : '');
   }
   setInterval(function(){
     var b = document.getElementById('lrSinConexionBanner'), d = document.getElementById('lrSinConexionDetalle');
