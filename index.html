@@ -3880,6 +3880,28 @@ body.night-on{background:#080005}
   <div style="font-size:12px;color:#777;margin-top:7px">Conectando con la base de datos</div>
 </div>
 <style>@keyframes lrLatido{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.72;transform:scale(.975)}}</style>
+<script>
+// Si la carga se demora, se muestra debajo del logo qué falta y el último
+// error: en el celu (sobre todo en la app) no hay otra forma de saber dónde
+// se traba.
+(function(){
+  var t0 = Date.now(), errs = [];
+  window.addEventListener('error', function(e){ errs.push((e.message||'error')+(e.filename ? ' @'+String(e.filename).split('/').pop()+':'+e.lineno : '')); });
+  window.addEventListener('unhandledrejection', function(e){ var r = e.reason; errs.push('promesa: '+((r && (r.code || r.message)) || r)); });
+  var iv = setInterval(function(){
+    var ov = document.getElementById('lrLoadingOverlay');
+    if(!ov || ov.style.display === 'none'){ if(Date.now()-t0 > 600000) clearInterval(iv); return; }
+    if(Date.now()-t0 < 15000) return;
+    var s = window.__lrSync || {};
+    var pend = Object.keys(s).filter(function(k){ return /List[oa]s$/.test(k) && s[k] === false; }).map(function(k){ return k.replace(/List[oa]s$/,''); });
+    var el = document.getElementById('lrLoadingDiag');
+    if(!el){ el = document.createElement('div'); el.id = 'lrLoadingDiag'; el.style.cssText = 'font-size:11px;color:#8a8a8a;margin-top:16px;max-width:92%;text-align:center;word-break:break-word;line-height:1.5'; ov.appendChild(el); }
+    var ident = '';
+    try{ var u = window.firebase && firebase.auth && firebase.auth().currentUser; ident = u ? ' · equipo: '+String(u.email||'').split('@')[0] : ' · equipo sin identificar'; }catch(e){}
+    el.textContent = '('+Math.round((Date.now()-t0)/1000)+' s) Falta: '+(pend.join(', ') || '—')+ident+(navigator.onLine === false ? ' · SIN INTERNET' : '')+(errs.length ? ' · Error: '+errs.slice(-2).join(' | ') : '');
+  }, 2000);
+})();
+</script>
 
 <div class="toast" id="toast">⚡ ARCHIVO DESCARGADO</div>
 
