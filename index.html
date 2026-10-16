@@ -1164,7 +1164,11 @@
   // trae el historial completo (reportes de meses anteriores). El panel de
   // admin propio (/admin/) trae todo desde el principio, como siempre.
   var DIAS_CAJA = 45;
-  window.__lrHistorialCompleto = !!window.__lrEsPanelAdmin;
+  // En la app LR Admin del celu también se trae solo lo reciente al abrir (bajar
+  // todo el historial de una vez la dejaba trabada); el completo se pide con
+  // el botón "📚 Historial completo".
+  window.__lrAppLiviana = /LimayRockAdminApp/.test(navigator.userAgent);
+  window.__lrHistorialCompleto = !!window.__lrEsPanelAdmin && !window.__lrAppLiviana;
   window.__lrHistorialCompletoListo = window.__lrHistorialCompleto;
   var _histListos = { ventas: false, movimientos: false };
   function _consultaReciente(nombreCol){
@@ -3924,6 +3928,11 @@ body.night-on{background:#080005}
     conTiempo(fetch('https://firestore.googleapis.com/v1/projects/limay-rock-852cb/databases/(default)/documents/config/deliveryActivo', {cache:'no-store'}), 12000)
       .then(function(r){ extra.push('red '+(r.ok ? 'ok' : r.status)); })
       .catch(function(e){ extra.push('red: '+(e && e.message || e)); });
+    try{
+      conTiempo(window.__lrDB.collection('config').doc('deliveryActivo').get({source:'server'}), 15000)
+        .then(function(){ extra.push('sdk ok'); })
+        .catch(function(e){ extra.push('sdk: '+(e && (e.code || e.message) || e)); });
+    }catch(e){ extra.push('sdk: '+e.message); }
     try{
       var u = window.firebase && firebase.auth && firebase.auth().currentUser;
       if(u) conTiempo(u.getIdToken(), 12000).then(function(){ extra.push('llave ok'); }).catch(function(e){ extra.push('llave: '+(e && (e.code || e.message) || e)); });
@@ -8884,10 +8893,20 @@ function openAdmin() {
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
   // historial completo: si todavía está llegando, se espera. En la caja,
   // que trae solo lo reciente, al abrir el admin se pide el resto.
-  if(window.__lrCargarHistorialCompleto) window.__lrCargarHistorialCompleto();
+  if(window.__lrCargarHistorialCompleto && !window.__lrAppLiviana) window.__lrCargarHistorialCompleto();
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
+  // En la app del celu: botón para traer el historial completo cuando haga falta.
+  if(window.__lrAppLiviana && !window.__lrHistorialCompleto && !document.getElementById('lrBtnHistCompleto')){
+    var _bh = document.createElement('button');
+    _bh.id = 'lrBtnHistCompleto';
+    _bh.textContent = '📚 Historial completo';
+    _bh.title = 'Por ahora se ven los últimos 45 días. Tocá para traer todo (tarda un rato).';
+    _bh.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:8px 14px;font-size:.74rem;font-family:Oswald,sans-serif;letter-spacing:1px;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer';
+    _bh.onclick = function(){ _bh.remove(); window.__lrCargarHistorialCompleto(); openAdmin(); };
+    document.body.appendChild(_bh);
+  }
   // Mientras llega el historial viejo (solo pasa en la caja), un aviso arriba.
-  if(!window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
+  if(window.__lrHistorialCompleto && !window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
     var _av = document.createElement('div');
     _av.id = 'lrAvisoHistCompleto';
     _av.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:6px 14px;font-size:.74rem;box-shadow:0 4px 16px rgba(0,0,0,.5)';
