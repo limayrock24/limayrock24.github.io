@@ -1736,6 +1736,13 @@
     // Cuántos pedidos puede tener tomados a la vez cada repartidor (0 = sin límite).
     var _mx = doc.exists ? doc.data().maxPedidosRep : undefined;
     window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
+    // Dónde se atienden y cobran los pedidos web: en cualquier caja (como
+    // siempre) o solo en el Puesto Delivery (la tablet, link /puesto/).
+    var _modoAntes = window.__lrModoCobroDelivery;
+    window.__lrModoCobroDelivery = (doc.exists && doc.data().modoCobro === 'puesto') ? 'puesto' : 'cualquiera';
+    if(_modoAntes && _modoAntes !== window.__lrModoCobroDelivery){
+      try{ var _mpd = document.getElementById('deliveryPendModal'); if(_mpd && _mpd.classList.contains('open') && typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal(); }catch(e){}
+    }
     // El costo de envío urbano es UNO SOLO. Manda el de la configuración de
     // zonas: es el que se edita en la sección Delivery y el que usa el catálogo
     // para cobrarle al cliente. El campo suelto de la pantalla Inicio es el
@@ -7697,6 +7704,15 @@ function cajaEquipo(){
   try{ return parseInt(localStorage.getItem(SK_CAJA_EQUIPO), 10) === 2 ? 2 : 1; }catch(e){ return 1; }
 }
 function cajaDe(r){ return (r && Number(r.caja) === 2) ? 2 : 1; }
+// ── PUESTO DELIVERY (tablet) ─────────────────────────────────────────────
+// Se abre con el link /puesto/ (que trae ?puesto=1). Ahí entra un empleado con
+// su PIN, sobre el turno que YA tiene abierto en Caja 1 o Caja 2: no abre ni
+// cierra turnos, y lo que cobra va a la caja de ese empleado.
+window.__lrEsPuesto = !window.__lrEsPanelAdmin && /[?&]puesto=1/.test(location.search);
+function deliveryEnPuesto(){ return window.__lrModoCobroDelivery === 'puesto'; }
+// En una caja del mostrador, con el modo Puesto Delivery activo, los pedidos
+// web se ven pero no se cobran ni se les escribe desde acá.
+function pedidoBloqueadoPorPuesto(){ return deliveryEnPuesto() && !window.__lrEsPuesto && !window.__lrEsPanelAdmin && !window.__lrAdminSinTurno; }
 function cajaTurnoActual(){
   return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.caja) ? (Number(currentEmp.caja) === 2 ? 2 : 1) : cajaEquipo();
 }
@@ -7768,6 +7784,7 @@ function pintarCajaEquipo(){
 var SK_SESION_ACTIVA = 'lr_sesion_activa';
 function guardarSesionActiva() {
   if(!currentEmp) return;
+  if(window.__lrEsPuesto) return; // la tablet usa el turno de la caja: no lo pisa
   localStorage.setItem(SK_SESION_ACTIVA, JSON.stringify(currentEmp));
   if(window.__lrSaveSesionActiva) {
     window.__lrSaveSesionActiva({
@@ -7783,6 +7800,7 @@ function guardarSesionActiva() {
   }
 }
 function limpiarSesionActiva(nombre) {
+  if(window.__lrEsPuesto) return; // la tablet nunca borra el turno de una caja
   // Solo borramos el localStorage local si es la sesión propia de este
   // dispositivo (no cuando se está cerrando la sesión de otra persona
   // detectada como interrumpida).
@@ -7956,6 +7974,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
 }
 
 function chequearSesionInterrumpida() {
+  if(window.__lrEsPuesto) return false; // la tablet no retoma ni cierra turnos
   var sesion = getSesionActivaGuardada();
   if(!sesion) return false;
 
@@ -8083,6 +8102,11 @@ function initLogin() {
   document.getElementById('loginPinError').classList.remove('show');
   // Si hay un turno interrumpido, resolverlo antes de mostrar el login normal
   if(chequearSesionInterrumpida()) return;
+  if(window.__lrEsPuesto){
+    var _ls = document.querySelector('#loginScreen .login-sub');
+    if(_ls) _ls.innerHTML = '<span style="color:var(--gold)">🛵 PUESTO DELIVERY</span><br><span style="font-size:.75rem;color:var(--gray)">Ingresá tu PIN · tenés que tener el turno abierto en una caja</span>';
+    var _bar = document.getElementById('puestoBarra'); if(_bar) _bar.remove();
+  }
   // Siempre mostrar la pantalla de login al llamar esta función
   document.getElementById('loginScreen').classList.remove('hidden');
   if(typeof pintarCajaEquipo==='function') pintarCajaEquipo();
@@ -8102,6 +8126,7 @@ function lpp(d) {
         abrirAdminSinTurno();
         return;
       }
+      if(window.__lrEsPuesto){ var _pinP = loginBuf; loginBuf=''; updateLoginDots(); entrarPuestoDelivery(_pinP); return; }
       // Buscar el empleado que tenga ese PIN
       var emp = EMPLEADOS.find(function(e){ return e.pin===loginBuf; });
       if(emp && emp.rol === 'repartidor') {
@@ -11038,6 +11063,7 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
 // ── CIERRE DE TURNO ────────────────────────────────────────────────────────
 function cerrarTurno() {
   if(!currentEmp){ showToast('No hay sesión activa',true); return; }
+  if(window.__lrEsPuesto){ showToast('El turno se cierra en la caja ('+cajaTurnoActual()+'), no en la tablet', true); return; }
   askConfirm('¿Cerrás tu turno y salís de la sesión?').then(function(ok){
     if(!ok) return;
     abrirArqueoModal();
@@ -13290,6 +13316,7 @@ function savePedidosWeb(p) {
 // alias y el titular; si es efectivo, la pregunta de con cuánto abona para
 // preparar el vuelto. Lo hace el local porque es quien cobra y verifica.
 function enviarDatosCobro(id, yaConfirmado) {
+  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy esto se hace desde la tablet (Puesto Delivery)', true); return; }
   var p = getPedidosWeb().find(function(x){ return x.id===id; });
   if(!p) return;
   // Sin ubicación el envío quedó a confirmar: no mandar los datos de pago con
@@ -29278,7 +29305,8 @@ function abrirDeliveryPendModal() {
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;margin-top:8px">'+fmt(p.total)+envioTxt+' · '+hora+'</div>'+
         // El LOCAL es el único que habla con el cliente: le pasa los datos de
         // pago y confirma el cobro. El repartidor solo lleva el pedido.
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
+        (pedidoBloqueadoPorPuesto() ? '<div style="margin-top:8px;padding:10px;border:1px dashed var(--gold);border-radius:6px;text-align:center;color:var(--gold);font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px">🔒 '+(p.pagoConfirmado?'✓ COBRADO · ':'')+'Lo atiende y cobra la tablet (Puesto Delivery)</div>' : '')+
+        '<div style="display:'+(pedidoBloqueadoPorPuesto()?'none':'flex')+';gap:6px;flex-wrap:wrap;margin-top:8px">'+
           '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
           '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Más mensajes</button>'+
           (p.pagoConfirmado
@@ -29326,6 +29354,7 @@ function destrabarPedidoWeb(id){
   if(typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
 }
 function cargarPedidoAlCarrito(id) {
+  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy los pedidos web se cobran en la tablet (Puesto Delivery)', true); return; }
   var pedidos = getPedidosWeb();
   var pedido = pedidos.find(function(p){ return p.id===id; });
   if(!pedido) return;
@@ -31945,6 +31974,74 @@ function eliminarMensajeDelivery(ts){
 }
 
 function _maxPedidosRep(){ var n = window.__lrMaxPedidosRep; return (n === undefined || n === null || isNaN(n)) ? 2 : Number(n); }
+function cambiarModoCobroDelivery(modo){
+  modo = modo === 'puesto' ? 'puesto' : 'cualquiera';
+  window.__lrModoCobroDelivery = modo;
+  window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({ modoCobro: modo }, { merge: true })
+    .then(function(){ showToast(modo === 'puesto' ? '🛵 Los pedidos web se cobran en la tablet (Puesto Delivery)' : '🖥 Los pedidos web se cobran en cualquier caja'); })
+    .catch(function(e){ showToast('No se pudo guardar: '+(e && e.message || e), true); });
+  if(typeof renderDeliveryControl === 'function') try{ renderDeliveryControl(); }catch(e){}
+  if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
+}
+// Entrar a la tablet con el PIN: usa el turno abierto de ese empleado.
+function entrarPuestoDelivery(pin){
+  var emp = (EMPLEADOS||[]).find(function(e){ return e.pin === pin; });
+  var err = function(t){ var e = document.getElementById('loginPinError'); if(e){ var orig = e.getAttribute('data-orig') || e.textContent; e.setAttribute('data-orig', orig); e.textContent = t; e.classList.add('show'); setTimeout(function(){ e.classList.remove('show'); e.textContent = orig; }, 3500); } };
+  if(!emp || emp.rol === 'repartidor'){ err('PIN incorrecto'); return; }
+  var ses = (window.__lrSesionesActivasCache || {})[String(emp.nombre).replace(/\//g,'-')];
+  var vigente = ses && ses.turnoInicio && (Date.now() - new Date(ses.turnoInicio).getTime()) < 16*3600000;
+  if(!vigente){ err(emp.nombre+': primero abrí tu turno en la Caja 1 o 2'); return; }
+  currentEmp = Object.assign({}, emp, { turnoInicio: ses.turnoInicio, efectivoInicial: ses.efectivoInicial || 0, caja: cajaDe(ses), _cajaFijada: true, _puesto: true });
+  document.getElementById('loginScreen').classList.add('hidden');
+  cart = []; pagoSel = null; tipoOp = 'venta';
+  try{ buildPills(); filterAll(); buildFavs(); buildCombosGrid(); updateStockNotif(); setupOpButtons(); autoDetectTurno(); updateRecepBtn(); }catch(e){ console.error(e); }
+  updateCart();
+  var ea = document.getElementById('empActual'); if(ea) ea.textContent = '🛵 Puesto Delivery · '+currentEmp.nombre+' (Caja '+cajaTurnoActual()+')';
+  if(!document.getElementById('puestoEstilos')){
+    var st = document.createElement('style'); st.id = 'puestoEstilos';
+    // Tablet: la lista de pedidos ocupa la pantalla, letra y botones más grandes.
+    st.textContent = '#deliveryPendModal>div{max-width:920px!important;max-height:84vh!important;margin-bottom:70px}'+
+      '#deliveryPendList{font-size:1.12rem}#deliveryPendList button{padding:13px!important;font-size:.85rem!important}';
+    document.head.appendChild(st);
+  }
+  pintarBarraPuesto();
+  abrirDeliveryPendModal();
+  showToast('🛵 '+currentEmp.nombre+' atiende el delivery · lo cobrado va a la Caja '+cajaTurnoActual());
+}
+// Si el turno de quien atiende la tablet se cierra en la caja, la tablet vuelve
+// sola a pedir PIN (no se puede seguir cobrando sobre un turno cerrado).
+setInterval(function(){
+  try{
+    if(!window.__lrEsPuesto || typeof currentEmp === 'undefined' || !currentEmp || !currentEmp._puesto) return;
+    if(!(window.__lrSync && window.__lrSync.sesionActivaListos)) return;
+    var ses = (window.__lrSesionesActivasCache || {})[String(currentEmp.nombre).replace(/\//g,'-')];
+    if(ses && ses.turnoInicio === currentEmp.turnoInicio) return;
+    var quien = currentEmp.nombre;
+    if(cart && cart.length) return; // no cortar un cobro a la mitad
+    currentEmp = null;
+    var m = document.getElementById('deliveryPendModal'); if(m) m.classList.remove('open');
+    initLogin();
+    showToast('🔒 Se cerró el turno de '+quien+' en la caja: ingresá el PIN de quien sigue atendiendo', true);
+  }catch(e){}
+}, 15000);
+function pintarBarraPuesto(){
+  var b = document.getElementById('puestoBarra');
+  if(!b){ b = document.createElement('div'); b.id = 'puestoBarra'; document.body.appendChild(b); }
+  b.style.cssText = 'position:fixed;left:10px;right:10px;bottom:10px;z-index:2500;display:flex;gap:8px;justify-content:space-between;align-items:center;background:#111;border:1px solid var(--gold);border-radius:12px;padding:8px 10px;box-shadow:0 6px 24px rgba(0,0,0,.6)';
+  b.innerHTML = '<div style="font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--gold)">🛵 PUESTO DELIVERY <span style="color:var(--white)">· '+currentEmp.nombre+'</span> <span style="color:var(--green)">(Caja '+cajaTurnoActual()+')</span></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button onclick="abrirDeliveryPendModal()" style="background:var(--green);color:var(--black);border:none;border-radius:8px;padding:12px 16px;font-family:Oswald,sans-serif;font-size:.85rem;font-weight:700;cursor:pointer">🛵 PEDIDOS</button>'+
+      '<button onclick="cambiarEmpleadoPuesto()" style="background:var(--card);color:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:Oswald,sans-serif;font-size:.8rem;cursor:pointer">🔄 Cambiar empleado</button>'+
+    '</div>';
+}
+function cambiarEmpleadoPuesto(){
+  if(cart && cart.length && !confirm('Hay un pedido cargado sin cobrar. ¿Salís igual? (se vacía el carrito)')) return;
+  currentEmp = null; cart = []; pagoSel = null;
+  try{ updateCart(); }catch(e){}
+  ['deliveryPendModal'].forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.remove('open'); });
+  var cp = document.getElementById('cartPanel'); if(cp) cp.classList.remove('open');
+  initLogin();
+}
 function cambiarMaxPedidosRep(v){
   var n = Number(v) || 0;
   window.__lrMaxPedidosRep = n;
@@ -32237,6 +32334,14 @@ function renderDeliveryControl() {
 
       '</div>'+
 
+      '<div style="background:var(--dark);border:1px solid '+(deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:6px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="font-size:.78rem;color:var(--light);margin-bottom:6px">🛵 ¿Dónde se atienden y cobran los pedidos web?</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+          '<button onclick="cambiarModoCobroDelivery(\'cualquiera\')" style="flex:1;min-width:150px;background:'+(!deliveryEnPuesto()?'var(--gold)':'var(--card)')+';color:'+(!deliveryEnPuesto()?'var(--black)':'var(--gray)')+';border:1px solid '+(!deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">🖥 EN CUALQUIER CAJA</button>'+
+          '<button onclick="cambiarModoCobroDelivery(\'puesto\')" style="flex:1;min-width:150px;background:'+(deliveryEnPuesto()?'var(--gold)':'var(--card)')+';color:'+(deliveryEnPuesto()?'var(--black)':'var(--gray)')+';border:1px solid '+(deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">🛵 SOLO PUESTO DELIVERY (TABLET)</button>'+
+        '</div>'+
+        '<div style="font-size:.64rem;color:var(--gray);margin-top:5px">'+(deliveryEnPuesto()?'Las cajas ven los pedidos pero no los cobran. La tablet: limayrock.com.ar/puesto/ · lo cobrado va a la caja del empleado que cobra.':'Como siempre: cualquier caja carga y cobra los pedidos.')+'</div>'+
+      '</div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--dark);border-radius:6px;padding:9px 12px;margin-bottom:8px">'+
         '<div><div style="font-size:.78rem;color:var(--light)">🛵 Pedidos a la vez por repartidor</div>'+
           '<div style="font-size:.64rem;color:var(--gray)">Con ese número en curso, tiene que entregar uno para tomar otro</div></div>'+
