@@ -243,6 +243,14 @@
   // bajar todo de internet antes de mostrar nada y en el celular no terminaba
   // de abrir (se probó el 30/9 y se volvió atrás).
   window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
+  // Puesto Delivery (tablet, link /puesto/): pantalla propia y carga liviana.
+  window.__lrEsPuesto = !window.__lrEsPanelAdmin && /[?&]puesto=1/.test(location.search);
+  if(window.__lrEsPuesto){
+    document.documentElement.classList.add('modo-puesto');
+    var _pzCss = document.createElement('style'); _pzCss.id = 'puestoCss';
+    _pzCss.textContent = 'html.modo-puesto body>header,html.modo-puesto #combosSection,html.modo-puesto #favsSection,html.modo-puesto #main,html.modo-puesto #empty,html.modo-puesto #cartPanel,html.modo-puesto #cartPanel2,html.modo-puesto #ventaOk,html.modo-puesto #puestoBarra{display:none!important}#puestoApp{display:none;max-width:1280px;margin:0 auto;padding:14px 14px 90px;font-family:Barlow,system-ui,sans-serif;color:#eee}.pz-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#111;border:1px solid var(--gold);border-radius:12px;padding:12px 16px;margin-bottom:12px}.pz-tit{font-family:Oswald,sans-serif;font-size:1.35rem;letter-spacing:2px;color:var(--gold);font-weight:700}.pz-quien{font-size:.85rem;color:#bbb;margin-top:2px}.pz-quien b{color:#fff}.pz-top-der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pz-chip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#ccc;border-radius:20px;padding:7px 14px;font-size:.85rem}.pz-chip b{color:#22c55e}.pz-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.pz-tab{flex:1;min-width:170px;background:#161616;border:2px solid #2a2a2a;color:#aaa;border-radius:10px;padding:13px 10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer}.pz-tab.on{background:#1d1d1d}.pz-num{display:inline-block;min-width:26px;border-radius:13px;padding:1px 8px;margin-left:4px;font-weight:700}.pz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.pz-vacio{text-align:center;color:#999;padding:50px 20px;font-size:1.1rem}.pz-vacio span{font-size:.85rem;color:#666}.pz-card{background:var(--card);border:2px solid #2c2c2c;border-radius:12px;padding:14px}.pz-card.demora{border-color:rgba(248,113,113,.7)}.pz-card.cobrado{border-color:rgba(56,189,248,.45)}.pz-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.pz-nom{font-size:1.15rem;font-weight:700;color:#fff}.pz-tot{font-family:Oswald,sans-serif;font-size:1.45rem;color:var(--gold);font-weight:700;white-space:nowrap}.pz-sub{font-size:.82rem;color:#999;margin-top:3px}.pz-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-pill{border-radius:14px;padding:4px 10px;font-size:.78rem;font-weight:600}.pz-dir{font-size:.9rem;color:#ddd;margin-top:8px}.pz-dir span{color:var(--gold)}.pz-items{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.pz-it{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:.95rem;color:#eee}.pz-q{display:inline-block;min-width:30px;text-align:center;background:var(--gold);color:#111;border-radius:5px;font-family:Oswald,sans-serif;font-weight:700;padding:2px 4px}.pz-notas{background:rgba(210,32,31,.1);border:1px solid rgba(210,32,31,.35);border-radius:7px;padding:8px 10px;margin-top:8px;font-size:.85rem;color:#ddd}.pz-notas b{color:#f87171}.pz-btn-cobrar{display:block;width:100%;margin-top:12px;background:#22c55e;color:#052e16;border:none;border-radius:9px;padding:15px;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:1px;cursor:pointer}.pz-btn-cobrar.grande{font-size:1.35rem;padding:19px}.pz-btn-cobrar:disabled{opacity:.5}.pz-fila{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.pz-btn-sec{flex:1;min-width:120px;background:transparent;border:1px solid #444;color:#ccc;border-radius:7px;padding:11px 10px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer}.pz-cobrado{margin-top:12px;text-align:center;background:rgba(34,197,94,.12);color:#22c55e;border-radius:7px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px}.pz-trabado{margin-top:12px;text-align:center;border:1px dashed var(--gold);border-radius:7px;padding:10px;color:var(--gold);font-family:Oswald,sans-serif}.pz-trabado button{display:block;margin:6px auto 0;background:none;border:none;color:#999;text-decoration:underline;cursor:pointer}.pz-cobro .pz-ccab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.pz-cobro .pz-ccab .pz-btn-sec{flex:0 0 auto}.pz-ccols{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}@media(max-width:820px){.pz-ccols{grid-template-columns:1fr}}.pz-ccol{background:var(--card);border:1px solid #2c2c2c;border-radius:12px;padding:14px}.pz-sec{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:8px}.pz-cfila{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.pz-cnom{flex:1;font-size:1rem;color:#fff}.pz-cnom span{display:block;font-size:.75rem;color:#888}.pz-cqty{display:flex;align-items:center;gap:8px}.pz-cqty b{min-width:24px;text-align:center;font-size:1.1rem}.pz-cqty button{width:38px;height:38px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#fff;font-size:1.3rem;cursor:pointer}.pz-csub{min-width:90px;text-align:right;font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem}.pz-cdel{background:none;border:none;font-size:1.1rem;cursor:pointer;opacity:.7}.pz-busca{width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:12px;font-size:1rem;outline:none}.pz-resl{display:flex;flex-direction:column;gap:5px;margin-top:6px}.pz-res{text-align:left;background:#1a1a1a;border:1px solid #333;border-radius:7px;color:#ddd;padding:10px 12px;font-size:.92rem;cursor:pointer}.pz-res b{float:right;color:var(--gold)}.pz-envio{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}.pz-envio input{width:130px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:var(--gold);padding:9px;font-size:1rem;text-align:right}.pz-medios{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pz-medio{background:#1a1a1a;border:2px solid #333;border-radius:9px;color:#ccc;padding:15px 8px;font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;cursor:pointer}.pz-medio.on{border-color:var(--gold);background:rgba(244,180,0,.12);color:var(--gold)}.pz-extra{margin-top:12px;background:#151515;border-radius:9px;padding:12px}.pz-extra label{display:block;font-size:.85rem;color:#aaa;margin-bottom:5px}.pz-extra input{width:100%;background:#1f1f1f;border:1px solid #444;border-radius:7px;color:#fff;padding:12px;font-size:1.2rem;outline:none}.pz-rapidos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-rapidos button{flex:1;min-width:80px;background:#222;border:1px solid #444;border-radius:7px;color:#ddd;padding:9px 4px;font-size:.85rem;cursor:pointer}.pz-vuelto{margin-top:10px;font-size:1.15rem;color:#ddd}.pz-vuelto b{color:#22c55e;font-size:1.35rem}.pz-mix{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pz-mix label{flex:0 0 130px;margin:0}.pz-mix input{padding:9px;font-size:1rem}.pz-totales{margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:10px}.pz-totales div{display:flex;justify-content:space-between;font-size:.95rem;color:#bbb;padding:3px 0}.pz-totales .fin{font-size:1.25rem;color:#fff;margin-top:4px}.pz-totales .fin b{color:var(--gold);font-family:Oswald,sans-serif;font-size:1.6rem}.pz-ok{text-align:center;padding:70px 20px}.pz-ok-ico{font-size:4rem}.pz-ok-tit{font-family:Oswald,sans-serif;font-size:2.2rem;color:#22c55e;letter-spacing:2px;margin-top:8px}.pz-ok-sub{font-size:1.05rem;color:#ccc;margin-top:6px}.pz-ok-vuelto{display:inline-block;margin-top:16px;background:var(--gold);color:#111;border-radius:12px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700}';
+    document.head.appendChild(_pzCss);
+  }
   // También en la app LR Admin: la primera vez baja todo y queda guardado en
   // el celu, así las veces siguientes abre rápido y solo trae lo nuevo.
   window.__lrDB.enablePersistence({synchronizeTabs:true}).then(function(){
@@ -373,6 +381,15 @@
     ultimoMensajesPuntSnapshot: {},
     ultimoMovimientosSnapshot: {}
   };
+  // El Puesto Delivery solo atiende pedidos: no baja el historial ni lo de
+  // administración (cierres, egresos, fiados, etc.). Lo que guarda siempre
+  // AGREGA registros nuevos (los guardados solo borran lo que antes leyeron),
+  // así que no le hace falta tenerlos para cobrar.
+  if(window.__lrEsPuesto){
+    ['cierresListos','consumosListos','egresosListos','fiadosListos','consignacionesListos','deliveryListos','prestamosListos',
+     'transferCuentasListos','cargasVirtualesListos','mensajesProgListos','mensajesPuntListos','retirosCajaListos','clientesListos',
+     'sorteosListos','proveedoresListos','cierresMesListos','logCatalogoListos','stockMovsListos'].forEach(function(k){ window.__lrSync[k] = true; });
+  }
 
   function ocultarCargaSiListo(){
     var s = window.__lrSync;
@@ -1175,7 +1192,7 @@
   var _histListos = { ventas: false, movimientos: false };
   function _consultaReciente(nombreCol){
     var q = window.__lrDB.collection(nombreCol);
-    if(!window.__lrHistorialCompleto) q = q.where('id', '>=', Date.now() - DIAS_CAJA*24*3600000);
+    if(!window.__lrHistorialCompleto) q = q.where('id', '>=', Date.now() - (window.__lrEsPuesto ? 1 : DIAS_CAJA)*24*3600000);
     return q;
   }
   function _marcarHistListo(cual){
@@ -1265,7 +1282,7 @@
   // Escucha en vivo de cierres de turno.
   // Incremental: ver crearListaIncremental. Clave y orden por fecha, igual
   // que antes.
-  window.__lrDB.collection(window.__lrCOL.cierres).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.cierres).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCierresCache = lista;
     window.__lrSync.ultimoCierresSnapshot = mapa;
@@ -1301,7 +1318,7 @@
   };
 
   // Consumos
-  window.__lrDB.collection(window.__lrCOL.consumos).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.consumos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrConsumosCache = lista;
     window.__lrSync.ultimoConsumosSnapshot = mapa;
@@ -1332,7 +1349,7 @@
   };
 
   // Egresos
-  window.__lrDB.collection(window.__lrCOL.egresos).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.egresos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Avisar de pagos nuevos (después de la carga inicial)
@@ -1377,7 +1394,7 @@
   };
 
   // Fiados
-  window.__lrDB.collection(window.__lrCOL.fiados).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.fiados).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrFiadosCache = lista;
     window.__lrSync.ultimoFiadosSnapshot = mapa;
@@ -1408,7 +1425,7 @@
   };
 
   // Consignaciones (mercadería entregada para vender/usar, se cobra a precio de costo)
-  window.__lrDB.collection(window.__lrCOL.consignaciones).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.consignaciones).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrConsignacionesCache = lista;
     window.__lrSync.ultimoConsignacionesSnapshot = mapa;
@@ -1439,7 +1456,7 @@
   };
 
   // Delivery
-  window.__lrDB.collection(window.__lrCOL.delivery).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.delivery).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrDeliveryCache = lista;
     window.__lrSync.ultimoDeliverySnapshot = mapa;
@@ -1463,7 +1480,7 @@
   };
 
   // Préstamos
-  window.__lrDB.collection(window.__lrCOL.prestamos).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.prestamos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrPrestamosCache = lista;
     window.__lrSync.ultimoPrestamosSnapshot = mapa;
@@ -1489,7 +1506,7 @@
   };
 
   // Transferencias entre cuentas
-  window.__lrDB.collection(window.__lrCOL.transferCuentas).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.transferCuentas).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrTransferCuentasCache = lista;
     window.__lrSync.ultimoTransferCuentasSnapshot = mapa;
@@ -1515,7 +1532,7 @@
   };
 
   // Cargas virtuales
-  window.__lrDB.collection(window.__lrCOL.cargasVirtuales).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.cargasVirtuales).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCargasVirtualesCache = lista;
     window.__lrSync.ultimoCargasVirtualesSnapshot = mapa;
@@ -1541,7 +1558,7 @@
   };
 
   // Mensajes programados
-  window.__lrDB.collection(window.__lrCOL.mensajesProg).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.mensajesProg).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrMensajesProgCache = lista;
     window.__lrSync.ultimoMensajesProgSnapshot = mapa;
@@ -1572,7 +1589,7 @@
   };
 
   // Mensajes puntuales
-  window.__lrDB.collection(window.__lrCOL.mensajesPunt).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.mensajesPunt).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
 
     // Detectar mensajes nuevos (agregados después de la carga inicial) para
@@ -1910,6 +1927,7 @@
       try{ abrirDeliveryPendModal(); }catch(e){}
       modalPendDel.scrollTop = yPend;
     }
+    if(window.__lrEsPuesto && typeof renderPuesto === 'function'){ try{ renderPuesto(); }catch(e){ console.error('Puesto', e); } }
     // Panel del repartidor: que un pedido nuevo (o uno que otro repartidor
     // acaba de tomar) se refleje al instante, sin recargar nada.
     if(typeof actualizarContadorRepartidor==='function'){
@@ -1996,7 +2014,7 @@
   };
 
   // Historial de movimientos de stock (ingresos/egresos manuales, ajustes)
-  window.__lrDB.collection('stockMovsHistorial').onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection('stockMovsHistorial').onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrStockMovsCache = lista;
     window.__lrSync.ultimoStockMovsSnapshot = mapa;
@@ -2253,7 +2271,7 @@
   };
 
   // Retiros de caja
-  window.__lrDB.collection(window.__lrCOL.retirosCaja).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.retirosCaja).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrRetirosCajaCache = lista;
     window.__lrSync.ultimoRetirosCajaSnapshot = mapa;
@@ -2279,7 +2297,7 @@
   };
 
   // Clientes (club de fidelidad / puntos) — se identifican por DNI, no por id
-  window.__lrDB.collection(window.__lrCOL.clientes).onSnapshot(function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.clientes).onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.dni]=JSON.parse(JSON.stringify(d)); });
     window.__lrClientesCache = lista;
@@ -2310,7 +2328,7 @@
   };
 
   // Sorteos
-  window.__lrDB.collection(window.__lrCOL.sorteos).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.sorteos).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrSorteosCache = lista;
     window.__lrSync.ultimoSorteosSnapshot = mapa;
@@ -2334,7 +2352,7 @@
   };
 
   // Proveedores (lista curada, con borrado si se elimina uno)
-  window.__lrDB.collection(window.__lrCOL.proveedores).onSnapshot(function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.proveedores).onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=JSON.parse(JSON.stringify(d)); });
     window.__lrProveedoresCache = lista;
@@ -2466,7 +2484,7 @@
   };
 
   // Cierres mensuales (resumen de Liquidez por período)
-  window.__lrDB.collection(window.__lrCOL.cierresMes).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.cierresMes).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrCierresMesCache = lista;
     window.__lrSync.ultimoCierresMesSnapshot = mapa;
@@ -2490,7 +2508,7 @@
   };
 
   // Log de cambios de catálogo (historial de precios/costos, solo se agrega)
-  window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot((function(inc){ return function(snap){
+  if(!window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.logCatalogo).onSnapshot((function(inc){ return function(snap){
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.__lrLogCatalogoCache = lista;
     window.__lrSync.ultimoLogCatalogoSnapshot = mapa;
@@ -8123,6 +8141,11 @@ function lpp(d) {
       // Atajo: el PIN de admin (mientras no haya uno cargado, el 0000) abre
       // el panel admin directo, sin loguear a ningún empleado ni abrir turno.
       (_hayPinAdmin() ? verificarPinAdmin(loginBuf) : Promise.resolve(loginBuf==='0000')).then(function(esPinAdmin){
+      if(esPinAdmin && window.__lrEsPuesto){
+        loginBuf=''; updateLoginDots();
+        showToast('El panel admin se abre desde la caja o desde /admin/, no desde el puesto', true);
+        return;
+      }
       if(esPinAdmin) {
         loginBuf=''; updateLoginDots();
         abrirAdminSinTurno();
@@ -8922,6 +8945,8 @@ function esperarCargaCompleta(fn) {
 }
 
 function openAdmin() {
+  // El puesto no baja el historial: el admin se abre desde la caja o /admin/.
+  if(window.__lrEsPuesto){ showToast('El panel admin se abre desde la caja o desde /admin/', true); return; }
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
   // historial completo: si todavía está llegando, se espera. En la caja,
   // que trae solo lo reciente, al abrir el admin se pide el resto.
@@ -10777,6 +10802,9 @@ function doConfirmarVenta() {
     puntosGanados: puntosResult.puntos || 0,
     anulada: false
   };
+  // Igual que en el Carrito 2: la venta queda vinculada al pedido web desde el
+  // primer guardado (si se anota después, no llega a la nube).
+  if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
 
@@ -21601,6 +21629,7 @@ function iniciarBackupAutomatico() {
 }
 
 function descargarBackupSilencioso() {
+  if(window.__lrEsPuesto) return; // el puesto no tiene todos los datos
   // No armar un respaldo con el historial a medio llegar: se reintenta en un
   // rato (ver ocultarCargaSiListo).
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ setTimeout(descargarBackupSilencioso, 15000); return; }
@@ -32006,8 +32035,8 @@ function entrarPuestoDelivery(pin){
       '#deliveryPendList{font-size:1.12rem}#deliveryPendList button{padding:13px!important;font-size:.85rem!important}';
     document.head.appendChild(st);
   }
-  pintarBarraPuesto();
-  abrirDeliveryPendModal();
+  _pz.tab = 'cobrar'; _pz.cobroId = null; _pz.ok = null;
+  renderPuesto();
   showToast('🛵 '+currentEmp.nombre+' atiende el delivery · lo cobrado va a la Caja '+cajaTurnoActual());
 }
 // Si el turno de quien atiende la tablet se cierra en la caja, la tablet vuelve
@@ -32023,6 +32052,7 @@ setInterval(function(){
     currentEmp = null;
     var m = document.getElementById('deliveryPendModal'); if(m) m.classList.remove('open');
     initLogin();
+    renderPuesto();
     showToast('🔒 Se cerró el turno de '+quien+' en la caja: ingresá el PIN de quien sigue atendiendo', true);
   }catch(e){}
 }, 15000);
@@ -32037,13 +32067,351 @@ function pintarBarraPuesto(){
     '</div>';
 }
 function cambiarEmpleadoPuesto(){
-  if(cart && cart.length && !confirm('Hay un pedido cargado sin cobrar. ¿Salís igual? (se vacía el carrito)')) return;
+  if(_pz.cobroId){
+    if(!confirm('Estás cobrando un pedido. ¿Salís igual? (el pedido queda sin cobrar)')) return;
+    salirCobroPuesto(true);
+  }
   currentEmp = null; cart = []; pagoSel = null;
   try{ updateCart(); }catch(e){}
   ['deliveryPendModal'].forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.remove('open'); });
   var cp = document.getElementById('cartPanel'); if(cp) cp.classList.remove('open');
   initLogin();
+  renderPuesto();
 }
+
+// ── PUESTO DELIVERY: PANTALLA PROPIA ───────────────────────────────────────
+// En la tablet (link /puesto/) no se ve el panel de venta: hay una pantalla
+// solo para los pedidos web. Para cobrar usa el mismo carrito y la misma
+// venta que las cajas (doConfirmarVenta), así los números del arqueo, el
+// stock y el pedido quedan exactamente igual que si se cobrara en la caja.
+var _pz = { tab: 'cobrar', cobroId: null, medio: null, pagaCon: '', mix: {e:'', t:'', d:''}, busca: '', cobrando: false, ok: null };
+function _pzEsc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function _pzHora(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : ''; }
+function _pzHace(iso){
+  var m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime())/60000));
+  return m < 1 ? 'recién' : (m < 60 ? 'hace '+m+' min' : 'hace '+Math.floor(m/60)+' h '+(m%60)+' min');
+}
+function _pzActivo(){ return !!(window.__lrEsPuesto && typeof currentEmp !== 'undefined' && currentEmp && currentEmp._puesto); }
+function _pzListas(){
+  var vivos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado && p.estadoDelivery !== 'entregado'; });
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  return {
+    cobrar: vivos.filter(function(p){ return !p.pagoConfirmado; }).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); }),
+    camino: vivos.filter(function(p){ return p.pagoConfirmado; }).sort(function(a,b){ return new Date(a.cobradoEn||a.fecha) - new Date(b.cobradoEn||b.fecha); }),
+    entregados: getPedidosWeb().filter(function(p){ return !p.anulado && p.estadoDelivery === 'entregado' && p.entregadoEn && new Date(p.entregadoEn) >= hoy; })
+      .sort(function(a,b){ return new Date(b.entregadoEn) - new Date(a.entregadoEn); })
+  };
+}
+function _pzShell(){
+  var app = document.getElementById('puestoApp');
+  if(!app){
+    app = document.createElement('div'); app.id = 'puestoApp';
+    document.body.appendChild(app);
+  }
+  return app;
+}
+function renderPuesto(){
+  var app = _pzShell();
+  if(!_pzActivo()){ app.style.display = 'none'; return; }
+  app.style.display = 'block';
+  var b = document.getElementById('puestoBarra'); if(b) b.remove();
+  if(_pz.cobroId){ if(!document.getElementById('pzCobro')) renderCobroPuesto(); else _pzRevisarCobroVigente(); return; }
+  var L = _pzListas();
+  var hoy = new Date(); hoy.setHours(0,0,0,0);
+  var cobradoHoy = getPedidosWeb().filter(function(p){ return p.pagoConfirmado && !p.anulado && p.cobradoEn && new Date(p.cobradoEn) >= hoy; })
+    .reduce(function(s,p){ return s + (p.total||0); }, 0);
+  var tab = function(k, txt, n, color){
+    var on = _pz.tab === k;
+    return '<button onclick="_pz.tab=\''+k+'\';renderPuesto()" class="pz-tab'+(on?' on':'')+'" style="'+(on?'border-color:'+color+';color:'+color:'')+'">'+txt+
+      ' <span class="pz-num" style="background:'+(n?color:'#333')+';color:'+(n?'#111':'#888')+'">'+n+'</span></button>';
+  };
+  var lista = _pz.tab === 'camino' ? L.camino : (_pz.tab === 'entregados' ? null : L.cobrar);
+  var cuerpo;
+  if(_pz.tab === 'entregados'){
+    cuerpo = L.entregados.length ? armarEntregadosHoyHtml(L.entregados) : '<div class="pz-vacio">Todavía no se entregó ningún pedido hoy</div>';
+  } else if(!lista.length){
+    cuerpo = '<div class="pz-vacio">'+(_pz.tab === 'cobrar' ? '🙌 No hay pedidos para cobrar.<br><span>Cuando entre uno, suena y aparece acá.</span>' : 'No hay pedidos en camino')+'</div>';
+  } else {
+    cuerpo = '<div class="pz-grid">'+lista.map(_pzTarjeta).join('')+'</div>';
+  }
+  var y = window.scrollY;
+  app.innerHTML =
+    '<div class="pz-top">'+
+      '<div><div class="pz-tit">🛵 PUESTO DELIVERY</div>'+
+        '<div class="pz-quien">Atiende <b>'+_pzEsc(currentEmp.nombre)+'</b> · lo cobrado va a la <b>Caja '+cajaTurnoActual()+'</b></div></div>'+
+      '<div class="pz-top-der">'+
+        '<div class="pz-chip">💰 Cobrado hoy <b>'+fmt(cobradoHoy)+'</b></div>'+
+        '<button onclick="cambiarEmpleadoPuesto()" class="pz-btn-sec">🔄 Cambiar empleado</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="pz-tabs">'+
+      tab('cobrar','⏳ Por cobrar', L.cobrar.length, '#F4B400')+
+      tab('camino','🛵 Cobrados / en camino', L.camino.length, '#38bdf8')+
+      tab('entregados','✅ Entregados hoy', L.entregados.length, '#22c55e')+
+    '</div>'+
+    '<div class="pz-cuerpo">'+cuerpo+'</div>';
+  window.scrollTo(0, y);
+}
+function _pzTarjeta(p){
+  var cobrado = !!p.pagoConfirmado;
+  var minutos = (Date.now() - new Date(p.fecha).getTime())/60000;
+  var demora = !cobrado && minutos > 10;
+  var items = (p.combos||[]).map(function(cb){ return '<div class="pz-it"><span class="pz-q">'+(cb.cantidad||1)+'</span>'+_pzEsc((cb.emoji||'🎁')+' '+cb.nombre)+'</div>'; })
+    .concat((p.items||[]).map(function(it){ return '<div class="pz-it"><span class="pz-q">'+it.cantidad+'</span>'+_pzEsc(it.nombre)+'</div>'; })).join('');
+  var notas = (p.notasManuales && p.notasManuales.length)
+    ? '<div class="pz-notas"><b>📝 Cargar a mano:</b>'+p.notasManuales.map(function(n){ return '<div>• '+_pzEsc(n.nombre)+(n.texto?': <b>'+_pzEsc(n.texto)+'</b>':'')+'</div>'; }).join('')+'</div>' : '';
+  var rep = p.repartidor
+    ? '<span class="pz-pill" style="background:rgba(34,197,94,.15);color:#22c55e">🛵 Lo lleva '+_pzEsc(p.repartidor)+(p.retiradoEn?' · en camino':'')+'</span>'
+    : '<span class="pz-pill" style="background:rgba(255,255,255,.07);color:#aaa">⏳ Sin repartidor todavía</span>';
+  var medio = (p.medioPago && !p.pagoConfirmado) ? '<span class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Quiere pagar con '+_pzEsc(p.medioPago)+'</span>' : '';
+  var trabado = pedidoTrabadoEnOtraCaja(p);
+  var acciones;
+  if(cobrado){
+    acciones =
+      '<div class="pz-cobrado">✅ COBRADO'+(p.cobradoPor?' por '+_pzEsc(p.cobradoPor):'')+' · '+_pzHora(p.cobradoEn)+'</div>'+
+      '<div class="pz-fila">'+
+        '<button onclick="abrirMensajesCliente('+p.id+')" class="pz-btn-sec">💬 Mensajes al cliente</button>'+
+        '<button onclick="cerrarPedidoWebEntregado('+p.id+')" class="pz-btn-sec" style="color:#22c55e;border-color:rgba(34,197,94,.5)">✓ Entregado</button>'+
+      '</div>';
+  } else if(trabado){
+    acciones = '<div class="pz-trabado">🔒 Lo está cobrando la Caja '+p.cargadoCaja+(p.cargadoPor?' ('+_pzEsc(p.cargadoPor)+')':'')+
+      '<button onclick="destrabarPedidoWeb('+p.id+')">Destrabar</button></div>';
+  } else {
+    acciones =
+      '<button onclick="abrirCobroPuesto('+p.id+')" class="pz-btn-cobrar">💵 COBRAR '+fmt(p.total||0)+'</button>'+
+      '<div class="pz-fila">'+
+        '<button onclick="enviarDatosCobro('+p.id+')" class="pz-btn-sec" style="color:#25D366;border-color:rgba(37,211,102,.5)">💬 Pasar datos de pago</button>'+
+        '<button onclick="abrirMensajesCliente('+p.id+')" class="pz-btn-sec">💬 Más mensajes</button>'+
+        '<button onclick="cancelarPedidoWeb('+p.id+')" class="pz-btn-sec" style="color:#f87171;border-color:rgba(248,113,113,.45)">❌ Cancelar</button>'+
+      '</div>';
+  }
+  var dir = p.direccion || p.domicilio || '';
+  return '<div class="pz-card'+(demora?' demora':'')+(cobrado?' cobrado':'')+'">'+
+    '<div class="pz-cab"><div class="pz-nom">👤 '+_pzEsc(p.nombre)+'</div><div class="pz-tot">'+fmt(p.total||0)+'</div></div>'+
+    '<div class="pz-sub">🕐 '+_pzHora(p.fecha)+' · <span style="color:'+(demora?'#f87171':'inherit')+'">'+_pzHace(p.fecha)+'</span>'+
+      (p.envio>0 ? ' · envío '+fmt(p.envio) : '')+' · 📞 '+_pzEsc(p.telefono||'')+'</div>'+
+    '<div class="pz-pills">'+rep+medio+'</div>'+
+    (dir ? '<div class="pz-dir">📍 '+_pzEsc(dir)+(p.referencia?' <span>· '+_pzEsc(p.referencia)+'</span>':'')+'</div>' : '')+
+    (p.repartidor && cobrado && p.estadoDelivery !== 'entregado' && p.retiradoEn ? htmlFilaGPSPedido(p) : '')+
+    htmlAjusteEnvio(p)+
+    (items ? '<div class="pz-items">'+items+'</div>' : '')+
+    notas+
+    htmlCambiosPedidoWeb(p)+
+    htmlArmadoPedido(p)+
+    htmlAvisosCliente(p)+
+    acciones+
+  '</div>';
+}
+
+// ── Cobro de un pedido ──
+function abrirCobroPuesto(id){
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!p) return;
+  if(p.envioAConfirmar && !p.envioConfirmado){ showToast('⚠️ Primero confirmá el envío (elegí la zona o pegá la ubicación)', true); return; }
+  // Se arranca con el carrito vacío: el pedido se carga igual que en la caja.
+  cart = []; pagoSel = null; tipoOp = 'venta';
+  if(typeof resetMixto === 'function') resetMixto();
+  resetDelivery();
+  _pedidoWebEnCarrito = null;
+  cargarPedidoAlCarrito(id);
+  if(_pedidoWebEnCarrito !== id){ renderPuesto(); return; }
+  _pz.cobroId = id; _pz.medio = (['Efectivo','Transferencia','Débito'].indexOf(p.medioPago) >= 0) ? p.medioPago : null;
+  _pz.pagaCon = ''; _pz.mix = {e:'', t:'', d:''}; _pz.busca = ''; _pz.cobrando = false;
+  renderCobroPuesto();
+  window.scrollTo(0, 0);
+}
+function _pzTotales(){
+  var sub = cart.reduce(function(s,i){ return s + (i.subtotal||0); }, 0);
+  var envio = _deliveryActivo ? (_deliveryMonto||0) : 0;
+  var pct = getDebitoPct()/100;
+  var mixD = Number(_pz.mix.d)||0;
+  var recargo = _pz.medio === 'Débito' ? Math.round(sub*pct) : (_pz.medio === 'Mixto' && mixD > 0 ? Math.round(mixD*pct) : 0);
+  return { sub: sub, envio: envio, recargo: recargo, total: sub + recargo + envio };
+}
+function renderCobroPuesto(){
+  var app = _pzShell();
+  var p = getPedidosWeb().find(function(x){ return x.id === _pz.cobroId; });
+  if(!p){ salirCobroPuesto(true); return; }
+  if(_pz.ok){ app.innerHTML = _pz.ok; return; }
+  var T = _pzTotales();
+  var filas = cart.map(function(i, k){
+    return '<div class="pz-cfila">'+
+      '<div class="pz-cnom">'+_pzEsc(i.name)+'<span>'+fmt(i.precio)+' c/u</span></div>'+
+      (i.esCombo ? '<div class="pz-cqty">×'+i.qty+'</div>' :
+        '<div class="pz-cqty"><button onclick="puestoCant('+k+',-1)">−</button><b>'+i.qty+'</b><button onclick="puestoCant('+k+',1)">+</button></div>')+
+      '<div class="pz-csub">'+fmt(i.subtotal)+'</div>'+
+      '<button class="pz-cdel" onclick="puestoCant('+k+',-9999)" title="Sacar">🗑</button>'+
+    '</div>';
+  }).join('');
+  var q = _pz.busca.trim().toLowerCase();
+  var res = q.length >= 2 ? (window.PRODUCTS||[]).filter(function(x){ return x && x.name && x.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 8) : [];
+  var resHtml = res.map(function(x){
+    var precio = (isNocturno() && x.pnoc) ? x.pnoc : x.pventa;
+    return '<button class="pz-res" onclick="puestoAgregar(\''+encodeURIComponent(x.name).replace(/'/g,'%27')+'\')">＋ '+_pzEsc(x.name)+' <b>'+fmt(precio)+'</b></button>';
+  }).join('');
+  var medio = function(m, txt){ return '<button onclick="puestoMedio(\''+m+'\')" class="pz-medio'+(_pz.medio===m?' on':'')+'">'+txt+'</button>'; };
+  var extra = '';
+  if(_pz.medio === 'Efectivo'){
+    var paga = Number(_pz.pagaCon)||0, vuelto = paga - T.total;
+    extra = '<div class="pz-extra"><label>¿Con cuánto paga?</label>'+
+      '<input id="pzPagaCon" type="number" inputmode="numeric" value="'+_pzEsc(_pz.pagaCon)+'" oninput="_pz.pagaCon=this.value;puestoVuelto()" placeholder="Ej: 20000">'+
+      '<div class="pz-rapidos">'+[T.total, Math.ceil(T.total/1000)*1000, Math.ceil(T.total/5000)*5000, Math.ceil(T.total/10000)*10000]
+        .filter(function(v,i,a){ return a.indexOf(v) === i; }).map(function(v){ return '<button onclick="_pz.pagaCon=\''+v+'\';renderCobroPuesto()">'+fmt(v)+'</button>'; }).join('')+'</div>'+
+      '<div id="pzVuelto" class="pz-vuelto">'+(paga ? (vuelto >= 0 ? 'Vuelto: <b>'+fmt(vuelto)+'</b>' : '<span style="color:#f87171">Faltan '+fmt(-vuelto)+'</span>') : '')+'</div></div>';
+  } else if(_pz.medio === 'Transferencia'){
+    extra = '<div class="pz-extra"><div style="font-size:.85rem;color:#ccc">Fijate que la transferencia haya llegado antes de cobrar.</div>'+
+      '<button onclick="enviarDatosCobro('+p.id+')" class="pz-btn-sec" style="margin-top:8px;color:#25D366;border-color:rgba(37,211,102,.5)">💬 Pasarle los datos de pago</button></div>';
+  } else if(_pz.medio === 'Débito'){
+    extra = '<div class="pz-extra"><div style="font-size:.85rem;color:#ccc">Con posnet se suma el recargo de '+getDebitoPct()+'%: <b>'+fmt(T.recargo)+'</b></div></div>';
+  } else if(_pz.medio === 'Mixto'){
+    var me = Number(_pz.mix.e)||0, mt = Number(_pz.mix.t)||0, md = Number(_pz.mix.d)||0;
+    var aCubrir = T.sub + T.recargo, falta = aCubrir - (me + mt + md + (md>0?T.recargo:0));
+    var inp = function(k, txt){ return '<div class="pz-mix"><label>'+txt+'</label><input type="number" inputmode="numeric" value="'+_pzEsc(_pz.mix[k])+'" onchange="_pz.mix.'+k+'=this.value;renderCobroPuesto()"></div>'; };
+    extra = '<div class="pz-extra"><div style="font-size:.8rem;color:#ccc;margin-bottom:6px">Repartí el pago de los productos ('+fmt(T.sub)+'). El envío ('+fmt(T.envio)+') va aparte, igual que en la caja.</div>'+
+      inp('e','💵 Efectivo')+inp('t','📲 Transferencia')+inp('d','💳 Posnet')+
+      '<div class="pz-vuelto">'+(falta > 0 ? '<span style="color:#f87171">Falta cubrir '+fmt(falta)+'</span>' : (falta < 0 ? '<span style="color:#F4B400">Sobra '+fmt(-falta)+'</span>' : '<span style="color:#22c55e">✓ Total cubierto</span>'))+'</div></div>';
+  }
+  app.innerHTML =
+    '<div id="pzCobro" class="pz-cobro">'+
+      '<div class="pz-ccab"><button onclick="salirCobroPuesto()" class="pz-btn-sec">← Volver sin cobrar</button>'+
+        '<div><div class="pz-tit">💵 COBRAR PEDIDO</div><div class="pz-quien">👤 '+_pzEsc(p.nombre)+' · 📞 '+_pzEsc(p.telefono||'')+(p.direccion?' · 📍 '+_pzEsc(p.direccion):'')+'</div></div></div>'+
+      '<div class="pz-ccols">'+
+        '<div class="pz-ccol">'+
+          '<div class="pz-sec">🛍 Productos</div>'+(filas || '<div class="pz-vacio">Sin productos</div>')+
+          '<div class="pz-sec" style="margin-top:14px">＋ Agregar algo que pidió aparte</div>'+
+          '<input id="pzBusca" class="pz-busca" value="'+_pzEsc(_pz.busca)+'" oninput="_pz.busca=this.value;puestoBuscar()" placeholder="Buscar producto…">'+
+          '<div id="pzRes" class="pz-resl">'+resHtml+'</div>'+
+          '<div class="pz-envio"><span>🛵 Envío</span><input type="number" inputmode="numeric" value="'+T.envio+'" onchange="puestoEnvio(this.value)"></div>'+
+        '</div>'+
+        '<div class="pz-ccol">'+
+          '<div class="pz-sec">Medio de pago</div>'+
+          '<div class="pz-medios">'+medio('Efectivo','💵 Efectivo')+medio('Transferencia','📲 Transferencia')+medio('Débito','💳 Posnet')+medio('Mixto','🔀 Mixto')+'</div>'+
+          extra+
+          '<div class="pz-totales">'+
+            '<div><span>Productos</span><b>'+fmt(T.sub)+'</b></div>'+
+            (T.recargo ? '<div><span>Recargo posnet</span><b>+'+fmt(T.recargo)+'</b></div>' : '')+
+            (T.envio ? '<div><span>Envío</span><b>+'+fmt(T.envio)+'</b></div>' : '')+
+            '<div class="fin"><span>TOTAL A COBRAR</span><b>'+fmt(T.total)+'</b></div>'+
+          '</div>'+
+          '<button id="pzBtnCobrar" onclick="puestoCobrar()" class="pz-btn-cobrar grande"'+(_pz.cobrando?' disabled':'')+'>✅ COBRAR '+fmt(T.total)+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+function puestoVuelto(){
+  var T = _pzTotales(), paga = Number(_pz.pagaCon)||0, v = paga - T.total, el = document.getElementById('pzVuelto');
+  if(el) el.innerHTML = paga ? (v >= 0 ? 'Vuelto: <b>'+fmt(v)+'</b>' : '<span style="color:#f87171">Faltan '+fmt(-v)+'</span>') : '';
+}
+function puestoBuscar(){
+  clearTimeout(window._pzBuscaT);
+  window._pzBuscaT = setTimeout(function(){
+    renderCobroPuesto();
+    var i = document.getElementById('pzBusca'); if(i){ i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  }, 250);
+}
+function puestoAgregar(nombreCod){
+  var nombre = decodeURIComponent(nombreCod);
+  var prod = (window.PRODUCTS||[]).find(function(x){ return x.name === nombre; });
+  if(!prod) return;
+  addToCart(prod);
+  _pz.busca = '';
+  renderCobroPuesto();
+}
+function puestoCant(k, d){
+  var it = cart[k]; if(!it) return;
+  it.qty += d;
+  if(it.qty <= 0) cart.splice(k, 1); else it.subtotal = it.precio * it.qty;
+  updateCart();
+  renderCobroPuesto();
+}
+function puestoEnvio(v){
+  var n = Math.max(0, Number(v)||0);
+  _deliveryActivo = n > 0; _deliveryMonto = n;
+  updateCart();
+  renderCobroPuesto();
+}
+function puestoMedio(m){ _pz.medio = m; renderCobroPuesto(); }
+function puestoCobrar(){
+  if(_pz.cobrando) return;
+  var p = getPedidosWeb().find(function(x){ return x.id === _pz.cobroId; });
+  if(!p || p.pagoConfirmado){ showToast('Ese pedido ya está cobrado', true); salirCobroPuesto(true); return; }
+  if(!cart.length){ showToast('No hay productos para cobrar', true); return; }
+  if(cart.some(function(i){ return !(i.precio > 0); })){ showToast('⚠️ Hay un producto sin precio: cargale el precio antes de cobrar', true); return; }
+  if(!_pz.medio){ showToast('Elegí el medio de pago', true); return; }
+  var T = _pzTotales();
+  if(_pz.medio === 'Efectivo' && _pz.pagaCon && Number(_pz.pagaCon) < T.total){ showToast('Con lo que paga no alcanza', true); return; }
+  // Se arma el pago igual que en el carrito de la caja.
+  if(_pz.medio === 'Mixto'){
+    var me = Number(_pz.mix.e)||0, mt = Number(_pz.mix.t)||0, md = Number(_pz.mix.d)||0;
+    if(me + mt + md <= 0){ showToast('Ingresá los montos del pago mixto', true); return; }
+    if(me + mt + md + (md>0?T.recargo:0) < T.sub + T.recargo){ showToast('El pago mixto no cubre el total', true); return; }
+    pagoSel = null; mixtoActivo = true;
+    document.getElementById('mixtoEfectivo').value = me || '';
+    document.getElementById('mixtoTransferencia').value = mt || '';
+    document.getElementById('mixtoDebito').value = md || '';
+  } else {
+    if(typeof resetMixto === 'function') resetMixto();
+    pagoSel = _pz.medio;
+  }
+  tipoOp = 'venta';
+  _pz.cobrando = true;
+  var vuelto = (_pz.medio === 'Efectivo' && Number(_pz.pagaCon)) ? Number(_pz.pagaCon) - T.total : null;
+  var nombre = p.nombre, medioTxt = _pz.medio === 'Débito' ? 'Posnet' : _pz.medio;
+  try{
+    doConfirmarVenta();
+  }catch(e){
+    _pz.cobrando = false;
+    console.error('Cobro puesto', e);
+    showToast('No se pudo cobrar: '+(e && e.message || e), true);
+    renderCobroPuesto();
+    return;
+  }
+  _pz.ok = '<div class="pz-ok"><div class="pz-ok-ico">✅</div><div class="pz-ok-tit">COBRADO '+fmt(T.total)+'</div>'+
+    '<div class="pz-ok-sub">'+_pzEsc(nombre)+' · '+medioTxt+'</div>'+
+    (vuelto != null ? '<div class="pz-ok-vuelto">Vuelto: '+fmt(vuelto)+'</div>' : '')+
+    '<div class="pz-ok-sub" style="margin-top:10px">El repartidor ya puede retirarlo 🛵</div></div>';
+  renderCobroPuesto();
+  setTimeout(function(){
+    _pz.ok = null; _pz.cobroId = null; _pz.cobrando = false; _pz.tab = 'cobrar';
+    renderPuesto();
+  }, vuelto != null ? 4000 : 2600);
+}
+// Salir de la pantalla de cobro sin cobrar: el pedido vuelve a quedar libre
+// (con los cambios que se le hayan hecho, que ya quedaron guardados).
+function salirCobroPuesto(sinPreguntar){
+  var id = _pz.cobroId;
+  if(id && cart.length && typeof syncPedidoDesdeCarrito === 'function'){ try{ syncPedidoDesdeCarrito(); }catch(e){} }
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(p && !p.pagoConfirmado && p.estado === 'cargado'){
+    p.estado = 'pendiente';
+    delete p.cargadoCaja; delete p.cargadoPor;
+    savePedidosWeb(pedidos);
+  }
+  cart = []; pagoSel = null; _pedidoWebEnCarrito = null;
+  if(typeof resetMixto === 'function') resetMixto();
+  resetDelivery();
+  try{ updateCart(); }catch(e){}
+  _pz.cobroId = null; _pz.ok = null; _pz.cobrando = false;
+  renderPuesto();
+}
+// Si mientras se cobra el pedido lo cancelan o lo cobra otro, se avisa.
+function _pzRevisarCobroVigente(){
+  if(_pz.ok || _pz.cobrando) return;
+  var p = getPedidosWeb().find(function(x){ return x.id === _pz.cobroId; });
+  if(!p || p.anulado){ showToast('⚠️ Ese pedido se canceló', true); salirCobroPuesto(true); }
+  else if(p.pagoConfirmado){ showToast('Ese pedido ya figura cobrado', true); salirCobroPuesto(true); }
+}
+// Se refresca solo (los "hace X min") mientras no se está cobrando.
+setInterval(function(){ if(_pzActivo() && !_pz.cobroId) renderPuesto(); }, 30000);
+// En el puesto, "ver pedidos" (aviso de pedido nuevo, etc.) es esta pantalla.
+(function(){
+  var orig = abrirDeliveryPendModal;
+  abrirDeliveryPendModal = function(){
+    if(_pzActivo()){ if(!_pz.cobroId) _pz.tab = 'cobrar'; renderPuesto(); return; }
+    return orig.apply(this, arguments);
+  };
+})();
 // ── PRIORIDAD DE PEDIDOS ──────────────────────────────────────────────────
 // Un pedido nuevo les llega primero a los repartidores tildados (los que estén
 // disponibles). Los demás no lo ven ni les llega aviso hasta que pasa el
