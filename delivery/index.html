@@ -194,7 +194,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "27"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -368,6 +368,7 @@ window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá 
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[String(d.id)]=JSON.parse(JSON.stringify(d)); });
     lista.sort(function(a,b){ return (b.id||0)-(a.id||0); });
+    lista.forEach(function(d){ var k = String(d.id); if(!_primeraVezPedido[k]) _primeraVezPedido[k] = Date.now(); });
     window.__lrPedidosWebCache = lista;
     var basePW = window.__lrPedidosWebBase || (window.__lrPedidosWebBase = new WeakMap());
     lista.forEach(function(d){ basePW.set(d, JSON.stringify(d)); });
@@ -443,6 +444,8 @@ window.__LR_BUILD = "26"; // versión de ESTA página — se bumpea a mano acá 
     // Cuántos pedidos puede tener tomados a la vez cada repartidor (0 = sin límite).
     var _mx = doc.exists ? doc.data().maxPedidosRep : undefined;
     window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
+    // Prioridad de pedidos: a quiénes les llega primero un pedido nuevo.
+    window.__lrPrioridadDelivery = doc.exists ? (doc.data().prioridad || null) : null;
     if(typeof renderPanelRepartidor === 'function' && currentEmp) renderPanelRepartidor();
     window.__lrDeliveryConfigListo = true;
     window.__lrSync.deliveryActivoListos = true;
@@ -873,18 +876,19 @@ function renderPanelRepartidor() {
   var yo = currentEmp.nombre;
   var todos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado; });
   // Contadores en las pestañas: de un vistazo se ve si hay algo nuevo.
-  var nLibres = currentEmp.sinPedidos ? 0 : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; }).length;
+  var nLibres = currentEmp.sinPedidos ? 0 : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado' && !ocultoParaMi(p, yo); }).length;
   var nMios = todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; }).length;
   var bL = document.getElementById('repFiltroLibres'), bM = document.getElementById('repFiltroMios');
   if(bL) bL.textContent = 'Disponibles' + (nLibres ? ' ('+nLibres+')' : '');
   if(bM) bM.textContent = 'Mis pedidos' + (nMios ? ' ('+nMios+')' : '');
 
   if(_repFiltro === 'historial'){ renderHistorialRepartidor(); return; }
+  _firmaLibres = firmaLibresVisibles();
 
   // Si el administrador le sacó la vista de pedidos, no ve los disponibles
   // (solo los que ya había tomado, para poder terminarlos).
   var lista = (_repFiltro === 'libres')
-    ? (currentEmp.sinPedidos ? [] : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado'; }))
+    ? (currentEmp.sinPedidos ? [] : todos.filter(function(p){ return !p.repartidor && p.estadoDelivery !== 'entregado' && !ocultoParaMi(p, yo); }))
     : todos.filter(function(p){ return p.repartidor === yo && p.estadoDelivery !== 'entregado'; });
 
   // En "Disponibles" quedan a la vista los que otro repartidor tomó hace
@@ -955,6 +959,7 @@ function renderPanelRepartidor() {
       ((!(p.envioAConfirmar && !p.envioConfirmado)) && (p.envio>0 || p.envioOriginal !== undefined) ? '<div style="font-size:.74rem;color:#22c55e;margin-top:5px">Envío: '+fmt(p.envio||0)+
         (p.envioOriginal !== undefined ? ' <span style="color:var(--gold)">(el local lo cambió — antes '+fmt(p.envioOriginal)+')</span>' : '')+
         (p.zona==='rural' ? ' <span style="color:#F4B400">· 🚜 CHACRA/RURAL'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : (p.zona==='lejos' ? ' <span style="color:#f97316">· 🛣️ MÁS LEJOS'+(p.distanciaKm?' ('+p.distanciaKm+' km)':'')+'</span>' : ''))+'</div>' : '')+
+      htmlCuentaPrioridad(p, yo)+
       '<div style="display:flex;gap:8px;margin-top:11px">'+
         (mio
           ? '<a href="https://wa.me/'+telLimpio+'?text='+encodeURIComponent('Hola '+p.nombre+'! Soy '+(currentEmp?currentEmp.nombre:'el repartidor')+' de Limay Rock 🛵 Estoy en la puerta con tu pedido.')+'" target="_blank" title="Solo para avisar que llegaste" style="flex:1;text-align:center;background:#25D366;color:#052E16;border-radius:5px;padding:10px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;text-decoration:none;letter-spacing:1px">💬 Avisar que llegué</a>'+
@@ -1356,7 +1361,7 @@ function tomarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p) return;
-  if(p.repartidor){ showToast('✋ Ese pedido ya fue tomado — ¡estate atento a los próximos!', true); renderPanelRepartidor(); return; }
+  if(p.repartidor || ocultoParaMi(p, currentEmp.nombre)){ showToast('✋ Ese pedido ya fue tomado — ¡estate atento a los próximos!', true); renderPanelRepartidor(); return; }
   if(currentEmp.sinPedidos){ showToast('No hay pedidos disponibles ahora mismo', true); renderPanelRepartidor(); return; }
   if(llegoAlLimite()){ showToast('✋ '+textoLimite(), true); renderPanelRepartidor(); return; }
   // De a un pedido por vez: si toca dos "Tomar" seguidos, el segundo espera.
@@ -1372,6 +1377,8 @@ function tomarPedido(id) {
       if(!d.exists) throw {noExiste: true};
       var x = d.data();
       if(x.repartidor && x.repartidor !== yo) throw {tomadoPor: x.repartidor};
+      var pr = x.prioridad;
+      if(!x.repartidor && pr && pr.estado === 'reservado' && Array.isArray(pr.reps) && pr.reps.indexOf(yo) === -1 && Date.now() < Number(pr.hasta)) throw {tomadoPor: 'otro'};
       tx.update(ref, {repartidor: yo, estadoDelivery: 'aceptado', tomadoEn: ahora});
     });
   }).then(function(){
@@ -1394,6 +1401,49 @@ function tomarPedido(id) {
   });
 }
 var _tomando = {};
+
+// ── PRIORIDAD DE PEDIDOS ──────────────────────────────────────────────────
+// Si el local la activó, un pedido nuevo les llega primero a los repartidores
+// con prioridad (los marca la nube en p.prioridad: a quiénes y hasta cuándo).
+// Mientras dura, los demás no lo ven. Si nadie lo toma a tiempo, queda para
+// todos. Los primeros segundos (antes de que la nube lo marque) también se
+// guarda para los de la lista, así no se escapa.
+var _primeraVezPedido = {};
+var _firmaLibres = '';
+function _prioridadDe(p){
+  if(!p || p.repartidor) return null;
+  var pr = p.prioridad;
+  if(pr){
+    if(pr.estado === 'reservado' && Array.isArray(pr.reps) && Date.now() < Number(pr.hasta)) return {reps: pr.reps, hasta: Number(pr.hasta)};
+    return null;
+  }
+  var c = window.__lrPrioridadDelivery, visto = _primeraVezPedido[String(p.id)];
+  if(c && c.activa && Array.isArray(c.reps) && c.reps.length && visto && Date.now() - visto < 20000 &&
+     Date.now() - new Date(p.fecha).getTime() < 10*60000) return {reps: c.reps, hasta: null};
+  return null;
+}
+function ocultoParaMi(p, yo){ var r = _prioridadDe(p); return !!(r && r.reps.indexOf(yo) === -1); }
+function _mmss(ms){ var t = Math.max(0, Math.ceil(ms/1000)); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
+function htmlCuentaPrioridad(p, yo){
+  var r = _prioridadDe(p);
+  if(!r || !r.hasta || r.reps.indexOf(yo) === -1) return '';
+  return '<div style="margin-top:9px;background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.55);border-radius:6px;padding:7px 10px;font-size:.8rem;color:var(--gold);font-weight:700;text-align:center">'+
+    '⏱ Tenés <span class="lr-cuenta" data-hasta="'+r.hasta+'">'+_mmss(r.hasta - Date.now())+'</span> para tomarlo</div>';
+}
+function firmaLibresVisibles(){
+  if(!currentEmp || currentEmp.sinPedidos) return '';
+  var yo = currentEmp.nombre;
+  return getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado && !p.repartidor && p.estadoDelivery !== 'entregado' && !ocultoParaMi(p, yo); })
+    .map(function(p){ return p.id+(htmlCuentaPrioridad(p, yo)?'*':''); }).join(',');
+}
+// Cada segundo: corre la cuenta regresiva y, cuando un pedido se libera para
+// todos (o se termina el tiempo), se redibuja la lista.
+setInterval(function(){
+  var ov = document.getElementById('repartidorOverlay');
+  if(!currentEmp || !ov || ov.style.display !== 'flex') return;
+  document.querySelectorAll('.lr-cuenta').forEach(function(el){ el.textContent = _mmss(Number(el.getAttribute('data-hasta')) - Date.now()); });
+  if(_repFiltro !== 'historial' && firmaLibresVisibles() !== _firmaLibres) renderPanelRepartidor();
+}, 1000);
 function soltarPedido(id) {
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });

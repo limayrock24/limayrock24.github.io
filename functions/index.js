@@ -6,7 +6,8 @@
  * corresponda — aunque la app esté cerrada.
  *
  * A quién le llega qué:
- *   - Pedidos de delivery  → a los repartidores Y al dueño
+ *   - Pedidos de delivery  → a los repartidores Y al dueño (con la prioridad
+ *     activada, primero solo a los repartidores con prioridad)
  *   - Egresos / pagos      → solo al dueño
  *   - Ingresos de mercadería → solo al dueño
  *   - Precios modificados  → solo al dueño
@@ -23,6 +24,7 @@
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
@@ -105,17 +107,114 @@ function pesos(n) {
 }
 
 // ── PEDIDO NUEVO DE DELIVERY ───────────────────────────────────────────────
+// Con la prioridad activada (config/deliveryActivo.prioridad), el pedido les
+// llega primero solo a los repartidores con prioridad que estén disponibles.
+// Se marca en el pedido (p.prioridad) a quiénes y hasta cuándo; la app de
+// delivery se lo oculta a los demás mientras tanto. Después, cada minuto,
+// liberarPrioridadVencida avisa al resto: si alguien lo tomó, igual les llega
+// el aviso normal (y al entrar ven "ya fue tomado"); si nadie lo tomó, queda
+// para todos.
+function textoPedido(p) {
+  const items = (p.items || []).length;
+  return `${p.nombre || 'Cliente'} · ${pesos(p.total)} · ${items} producto${items === 1 ? '' : 's'}` +
+    (p.direccion ? `\n📍 ${p.direccion}` : '');
+}
+
+// Tokens de los repartidores disponibles (destino 'repartidor'), filtrando por nombre.
+async function tokensRepartidores(filtro) {
+  const snap = await db.collection('fcmTokens').where('destino', '==', 'repartidor').get();
+  const tokens = [];
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (d.token && filtro(d.quien) && tokens.indexOf(d.token) === -1) tokens.push(d.token);
+  });
+  return tokens;
+}
+
+// Repartidores con prioridad que pueden tomar el pedido ahora: disponibles,
+// con acceso a pedidos y sin llegar al límite de pedidos a la vez.
+async function prioritariosDisponibles(cfg) {
+  const lista = Array.isArray(cfg.prioridad && cfg.prioridad.reps) ? cfg.prioridad.reps : [];
+  if (!lista.length) return [];
+  const max = (cfg.maxPedidosRep === undefined || cfg.maxPedidosRep === null || cfg.maxPedidosRep === '') ? 2 : Number(cfg.maxPedidosRep);
+  const emps = await db.collection('empleados').get();
+  const disp = [];
+  for (const doc of emps.docs) {
+    const e = doc.data();
+    if (!e || lista.indexOf(e.nombre) === -1) continue;
+    if (!e.accesoDelivery || !e.disponibleDelivery || e.sinPedidos) continue;
+    if (max > 0) {
+      const suyos = await db.collection('pedidosWeb').where('repartidor', '==', e.nombre).get();
+      const enCurso = suyos.docs.filter(d => {
+        const x = d.data();
+        return !x.anulado && x.estadoDelivery !== 'entregado' && x.estado !== 'resuelto';
+      }).length;
+      if (enCurso >= max) continue;
+    }
+    disp.push(e.nombre);
+  }
+  return disp;
+}
+
 exports.avisoPedidoNuevo = onDocumentCreated(
   { document: 'pedidosWeb/{id}', region: REGION },
   async (event) => {
     const p = event.data && event.data.data();
     if (!p) return;
-    const items = (p.items || []).length;
-    const cuerpo = `${p.nombre || 'Cliente'} · ${pesos(p.total)} · ${items} producto${items === 1 ? '' : 's'}` +
-      (p.direccion ? `\n📍 ${p.direccion}` : '');
+    const cuerpo = textoPedido(p);
 
-    await notificar('repartidor', '🛵 Pedido nuevo', cuerpo, { tag: 'pedido', url: '/delivery/' });
+    const cfgDoc = await db.collection('config').doc('deliveryActivo').get();
+    const cfg = cfgDoc.exists ? cfgDoc.data() : {};
+    const pr = cfg.prioridad || {};
+    const reps = (pr.activa && !p.repartidor) ? await prioritariosDisponibles(cfg) : [];
+
+    if (reps.length) {
+      const minutos = [2, 3, 5].indexOf(Number(pr.minutos)) >= 0 ? Number(pr.minutos) : 3;
+      await event.data.ref.update({
+        prioridad: { estado: 'reservado', reps, hasta: Date.now() + minutos * 60000, desde: Date.now() }
+      });
+      console.log(`Pedido ${event.params.id}: prioridad para ${reps.join(', ')} (${minutos} min)`);
+      const tokens = await tokensRepartidores(q => reps.indexOf(q) !== -1);
+      if (tokens.length) await enviarATokens(tokens, '🛵 Pedido nuevo', cuerpo, { tag: 'pedido', url: '/delivery/' });
+    } else {
+      // Sin prioridad (apagada o ningún prioritario disponible): a todos, como siempre.
+      if (pr.activa) await event.data.ref.update({ prioridad: { estado: 'libre' } });
+      await notificar('repartidor', '🛵 Pedido nuevo', cuerpo, { tag: 'pedido', url: '/delivery/' });
+    }
     await notificar('dueno', '🛵 Pedido nuevo', cuerpo, { tag: 'pedido', url: '/admin/' });
+  }
+);
+
+// ── PRIORIDAD: AVISO AL RESTO ──────────────────────────────────────────────
+// Cada minuto revisa los pedidos reservados. Si un prioritario ya lo tomó, o
+// si se terminó el tiempo, les manda el aviso de pedido nuevo a los demás
+// repartidores disponibles (a los prioritarios ya les llegó). Se marca dentro
+// de una transacción para que cada pedido se avise una sola vez.
+exports.liberarPrioridadVencida = onSchedule(
+  { schedule: 'every 1 minutes', region: REGION, timeZone: 'America/Argentina/Buenos_Aires' },
+  async () => {
+    const snap = await db.collection('pedidosWeb').where('prioridad.estado', '==', 'reservado').get();
+    for (const doc of snap.docs) {
+      const res = await db.runTransaction(async (tx) => {
+        const fresco = await tx.get(doc.ref);
+        if (!fresco.exists) return null;
+        const p = fresco.data();
+        const pr = p.prioridad || {};
+        if (pr.estado !== 'reservado') return null;
+        const vencido = Date.now() >= Number(pr.hasta || 0);
+        if (!p.repartidor && !vencido) return null;
+        const estado = p.repartidor ? 'tomado' : 'liberado';
+        tx.update(doc.ref, { 'prioridad.estado': estado, 'prioridad.avisadoResto': Date.now() });
+        return { p, estado };
+      });
+      if (!res) continue;
+      const { p, estado } = res;
+      const reps = Array.isArray(p.prioridad && p.prioridad.reps) ? p.prioridad.reps : [];
+      if (p.anulado || p.estado === 'resuelto') continue;
+      console.log(`Pedido ${doc.id}: ${estado} — aviso al resto de los repartidores`);
+      const tokens = await tokensRepartidores(q => reps.indexOf(q) === -1);
+      if (tokens.length) await enviarATokens(tokens, '🛵 Pedido nuevo', textoPedido(p), { tag: 'pedido', url: '/delivery/' });
+    }
   }
 );
 

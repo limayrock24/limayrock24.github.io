@@ -1737,6 +1737,8 @@
     window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
     // Dónde se atienden y cobran los pedidos web: en cualquier caja (como
     // siempre) o solo en el Puesto Delivery (la tablet, link /puesto/).
+    // Prioridad de pedidos: a qué repartidores les llega primero un pedido nuevo.
+    window.__lrPrioridadDelivery = doc.exists ? (doc.data().prioridad || null) : null;
     var _modoAntes = window.__lrModoCobroDelivery;
     window.__lrModoCobroDelivery = (doc.exists && doc.data().modoCobro === 'puesto') ? 'puesto' : 'cualquiera';
     if(_modoAntes && _modoAntes !== window.__lrModoCobroDelivery){
@@ -32041,6 +32043,68 @@ function cambiarEmpleadoPuesto(){
   var cp = document.getElementById('cartPanel'); if(cp) cp.classList.remove('open');
   initLogin();
 }
+// ── PRIORIDAD DE PEDIDOS ──────────────────────────────────────────────────
+// Un pedido nuevo les llega primero a los repartidores tildados (los que estén
+// disponibles). Los demás no lo ven ni les llega aviso hasta que pasa el
+// tiempo elegido sin que nadie lo tome. Lo resuelve la nube (avisoPedidoNuevo
+// y liberarPrioridadVencida) y la app de delivery.
+function _prioridadCfg(){
+  var c = window.__lrPrioridadDelivery || {};
+  return { activa: !!c.activa, reps: Array.isArray(c.reps) ? c.reps.slice() : [], minutos: [2,3,5].indexOf(Number(c.minutos)) >= 0 ? Number(c.minutos) : 3 };
+}
+function _guardarPrioridad(c, aviso){
+  window.__lrPrioridadDelivery = c;
+  window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({ prioridad: c }, { merge: true })
+    .then(function(){ if(aviso) showToast(aviso); })
+    .catch(function(e){ showToast('No se pudo guardar: '+(e && e.message || e), true); });
+  try{ renderDeliveryControl(); }catch(e){}
+}
+function cambiarPrioridadActiva(){
+  var c = _prioridadCfg();
+  c.activa = !c.activa;
+  if(c.activa && !c.reps.length) showToast('⭐ Tildá abajo a quién le llegan primero los pedidos', true);
+  _guardarPrioridad(c, c.activa ? '⭐ Prioridad activada' : 'Prioridad desactivada: los pedidos les llegan a todos juntos');
+}
+function togglePrioridadRep(nombre){
+  var c = _prioridadCfg(), i = c.reps.indexOf(nombre);
+  if(i >= 0) c.reps.splice(i, 1); else c.reps.push(nombre);
+  _guardarPrioridad(c);
+}
+function cambiarMinutosPrioridad(n){
+  var c = _prioridadCfg();
+  c.minutos = Number(n) || 3;
+  _guardarPrioridad(c, '⏱ Tiempo de prioridad: '+c.minutos+' minutos');
+}
+function htmlPrioridadDelivery(repartidores){
+  var c = _prioridadCfg();
+  var esc = function(t){ return String(t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); };
+  var btn = function(on){ return 'background:'+(on?'var(--gold)':'var(--card)')+';color:'+(on?'var(--black)':'var(--gray)')+';border:1px solid '+(on?'var(--gold)':'var(--border)')+';border-radius:5px;padding:7px 12px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer'; };
+  return '<div style="background:var(--dark);border:1px solid '+(c.activa?'var(--gold)':'var(--border)')+';border-radius:6px;padding:10px 12px;margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div><div style="font-size:.78rem;color:var(--light)">⭐ Prioridad de pedidos</div>'+
+        '<div style="font-size:.64rem;color:var(--gray)">El pedido nuevo les llega primero a los tildados; si nadie lo toma a tiempo, pasa a todos</div></div>'+
+      '<button onclick="cambiarPrioridadActiva()" style="'+btn(c.activa)+'">'+(c.activa?'● ACTIVADA':'○ DESACTIVADA')+'</button>'+
+    '</div>'+
+    (c.activa ?
+      '<div style="margin-top:9px;display:flex;flex-direction:column;gap:5px">'+
+        (repartidores.length ? repartidores.map(function(e){
+          var on = c.reps.indexOf(e.nombre) >= 0;
+          var disp = e.disponibleDelivery && !e.sinPedidos;
+          return '<label style="display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid '+(on?'rgba(244,180,0,.6)':'var(--border)')+';border-radius:5px;padding:8px 10px;cursor:pointer">'+
+            '<input type="checkbox" data-n="'+esc(e.nombre)+'" onchange="togglePrioridadRep(this.getAttribute(\'data-n\'))"'+(on?' checked':'')+' style="width:17px;height:17px;accent-color:#F4B400">'+
+            '<span style="flex:1;font-size:.84rem;color:var(--white)">'+(on?'⭐ ':'')+esc(e.nombre)+'</span>'+
+            '<span style="font-size:.66rem;color:'+(disp?'#22c55e':'var(--gray)')+'">'+(disp?'🟢 disponible':'⚪ no disponible')+'</span>'+
+          '</label>';
+        }).join('') : '<div style="font-size:.74rem;color:var(--gray)">No hay repartidores cargados.</div>')+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px">'+
+        '<div style="font-size:.74rem;color:var(--light)">⏱ Tiempo de prioridad</div>'+
+        '<div style="display:flex;gap:6px">'+[2,3,5].map(function(n){ return '<button onclick="cambiarMinutosPrioridad('+n+')" style="'+btn(c.minutos===n)+'">'+n+' MIN</button>'; }).join('')+'</div>'+
+      '</div>'+
+      '<div style="font-size:.64rem;color:var(--gray);margin-top:6px">Solo cuentan los tildados que estén disponibles. Si no hay ninguno, el pedido va directo a todos.</div>'
+    : '')+
+  '</div>';
+}
 function cambiarMaxPedidosRep(v){
   var n = Number(v) || 0;
   window.__lrMaxPedidosRep = n;
@@ -32341,6 +32405,7 @@ function renderDeliveryControl() {
         '</div>'+
         '<div style="font-size:.64rem;color:var(--gray);margin-top:5px">'+(deliveryEnPuesto()?'Las cajas ven los pedidos pero no los cobran. La tablet: limayrock.com.ar/puesto/ · lo cobrado va a la caja del empleado que cobra.':'Como siempre: cualquier caja carga y cobra los pedidos.')+'</div>'+
       '</div>'+
+      htmlPrioridadDelivery(repartidores)+
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--dark);border-radius:6px;padding:9px 12px;margin-bottom:8px">'+
         '<div><div style="font-size:.78rem;color:var(--light)">🛵 Pedidos a la vez por repartidor</div>'+
           '<div style="font-size:.64rem;color:var(--gray)">Con ese número en curso, tiene que entregar uno para tomar otro</div></div>'+
