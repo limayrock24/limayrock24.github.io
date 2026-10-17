@@ -32116,9 +32116,6 @@ function renderPuesto(){
   var b = document.getElementById('puestoBarra'); if(b) b.remove();
   if(_pz.cobroId){ if(!document.getElementById('pzCobro')) renderCobroPuesto(); else _pzRevisarCobroVigente(); return; }
   var L = _pzListas();
-  var hoy = new Date(); hoy.setHours(0,0,0,0);
-  var cobradoHoy = getPedidosWeb().filter(function(p){ return p.pagoConfirmado && !p.anulado && p.cobradoEn && new Date(p.cobradoEn) >= hoy; })
-    .reduce(function(s,p){ return s + (p.total||0); }, 0);
   var tab = function(k, txt, n, color){
     var on = _pz.tab === k;
     return '<button onclick="_pz.tab=\''+k+'\';renderPuesto()" class="pz-tab'+(on?' on':'')+'" style="'+(on?'border-color:'+color+';color:'+color:'')+'">'+txt+
@@ -32127,7 +32124,11 @@ function renderPuesto(){
   var lista = _pz.tab === 'camino' ? L.camino : (_pz.tab === 'entregados' ? null : L.cobrar);
   var cuerpo;
   if(_pz.tab === 'entregados'){
-    cuerpo = L.entregados.length ? armarEntregadosHoyHtml(L.entregados) : '<div class="pz-vacio">Todavía no se entregó ningún pedido hoy</div>';
+    // Sin sumas del día: quien atiende el puesto no ve cuánto se lleva cobrado.
+    cuerpo = L.entregados.length ? '<div class="pz-grid">'+L.entregados.map(function(p){
+      return '<div class="pz-card" style="border-color:rgba(34,197,94,.35)"><div class="pz-cab"><div class="pz-nom">👤 '+_pzEsc(p.nombre)+'</div></div>'+
+        '<div class="pz-sub">✅ Entregado '+_pzHora(p.entregadoEn)+(p.repartidor?' · lo llevó '+_pzEsc(p.repartidor):'')+'</div></div>';
+    }).join('')+'</div>' : '<div class="pz-vacio">Todavía no se entregó ningún pedido hoy</div>';
   } else if(!lista.length){
     cuerpo = '<div class="pz-vacio">'+(_pz.tab === 'cobrar' ? '🙌 No hay pedidos para cobrar.<br><span>Cuando entre uno, suena y aparece acá.</span>' : 'No hay pedidos en camino')+'</div>';
   } else {
@@ -32139,7 +32140,6 @@ function renderPuesto(){
       '<div><div class="pz-tit">🛵 PUESTO DELIVERY</div>'+
         '<div class="pz-quien">Atiende <b>'+_pzEsc(currentEmp.nombre)+'</b> · lo cobrado va a la <b>Caja '+cajaTurnoActual()+'</b></div></div>'+
       '<div class="pz-top-der">'+
-        '<div class="pz-chip">💰 Cobrado hoy <b>'+fmt(cobradoHoy)+'</b></div>'+
         '<button onclick="cambiarEmpleadoPuesto()" class="pz-btn-sec">🔄 Cambiar empleado</button>'+
       '</div>'+
     '</div>'+
