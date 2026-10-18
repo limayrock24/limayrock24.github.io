@@ -2703,6 +2703,7 @@ html.suc2 #sp-pasarL2,html.suc2 [onclick="switchTab('delivery')"],html.suc2 #est
 .lr-suc-sel button{flex:1;background:var(--dark);border:2px solid var(--border);color:var(--gray);border-radius:8px;padding:9px 6px;font-family:Oswald,sans-serif;letter-spacing:1px;font-size:.8rem;cursor:pointer}
 .lr-suc-sel button.on1{border-color:#F4B400;color:#F4B400;background:rgba(244,180,0,.1)}
 .lr-suc-sel button.on2{border-color:#38bdf8;color:#38bdf8;background:rgba(56,189,248,.1)}
+.lr-suc-sel button.ld{flex:.7;border-color:rgba(46,204,113,.6);color:var(--green)}
 
 @media(max-width:700px){ .logo-wrap{padding-left:8px} }
 /* El logo nuevo (logo-barra.png) es mucho más ancho que el anterior
@@ -32841,7 +32842,8 @@ function htmlPrioridadDelivery(repartidores){
         // En el link del admin (y la app LR Admin) se elige qué local ver.
         d.className = 'lr-suc-sel';
         d.innerHTML = '<button class="'+(window.__lrSucursal===1?'on1':'')+'" onclick="cambiarSucursalAdmin(1)">🏪 LIMAY ROCK 1</button>'+
-          '<button class="'+(window.__lrSucursal===2?'on2':'')+'" onclick="cambiarSucursalAdmin(2)">🏪 LIMAY ROCK 2</button>';
+          '<button class="'+(window.__lrSucursal===2?'on2':'')+'" onclick="cambiarSucursalAdmin(2)">🏪 LIMAY ROCK 2</button>'+
+          '<button class="ld" onclick="abrirLasDos()">📊 LAS DOS</button>';
       } else {
         // Abierto desde la caja: solo se muestra de qué local es.
         d.innerHTML = '<span class="lr-suc-badge" style="margin:0 0 8px">'+window.__lrSucNombre+' · '+window.__lrSucCalle+'</span>';
@@ -32852,6 +32854,199 @@ function htmlPrioridadDelivery(repartidores){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintar); else pintar();
 })();
+// ── RESUMEN "LAS DOS" (admin) ────────────────────────────────────────────
+// Junta los números de Limay Rock 1 y 2 en una sola pantalla. Usa la misma
+// cuenta que el Inicio de cada local, así los números coinciden.
+var _ld = { per: 'hoy', datos: null, cargando: false, timer: null };
+function ldCol(n, nombre){
+  var db = window.__lrDB;
+  if(window.__lrSucursal !== 2) return db.collection(n === 1 ? nombre : 'l2_' + nombre);
+  return n === 2 ? db.collection(nombre) : window.__lrColOriginal(db, nombre);
+}
+function ldDesde(per){
+  var d = new Date(); d.setHours(0,0,0,0);
+  if(per === 'ayer') d.setDate(d.getDate() - 1);
+  if(per === '7d') d.setDate(d.getDate() - 6);
+  if(per === 'mes') d.setDate(1);
+  return d;
+}
+function ldHasta(per){
+  var d = new Date(); d.setHours(23,59,59,999);
+  if(per === 'ayer') d.setDate(d.getDate() - 1);
+  return d;
+}
+function abrirLasDos(){
+  var ov = document.getElementById('ldOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'ldOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:#0b0b0b;overflow-y:auto;padding:16px';
+    document.body.appendChild(ov);
+    var st = document.createElement('style');
+    st.textContent = '@media(max-width:560px){#ldOverlay .ldt td,#ldOverlay .ldt th{padding:7px 3px!important;font-size:.72rem!important}}';
+    document.head.appendChild(st);
+  }
+  ov.style.display = 'block';
+  cargarLasDos();
+  clearInterval(_ld.timer);
+  _ld.timer = setInterval(function(){ if(ov.style.display !== 'none' && !document.hidden) cargarLasDos(true); }, 60000);
+}
+function cerrarLasDos(){ var ov = document.getElementById('ldOverlay'); if(ov) ov.style.display = 'none'; clearInterval(_ld.timer); }
+function cambiarPeriodoLasDos(p){ _ld.per = p; _ld.datos = null; cargarLasDos(); }
+function ldLeerLocal(n, desde, hasta){
+  var d0 = desde.getTime(), d1 = hasta.getTime();
+  var fDesde = fechaLocalStr(desde), fHasta = fechaLocalStr(hasta);
+  var leer = function(q){ return q.get().then(function(s){ var a = []; s.forEach(function(x){ a.push(x.data()); }); return a; }); };
+  return Promise.all([
+    leer(ldCol(n, 'ventas').where('id', '>=', d0)),
+    // Egresos y cargas: se leen desde unos días antes (la fecha del egreso
+    // puede ser anterior a cuando se cargó) y se filtran por fecha.
+    leer(ldCol(n, 'egresos').where('id', '>=', d0 - 3*86400000)),
+    leer(ldCol(n, 'cargasVirtuales').where('id', '>=', d0 - 86400000)),
+    leer(ldCol(n, 'sesionesActivas'))
+  ]).then(function(r){
+    var ventas = r[0].filter(function(v){ return !v.anulada && !v.fiadoCarga && v.id <= d1; });
+    var egresos = r[1].filter(function(e){ var f = String(e.fecha||'').slice(0,10); return f >= fDesde && f <= fHasta; });
+    var cargas = r[2].filter(function(c){ var t = new Date(c.fecha).getTime(); return t >= d0 && t <= d1 && !c.anulada; });
+    var turnos = r[3].filter(function(s){ return s.turnoInicio && (Date.now() - new Date(s.turnoInicio).getTime()) < 16*3600000; });
+    var m = { Efectivo: 0, Transferencia: 0, 'Débito': 0 };
+    ventas.forEach(function(v){
+      if(v.medio === 'Mixto' && v.mixto){
+        m.Efectivo += (v.mixto.efectivo||0); m.Transferencia += (v.mixto.transferencia||0); m['Débito'] += (v.mixto.debito||0) + (v.recargo||0);
+      } else m[v.medio] = (m[v.medio]||0) + (v.total||0);
+    });
+    cargas.forEach(function(c){
+      var cob = c.montoCobrado||0, mp = c.montoMP||0;
+      if(!cob && !mp) cob = c.ganancia||0;
+      m[c.medio] = (m[c.medio]||0) + cob; m.Transferencia = (m.Transferencia||0) - mp;
+    });
+    var recargos = ventas.reduce(function(s, v){ return s + (v.recargo||0); }, 0);
+    var ventasNeto = ventas.reduce(function(s, v){ return s + (v.total - (v.recargo||0)); }, 0);
+    var debito = m['Débito'] - recargos;
+    var cobrado = m.Efectivo + m.Transferencia + debito + (m['Cobro fiado']||0);
+    var egr = egresos.reduce(function(s, e){ return s + (e.monto||0); }, 0);
+    var conteo = {};
+    ventas.forEach(function(v){ (v.items||[]).forEach(function(i){ if(i && i.name) conteo[i.name] = (conteo[i.name]||0) + (i.qty||0); }); });
+    return { n: n, ventas: ventas.length, ventasNeto: ventasNeto, efectivo: m.Efectivo, transfer: m.Transferencia, debito: debito,
+      cobrado: cobrado, egresos: egr, neto: cobrado - egr, ticket: ventas.length ? Math.round(ventasNeto / ventas.length) : 0,
+      turnos: turnos, conteo: conteo };
+  });
+}
+function cargarLasDos(silencioso){
+  if(_ld.cargando) return;
+  _ld.cargando = true;
+  if(!silencioso || !_ld.datos) renderLasDos();
+  var desde = ldDesde(_ld.per), hasta = ldHasta(_ld.per);
+  var hace7 = new Date(Date.now() - 7*86400000).toISOString();
+  Promise.all([
+    ldLeerLocal(1, desde, hasta), ldLeerLocal(2, desde, hasta),
+    window.__lrDB.collection('traspasos').where('fecha', '>=', hace7).get()
+  ]).then(function(r){
+    var tr = []; r[2].forEach(function(d){ tr.push(d.data()); });
+    _ld.datos = { l1: r[0], l2: r[1], traspasos: tr, hora: new Date() };
+    _ld.cargando = false; renderLasDos();
+  }).catch(function(e){
+    _ld.cargando = false; _ld.error = (e && e.message) || String(e); renderLasDos();
+  });
+}
+function renderLasDos(){
+  var ov = document.getElementById('ldOverlay'); if(!ov) return;
+  var y = ov.scrollTop;
+  var chip = function(p, t){ var on = _ld.per === p; return '<button onclick="cambiarPeriodoLasDos(\''+p+'\')" style="background:'+(on?'var(--gold)':'none')+';color:'+(on?'#000':'var(--light)')+';border:1px solid '+(on?'var(--gold)':'var(--border)')+';border-radius:4px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">'+t+'</button>'; };
+  var h = '<div style="max-width:1000px;margin:0 auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.3rem;letter-spacing:2px;color:var(--white)">📊 LAS DOS <span style="font-size:.75rem;color:var(--gray);letter-spacing:1px">· Limay Rock 1 + Limay Rock 2</span></div>'+
+      '<div style="display:flex;gap:6px"><button onclick="cargarLasDos()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:4px;padding:6px 10px;cursor:pointer">↻</button>'+
+      '<button onclick="cerrarLasDos()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:4px;padding:6px 12px;cursor:pointer">✕ Cerrar</button></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+chip('hoy','HOY')+chip('ayer','AYER')+chip('7d','7 DÍAS')+chip('mes','ESTE MES')+'</div>';
+  var D = _ld.datos;
+  if(!D){
+    h += '<div style="color:var(--gray);padding:30px;text-align:center">'+(_ld.error ? '⚠ No se pudo cargar: '+escBaja(_ld.error) : 'Cargando los dos locales…')+'</div></div>';
+    ov.innerHTML = h; return;
+  }
+  var a = D.l1, b = D.l2;
+  var C1 = '#F4B400', C2 = '#38bdf8';
+  var fila = function(t, k, opt){
+    opt = opt || {};
+    var v1 = a[k], v2 = b[k], tot = opt.sinTotal ? null : v1 + v2;
+    var f = opt.num ? function(x){ return String(x); } : fmt;
+    return '<tr style="border-top:1px solid rgba(255,255,255,.06)'+(opt.fuerte?';font-weight:700':'')+'">'+
+      '<td style="padding:9px 6px;color:'+(opt.color||'var(--light)')+';font-size:.82rem">'+t+'</td>'+
+      '<td style="padding:9px 6px;text-align:right;color:var(--white);font-size:.9rem">'+f(v1)+'</td>'+
+      '<td style="padding:9px 6px;text-align:right;color:var(--white);font-size:.9rem">'+f(v2)+'</td>'+
+      '<td style="padding:9px 6px;text-align:right;color:'+(opt.color||'var(--gold)')+';font-size:.95rem">'+(tot === null ? '—' : f(tot))+'</td></tr>';
+  };
+  // Porcentaje de cada local en las ventas
+  var tv = a.ventasNeto + b.ventasNeto;
+  var p1 = tv ? Math.round(a.ventasNeto * 100 / tv) : 0;
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px">'+
+    [['LIMAY ROCK 1', a, C1], ['LIMAY ROCK 2', b, C2], ['LAS DOS', {ventasNeto: tv, ventas: a.ventas + b.ventas, neto: a.neto + b.neto}, 'var(--green)']].map(function(x){
+      return '<div style="background:var(--card);border:1.5px solid '+x[2]+';border-radius:8px;padding:12px 14px">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:'+x[2]+'">'+x[0]+'</div>'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1.6rem;color:var(--white);margin-top:2px">'+fmt(x[1].ventasNeto)+'</div>'+
+        '<div style="font-size:.72rem;color:var(--gray)">'+x[1].ventas+' ventas · queda '+fmt(x[1].neto)+' tras egresos</div>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+  if(tv) h += '<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin:-4px 0 4px"><div style="width:'+p1+'%;background:'+C1+'"></div><div style="flex:1;background:'+C2+'"></div></div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:.68rem;color:var(--gray);margin-bottom:14px"><span>Limay 1: '+p1+'%</span><span>Limay 2: '+(100-p1)+'%</span></div>';
+  h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:14px;overflow-x:auto"><table class="ldt" style="width:100%;border-collapse:collapse">'+
+    '<tr><th></th><th style="text-align:right;padding:8px 6px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:'+C1+'">LIMAY 1</th><th style="text-align:right;padding:8px 6px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:'+C2+'">LIMAY 2</th><th style="text-align:right;padding:8px 6px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:var(--gold)">TOTAL</th></tr>'+
+    fila('Ventas', 'ventasNeto', {fuerte:true})+
+    fila('Cantidad de ventas', 'ventas', {num:true})+
+    fila('Ticket promedio', 'ticket', {sinTotal:true})+
+    fila('💵 Efectivo', 'efectivo')+
+    fila('📲 Transferencia / MP', 'transfer')+
+    fila('💳 Débito (neto)', 'debito')+
+    fila('Cobrado neto', 'cobrado', {fuerte:true})+
+    fila('💸 Egresos', 'egresos', {color:'var(--red)'})+
+    fila('Queda', 'neto', {fuerte:true, color:'var(--green)'})+
+  '</table></div>';
+  // Turnos abiertos
+  var tTurnos = function(x, col, nom){
+    return '<div style="flex:1;min-width:220px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:'+col+';margin-bottom:6px">🟢 TURNOS ABIERTOS · '+nom+'</div>'+
+      (x.turnos.length ? x.turnos.map(function(s){
+        var hs = Math.floor((Date.now() - new Date(s.turnoInicio).getTime()) / 60000);
+        return '<div style="font-size:.82rem;color:var(--white);padding:3px 0">👤 '+escBaja(s.nombre||'—')+(s.caja?' · Caja '+s.caja:'')+' <span style="color:var(--gray);font-size:.72rem">· hace '+(hs >= 60 ? Math.floor(hs/60)+' h '+(hs%60)+' min' : hs+' min')+'</span></div>';
+      }).join('') : '<div style="font-size:.78rem;color:var(--gray)">Ninguno</div>')+
+    '</div>';
+  };
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'+tTurnos(a, C1, 'LIMAY 1')+tTurnos(b, C2, 'LIMAY 2')+'</div>';
+  // Traspasos
+  var pend = D.traspasos.filter(function(t){ return t.estado === 'enviado'; });
+  var difs = D.traspasos.filter(function(t){ return t.estado === 'recibido' && t.conDiferencia; });
+  if(pend.length || difs.length){
+    h += '<div style="background:var(--card);border:1px solid rgba(56,189,248,.5);border-radius:8px;padding:10px 12px;margin-bottom:14px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:'+C2+';margin-bottom:6px">🔁 TRASPASOS (últimos 7 días)</div>'+
+      pend.map(function(t){ return '<div style="font-size:.8rem;color:var(--light);padding:3px 0">⏳ De Limay '+t.desde+' a Limay '+t.hacia+' · '+(t.items||[]).length+' productos · sin confirmar desde '+trFechaCorta(t.fecha)+'</div>'; }).join('')+
+      difs.map(function(t){
+        var d = []; (t.items||[]).forEach(function(it, k){ var r = (t.recibidos||[])[k]; if(r && r.cant !== it.cant) d.push(escBaja(it.n)+': '+it.cant+' → '+r.cant); });
+        return '<div style="font-size:.8rem;color:#f87171;padding:3px 0">⚠ Llegó distinto (Limay '+t.desde+' → '+t.hacia+', '+trFechaCorta(t.fecha)+'): '+d.join(' · ')+'</div>';
+      }).join('')+
+    '</div>';
+  }
+  // Más vendidos
+  var todos = {};
+  Object.keys(a.conteo).forEach(function(k){ todos[k] = (todos[k]||0) + a.conteo[k]; });
+  Object.keys(b.conteo).forEach(function(k){ todos[k] = (todos[k]||0) + b.conteo[k]; });
+  var top = Object.keys(todos).sort(function(x, y){ return todos[y] - todos[x]; }).slice(0, 10);
+  h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:6px">🏆 MÁS VENDIDOS</div>'+
+    (top.length ? '<table style="width:100%;border-collapse:collapse">'+
+      '<tr><th></th><th style="text-align:right;font-size:.66rem;color:'+C1+';padding:4px">L1</th><th style="text-align:right;font-size:.66rem;color:'+C2+';padding:4px">L2</th><th style="text-align:right;font-size:.66rem;color:var(--gold);padding:4px">TOTAL</th></tr>'+
+      top.map(function(k, i){
+        return '<tr style="border-top:1px solid rgba(255,255,255,.06)"><td style="padding:6px 4px;font-size:.8rem;color:var(--white)">'+(i+1)+'. '+escBaja(k)+'</td>'+
+          '<td style="text-align:right;padding:6px 4px;font-size:.8rem;color:var(--light)">'+(a.conteo[k]||0)+'</td>'+
+          '<td style="text-align:right;padding:6px 4px;font-size:.8rem;color:var(--light)">'+(b.conteo[k]||0)+'</td>'+
+          '<td style="text-align:right;padding:6px 4px;font-size:.85rem;color:var(--gold);font-weight:700">'+todos[k]+'</td></tr>';
+      }).join('')+'</table>' : '<div style="font-size:.78rem;color:var(--gray)">Sin ventas en este período.</div>')+
+  '</div>'+
+  '<div style="font-size:.66rem;color:var(--gray);text-align:center;padding-bottom:20px">Actualizado '+D.hora.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+' · se refresca solo cada minuto'+(_ld.cargando?' · actualizando…':'')+'</div>'+
+  '</div>';
+  ov.innerHTML = h;
+  ov.scrollTop = y;
+}
 // ── TRASPASOS DE MERCADERÍA ENTRE LOCALES ────────────────────────────────
 // Un local envía (su stock baja al enviar) y el otro confirma lo que llegó
 // (su stock sube recién ahí). Si llegó distinto, queda anotada la diferencia.
