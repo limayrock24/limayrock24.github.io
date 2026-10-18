@@ -1774,6 +1774,7 @@ if(window.__lrSucursal === 2){
   _refCategorias().onSnapshot(function(doc){
     if(doc.exists && Array.isArray(doc.data().lista)){
       window.ALL_CATS = doc.data().lista;
+      window.__lrCatsUltimas = doc.data().lista.slice();
     }
     window.__lrSync.categoriasListas = true;
     refrescarPantallaVentaSiExiste();
@@ -1781,6 +1782,13 @@ if(window.__lrSucursal === 2){
   }, function(err){ console.error('Error sincronizando categorías:', err); window.__lrSync.categoriasListas = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCatsCustom = function(lista){
+    // Desde Limay 2 no se tocan: la lista es la de Limay 1 y se edita allá.
+    if(window.__lrSucursal === 2){
+      if(Array.isArray(window.__lrCatsUltimas)) window.ALL_CATS = window.__lrCatsUltimas.slice();
+      showToast('Las categorías se crean y editan desde Limay Rock 1 — este cambio no se guardó', true);
+      if(typeof buildPills === 'function') try{ buildPills(); }catch(e){}
+      return;
+    }
     _refCategorias().set(limpiarUndefined({ lista: lista })).catch(function(e){
       console.error('Error guardando categorías', e);
     });
@@ -24768,6 +24776,7 @@ function renderCatModalList() {
 }
 
 function agregarCategoria() {
+  if(window.__lrSucursal === 2){ showToast('Las categorías se crean y editan desde Limay Rock 1', true); return; }
   var inp = document.getElementById('catNuevaNombre');
   var nombre = inp ? inp.value.trim() : '';
   if(!nombre){ showToast('Ingresá un nombre',true); return; }
@@ -24897,6 +24906,7 @@ function editCatMarcarVisibles(marcar) {
 }
 
 function guardarEditCat() {
+  if(window.__lrSucursal === 2){ showToast('Las categorías se crean y editan desde Limay Rock 1', true); return; }
   if(_editCatIdx < 0) return;
   var catVieja = ALL_CATS[_editCatIdx];
   var catNueva = (document.getElementById('editCatNombre').value||'').trim();
@@ -24943,6 +24953,7 @@ function guardarEditCat() {
 }
 
 function eliminarCategoria(i) {
+  if(window.__lrSucursal === 2){ showToast('Las categorías se crean y editan desde Limay Rock 1', true); return; }
   var cat = ALL_CATS[i];
   var enUso = PRODUCTS.filter(function(p){ return p.cat===cat; });
 
