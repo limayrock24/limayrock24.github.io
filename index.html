@@ -2695,7 +2695,7 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
    para que acompañe la altura de la fila de botones. */
 .logo-wrap{display:flex;align-items:flex-start;padding:2px 14px 0 12px;flex-shrink:0}
 /* Sucursal: nombre del local en el encabezado */
-.lr-suc-badge{display:inline-block;margin:10px 0 0 6px;padding:3px 10px;border-radius:12px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;white-space:nowrap;align-self:flex-start;background:rgba(244,180,0,.12);color:#F4B400;border:1px solid rgba(244,180,0,.6)}
+.lr-suc-badge{display:inline-block;margin:0;padding:1px 8px;border-radius:10px;font-family:Oswald,sans-serif;font-size:.6rem;letter-spacing:1.2px;line-height:1.5;white-space:nowrap;background:rgba(244,180,0,.12);color:#F4B400;border:1px solid rgba(244,180,0,.6)}
 html.suc2 .lr-suc-badge{background:rgba(56,189,248,.12);color:#38bdf8;border-color:rgba(56,189,248,.7)}
 html.suc2 body>header{border-bottom:2px solid #38bdf8}
 html.suc2 #sp-pasarL2,html.suc2 [onclick="switchTab('delivery')"],html.suc2 #estadoRepartidores,html.suc2 #btnDeliveryPend{display:none!important}
@@ -32812,11 +32812,12 @@ function htmlPrioridadDelivery(repartidores){
 // ── SUCURSAL: encabezado y selector del admin ────────────────────────────
 (function(){
   function pintar(){
-    var lw = document.querySelector('header .logo-wrap');
+    // Chiquito arriba a la derecha, sobre el contador de productos.
+    var lw = document.querySelector('header .header-right');
     if(lw && !document.getElementById('lrSucBadge')){
       var b = document.createElement('span'); b.id = 'lrSucBadge'; b.className = 'lr-suc-badge';
       b.textContent = window.__lrSucNombre + ' · ' + window.__lrSucCalle;
-      lw.appendChild(b);
+      lw.insertBefore(b, lw.firstChild);
     }
     if(window.__lrSucursal === 2) document.title = 'Limay Rock 2 · ' + document.title.replace(/^Limay Rock 2 · /, '');
     var panel = document.querySelector('#adminOverlay .admin-panel');
