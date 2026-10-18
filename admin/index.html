@@ -11297,7 +11297,8 @@ function pendienteConsumo(c) {
 function getConsumoPendienteEmpleado(nombre) {
   var ahora = new Date();
   var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
-  return getConsumos().filter(function(c){
+  // El tope es de la persona: cuenta lo consumido en los dos locales.
+  return consumosDeLosDosLocales().filter(function(c){
     return c.tipo==='empleado' && c.empleado===nombre && !c.saldado && new Date(c.fecha) >= inicioMes;
   }).reduce(function(s,c){ return s+pendienteConsumo(c); },0);
 }
@@ -18896,7 +18897,7 @@ function abrirMisConsumos() {
   var ahora = new Date();
   var inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
 
-  var mios = getConsumos().filter(function(cn){
+  var mios = consumosDeLosDosLocales().filter(function(cn){
     return cn.empleado === yo && new Date(cn.fecha) >= inicioMes;
   }).sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
 
@@ -18947,6 +18948,7 @@ function abrirMisConsumos() {
     return;
   }
 
+  var dosLocales = mios.some(function(cn){ return cn._local; });
   lista.innerHTML = mios.map(function(cn){
     var f = new Date(cn.fecha);
     var fechaTxt = f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}) + ' ' +
@@ -18957,6 +18959,7 @@ function abrirMisConsumos() {
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:.8rem;color:var(--light);line-height:1.4">'+prods+'</div>'+
           '<div style="font-size:.65rem;color:var(--gray);margin-top:2px">'+fechaTxt+
+            (dosLocales ? ' · <span style="color:'+((cn._local||window.__lrSucursal||1)===2?'#38bdf8':'#F4B400')+'">LR'+(cn._local||window.__lrSucursal||1)+'</span>' : '')+
             (cn.saldado ? ' · <span style="color:var(--green)">saldado</span>' : ' · <span style="color:#E67E22">a descontar</span>')+
           '</div>'+
         '</div>'+
@@ -33723,6 +33726,35 @@ function pasarConfigALimay2(){
     showToast('✅ Categorías y cobro copiados a Limay Rock 2');
   }).catch(function(e){ _p2.pasando = false; renderPasarALimay2(); showToast('No se pudo copiar: '+(e && e.message || e), true); });
 }
+// ── LO DEL OTRO LOCAL, EN VIVO ───────────────────────────────────────────
+// Cada caja escucha los turnos abiertos y los consumos del mes del otro local.
+// Así "un turno a la vez" se verifica al instante (antes dependía de una
+// consulta con 4 s de margen: en una compu recién prendida no llegaba a tiempo
+// y dejaba entrar) y "Mis consumos" muestra lo de la persona en los dos locales.
+var _otroLocal = { sesiones: null, sesionesOk: false, consumos: [] };
+(function(){
+  var t = setInterval(function(){
+    if(!window.__lrDB || !window.__lrUsuario || window.__lrEsPuesto) return;
+    clearInterval(t);
+    var otro = window.__lrSucursal === 2 ? 1 : 2;
+    var ref = function(n){
+      var c = otro === 2 ? 'l2_' + n : n;
+      return (window.__lrSucursal === 2 && window.__lrColOriginal) ? window.__lrColOriginal(window.__lrDB, c) : window.__lrDB.collection(c);
+    };
+    ref('sesionesActivas').onSnapshot({ includeMetadataChanges: true }, function(s){
+      var m = {}; s.forEach(function(d){ m[d.id] = d.data(); });
+      _otroLocal.sesiones = m;
+      if(!s.metadata.fromCache) _otroLocal.sesionesOk = true;
+    }, function(e){ console.warn('turnos del otro local', e); });
+    var ini = new Date(); ini.setHours(0,0,0,0); ini.setDate(1); ini.setMonth(ini.getMonth() - 1);
+    ref('consumos').where('fecha', '>=', ini.toISOString()).onSnapshot(function(s){
+      var a = []; s.forEach(function(d){ var x = d.data(); x._local = otro; a.push(x); });
+      _otroLocal.consumos = a;
+    }, function(e){ console.warn('consumos del otro local', e); });
+  }, 1000);
+})();
+// Consumos de una persona en los dos locales (los de acá + los del otro).
+function consumosDeLosDosLocales(){ return getConsumos().concat(_otroLocal.consumos || []); }
 // En qué locales trabaja un empleado (los cargados antes de Limay 2: solo Limay 1).
 function localesDeEmpleado(e){ var l = e && e.locales; return (Array.isArray(l) && l.length) ? l.map(Number) : [1]; }
 function trabajaEnLocal(e, n){ return localesDeEmpleado(e).indexOf(Number(n)) >= 0; }
@@ -33731,10 +33763,16 @@ function trabajaEnLocal(e, n){ return localesDeEmpleado(e).indexOf(Number(n)) >=
 function turnoAbiertoEnOtroLocal(emp){
   try{
     var otro = (window.__lrSucursal === 2) ? 1 : 2;
+    // Si ya llegó la lista en vivo desde la nube, se responde al instante.
+    if(_otroLocal.sesionesOk && _otroLocal.sesiones){
+      var x0 = _otroLocal.sesiones[String(emp.nombre).replace(/\//g, '-')];
+      var vig0 = x0 && x0.turnoInicio && (Date.now() - new Date(x0.turnoInicio).getTime()) < 16*3600000;
+      return Promise.resolve(vig0 ? (otro === 2 ? 'LIMAY ROCK 2' : 'LIMAY ROCK 1') : null);
+    }
     var col = otro === 2 ? 'l2_sesionesActivas' : 'sesionesActivas';
     var ref = (window.__lrSucursal === 2 && window.__lrColOriginal) ? window.__lrColOriginal(window.__lrDB, col) : window.__lrDB.collection(col);
     var consulta = ref.doc(String(emp.nombre).replace(/\//g, '-')).get({ source: 'server' });
-    var limite = new Promise(function(res){ setTimeout(function(){ res(null); }, 4000); });
+    var limite = new Promise(function(res){ setTimeout(function(){ res(null); }, 8000); });
     return Promise.race([consulta, limite]).then(function(d){
       if(!d || !d.exists) return null;
       var x = d.data() || {};
