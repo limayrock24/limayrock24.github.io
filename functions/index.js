@@ -608,6 +608,11 @@ function datosASincronizar(p) {
 async function sincronizarProductoEntreLocales(event, destino) {
   const despues = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
   if (!despues || despues.sinSincronizar) return;
+  // Solo se copian CAMBIOS de un producto que ya existía. Un producto que
+  // recién aparece en un local (pasado desde el otro, creado ahí, o cargado
+  // por error en bloque) nunca pisa al del otro local.
+  const antes = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+  if (!antes) return;
   const ref = db.collection(destino).doc(event.params.id);
   const otro = await ref.get();
   if (!otro.exists) return;

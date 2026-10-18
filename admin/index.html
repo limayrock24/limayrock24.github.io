@@ -1763,7 +1763,14 @@ if(window.__lrSucursal === 2){
   };
 
   // Categorías personalizadas (documento único, no una lista de registros)
-  window.__lrDB.collection(window.__lrCOL.config).doc('categorias').onSnapshot(function(doc){
+  // Las categorías son las mismas en los dos locales (los productos se
+  // sincronizan con su categoría): Limay 2 usa la lista de Limay 1.
+  var _refCategorias = function(){
+    return (window.__lrSucursal === 2 && window.__lrColOriginal)
+      ? window.__lrColOriginal(window.__lrDB, 'config').doc('categorias')
+      : window.__lrDB.collection(window.__lrCOL.config).doc('categorias');
+  };
+  _refCategorias().onSnapshot(function(doc){
     if(doc.exists && Array.isArray(doc.data().lista)){
       window.ALL_CATS = doc.data().lista;
     }
@@ -1773,7 +1780,7 @@ if(window.__lrSucursal === 2){
   }, function(err){ console.error('Error sincronizando categorías:', err); window.__lrSync.categoriasListas = true; ocultarCargaSiListo(); });
 
   window.__lrSaveCatsCustom = function(lista){
-    window.__lrDB.collection(window.__lrCOL.config).doc('categorias').set(limpiarUndefined({ lista: lista })).catch(function(e){
+    _refCategorias().set(limpiarUndefined({ lista: lista })).catch(function(e){
       console.error('Error guardando categorías', e);
     });
   };
@@ -32920,7 +32927,8 @@ function abrirReinicioL2(){
     '<div style="font-size:.8rem;color:var(--light);line-height:1.5">Se <b>borra</b> de Limay 2: ventas, turnos, cierres, egresos, retiros, consumos, fiados, clientes, movimientos, saldos de caja y MP, y los traspasos con Limay 1.<br>'+
     'Se <b>deja</b>: productos y precios, proveedores, categorías, combos, empleados y configuración.<br>'+
     '<span style="color:var(--gray)">Limay 1 no se toca. Si hiciste traspasos de prueba, el stock que salió de Limay 1 no vuelve solo.</span></div>'+
-    '<label style="display:flex;gap:8px;align-items:center;margin:12px 0;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiStock" checked style="width:16px;height:16px;accent-color:var(--red)"> Poner el stock de todos los productos en 0</label>'+
+    '<label style="display:flex;gap:8px;align-items:center;margin:12px 0 6px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiStock" checked style="width:16px;height:16px;accent-color:var(--red)"> Poner el stock de todos los productos en 0</label>'+
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiProd" style="width:16px;height:16px;margin-top:2px;accent-color:var(--red)"><span>Borrar también <b>todos los productos</b> de Limay 2 (empezar sin ninguno y pasarlos de nuevo desde Limay 1). <span style="color:var(--gray)">En Limay 1 no se borra nada.</span></span></label>'+
     '<div style="font-size:.75rem;color:var(--gray);margin-bottom:6px">Para confirmar, escribí <b style="color:var(--white)">REINICIAR</b>:</div>'+
     '<input id="l2ReiTxt" autocomplete="off" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1.5px solid var(--border);color:var(--white);border-radius:5px;padding:10px;font-size:.95rem;letter-spacing:2px">'+
     '<div id="l2ReiEstado" style="font-size:.78rem;color:var(--gold);margin-top:8px;min-height:1em"></div>'+
@@ -32933,6 +32941,7 @@ function reiniciarLimay2(){
   var txt = document.getElementById('l2ReiTxt'), est = document.getElementById('l2ReiEstado'), btn = document.getElementById('l2ReiBtn');
   if(!txt || txt.value.trim().toUpperCase() !== 'REINICIAR'){ est.textContent = 'Escribí REINICIAR para confirmar.'; return; }
   var ponerStock0 = document.getElementById('l2ReiStock').checked;
+  var borrarProductos = document.getElementById('l2ReiProd').checked;
   var db = window.__lrDB, col = function(n){ return window.__lrColOriginal(db, 'l2_' + n); };
   btn.disabled = true; btn.style.opacity = '.5';
   var borrarTodo = function(ref){
@@ -32965,6 +32974,10 @@ function reiniciarLimay2(){
         col('config').doc('prodCount').delete(),
         col('config').doc('semanasColchon').delete()
       ]);
+    }).then(function(){
+      if(!borrarProductos) return;
+      est.textContent = 'Borrando los productos de Limay 2…';
+      return borrarTodo(col('productos')).then(function(k){ total += k; return borrarTodo(col('inventario')); }).then(function(k){ total += k; ponerStock0 = false; });
     }).then(function(){
       if(!ponerStock0) return;
       est.textContent = 'Poniendo el stock en 0…';
