@@ -26,7 +26,7 @@
 const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 
 initializeApp();
@@ -580,4 +580,40 @@ exports.espejoRepartidores = onDocumentWritten(
       if (celus.size) console.log(`${id}: ${celus.size} celular(es) dados de baja`);
     }
   }
+);
+
+// ── PRODUCTOS SINCRONIZADOS ENTRE LIMAY ROCK 1 Y 2 ─────────────────────────
+// Un producto que está en los dos locales queda igual en los dos: si se cambia
+// en uno (precio, costo, código, categoría, foto, margen…), se copia al otro.
+// No se crea en el otro local si no estaba (eso se hace con "Pasar a Limay 2")
+// y no se borra. El stock es de cada local (va aparte, en inventario). Si en
+// cualquiera de los dos está marcado "No sincronizar", no se copia.
+const NO_SINCRONIZAR = ['sinSincronizar'];
+function datosASincronizar(p) {
+  const o = {};
+  Object.keys(p || {}).sort().forEach(k => { if (NO_SINCRONIZAR.indexOf(k) === -1) o[k] = p[k]; });
+  return o;
+}
+async function sincronizarProductoEntreLocales(event, destino) {
+  const despues = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+  if (!despues || despues.sinSincronizar) return;
+  const ref = db.collection(destino).doc(event.params.id);
+  const otro = await ref.get();
+  if (!otro.exists) return;
+  const o = otro.data();
+  if (o.sinSincronizar) return;
+  const nuevo = datosASincronizar(despues);
+  if (JSON.stringify(nuevo) === JSON.stringify(datosASincronizar(o))) return; // ya está igual: corta el ida y vuelta
+  const borrar = {};
+  Object.keys(o).forEach(k => { if (NO_SINCRONIZAR.indexOf(k) === -1 && !(k in nuevo)) borrar[k] = FieldValue.delete(); });
+  await ref.set(Object.assign({}, nuevo, borrar), { merge: true });
+  console.log(`Producto ${event.params.id} copiado a ${destino}`);
+}
+exports.sincronizarProductoL1aL2 = onDocumentWritten(
+  { document: 'productos/{id}', region: REGION },
+  (event) => sincronizarProductoEntreLocales(event, 'l2_productos')
+);
+exports.sincronizarProductoL2aL1 = onDocumentWritten(
+  { document: 'l2_productos/{id}', region: REGION },
+  (event) => sincronizarProductoEntreLocales(event, 'productos')
 );

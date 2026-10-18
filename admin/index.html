@@ -119,7 +119,9 @@ if(window.__lrSucursal === 2){
   // web de Limay 1) no llevan prefijo.
   if(window.__lrSucursal === 2){
     (function(){
-      var COMUNES = ['fcmTokens', 'dispositivos', 'avisosDelivery', 'seguimiento', 'opiniones', 'repartidoresPub', 'intentosPin'];
+      // Los empleados son una sola lista para los dos locales (cada uno dice
+      // en qué local trabaja); sus turnos, horas y cierres van en cada local.
+      var COMUNES = ['empleados', 'fcmTokens', 'dispositivos', 'avisosDelivery', 'seguimiento', 'opiniones', 'repartidoresPub', 'intentosPin'];
       var FP = firebase.firestore.Firestore.prototype;
       var map = function(p){ p = String(p); var seg = p.split('/')[0]; return (COMUNES.indexOf(seg) >= 0 || seg.indexOf('l2_') === 0) ? p : 'l2_' + p; };
       var oc = FP.collection, od = FP.doc;
@@ -2687,7 +2689,7 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
 .lr-suc-badge{display:inline-block;margin:10px 0 0 6px;padding:3px 10px;border-radius:12px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;white-space:nowrap;align-self:flex-start;background:rgba(244,180,0,.12);color:#F4B400;border:1px solid rgba(244,180,0,.6)}
 html.suc2 .lr-suc-badge{background:rgba(56,189,248,.12);color:#38bdf8;border-color:rgba(56,189,248,.7)}
 html.suc2 body>header{border-bottom:2px solid #38bdf8}
-html.suc2 [onclick="switchTab('delivery')"],html.suc2 #estadoRepartidores,html.suc2 #btnDeliveryPend{display:none!important}
+html.suc2 #sp-pasarL2,html.suc2 [onclick="switchTab('delivery')"],html.suc2 #estadoRepartidores,html.suc2 #btnDeliveryPend{display:none!important}
 .lr-suc-sel{display:flex;gap:6px;margin:6px 0 10px}
 .lr-suc-sel button{flex:1;background:var(--dark);border:2px solid var(--border);color:var(--gray);border-radius:8px;padding:9px 6px;font-family:Oswald,sans-serif;letter-spacing:1px;font-size:.8rem;cursor:pointer}
 .lr-suc-sel button.on1{border-color:#F4B400;color:#F4B400;background:rgba(244,180,0,.1)}
@@ -4481,6 +4483,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sp-logcat"      onclick="switchTab('logcat')">📋 Movimientos</button>
       <button class="ftbtn" id="sp-catweb"      onclick="abrirCatalogoWeb()">🌐 Catálogo web</button>
       <button class="ftbtn" id="sp-codigos"     onclick="switchTab('codigos')">📟 Códigos</button>
+      <button class="ftbtn" id="sp-pasarL2" onclick="abrirPasarALimay2()" style="color:#38bdf8;border-color:rgba(56,189,248,.5)">🔁 Pasar a Limay 2</button>
     </div>
 
 
@@ -4711,6 +4714,15 @@ body.night-on{background:#080005}
             style="background:var(--dark);border:2px solid var(--red);border-radius:4px;padding:12px 16px;color:var(--white);font-family:'Oswald',sans-serif;font-size:1.5rem;letter-spacing:8px;text-align:center;outline:none;width:100%"
             oninput="this.value=this.value.replace(/\D/g,'').slice(0,4)">
           <div id="emPinAdminEstado" style="font-size:.68rem;color:var(--gray);margin-top:4px"></div>
+        </div>
+
+        <div class="field" id="emLocalesWrap">
+          <label>🏪 Trabaja en</label>
+          <div style="display:flex;gap:8px">
+            <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--dark);border:1px solid rgba(244,180,0,.5);border-radius:6px;padding:10px;cursor:pointer;font-size:.82rem;color:var(--white)"><input type="checkbox" id="emLocal1" style="width:18px;height:18px;accent-color:#F4B400"> Limay Rock 1</label>
+            <label style="flex:1;display:flex;align-items:center;gap:8px;background:var(--dark);border:1px solid rgba(56,189,248,.5);border-radius:6px;padding:10px;cursor:pointer;font-size:.82rem;color:var(--white)"><input type="checkbox" id="emLocal2" style="width:18px;height:18px;accent-color:#38bdf8"> Limay Rock 2</label>
+          </div>
+          <div style="font-size:.68rem;color:var(--gray);margin-top:4px">Con su mismo PIN puede abrir turno en los locales tildados (en uno a la vez).</div>
         </div>
 
         <!-- Acceso a Recepción -->
@@ -6145,6 +6157,10 @@ body.night-on{background:#080005}
           <label>Nombre del producto</label>
           <input type="text" id="pmNombre" placeholder="Nombre completo">
         </div>
+        <label id="pmSinSyncWrap" style="display:flex;align-items:flex-start;gap:8px;margin:-4px 0 12px;font-size:.74rem;color:var(--gray);cursor:pointer">
+          <input type="checkbox" id="pmSinSync" style="width:16px;height:16px;margin-top:1px;accent-color:#38bdf8">
+          <span>🔗 <b style="color:var(--light)">No sincronizar con el otro local</b> — si está en Limay Rock 1 y 2, normalmente un cambio acá (precio, costo, código, foto…) se copia solo al otro. Tildalo para que este producto quede distinto en este local.</span>
+        </label>
         <div class="field-row">
           <div class="field"><label>Categoría</label><select id="pmCat" onchange="onCatModalChange()"></select></div>
           <div class="field"><label>Costo ($)</label><input type="number" id="pmCosto" placeholder="0" min="0" oninput="recalcPrecioModal()"></div>
@@ -8249,6 +8265,11 @@ function lpp(d) {
       // Buscar el empleado que tenga ese PIN
       var emp = EMPLEADOS.find(function(e){ return e.pin===loginBuf; });
       if(emp) pinOk();
+      if(emp && emp.rol !== 'repartidor' && !trabajaEnLocal(emp, window.__lrSucursal || 1)){
+        loginBuf=''; updateLoginDots();
+        alert('👤 '+emp.nombre+', no estás habilitado para trabajar en '+(window.__lrSucNombre||'este local')+'.\n\nPedile al administrador que te habilite.');
+        return;
+      }
       if(emp && emp.rol === 'repartidor') {
         // Los repartidores no atienden el mostrador ni manejan caja: su PIN
         // sirve solo para el link /delivery/. Si lo usan acá, se les avisa.
@@ -8257,12 +8278,17 @@ function lpp(d) {
         return;
       }
       if(emp) {
-        // Guardar empleado temporalmente y pedir efectivo inicial
-        _empPendiente = emp;
-        document.getElementById('efecIniEmpName').textContent = '👤 ' + emp.nombre + ' · ' + turnoActual();
-        var rawEl = document.getElementById('efecIniMonto'); if(rawEl) rawEl.value='';
-        document.getElementById('efecIniModal').classList.add('open');
-        setTimeout(function(){ document.getElementById('efecIniMonto').focus(); }, 200);
+        loginBuf=''; updateLoginDots();
+        // Un turno abierto a la vez: si tiene turno abierto en el otro local, no abre acá.
+        turnoAbiertoEnOtroLocal(emp).then(function(otro){
+          if(otro){ alert('👤 '+emp.nombre+', tenés un turno abierto en '+otro+'.\n\nCerralo allá antes de abrir uno acá.'); return; }
+          // Guardar empleado temporalmente y pedir efectivo inicial
+          _empPendiente = emp;
+          document.getElementById('efecIniEmpName').textContent = '👤 ' + emp.nombre + ' · ' + turnoActual();
+          var rawEl = document.getElementById('efecIniMonto'); if(rawEl) rawEl.value='';
+          document.getElementById('efecIniModal').classList.add('open');
+          setTimeout(function(){ document.getElementById('efecIniMonto').focus(); }, 200);
+        });
       } else {
         loginBuf=''; updateLoginDots();
         if(pinFallo()){ avisoPinEspera('loginPinError'); return; }
@@ -23867,6 +23893,7 @@ function abrirProdModal(idx) {
     document.getElementById('prodModalTitulo').textContent='Editar producto';
     if(del) del.style.display='block';
     document.getElementById('pmNombre').value=p.name;
+    var _pss = document.getElementById('pmSinSync'); if(_pss) _pss.checked = !!p.sinSincronizar;
     document.getElementById('pmCodigo').value=p.codigo||'';
     document.getElementById('pmCosto').value=p.costo||'';
     document.getElementById('pmMargen').value=p.margin||MARGINS[p.cat]||50;
@@ -23898,6 +23925,7 @@ function abrirProdModal(idx) {
     document.getElementById('filaEtiquetaDestacado').style.display='none';
     document.getElementById('pmEtiquetaDestacado').value='';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
+    var _pss0 = document.getElementById('pmSinSync'); if(_pss0) _pss0.checked = false;
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
     document.getElementById('pmMargen').value = defaultMrg;
@@ -24980,6 +25008,9 @@ function guardarProdModal() {
   var destacado = document.getElementById('pmDestacadoToggle').classList.contains('on');
   var etiquetaDestacado = (document.getElementById('pmEtiquetaDestacado').value||'').trim();
   var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null,destacado:destacado,etiquetaDestacado:etiquetaDestacado||null};
+  // Sincronización con el otro local (Limay Rock 1 ↔ 2): ver sincronizarProductoEntreLocales en la nube.
+  var _pss2 = document.getElementById('pmSinSync');
+  prod.sinSincronizar = (_pss2 && _pss2.checked) ? true : null;
   var esNuevo = !(idx>=0 && PRODUCTS[idx]);
   // Al RENOMBRAR un producto hay que borrar el registro viejo: en la nube cada
   // producto se guarda bajo su nombre, así que guardar con el nombre nuevo
@@ -25489,7 +25520,8 @@ function renderEmpAdmin() {
         '<div class="en">'+emp.nombre+
           (dispDeliv?' <span style="font-size:.62rem;color:#22c55e;vertical-align:middle">● en línea</span>':'')+
           campanitaHtml+'</div>'+
-        '<div class="er '+claseRol+'"'+(esDelivery?' style="color:#22c55e"':'')+'>'+textoRol+(emp.funcion?' · '+emp.funcion:'')+'</div>'+
+        '<div class="er '+claseRol+'"'+(esDelivery?' style="color:#22c55e"':'')+'>'+textoRol+(emp.funcion?' · '+emp.funcion:'')+
+          ' '+localesDeEmpleado(emp).map(function(n){ return '<span style="font-size:.6rem;border-radius:8px;padding:1px 6px;margin-left:3px;'+(n===2?'color:#38bdf8;border:1px solid rgba(56,189,248,.6)':'color:#F4B400;border:1px solid rgba(244,180,0,.6)')+'">LR'+n+'</span>'; }).join('')+'</div>'+
       '</div>'+
       '<div class="emp-stats">'+
         (esDelivery
@@ -25598,6 +25630,11 @@ function abrirEmpModal(idx) {
     if(consumoDelivSw) consumoDelivSw.classList.remove('on');
   }
 
+  // En qué local trabaja: los de antes (sin el dato) son de Limay Rock 1.
+  var _locs = (idx !== null && EMPLEADOS[idx]) ? localesDeEmpleado(EMPLEADOS[idx]) : [window.__lrSucursal || 1];
+  var _l1 = document.getElementById('emLocal1'), _l2 = document.getElementById('emLocal2');
+  if(_l1) _l1.checked = _locs.indexOf(1) >= 0;
+  if(_l2) _l2.checked = _locs.indexOf(2) >= 0;
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
   var pinInp = document.getElementById('emPin');
   if(pinInp) pinInp.value = _emPinBuf;
@@ -25789,6 +25826,13 @@ function guardarEmpModal() {
     permAnular: !!(document.getElementById('emPermAnularToggle') && document.getElementById('emPermAnularToggle').classList.contains('on'))};
   if(window.__lrPinAdminHashNuevo) empData.pinAdminHash = window.__lrPinAdminHashNuevo;
   if(_emRol !== 'admin') empData.pinAdminHash = null;
+  // Locales donde trabaja (los repartidores, solo Limay Rock 1: el delivery sale de ahí).
+  var _ls = [];
+  if(document.getElementById('emLocal1') && document.getElementById('emLocal1').checked) _ls.push(1);
+  if(document.getElementById('emLocal2') && document.getElementById('emLocal2').checked) _ls.push(2);
+  if(_emRol === 'repartidor') _ls = [1];
+  if(!_ls.length){ showToast('Tildá en qué local trabaja (Limay Rock 1, 2 o los dos)', true); return; }
+  empData.locales = _ls;
   if(idx>=0 && EMPLEADOS[idx]){
     // Se conservan los datos que no están en esta ficha (ej. si el repartidor
     // está disponible o si tiene sacada la vista de pedidos).
@@ -32126,6 +32170,7 @@ function entrarPuestoDelivery(pin){
   var err = function(t){ var e = document.getElementById('loginPinError'); if(e){ var orig = e.getAttribute('data-orig') || e.textContent; e.setAttribute('data-orig', orig); e.textContent = t; e.classList.add('show'); setTimeout(function(){ e.classList.remove('show'); e.textContent = orig; }, 3500); } };
   if(!emp || emp.rol === 'repartidor'){ if(pinFallo()) avisoPinEspera('loginPinError'); else err('PIN incorrecto'); return; }
   pinOk();
+  if(!trabajaEnLocal(emp, window.__lrSucursal || 1)){ err(emp.nombre+': no estás habilitado en este local'); return; }
   var ses = (window.__lrSesionesActivasCache || {})[String(emp.nombre).replace(/\//g,'-')];
   var vigente = ses && ses.turnoInicio && (Date.now() - new Date(ses.turnoInicio).getTime()) < 16*3600000;
   if(!vigente){ err(emp.nombre+': primero abrí tu turno en la Caja 1 o 2'); return; }
@@ -32783,6 +32828,219 @@ function htmlPrioridadDelivery(repartidores){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintar); else pintar();
 })();
+// ── PASAR A LIMAY 2 ───────────────────────────────────────────────────────
+// Desde el admin de Limay Rock 1: se tildan productos y proveedores y se
+// copian a Limay Rock 2 (con precio, costo, código, categoría y foto; el stock
+// de Limay 2 arranca en 0 y se carga con un ingreso de mercadería). También se
+// copian las categorías y la comisión de cobro. Lo que ya está en Limay 2 se
+// marca, y si se vuelve a pasar se actualiza (sin tocar su stock).
+var _p2 = { tab: 'productos', busca: '', cat: '', mostrar: 'faltan', sel: {}, selProv: {}, enL2: null, provL2: null, pasando: false };
+function _p2Esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function abrirPasarALimay2(){
+  if(window.__lrSucursal === 2){ showToast('Esto se hace desde el admin de Limay Rock 1', true); return; }
+  _p2.sel = {}; _p2.selProv = {}; _p2.enL2 = null; _p2.provL2 = null;
+  var ov = document.getElementById('p2Overlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'p2Overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.92);overflow-y:auto;padding:16px';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'block';
+  renderPasarALimay2();
+  // Qué hay ya en Limay 2
+  Promise.all([window.__lrDB.collection('l2_productos').get(), window.__lrDB.collection('l2_proveedores').get()]).then(function(r){
+    _p2.enL2 = {}; r[0].forEach(function(d){ var x = d.data(); if(x && x.name) _p2.enL2[x.name] = x; });
+    _p2.provL2 = {}; r[1].forEach(function(d){ var x = d.data(); if(x && x.nombre) _p2.provL2[x.nombre] = true; });
+    renderPasarALimay2();
+  }).catch(function(e){ showToast('No se pudo leer Limay 2: '+(e && e.message || e), true); });
+}
+function cerrarPasarALimay2(){ var ov = document.getElementById('p2Overlay'); if(ov) ov.style.display = 'none'; }
+function _p2Productos(){
+  var q = _p2.busca.trim().toLowerCase();
+  return (window.PRODUCTS || []).filter(function(p){
+    if(!p || !p.name) return false;
+    if(q && p.name.toLowerCase().indexOf(q) < 0 && String(p.codigo || '').indexOf(q) < 0) return false;
+    if(_p2.cat && (p.cat || 'Sin categoría') !== _p2.cat) return false;
+    if(_p2.mostrar === 'faltan' && _p2.enL2 && _p2.enL2[p.name]) return false;
+    if(_p2.mostrar === 'estan' && !(_p2.enL2 && _p2.enL2[p.name])) return false;
+    return true;
+  });
+}
+function renderPasarALimay2(){
+  var ov = document.getElementById('p2Overlay'); if(!ov) return;
+  var y = ov.scrollTop;
+  var cargando = !_p2.enL2;
+  var btnTab = function(k, t){ var on = _p2.tab === k; return '<button onclick="_p2.tab=\''+k+'\';renderPasarALimay2()" style="padding:10px 16px;border-radius:8px;border:2px solid '+(on?'#38bdf8':'var(--border)')+';background:'+(on?'rgba(56,189,248,.12)':'var(--dark)')+';color:'+(on?'#38bdf8':'var(--gray)')+';font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer">'+t+'</button>'; };
+  var cuerpo = '', pie = '';
+  if(cargando){
+    cuerpo = '<div style="text-align:center;color:var(--gray);padding:40px">Leyendo lo que ya hay en Limay Rock 2…</div>';
+  } else if(_p2.tab === 'productos'){
+    var lista = _p2Productos();
+    var cats = {};
+    (window.PRODUCTS || []).forEach(function(p){ if(p && p.name) cats[p.cat || 'Sin categoría'] = 1; });
+    var porCat = {};
+    lista.forEach(function(p){ var c = p.cat || 'Sin categoría'; (porCat[c] = porCat[c] || []).push(p); });
+    var n = Object.keys(_p2.sel).length;
+    cuerpo = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+        '<input id="p2Busca" value="'+_p2Esc(_p2.busca)+'" oninput="_p2.busca=this.value;clearTimeout(window._p2T);window._p2T=setTimeout(function(){renderPasarALimay2();var i=document.getElementById(\'p2Busca\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" placeholder="🔍 Buscar producto o código…" style="flex:1;min-width:200px;background:var(--dark);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--white)">'+
+        '<select onchange="_p2.cat=this.value;renderPasarALimay2()" style="background:var(--dark);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--white)"><option value="">Todas las categorías</option>'+
+          Object.keys(cats).sort().map(function(c){ return '<option value="'+_p2Esc(c)+'"'+(_p2.cat===c?' selected':'')+'>'+_p2Esc(c)+'</option>'; }).join('')+'</select>'+
+        '<select onchange="_p2.mostrar=this.value;renderPasarALimay2()" style="background:var(--dark);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--white)">'+
+          '<option value="faltan"'+(_p2.mostrar==='faltan'?' selected':'')+'>Los que NO están en Limay 2</option>'+
+          '<option value="estan"'+(_p2.mostrar==='estan'?' selected':'')+'>Los que ya están</option>'+
+          '<option value="todos"'+(_p2.mostrar==='todos'?' selected':'')+'>Todos</option></select>'+
+      '</div>'+
+      (lista.length ? Object.keys(porCat).sort().map(function(c){
+        var ps = porCat[c];
+        var todos = ps.every(function(p){ return _p2.sel[p.name]; });
+        return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">'+
+          '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#141414;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:1px;color:#F4B400">'+
+            '<input type="checkbox" data-cat="'+_p2Esc(c)+'" onchange="_p2TildarCat(this.getAttribute(\'data-cat\'), this.checked)"'+(todos?' checked':'')+' style="width:18px;height:18px;accent-color:#38bdf8">'+
+            _p2Esc(c)+' <span style="color:var(--gray);font-size:.75rem">· tildar toda la categoría ('+ps.length+')</span></label>'+
+          ps.map(function(p){
+            var esta = _p2.enL2 && _p2.enL2[p.name];
+            return '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer;font-size:.86rem">'+
+              '<input type="checkbox" data-n="'+_p2Esc(p.name)+'" onchange="_p2Tildar(this.getAttribute(\'data-n\'), this.checked)"'+(_p2.sel[p.name]?' checked':'')+' style="width:18px;height:18px;accent-color:#38bdf8">'+
+              '<span style="flex:1;color:var(--white)">'+_p2Esc(p.name)+'</span>'+
+              '<span style="min-width:80px;text-align:right;color:var(--gold)">'+fmt(p.pventa||0)+'</span>'+
+              '<span style="min-width:110px;text-align:right;color:var(--gray);font-size:.74rem">'+_p2Esc(p.codigo||'')+'</span>'+
+              '<span style="min-width:120px;text-align:right;font-size:.74rem;color:'+(esta?'#22c55e':'var(--gray)')+'">'+(esta?'✓ ya está en Limay 2':'—')+'</span>'+
+            '</label>';
+          }).join('')+'</div>';
+      }).join('') : '<div style="text-align:center;color:var(--gray);padding:30px">No hay productos con ese filtro</div>');
+    pie = '<b style="color:#38bdf8">'+n+' producto'+(n===1?'':'s')+' tildado'+(n===1?'':'s')+'</b> <span style="color:var(--gray)">· pasan con precio, costo, código, categoría y foto · el stock en Limay 2 arranca en 0</span>';
+  } else if(_p2.tab === 'proveedores'){
+    var provs = (typeof getProveedores === 'function' ? getProveedores() : []).slice().sort(function(a,b){ return String(a.nombre).localeCompare(b.nombre); });
+    var np = Object.keys(_p2.selProv).length;
+    cuerpo = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
+      (provs.length ? provs.map(function(p){
+        var esta = _p2.provL2 && _p2.provL2[p.nombre];
+        return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer;font-size:.88rem">'+
+          '<input type="checkbox" data-n="'+_p2Esc(p.nombre)+'" onchange="var n=this.getAttribute(\'data-n\');if(this.checked)_p2.selProv[n]=1;else delete _p2.selProv[n];renderPasarALimay2()"'+(_p2.selProv[p.nombre]?' checked':'')+' style="width:18px;height:18px;accent-color:#38bdf8">'+
+          '<span style="flex:1;color:var(--white)">🚚 '+_p2Esc(p.nombre)+'</span>'+
+          '<span style="font-size:.74rem;color:'+(esta?'#22c55e':'var(--gray)')+'">'+(esta?'✓ ya está en Limay 2':'—')+'</span></label>';
+      }).join('') : '<div style="padding:20px;color:var(--gray);text-align:center">No hay proveedores cargados</div>')+'</div>';
+    pie = '<b style="color:#38bdf8">'+np+' proveedor'+(np===1?'':'es')+' tildado'+(np===1?'':'s')+'</b> <span style="color:var(--gray)">· pasan con nombre, datos y productos que trae · las deudas y pagos quedan en cada local</span>';
+  } else {
+    cuerpo = '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:.9rem;color:var(--light);line-height:1.6">'+
+      'Copia a Limay Rock 2:<br>• las <b>categorías</b> y sus <b>grupos</b> (cómo se ordenan en el panel de venta)<br>• la <b>comisión de cobro</b> con tarjeta/posnet y a qué cuenta van las transferencias<br>'+
+      '<span style="color:var(--gray);font-size:.8rem">Los saldos de caja y cuentas NO se copian: Limay 2 arranca de cero.</span></div>';
+    pie = '<span style="color:var(--gray)">Se puede repetir cuando quieras (pisa lo que haya en Limay 2).</span>';
+  }
+  var accion = _p2.tab === 'productos' ? 'pasarProductosALimay2()' : (_p2.tab === 'proveedores' ? 'pasarProveedoresALimay2()' : 'pasarConfigALimay2()');
+  ov.innerHTML = '<div style="max-width:980px;margin:0 auto">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.3rem;letter-spacing:2px;color:#38bdf8">🔁 PASAR A LIMAY ROCK 2</div>'+
+      '<button onclick="cerrarPasarALimay2()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:8px 14px;cursor:pointer">✕ Cerrar</button></div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+btnTab('productos','📦 PRODUCTOS')+btnTab('proveedores','🚚 PROVEEDORES')+btnTab('config','⚙ CATEGORÍAS Y COBRO')+'</div>'+
+    cuerpo+
+    '<div style="position:sticky;bottom:0;margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:#111;border:1px solid #38bdf8;border-radius:10px;padding:12px 14px">'+
+      '<div style="font-size:.85rem">'+pie+'</div>'+
+      '<button onclick="'+accion+'"'+(_p2.pasando||cargando?' disabled':'')+' style="background:#38bdf8;color:#04121c;border:none;border-radius:8px;padding:12px 18px;font-family:Oswald,sans-serif;letter-spacing:1px;font-weight:700;cursor:pointer">'+(_p2.pasando?'⏳ PASANDO…':'🔁 PASAR A LIMAY 2')+'</button></div>'+
+  '</div>';
+  ov.scrollTop = y;
+}
+function _p2Tildar(n, on){ if(on) _p2.sel[n] = 1; else delete _p2.sel[n]; renderPasarALimay2(); }
+function _p2TildarCat(c, on){
+  _p2Productos().forEach(function(p){ if((p.cat || 'Sin categoría') === c){ if(on) _p2.sel[p.name] = 1; else delete _p2.sel[p.name]; } });
+  renderPasarALimay2();
+}
+function _p2Id(n){ return String(n).replace(/\//g, '-'); }
+function _p2Limpio(o){ return JSON.parse(JSON.stringify(o)); }
+// Escribe en tandas (la base acepta hasta 500 cambios juntos).
+function _p2Escribir(ops){
+  var tandas = [];
+  for(var i = 0; i < ops.length; i += 400) tandas.push(ops.slice(i, i + 400));
+  return tandas.reduce(function(prom, t){
+    return prom.then(function(){
+      var b = window.__lrDB.batch();
+      t.forEach(function(op){ b.set(window.__lrDB.collection(op.col).doc(op.id), op.datos, op.merge ? { merge: true } : undefined); });
+      return b.commit();
+    });
+  }, Promise.resolve());
+}
+function pasarProductosALimay2(){
+  var nombres = Object.keys(_p2.sel);
+  if(!nombres.length){ showToast('Tildá al menos un producto', true); return; }
+  var inv = (typeof getStockInv === 'function') ? getStockInv() : {};
+  var ops = [];
+  nombres.forEach(function(n){
+    var p = (window.PRODUCTS || []).find(function(x){ return x && x.name === n; });
+    if(!p) return;
+    var id = _p2Id(n);
+    ops.push({ col: 'l2_productos', id: id, datos: _p2Limpio(p) });
+    // El stock de Limay 2 arranca en 0 (si el producto ya estaba, no se toca).
+    if(!(_p2.enL2 && _p2.enL2[n])){
+      var mn = inv[n] && inv[n].minimo != null ? inv[n].minimo : 0;
+      ops.push({ col: 'l2_inventario', id: id, datos: { nombre: n, stock: 0, minimo: mn }, merge: true });
+    }
+  });
+  askConfirm('¿Pasar '+nombres.length+' producto'+(nombres.length===1?'':'s')+' a Limay Rock 2?').then(function(ok){
+    if(!ok) return;
+    _p2.pasando = true; renderPasarALimay2();
+    _p2Escribir(ops).then(function(){
+      nombres.forEach(function(n){ var p = (window.PRODUCTS||[]).find(function(x){ return x && x.name === n; }); if(p) _p2.enL2[n] = p; });
+      _p2.sel = {}; _p2.pasando = false;
+      showToast('✅ '+nombres.length+' producto'+(nombres.length===1?'':'s')+' en Limay Rock 2');
+      renderPasarALimay2();
+    }).catch(function(e){ _p2.pasando = false; renderPasarALimay2(); showToast('No se pudo pasar: '+(e && e.message || e), true); });
+  });
+}
+function pasarProveedoresALimay2(){
+  var nombres = Object.keys(_p2.selProv);
+  if(!nombres.length){ showToast('Tildá al menos un proveedor', true); return; }
+  var provs = (typeof getProveedores === 'function') ? getProveedores() : [];
+  var ops = [];
+  nombres.forEach(function(n){
+    var p = provs.find(function(x){ return x && x.nombre === n; });
+    if(!p) return;
+    // Sin deudas ni pagos: eso es de cada local.
+    var datos = {};
+    Object.keys(p).forEach(function(k){ if(!/saldo|deuda|pago|cuenta|debe/i.test(k)) datos[k] = p[k]; });
+    ops.push({ col: 'l2_proveedores', id: _p2Id(n), datos: _p2Limpio(datos), merge: true });
+  });
+  _p2.pasando = true; renderPasarALimay2();
+  _p2Escribir(ops).then(function(){
+    nombres.forEach(function(n){ _p2.provL2[n] = true; });
+    _p2.selProv = {}; _p2.pasando = false;
+    showToast('✅ '+nombres.length+' proveedor'+(nombres.length===1?'':'es')+' en Limay Rock 2');
+    renderPasarALimay2();
+  }).catch(function(e){ _p2.pasando = false; renderPasarALimay2(); showToast('No se pudo pasar: '+(e && e.message || e), true); });
+}
+function pasarConfigALimay2(){
+  var ids = ['categorias', 'gruposCategorias', 'categoriasVista'];
+  _p2.pasando = true; renderPasarALimay2();
+  Promise.all(ids.map(function(id){ return window.__lrDB.collection('config').doc(id).get(); })).then(function(docs){
+    var ops = [];
+    docs.forEach(function(d, i){ if(d.exists) ops.push({ col: 'l2_config', id: ids[i], datos: d.data() }); });
+    var liq = (typeof getLiquidezCfg === 'function') ? getLiquidezCfg() : {};
+    ops.push({ col: 'l2_config', id: 'liquidez', datos: { comisionMP: liq.comisionMP != null ? liq.comisionMP : 10, destinoTransfer: liq.destinoTransfer || 'MercadoPago' }, merge: true });
+    return _p2Escribir(ops);
+  }).then(function(){
+    _p2.pasando = false; renderPasarALimay2();
+    showToast('✅ Categorías y cobro copiados a Limay Rock 2');
+  }).catch(function(e){ _p2.pasando = false; renderPasarALimay2(); showToast('No se pudo copiar: '+(e && e.message || e), true); });
+}
+// En qué locales trabaja un empleado (los cargados antes de Limay 2: solo Limay 1).
+function localesDeEmpleado(e){ var l = e && e.locales; return (Array.isArray(l) && l.length) ? l.map(Number) : [1]; }
+function trabajaEnLocal(e, n){ return localesDeEmpleado(e).indexOf(Number(n)) >= 0; }
+// ¿Tiene un turno abierto (de menos de 16 h) en el otro local? Si no hay señal
+// para averiguarlo, se deja abrir (el local no puede quedar trabado por eso).
+function turnoAbiertoEnOtroLocal(emp){
+  try{
+    var otro = (window.__lrSucursal === 2) ? 1 : 2;
+    var col = otro === 2 ? 'l2_sesionesActivas' : 'sesionesActivas';
+    var ref = (window.__lrSucursal === 2 && window.__lrColOriginal) ? window.__lrColOriginal(window.__lrDB, col) : window.__lrDB.collection(col);
+    var consulta = ref.doc(String(emp.nombre).replace(/\//g, '-')).get({ source: 'server' });
+    var limite = new Promise(function(res){ setTimeout(function(){ res(null); }, 4000); });
+    return Promise.race([consulta, limite]).then(function(d){
+      if(!d || !d.exists) return null;
+      var x = d.data() || {};
+      var vigente = x.turnoInicio && (Date.now() - new Date(x.turnoInicio).getTime()) < 16*3600000;
+      return vigente ? (otro === 2 ? 'LIMAY ROCK 2' : 'LIMAY ROCK 1') : null;
+    }).catch(function(){ return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
 function cambiarSucursalAdmin(n){
   if(n === window.__lrSucursal) return;
   location.href = location.pathname + (n === 2 ? '?suc=2' : '');
