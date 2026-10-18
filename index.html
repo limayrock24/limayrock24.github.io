@@ -2601,11 +2601,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Limay Rock">
 <script>
-// Puesto Delivery: al instalarlo ("Agregar a pantalla principal") tiene que
-// abrir el puesto, no el panel de venta, y con su propio nombre.
-if(/[?&]puesto=1/.test(location.search)){
-  document.querySelector('link[rel="manifest"]').href = 'manifest-puesto.json';
-  var _amt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if(_amt) _amt.content = 'Puesto Deli';
+// Puesto Delivery: vive en /puesto/ (con su propio ícono y nombre al
+// instalarlo, sin pisar el panel de venta ni el admin). Si se abre directo
+// esta página con ?puesto=1, se va a /puesto/, que la muestra adentro.
+if(/[?&]puesto=1/.test(location.search) && window.top === window.self && location.pathname.indexOf('/admin/') === -1){
+  location.replace(location.pathname.replace(/[^\/]*$/, '') + 'puesto/');
 }
 </script>
 <style>

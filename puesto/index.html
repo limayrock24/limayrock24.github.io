@@ -1,8 +1,24 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Limay Rock — Puesto Delivery</title><meta name="theme-color" content="#0a0a0a"></head>
-<body style="background:#0a0a0a;color:#eee;font-family:sans-serif;text-align:center;padding:40px 20px">
-<p>Abriendo el Puesto Delivery…</p>
-<!-- El Puesto Delivery es el mismo sistema de las cajas, en modo tablet (?puesto=1).
-     Va a la dirección de GitHub: en limayrock.com.ar la raíz es el catálogo. -->
-<script>location.replace('https://limayrock24.github.io/?puesto=1');</script>
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Puesto Deli · Limay Rock</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Puesto Deli">
+<style>html,body{margin:0;height:100%;background:#0a0a0a;overflow:hidden}iframe{border:0;width:100%;height:100%;display:block}</style>
+</head><body>
+<!-- El Puesto Delivery es el mismo sistema de las cajas en modo puesto (?puesto=1),
+     mostrado acá adentro. Esta carpeta tiene su propio manifiesto: al instalarlo
+     queda una app aparte ("Puesto Deli") que no pisa la de admin ni la de las cajas.
+     En limayrock.com.ar la raíz es el catálogo, por eso se va a la dirección de GitHub. -->
+<script>
+if(['limayrock24.github.io','localhost','127.0.0.1'].indexOf(location.hostname) === -1){
+  location.replace('https://limayrock24.github.io/puesto/');
+} else {
+  document.write('<iframe src="../?puesto=1" title="Puesto Delivery" allow="clipboard-read; clipboard-write; fullscreen"></iframe>');
+}
+</script>
 </body></html>
