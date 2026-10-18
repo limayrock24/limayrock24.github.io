@@ -19,13 +19,16 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // Siempre la misma firma: así cada versión nueva se instala encima de la anterior.
+    // Siempre la misma firma: así cada versión nueva se instala encima de la
+    // anterior. La firma NO está en el repositorio: GitHub la arma en cada
+    // compilación desde los "secrets" del repositorio (ADMIN_KEYSTORE_B64 y
+    // ADMIN_KEYSTORE_PASS), que solo conoce el dueño.
     signingConfigs {
         limayrock {
-            storeFile file('limayrock-admin.keystore')
-            storePassword 'limayrock-delivery'
-            keyAlias 'limayrock'
-            keyPassword 'limayrock-delivery'
+            storeFile file(System.getenv('LR_KEYSTORE_PATH') ?: 'lr-admin.keystore')
+            storePassword System.getenv('LR_KEYSTORE_PASS') ?: ''
+            keyAlias 'limayrock-admin'
+            keyPassword System.getenv('LR_KEYSTORE_PASS') ?: ''
         }
     }
     lint {

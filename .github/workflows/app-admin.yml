@@ -45,12 +45,25 @@ jobs:
         working-directory: app-admin
         run: npx cap sync android
 
+      # La firma de la app sale de los secrets del repositorio (nunca del código).
+      - name: Preparar la firma
+        working-directory: app-admin/android/app
+        env:
+          ADMIN_KEYSTORE_B64: ${{ secrets.ADMIN_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$ADMIN_KEYSTORE_B64" ]; then echo "Falta el secret ADMIN_KEYSTORE_B64"; exit 1; fi
+          echo "$ADMIN_KEYSTORE_B64" | base64 -d > lr-admin.keystore
+
       - name: Compilar APK
         working-directory: app-admin/android
+        env:
+          LR_KEYSTORE_PATH: lr-admin.keystore
+          LR_KEYSTORE_PASS: ${{ secrets.ADMIN_KEYSTORE_PASS }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk ../../LimayRock-Admin.apk
+          rm -f app/lr-admin.keystore
 
       - uses: actions/upload-artifact@v4
         with:
