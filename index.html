@@ -23338,8 +23338,9 @@ function renderDashboard() {
   }
 
   // Botones de caja (solo visibles desde el panel admin)
+  // Delivery y catálogo web son solo de Limay 1: en Limay 2 no se muestran.
   var retiroBtn = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+    '<div style="display:'+(window.__lrSucursal === 2 ? 'none' : 'flex')+';align-items:center;gap:8px;flex-wrap:wrap">'+
     '<label style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;cursor:pointer">'+
       '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🛵 Delivery</span>'+
       '<select id="modoDeliverySel" onchange="cambiarModoDelivery(this.value)" style="background:var(--dark);border:1px solid var(--border);border-radius:4px;color:var(--white);padding:5px 8px;font-family:Barlow,sans-serif;font-size:.76rem;outline:none">'+
@@ -32928,6 +32929,8 @@ function ldLeerLocal(n, desde, hasta){
     ventas.forEach(function(v){ (v.items||[]).forEach(function(i){ if(i && i.name) conteo[i.name] = (conteo[i.name]||0) + (i.qty||0); }); });
     return { n: n, ventas: ventas.length, ventasNeto: ventasNeto, efectivo: m.Efectivo, transfer: m.Transferencia, debito: debito,
       cobrado: cobrado, egresos: egr, neto: cobrado - egr, ticket: ventas.length ? Math.round(ventasNeto / ventas.length) : 0,
+      // Ganancia: misma cuenta que el Inicio (precio de venta − costo de cada producto).
+      margen: (typeof calcularMargenBrutoDeVentas === 'function') ? (calcularMargenBrutoDeVentas(ventas).margenBruto || 0) : 0,
       turnos: turnos, conteo: conteo };
   });
 }
@@ -32999,6 +33002,7 @@ function renderLasDos(){
     fila('📲 Transferencia / MP', 'transfer')+
     fila('💳 Débito (neto)', 'debito')+
     fila('Cobrado neto', 'cobrado', {fuerte:true})+
+    fila('📈 Margen bruto (ganancia)', 'margen', {color:'var(--green)'})+
     fila('💸 Egresos', 'egresos', {color:'var(--red)'})+
     fila('Queda', 'neto', {fuerte:true, color:'var(--green)'})+
   '</table></div>';

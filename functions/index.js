@@ -219,32 +219,38 @@ exports.liberarPrioridadVencida = onSchedule(
 );
 
 // ── EGRESO / PAGO A PROVEEDOR ──────────────────────────────────────────────
-exports.avisoEgreso = onDocumentCreated(
-  { document: 'egresos/{id}', region: REGION },
-  async (event) => {
+// Limay Rock 2 guarda lo suyo en colecciones con "l2_" adelante: los avisos de
+// allá llevan "[LR2]" en el título y abren el admin de Limay 2.
+const LR1 = { col: '', etq: '', url: '/admin/' };
+const LR2 = { col: 'l2_', etq: '[LR2] ', url: '/admin/?suc=2' };
+
+function avisoEgreso(L) {
+  return async (event) => {
     const e = event.data && event.data.data();
     if (!e) return;
     const cuerpo = `${e.concepto || e.proveedor || 'Egreso'} · ${pesos(e.monto)}` +
       (e.medio ? ` (${e.medio})` : '') +
       (e.responsable ? `\nCargado por ${e.responsable}` : '');
-    await notificar('dueno', '💸 Egreso registrado', cuerpo, { tag: 'egreso', url: '/admin/' });
-  }
-);
+    await notificar('dueno', L.etq + '💸 Egreso registrado', cuerpo, { tag: L.col + 'egreso', url: L.url });
+  };
+}
+exports.avisoEgreso = onDocumentCreated({ document: 'egresos/{id}', region: REGION }, avisoEgreso(LR1));
+exports.avisoEgresoL2 = onDocumentCreated({ document: 'l2_egresos/{id}', region: REGION }, avisoEgreso(LR2));
 
 // ── MOVIMIENTOS DE STOCK Y CATÁLOGO ────────────────────────────────────────
 // Los ingresos de mercadería, correcciones de stock y bajas se registran todos
 // en "movimientos", así que se filtran por tipo para no avisar de las ventas
 // (que serían cientos por noche).
-exports.avisoMovimientoStock = onDocumentCreated(
-  { document: 'movimientos/{id}', region: REGION },
-  async (event) => {
+function avisoMovimientoStock(L) {
+  return async (event) => {
     const m = event.data && event.data.data();
     if (!m) return;
 
     const tiposAvisar = {
       'ingreso': { titulo: '📥 Ingreso de mercadería', tag: 'stock' },
       'ajuste-stock': { titulo: '📋 Corrección de stock', tag: 'stock' },
-      'baja-stock': { titulo: '🗑️ Baja de stock', tag: 'stock' }
+      'baja-stock': { titulo: '🗑️ Baja de stock', tag: 'stock' },
+      'traspaso': { titulo: '🔁 Traspaso entre locales', tag: 'traspaso' }
     };
     const cfg = tiposAvisar[m.tipo];
     if (!cfg) return; // ventas, consumos, fiados, etc: no se avisan
@@ -269,9 +275,11 @@ exports.avisoMovimientoStock = onDocumentCreated(
         (m.stockAntes != null ? ` (${m.stockAntes} → ${m.stockDespues})` : '') +
         (m.responsable ? `\nPor ${m.responsable}` : '');
     }
-    await notificar('dueno', cfg.titulo, cuerpo, { tag: cfg.tag, url: '/admin/' });
-  }
-);
+    await notificar('dueno', L.etq + cfg.titulo, cuerpo, { tag: L.col + cfg.tag, url: L.url });
+  };
+}
+exports.avisoMovimientoStock = onDocumentCreated({ document: 'movimientos/{id}', region: REGION }, avisoMovimientoStock(LR1));
+exports.avisoMovimientoStockL2 = onDocumentCreated({ document: 'l2_movimientos/{id}', region: REGION }, avisoMovimientoStock(LR2));
 
 // ── PRODUCTO NUEVO EN EL CATÁLOGO ──────────────────────────────────────────
 exports.avisoProductoNuevo = onDocumentCreated(
@@ -316,26 +324,26 @@ exports.avisoCambioPrecio = onDocumentUpdated(
 // sesionesActivas: un documento por empleado, se crea cuando abre turno y se
 // borra cuando lo cierra — así, la próxima vez que abra, vuelve a ser un
 // documento "nuevo" y este aviso se dispara de nuevo correctamente.
-exports.avisoTurnoAbierto = onDocumentCreated(
-  { document: 'sesionesActivas/{id}', region: REGION },
-  async (event) => {
+function avisoTurnoAbierto(L) {
+  return async (event) => {
     const s = event.data && event.data.data();
     if (!s) return;
     const hora = s.turnoInicio
       ? new Date(s.turnoInicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })
       : '—';
     const cuerpo = `${s.nombre || '—'} · ${s.turno || ''} · ${pesos(s.efectivoInicial)} en caja`;
-    await notificar('dueno', `🟢 Turno abierto — ${hora}`, cuerpo, { tag: 'turno', url: '/admin/' });
-  }
-);
+    await notificar('dueno', L.etq + `🟢 Turno abierto — ${hora}`, cuerpo, { tag: L.col + 'turno', url: L.url });
+  };
+}
+exports.avisoTurnoAbierto = onDocumentCreated({ document: 'sesionesActivas/{id}', region: REGION }, avisoTurnoAbierto(LR1));
+exports.avisoTurnoAbiertoL2 = onDocumentCreated({ document: 'l2_sesionesActivas/{id}', region: REGION }, avisoTurnoAbierto(LR2));
 
 // ── TURNO CERRADO ────────────────────────────────────────────────────────────
 // cierres: se crea un documento nuevo por cada cierre (id = fecha), así que
 // esto no se dispara de nuevo si después corregís el cierre con "Corregir
 // cierre" — esa es una actualización del mismo documento, no uno nuevo.
-exports.avisoTurnoCerrado = onDocumentCreated(
-  { document: 'cierres/{fecha}', region: REGION },
-  async (event) => {
+function avisoTurnoCerrado(L) {
+  return async (event) => {
     const c = event.data && event.data.data();
     if (!c) return;
     const hora = c.horaFin
@@ -354,11 +362,13 @@ exports.avisoTurnoCerrado = onDocumentCreated(
     }
 
     const lineas = [`${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
-    try { lineas.push(...(await resumenDelTurno(c))); }
+    try { lineas.push(...(await resumenDelTurno(c, L))); }
     catch (e) { console.error('No se pudo armar el resumen del turno', e); }
-    await notificar('dueno', `🔴 Turno cerrado — ${hora}`, lineas.join('\n'), { tag: 'turno', url: '/admin/' });
-  }
-);
+    await notificar('dueno', L.etq + `🔴 Turno cerrado — ${hora}`, lineas.join('\n'), { tag: L.col + 'turno', url: L.url });
+  };
+}
+exports.avisoTurnoCerrado = onDocumentCreated({ document: 'cierres/{fecha}', region: REGION }, avisoTurnoCerrado(LR1));
+exports.avisoTurnoCerradoL2 = onDocumentCreated({ document: 'l2_cierres/{fecha}', region: REGION }, avisoTurnoCerrado(LR2));
 
 function duracion(min) {
   const m = Number(min) || 0;
@@ -370,7 +380,7 @@ function duracion(min) {
 // Resumen corto del turno para el aviso de cierre: lo vendido, cómo se cobró,
 // los pedidos web que entraron y lo que salió de la caja. Todo sale del mismo
 // documento del cierre, salvo los pedidos web (se buscan por la hora).
-async function resumenDelTurno(c) {
+async function resumenDelTurno(c, L) {
   const out = [];
   const ventas = Array.isArray(c.ventas) ? c.ventas : [];
   const total = Number(c.total) || 0;
@@ -386,7 +396,8 @@ async function resumenDelTurno(c) {
   if (medios.length) out.push(medios.join(' · '));
 
   const ini = Date.parse(c.horaInicio), fin = Date.parse(c.horaFin);
-  if (ini && fin && fin > ini) {
+  // El delivery es solo de Limay 1.
+  if (ini && fin && fin > ini && !(L && L.col)) {
     const snap = await db.collection('pedidosWeb').where('id', '>=', ini).where('id', '<=', fin).get();
     let n = 0, suma = 0;
     snap.forEach(d => { const p = d.data(); if (p.anulado) return; n++; suma += Number(p.total) || 0; });
