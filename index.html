@@ -3,7 +3,7 @@
 <script>document.write('<script src="imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="lr-identificacion.js?v=3"></script>
+<script src="lr-identificacion.js?v=4"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
@@ -32771,7 +32771,7 @@ function renderDeliveryEquipos(forzar){
       window.__lrDB.collection('dispositivos').where('panel', '==', 'delivery').get(),
       window.__lrDB.collection('fcmTokens').get()
     ]).then(function(r){
-      _equiposDel = r[0].docs.map(function(d){ return d.data(); });
+      _equiposDel = r[0].docs.map(function(d){ var x = d.data(); x._id = d.id; return x; });
       _tokensDel = r[1].docs.map(function(d){ return d.data(); });
       pintarDeliveryEquipos();
     }).catch(function(e){
@@ -32844,13 +32844,42 @@ function pintarDeliveryEquipos(){
       }).join('')+
       (function(){
         var sueltos = _equiposDel.filter(function(d){ return d.cuenta && reciente(d.ultimaVez) && !activos.some(function(e){ return e.nombre === d._quien; }); });
-        return sueltos.length ? '<div style="font-size:.7rem;color:var(--gray);margin-top:8px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.1)">Otros equipos identificados (todavía no se sabe de qué repartidor son; se completa solo cuando el repartidor entra a la app actualizada): '+
-          sueltos.map(function(d){ return '✅ '+String(d.nombre || d._quien || 'sin nombre').replace(/</g,'&lt;'); }).join(' · ')+'</div>' : '';
+        // Los celulares identificados de los que no se sabe el dueño: el admin
+        // elige de qué repartidor es cada uno (modelo del celu, versión y
+        // cuándo se usó por última vez, para reconocerlo).
+        var esc = function(t){ return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); };
+        return sueltos.length ? '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,.12)">'+
+          '<div style="font-size:.72rem;color:#F4B400;font-weight:700;margin-bottom:4px">📱 Celulares identificados sin dueño ('+sueltos.length+')</div>'+
+          '<div style="font-size:.68rem;color:var(--gray);margin-bottom:6px">Elegí de quién es cada uno (fijate el modelo y cuándo se usó).</div>'+
+          sueltos.sort(function(a,b){ return new Date(b.ultimaVez) - new Date(a.ultimaVez); }).map(function(d){
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,.05);flex-wrap:wrap">'+
+              '<div style="min-width:0"><div style="font-size:.8rem;color:var(--white)">✅ '+esc(d.nombre || modeloCelular(d.navegador) || 'Celular sin nombre')+'</div>'+
+              '<div style="font-size:.64rem;color:var(--gray)">'+esc(modeloCelular(d.navegador))+' · versión '+esc(d.version||'?')+' · usado '+hace(d.ultimaVez)+'</div></div>'+
+              '<select onchange="asignarCelularRepartidor(\''+esc(d._id)+'\', this.value)" style="background:var(--dark);border:1px solid #F4B400;color:var(--white);border-radius:5px;padding:6px;font-size:.74rem">'+
+                '<option value="">¿De quién es?</option>'+reps.map(function(e){ return '<option value="'+esc(e.nombre)+'">'+esc(e.nombre)+'</option>'; }).join('')+
+              '</select></div>';
+          }).join('')+'</div>' : '';
       })()+
       (filas.length && !faltan ? '<div style="font-size:.74rem;color:var(--green);margin-top:8px;font-weight:700">✅ Están todos identificados: ya se puede cerrar la base.</div>' : '')+
       '<button onclick="renderDeliveryEquipos(true)" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:6px 10px;font-size:.7rem;cursor:pointer">↻ Actualizar</button>'
     ) : '')+
   '</div>';
+}
+
+// Modelo del celular a partir del navegador (ej. "Android 13 · SM-A135M").
+function modeloCelular(ua){
+  ua = String(ua||'');
+  var m = ua.match(/Android\s([\d.]+);\s*(.+?)(?:;|\)\s)/);
+  if(m) return 'Android '+m[1].split('.')[0]+' · '+m[2].replace(/\sBuild.*$/,'').trim();
+  if(/iPhone/.test(ua)) return 'iPhone';
+  if(/Windows/.test(ua)) return 'Compu Windows';
+  return ua ? 'Otro equipo' : '';
+}
+function asignarCelularRepartidor(id, nombre){
+  if(!id || !nombre) return;
+  window.__lrDB.collection('dispositivos').doc(id).set({ quien: nombre, asignadoPor: 'admin', asignadoEn: new Date().toISOString() }, { merge: true })
+    .then(function(){ showToast('📱 Celular asignado a '+nombre); renderDeliveryEquipos(true); })
+    .catch(function(e){ showToast('No se pudo asignar: '+(e && e.message || e), true); });
 }
 
 function renderDeliveryControl() {

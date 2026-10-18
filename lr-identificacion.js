@@ -100,17 +100,20 @@
     try{
       if(!window.__lrDB) return;
       try{ if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) guardar('lr_dispositivo_quien', currentEmp.nombre); }catch(e){}
-      window.__lrDB.collection('dispositivos').doc(idDispositivo()).set({
+      var datos = {
         panel: window.__lrPanel || '',
         cuenta: window.__lrUsuario || null,
         nombre: leer('lr_dispositivo_nombre') || '',
-        // Quién lo está usando (en la app de delivery: el repartidor que
-        // entró con su PIN), para saber de quién es cada celular.
-        quien: (function(){ try{ return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) ? currentEmp.nombre : (leer('lr_dispositivo_quien') || ''); }catch(e){ return ''; } })(),
         ultimaVez: new Date().toISOString(),
         version: String(window.__LR_BUILD || ''),
         navegador: navigator.userAgent.slice(0, 140)
-      }, { merge: true }).catch(function(){});
+      };
+      // Quién lo está usando (en la app de delivery: el repartidor que entró
+      // con su PIN), para saber de quién es cada celular. Si todavía no se
+      // sabe, no se manda: así no se borra el dueño que eligió el admin.
+      var quien = (function(){ try{ return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) ? currentEmp.nombre : (leer('lr_dispositivo_quien') || ''); }catch(e){ return ''; } })();
+      if(quien) datos.quien = quien;
+      window.__lrDB.collection('dispositivos').doc(idDispositivo()).set(datos, { merge: true }).catch(function(){});
     }catch(e){}
   }
 
