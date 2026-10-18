@@ -2,13 +2,20 @@
 // Se pegan a mano en la consola de Firebase: Firestore Database → Reglas.
 // Este archivo es la copia de referencia de lo que está publicado.
 //
-// ETAPA 2 (parcial): cerrado todo lo importante; abierto solo lo que usa el
-// panel de delivery, hasta identificar los celus de los repartidores.
+// ETAPA 3: base cerrada también para el delivery (los celulares de los
+// repartidores se identifican con la cuenta delivery@ y usan la app).
+// La cuenta delivery@ solo puede usar lo que necesita la app del repartidor.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Equipos identificados (ver lr-identificacion.js).
+    // Equipos del local (caja y admin): acceso a todo.
+    function local() {
+      return request.auth != null
+        && request.auth.token.email in ['local@limayrock.app', 'admin@limayrock.app'];
+    }
+
+    // Equipos identificados (ver lr-identificacion.js), incluido el delivery.
     function equipo() {
       return request.auth != null
         && request.auth.token.email in [
@@ -28,8 +35,14 @@ service cloud.firestore {
       allow read: if id in ['categoriasVista', 'gruposCategorias', 'deliveryActivo'];
     }
 
-    // Pedidos del catálogo: un cliente solo puede CREAR un pedido nuevo.
-    match /pedidosWeb/{id} { allow create: if true; }
+    // Pedidos del catálogo: un cliente solo puede CREAR un pedido nuevo (y
+    // consultar si un pedido suyo ya llegó: solo se puede "leer" un pedido que
+    // todavía no existe, así nunca ve datos de nadie).
+    match /pedidosWeb/{id} {
+      allow create: if true;
+      allow get: if resource == null || equipo();
+      allow list, update: if equipo();
+    }
 
     // Seguimiento del pedido: el cliente puede VER el estado de SU pedido si
     // tiene el código secreto (no puede listar los demás). Solo trae la etapa,
@@ -61,18 +74,18 @@ service cloud.firestore {
     // local (regla general de abajo). La app de delivery los puede VER y solo
     // marcar que los leyó (no puede cambiar el texto ni a quién va).
     match /avisosDelivery/{id} {
-      allow read: if true;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leidoPor']);
+      allow read: if equipo();
+      allow update: if equipo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leidoPor']);
     }
 
-    // TEMPORAL — lo que usa el panel de delivery, hasta identificar sus celus.
-    match /pedidosWeb/{id} { allow read, update: if true; }
-    match /empleados/{id}  { allow read, write: if true; }
-    match /config/{id}     { allow write: if id == 'deliveryActivo'; }
-    match /fcmTokens/{id}  { allow read, write: if true; }
+    // Lo que usa la app de delivery: solo equipos identificados.
+    match /empleados/{id}    { allow read, write: if equipo(); }
+    match /config/{id}       { allow write: if id == 'deliveryActivo' && equipo(); }
+    match /fcmTokens/{id}    { allow read, write: if equipo(); }
+    match /dispositivos/{id} { allow read, write: if equipo(); }
 
     // Todo lo demás (ventas, caja, cierres, egresos, stock, fiados, etc.):
-    // solo los equipos identificados.
-    match /{document=**} { allow read, write: if equipo(); }
+    // solo la caja y el admin (el celular de delivery NO).
+    match /{document=**} { allow read, write: if local(); }
   }
 }

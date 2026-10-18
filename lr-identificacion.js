@@ -21,7 +21,7 @@
   // Etapa 2: paneles cuya parte de la base ya está cerrada. En esos, un equipo
   // sin identificar NO puede funcionar (la nube le rechazaría todo y quedaría
   // vendiendo sin guardar), así que se pide la identificación obligatoria.
-  var BASE_CERRADA = { venta: true, admin: true, delivery: false };
+  var BASE_CERRADA = { venta: true, admin: true, delivery: true };
 
   function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
@@ -85,8 +85,14 @@
       }
       pintarAviso();
       registrarDispositivo();
-      // Base cerrada y equipo sin identificar: identificación obligatoria.
-      if(!user && cerrada) abrirVentanaCuandoSePueda();
+      // Base cerrada y equipo sin identificar: identificación obligatoria. El
+      // panel puede mostrar su propio cartel (la app de delivery: "pedile el
+      // alta al administrador") en vez de pedir la clave directamente.
+      if(!user && cerrada){
+        if(typeof window.__lrSinIdentificar === 'function') window.__lrSinIdentificar();
+        else abrirVentanaCuandoSePueda();
+      }
+      if(user && typeof window.__lrIdentificadoOk === 'function') window.__lrIdentificadoOk();
     });
 
     // Se vuelve a registrar cada 30 minutos, para saber qué equipos siguen en uso.
@@ -206,6 +212,7 @@
       guardar('lr_dispositivo_nombre', nombre);
       cerrarVentana();
       registrarDispositivo();
+      if(typeof window.__lrIdentificadoOk === 'function') window.__lrIdentificadoOk();
       if(typeof showToast === 'function') showToast('🔒 Equipo identificado como ' + email);
     }).catch(function(e){
       var c = e && e.code || '';

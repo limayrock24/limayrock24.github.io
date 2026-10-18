@@ -194,7 +194,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "27"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "28"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -1751,5 +1751,55 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }, 500);
 });
+</script>
+
+<script>
+// ── ALTA DEL CELULAR (seguridad) ──────────────────────────────────────────
+// Los repartidores trabajan SOLO con la app Limay Rock Delivery y con el
+// celular habilitado (identificado) por el administrador. Desde Chrome, o con
+// un celular sin habilitar, no se puede entrar: se muestra el cartel para que
+// pidan el alta. El administrador puede habilitarlo ahí mismo ("Soy el
+// administrador"), con la clave de delivery, sin que el repartidor la vea.
+(function(){
+  function esApp(){ return /LimayRockDeliveryApp/.test(navigator.userAgent) || (typeof esAppDelivery === 'function' && esAppDelivery()); }
+  function webPermitida(){ try{ return localStorage.getItem('lr_delivery_web_ok') === '1'; }catch(e){ return false; } }
+  function cartel(tipo){
+    var c = document.getElementById('lrAltaBloqueo');
+    if(!c){
+      c = document.createElement('div'); c.id = 'lrAltaBloqueo';
+      c.style.cssText = 'position:fixed;inset:0;z-index:999999;background:#0a0a0a;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;color:#eee;text-align:center';
+      document.body.appendChild(c);
+    }
+    var web = tipo === 'web';
+    c.innerHTML = '<div style="max-width:380px">'+
+      '<div style="font-size:3rem">'+(web ? '📲' : '🔒')+'</div>'+
+      '<div style="font-size:1.25rem;font-weight:800;color:#F4B400;margin-top:8px">'+(web ? 'Usá la app de Limay Rock Delivery' : 'Este celular no está habilitado')+'</div>'+
+      '<div style="font-size:.98rem;color:#ccc;margin-top:12px;line-height:1.5">'+
+        (web ? 'Para trabajar de repartidor ya no se entra desde el navegador: hay que usar la <b>app Limay Rock Delivery</b>.<br><br>' : '')+
+        'Ponete en contacto con el <b>administrador</b> para que te dé el alta.<br><b>¡Muchas gracias! 🤘</b></div>'+
+      '<button onclick="__lrAltaAdmin(\''+tipo+'\')" style="margin-top:34px;background:none;border:none;color:#555;font-size:.75rem;text-decoration:underline;cursor:pointer">Soy el administrador</button>'+
+    '</div>';
+    c.style.display = 'flex';
+  }
+  function quitar(){ var c = document.getElementById('lrAltaBloqueo'); if(c) c.style.display = 'none'; }
+  // El administrador habilita este equipo poniendo la clave de delivery. Si es
+  // el navegador (ej. para probar desde la compu), queda permitido acá.
+  window.__lrAltaAdmin = function(tipo){
+    window.__lrAltaWebPendiente = (tipo === 'web');
+    // Siempre con la clave: así un celular ya identificado desde Chrome no
+    // puede saltearse el cartel tocando acá.
+    if(typeof window.__lrAbrirIdentificacion === 'function') window.__lrAbrirIdentificacion();
+  };
+  window.__lrSinIdentificar = function(){
+    if(!esApp() && !webPermitida()) cartel('web'); else cartel('alta');
+  };
+  window.__lrIdentificadoOk = function(){
+    if(window.__lrAltaWebPendiente){ try{ localStorage.setItem('lr_delivery_web_ok', '1'); }catch(e){} window.__lrAltaWebPendiente = false; }
+    if(!esApp() && !webPermitida()){ cartel('web'); return; }
+    quitar();
+  };
+  function revisar(){ if(!esApp() && !webPermitida()) cartel('web'); }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', revisar); else revisar();
+})();
 </script>
 </body></html>
