@@ -32883,23 +32883,34 @@ function htmlPrioridadDelivery(repartidores){
 // ── RESUMEN "LAS DOS" (admin) ────────────────────────────────────────────
 // Junta los números de Limay Rock 1 y 2 en una sola pantalla. Usa la misma
 // cuenta que el Inicio de cada local, así los números coinciden.
-var _ld = { per: 'hoy', datos: null, cargando: false, timer: null };
+var _ld = { per: 'hoy', datos: null, cargando: false, timer: null, desde: '', hasta: '' };
 function ldCol(n, nombre){
   var db = window.__lrDB;
   if(window.__lrSucursal !== 2) return db.collection(n === 1 ? nombre : 'l2_' + nombre);
   return n === 2 ? db.collection(nombre) : window.__lrColOriginal(db, nombre);
 }
 function ldDesde(per){
+  if(per === 'fechas' && _ld.desde) return new Date(_ld.desde+'T00:00:00');
   var d = new Date(); d.setHours(0,0,0,0);
   if(per === 'ayer') d.setDate(d.getDate() - 1);
   if(per === '7d') d.setDate(d.getDate() - 6);
   if(per === 'mes') d.setDate(1);
+  if(per === 'mesant'){ d.setDate(1); d.setMonth(d.getMonth() - 1); }
   return d;
 }
 function ldHasta(per){
+  if(per === 'fechas' && _ld.hasta) return new Date(_ld.hasta+'T23:59:59.999');
   var d = new Date(); d.setHours(23,59,59,999);
   if(per === 'ayer') d.setDate(d.getDate() - 1);
+  if(per === 'mesant'){ d.setDate(1); d.setDate(0); }
   return d;
+}
+function ldElegirFechas(){
+  var de = document.getElementById('ldDesdeInp'), ha = document.getElementById('ldHastaInp');
+  if(!de || !ha || !de.value || !ha.value){ showToast('Elegí las dos fechas', true); return; }
+  if(de.value > ha.value){ showToast('La fecha "desde" tiene que ser antes que "hasta"', true); return; }
+  _ld.desde = de.value; _ld.hasta = ha.value;
+  cambiarPeriodoLasDos('fechas');
 }
 function abrirLasDos(){
   var ov = document.getElementById('ldOverlay');
@@ -32986,7 +32997,15 @@ function renderLasDos(){
       '<div style="display:flex;gap:6px"><button onclick="cargarLasDos()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:4px;padding:6px 10px;cursor:pointer">↻</button>'+
       '<button onclick="cerrarLasDos()" style="background:none;border:1px solid var(--border);color:var(--light);border-radius:4px;padding:6px 12px;cursor:pointer">✕ Cerrar</button></div>'+
     '</div>'+
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+chip('hoy','HOY')+chip('ayer','AYER')+chip('7d','7 DÍAS')+chip('mes','ESTE MES')+'</div>';
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+chip('hoy','HOY')+chip('ayer','AYER')+chip('7d','7 DÍAS')+chip('mes','ESTE MES')+chip('mesant','MES PASADO')+'</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">'+
+      '<span style="font-size:.72rem;color:var(--gray)">📅 Desde</span>'+
+      '<input type="date" id="ldDesdeInp" value="'+fechaLocalStr(ldDesde(_ld.per))+'" style="background:var(--dark);border:1px solid '+(_ld.per==='fechas'?'var(--gold)':'var(--border)')+';color:var(--white);border-radius:4px;padding:6px 8px;color-scheme:dark">'+
+      '<span style="font-size:.72rem;color:var(--gray)">hasta</span>'+
+      '<input type="date" id="ldHastaInp" value="'+fechaLocalStr(ldHasta(_ld.per))+'" style="background:var(--dark);border:1px solid '+(_ld.per==='fechas'?'var(--gold)':'var(--border)')+';color:var(--white);border-radius:4px;padding:6px 8px;color-scheme:dark">'+
+      '<button onclick="ldElegirFechas()" style="background:'+(_ld.per==='fechas'?'var(--gold)':'none')+';color:'+(_ld.per==='fechas'?'#000':'var(--light)')+';border:1px solid '+(_ld.per==='fechas'?'var(--gold)':'var(--border)')+';border-radius:4px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">VER</button>'+
+    '</div>'+
+    '<div style="font-size:.7rem;color:var(--gray);margin-bottom:14px">Mostrando: <b style="color:var(--light)">'+(function(){ var a = ldDesde(_ld.per), b = ldHasta(_ld.per); var f = function(x){ return x.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}); }; return f(a) === f(b) ? f(a) : f(a)+' al '+f(b); })()+'</b></div>';
   var D = _ld.datos;
   if(!D){
     h += '<div style="color:var(--gray);padding:30px;text-align:center">'+(_ld.error ? '⚠ No se pudo cargar: '+escBaja(_ld.error) : 'Cargando los dos locales…')+'</div></div>';
