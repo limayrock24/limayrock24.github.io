@@ -248,7 +248,7 @@
   if(window.__lrEsPuesto){
     document.documentElement.classList.add('modo-puesto');
     var _pzCss = document.createElement('style'); _pzCss.id = 'puestoCss';
-    _pzCss.textContent = 'html.modo-puesto body>header,html.modo-puesto #combosSection,html.modo-puesto #favsSection,html.modo-puesto #main,html.modo-puesto #empty,html.modo-puesto #cartPanel,html.modo-puesto #cartPanel2,html.modo-puesto #ventaOk,html.modo-puesto #puestoBarra{display:none!important}#puestoApp{display:none;max-width:1280px;margin:0 auto;padding:14px 14px 90px;font-family:Barlow,system-ui,sans-serif;color:#eee}.pz-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#111;border:1px solid var(--gold);border-radius:12px;padding:12px 16px;margin-bottom:12px}.pz-tit{font-family:Oswald,sans-serif;font-size:1.35rem;letter-spacing:2px;color:var(--gold);font-weight:700}.pz-quien{font-size:.85rem;color:#bbb;margin-top:2px}.pz-quien b{color:#fff}.pz-top-der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pz-chip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#ccc;border-radius:20px;padding:7px 14px;font-size:.85rem}.pz-chip b{color:#22c55e}.pz-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.pz-tab{flex:1;min-width:170px;background:#161616;border:2px solid #2a2a2a;color:#aaa;border-radius:10px;padding:13px 10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer}.pz-tab.on{background:#1d1d1d}.pz-num{display:inline-block;min-width:26px;border-radius:13px;padding:1px 8px;margin-left:4px;font-weight:700}.pz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.pz-vacio{text-align:center;color:#999;padding:50px 20px;font-size:1.1rem}.pz-vacio span{font-size:.85rem;color:#666}.pz-card{background:var(--card);border:2px solid #2c2c2c;border-radius:12px;padding:14px}.pz-card.demora{border-color:rgba(248,113,113,.7)}.pz-card.cobrado{border-color:rgba(56,189,248,.45)}.pz-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.pz-nom{font-size:1.15rem;font-weight:700;color:#fff}.pz-tot{font-family:Oswald,sans-serif;font-size:1.45rem;color:var(--gold);font-weight:700;white-space:nowrap}.pz-sub{font-size:.82rem;color:#999;margin-top:3px}.pz-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-pill{border-radius:14px;padding:4px 10px;font-size:.78rem;font-weight:600}.pz-dir{font-size:.9rem;color:#ddd;margin-top:8px}.pz-dir span{color:var(--gold)}.pz-items{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.pz-it{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:.95rem;color:#eee}.pz-q{display:inline-block;min-width:30px;text-align:center;background:var(--gold);color:#111;border-radius:5px;font-family:Oswald,sans-serif;font-weight:700;padding:2px 4px}.pz-notas{background:rgba(210,32,31,.1);border:1px solid rgba(210,32,31,.35);border-radius:7px;padding:8px 10px;margin-top:8px;font-size:.85rem;color:#ddd}.pz-notas b{color:#f87171}.pz-btn-cobrar{display:block;width:100%;margin-top:12px;background:#22c55e;color:#052e16;border:none;border-radius:9px;padding:15px;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:1px;cursor:pointer}.pz-btn-cobrar.grande{font-size:1.35rem;padding:19px}.pz-btn-cobrar:disabled{opacity:.5}.pz-fila{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.pz-btn-sec{flex:1;min-width:120px;background:transparent;border:1px solid #444;color:#ccc;border-radius:7px;padding:11px 10px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer}.pz-cobrado{margin-top:12px;text-align:center;background:rgba(34,197,94,.12);color:#22c55e;border-radius:7px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px}.pz-trabado{margin-top:12px;text-align:center;border:1px dashed var(--gold);border-radius:7px;padding:10px;color:var(--gold);font-family:Oswald,sans-serif}.pz-trabado button{display:block;margin:6px auto 0;background:none;border:none;color:#999;text-decoration:underline;cursor:pointer}.pz-cobro .pz-ccab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.pz-cobro .pz-ccab .pz-btn-sec{flex:0 0 auto}.pz-ccols{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}@media(max-width:820px){.pz-ccols{grid-template-columns:1fr}}.pz-ccol{background:var(--card);border:1px solid #2c2c2c;border-radius:12px;padding:14px}.pz-sec{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:8px}.pz-cfila{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.pz-cnom{flex:1;font-size:1rem;color:#fff}.pz-cnom span{display:block;font-size:.75rem;color:#888}.pz-cqty{display:flex;align-items:center;gap:8px}.pz-cqty b{min-width:24px;text-align:center;font-size:1.1rem}.pz-cqty button{width:38px;height:38px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#fff;font-size:1.3rem;cursor:pointer}.pz-csub{min-width:90px;text-align:right;font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem}.pz-cdel{background:none;border:none;font-size:1.1rem;cursor:pointer;opacity:.7}.pz-busca{width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:12px;font-size:1rem;outline:none}.pz-resl{display:flex;flex-direction:column;gap:5px;margin-top:6px}.pz-res{text-align:left;background:#1a1a1a;border:1px solid #333;border-radius:7px;color:#ddd;padding:10px 12px;font-size:.92rem;cursor:pointer}.pz-res b{float:right;color:var(--gold)}.pz-envio{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}.pz-envio input{width:130px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:var(--gold);padding:9px;font-size:1rem;text-align:right}.pz-medios{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pz-medio{background:#1a1a1a;border:2px solid #333;border-radius:9px;color:#ccc;padding:15px 8px;font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;cursor:pointer}.pz-medio.on{border-color:var(--gold);background:rgba(244,180,0,.12);color:var(--gold)}.pz-extra{margin-top:12px;background:#151515;border-radius:9px;padding:12px}.pz-extra label{display:block;font-size:.85rem;color:#aaa;margin-bottom:5px}.pz-extra input{width:100%;background:#1f1f1f;border:1px solid #444;border-radius:7px;color:#fff;padding:12px;font-size:1.2rem;outline:none}.pz-rapidos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-rapidos button{flex:1;min-width:80px;background:#222;border:1px solid #444;border-radius:7px;color:#ddd;padding:9px 4px;font-size:.85rem;cursor:pointer}.pz-vuelto{margin-top:10px;font-size:1.15rem;color:#ddd}.pz-vuelto b{color:#22c55e;font-size:1.35rem}.pz-mix{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pz-mix label{flex:0 0 130px;margin:0}.pz-mix input{padding:9px;font-size:1rem}.pz-totales{margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:10px}.pz-totales div{display:flex;justify-content:space-between;font-size:.95rem;color:#bbb;padding:3px 0}.pz-totales .fin{font-size:1.25rem;color:#fff;margin-top:4px}.pz-totales .fin b{color:var(--gold);font-family:Oswald,sans-serif;font-size:1.6rem}.pz-ok{text-align:center;padding:70px 20px}.pz-ok-ico{font-size:4rem}.pz-ok-tit{font-family:Oswald,sans-serif;font-size:2.2rem;color:#22c55e;letter-spacing:2px;margin-top:8px}.pz-ok-sub{font-size:1.05rem;color:#ccc;margin-top:6px}.pz-ok-vuelto{display:inline-block;margin-top:16px;background:var(--gold);color:#111;border-radius:12px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700}';
+    _pzCss.textContent = 'html.modo-puesto body>header,html.modo-puesto #combosSection,html.modo-puesto #favsSection,html.modo-puesto #main,html.modo-puesto #empty,html.modo-puesto #cartPanel,html.modo-puesto #cartPanel2,html.modo-puesto #ventaOk,html.modo-puesto #puestoBarra{display:none!important}#puestoApp{display:none;max-width:1280px;margin:0 auto;padding:14px 14px 90px;font-family:Barlow,system-ui,sans-serif;color:#eee}.pz-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#111;border:1px solid var(--gold);border-radius:12px;padding:12px 16px;margin-bottom:12px}.pz-tit{font-family:Oswald,sans-serif;font-size:1.35rem;letter-spacing:2px;color:var(--gold);font-weight:700}.pz-quien{font-size:.85rem;color:#bbb;margin-top:2px}.pz-quien b{color:#fff}.pz-top-der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pz-chip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#ccc;border-radius:20px;padding:7px 14px;font-size:.85rem}.pz-chip b{color:#22c55e}.pz-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.pz-tab{flex:1;min-width:170px;background:#161616;border:2px solid #2a2a2a;color:#aaa;border-radius:10px;padding:13px 10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer}.pz-tab.on{background:#1d1d1d}.pz-num{display:inline-block;min-width:26px;border-radius:13px;padding:1px 8px;margin-left:4px;font-weight:700}.pz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.pz-vacio{text-align:center;color:#999;padding:50px 20px;font-size:1.1rem}.pz-vacio span{font-size:.85rem;color:#666}.pz-card{background:var(--card);border:2px solid #2c2c2c;border-radius:12px;padding:14px}.pz-card.demora{border-color:rgba(248,113,113,.7)}.pz-card.cobrado{border-color:rgba(56,189,248,.45)}.pz-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.pz-nom{font-size:1.15rem;font-weight:700;color:#fff}.pz-tot{font-family:Oswald,sans-serif;font-size:1.45rem;color:var(--gold);font-weight:700;white-space:nowrap}.pz-sub{font-size:.82rem;color:#999;margin-top:3px}.pz-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-pill{border-radius:14px;padding:4px 10px;font-size:.78rem;font-weight:600}.pz-dir{font-size:.9rem;color:#ddd;margin-top:8px}.pz-dir span{color:var(--gold)}.pz-items{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.pz-it{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:.95rem;color:#eee}.pz-q{display:inline-block;min-width:30px;text-align:center;background:var(--gold);color:#111;border-radius:5px;font-family:Oswald,sans-serif;font-weight:700;padding:2px 4px}.pz-notas{background:rgba(210,32,31,.1);border:1px solid rgba(210,32,31,.35);border-radius:7px;padding:8px 10px;margin-top:8px;font-size:.85rem;color:#ddd}.pz-notas b{color:#f87171}.pz-btn-cobrar{display:block;width:100%;margin-top:12px;background:#22c55e;color:#052e16;border:none;border-radius:9px;padding:15px;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:1px;cursor:pointer}.pz-btn-cobrar.grande{font-size:1.35rem;padding:19px}.pz-btn-cobrar:disabled{opacity:.5}.pz-fila{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.pz-btn-sec{flex:1;min-width:120px;background:transparent;border:1px solid #444;color:#ccc;border-radius:7px;padding:11px 10px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer}.pz-cobrado{margin-top:12px;text-align:center;background:rgba(34,197,94,.12);color:#22c55e;border-radius:7px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px}.pz-trabado{margin-top:12px;text-align:center;border:1px dashed var(--gold);border-radius:7px;padding:10px;color:var(--gold);font-family:Oswald,sans-serif}.pz-trabado button{display:block;margin:6px auto 0;background:none;border:none;color:#999;text-decoration:underline;cursor:pointer}.pz-cobro .pz-ccab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.pz-cobro .pz-ccab .pz-btn-sec{flex:0 0 auto}.pz-ccols{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}@media(max-width:820px){.pz-ccols{grid-template-columns:1fr}}.pz-ccol{background:var(--card);border:1px solid #2c2c2c;border-radius:12px;padding:14px}.pz-sec{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:8px}.pz-cfila{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.pz-cnom{flex:1;font-size:1rem;color:#fff}.pz-cnom span{display:block;font-size:.75rem;color:#888}.pz-cqty{display:flex;align-items:center;gap:8px}.pz-cqty b{min-width:24px;text-align:center;font-size:1.1rem}.pz-cqty button{width:38px;height:38px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#fff;font-size:1.3rem;cursor:pointer}.pz-csub{min-width:90px;text-align:right;font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem}.pz-cdel{background:none;border:none;font-size:1.1rem;cursor:pointer;opacity:.7}.pz-busca{width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:12px;font-size:1rem;outline:none}.pz-resl{display:flex;flex-direction:column;gap:5px;margin-top:6px}.pz-res{text-align:left;background:#1a1a1a;border:1px solid #333;border-radius:7px;color:#ddd;padding:10px 12px;font-size:.92rem;cursor:pointer}.pz-res b{float:right;color:var(--gold)}.pz-envio{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}.pz-envio input{width:130px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:var(--gold);padding:9px;font-size:1rem;text-align:right}.pz-medios{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pz-medio{background:#1a1a1a;border:2px solid #333;border-radius:9px;color:#ccc;padding:15px 8px;font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;cursor:pointer}.pz-medio.on{border-color:var(--gold);background:rgba(244,180,0,.12);color:var(--gold)}.pz-extra{margin-top:12px;background:#151515;border-radius:9px;padding:12px}.pz-extra label{display:block;font-size:.85rem;color:#aaa;margin-bottom:5px}.pz-extra input{width:100%;background:#1f1f1f;border:1px solid #444;border-radius:7px;color:#fff;padding:12px;font-size:1.2rem;outline:none}.pz-rapidos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-rapidos button{flex:1;min-width:80px;background:#222;border:1px solid #444;border-radius:7px;color:#ddd;padding:9px 4px;font-size:.85rem;cursor:pointer}.pz-vuelto{margin-top:10px;font-size:1.15rem;color:#ddd}.pz-vuelto b{color:#22c55e;font-size:1.35rem}.pz-mix{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pz-mix label{flex:0 0 130px;margin:0}.pz-mix input{padding:9px;font-size:1rem}.pz-totales{margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:10px}.pz-totales div{display:flex;justify-content:space-between;font-size:.95rem;color:#bbb;padding:3px 0}.pz-totales .fin{font-size:1.25rem;color:#fff;margin-top:4px}.pz-totales .fin b{color:var(--gold);font-family:Oswald,sans-serif;font-size:1.6rem}.pz-ok{text-align:center;padding:70px 20px}.pz-ok-ico{font-size:4rem}.pz-ok-tit{font-family:Oswald,sans-serif;font-size:2.2rem;color:#22c55e;letter-spacing:2px;margin-top:8px}.pz-ok-sub{font-size:1.05rem;color:#ccc;margin-top:6px}.pz-ok-vuelto{display:inline-block;margin-top:16px;background:var(--gold);color:#111;border-radius:12px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700}.pz-msg-box{width:100%;max-width:640px;background:#141414;border:1px solid #38bdf8;border-radius:14px;padding:16px}.pz-msg-chip{background:#1c1c1c;border:2px solid #333;border-radius:20px;color:#ddd;padding:9px 14px;font-size:.92rem;cursor:pointer}.pz-msg-chip.on{border-color:#38bdf8;background:rgba(56,189,248,.15);color:#38bdf8}.pz-msg-rap{background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#ccc;padding:8px 10px;font-size:.82rem;cursor:pointer;text-align:left}.pz-msg-env{background:#1a1a1a;border:1px solid #2c2c2c;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:.85rem;color:#aaa}';
     document.head.appendChild(_pzCss);
   }
   // También en la app LR Admin: la primera vez baja todo y queda guardado en
@@ -32077,6 +32077,7 @@ function cambiarEmpleadoPuesto(){
   var cp = document.getElementById('cartPanel'); if(cp) cp.classList.remove('open');
   initLogin();
   renderPuesto();
+  cerrarMensajesPuesto();
 }
 
 // ── PUESTO DELIVERY: PANTALLA PROPIA ───────────────────────────────────────
@@ -32141,6 +32142,7 @@ function renderPuesto(){
       '<div><div class="pz-tit">🛵 PUESTO DELIVERY</div>'+
         '<div class="pz-quien">Atiende <b>'+_pzEsc(currentEmp.nombre)+'</b> · lo cobrado va a la <b>Caja '+cajaTurnoActual()+'</b></div></div>'+
       '<div class="pz-top-der">'+
+        '<button onclick="abrirMensajesPuesto()" class="pz-btn-sec" style="color:#38bdf8;border-color:rgba(56,189,248,.5)">✉️ Mensaje a repartidores</button>'+
         '<button onclick="cambiarEmpleadoPuesto()" class="pz-btn-sec">🔄 Cambiar empleado</button>'+
       '</div>'+
     '</div>'+
@@ -32190,7 +32192,9 @@ function _pzTarjeta(p){
     '<div class="pz-cab"><div class="pz-nom">👤 '+_pzEsc(p.nombre)+'</div><div class="pz-tot">'+fmt(p.total||0)+'</div></div>'+
     '<div class="pz-sub">🕐 '+_pzHora(p.fecha)+' · <span style="color:'+(demora?'#f87171':'inherit')+'">'+_pzHace(p.fecha)+'</span>'+
       (p.envio>0 ? ' · envío '+fmt(p.envio) : '')+' · 📞 '+_pzEsc(p.telefono||'')+'</div>'+
-    '<div class="pz-pills">'+rep+medio+'</div>'+
+    '<div class="pz-pills">'+rep+medio+
+      (p.repartidor ? '<button onclick="abrirMensajesPuesto(this.getAttribute(\'data-n\'))" data-n="'+_pzEsc(p.repartidor)+'" class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.4);cursor:pointer">✉️ Mensaje a '+_pzEsc(p.repartidor)+'</button>' : '')+
+    '</div>'+
     (dir ? '<div class="pz-dir">📍 '+_pzEsc(dir)+(p.referencia?' <span>· '+_pzEsc(p.referencia)+'</span>':'')+'</div>' : '')+
     (p.repartidor && cobrado && p.estadoDelivery !== 'entregado' && p.retiradoEn ? htmlFilaGPSPedido(p) : '')+
     htmlAjusteEnvio(p)+
@@ -32401,6 +32405,103 @@ function _pzRevisarCobroVigente(){
   var p = getPedidosWeb().find(function(x){ return x.id === _pz.cobroId; });
   if(!p || p.anulado){ showToast('⚠️ Ese pedido se canceló', true); salirCobroPuesto(true); }
   else if(p.pagoConfirmado){ showToast('Ese pedido ya figura cobrado', true); salirCobroPuesto(true); }
+}
+// ── Mensajes a los repartidores desde el puesto ──
+// Mismo sistema que la pestaña Mensajes del admin (colección avisosDelivery):
+// al repartidor le llega la notificación y le aparece el cartel en la app.
+var _pzMsg = { abierto: false, para: [], texto: '' };
+var PZ_MSG_RAPIDOS = ['📦 Tu pedido ya está listo, pasá a retirarlo', '🏪 Pasá por el local cuando puedas', '📍 ¿Por dónde andás?', '📞 Llamá al local, por favor', '⏱ ¿Cuánto te falta para volver?'];
+function abrirMensajesPuesto(nombre){
+  suscribirMensajesDelivery();
+  _pzMsg.abierto = true;
+  _pzMsg.para = nombre ? [nombre] : [];
+  renderMensajesPuesto();
+}
+function cerrarMensajesPuesto(){
+  _pzMsg.abierto = false;
+  var m = document.getElementById('pzMsgModal'); if(m) m.remove();
+}
+function pzMsgPara(nombre){
+  var i = _pzMsg.para.indexOf(nombre);
+  if(i >= 0) _pzMsg.para.splice(i, 1); else _pzMsg.para.push(nombre);
+  renderMensajesPuesto();
+}
+function pzMsgGrupo(cual){
+  var reps = _repartidoresMsg();
+  _pzMsg.para = (cual === 'disp' ? reps.filter(function(e){ return e.disponibleDelivery; }) : reps).map(function(e){ return e.nombre; });
+  renderMensajesPuesto();
+}
+function renderMensajesPuesto(){
+  if(!_pzMsg.abierto) return;
+  var m = document.getElementById('pzMsgModal');
+  if(!m){
+    m = document.createElement('div'); m.id = 'pzMsgModal';
+    m.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.85);display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow-y:auto';
+    m.onclick = function(e){ if(e.target === m) cerrarMensajesPuesto(); };
+    document.body.appendChild(m);
+  }
+  var ta = document.getElementById('pzMsgTexto'); if(ta) _pzMsg.texto = ta.value;
+  var teniaFoco = ta && document.activeElement === ta;
+  var reps = _repartidoresMsg();
+  var chips = reps.map(function(e){
+    var on = _pzMsg.para.indexOf(e.nombre) >= 0;
+    return '<button onclick="pzMsgPara(this.getAttribute(\'data-n\'))" data-n="'+_pzEsc(e.nombre)+'" class="pz-msg-chip'+(on?' on':'')+'">'+(on?'✓ ':'')+_pzEsc(e.nombre)+
+      ' <span style="color:'+(e.disponibleDelivery?'#22c55e':'#777')+'">●</span></button>';
+  }).join('');
+  var hace12 = Date.now() - 12*3600000;
+  var enviados = (_msgDelCache||[]).filter(function(x){ return x.ts >= hace12 && x.tipo !== 'pago'; }).slice(0, 8).map(function(x){
+    var vistos = Object.keys(x.leidoPor||{});
+    var faltan = (x.para||[]).filter(function(n){ return vistos.indexOf(n) === -1; });
+    return '<div class="pz-msg-env"><div><b>'+_pzEsc((x.para||[]).join(', '))+'</b> · '+_pzHora(x.fecha)+'</div>'+
+      '<div style="color:#ccc;margin-top:2px">'+_pzEsc(x.texto)+'</div>'+
+      '<div style="font-size:.75rem;margin-top:3px"><span style="color:#22c55e">✓ Visto: '+(vistos.length?_pzEsc(vistos.join(', ')):'nadie todavía')+'</span>'+
+      (faltan.length?' <span style="color:#F4B400">· Falta: '+_pzEsc(faltan.join(', '))+'</span>':'')+'</div></div>';
+  }).join('');
+  m.innerHTML =
+    '<div class="pz-msg-box">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="pz-tit" style="font-size:1.1rem">✉️ MENSAJE A REPARTIDORES</div>'+
+        '<button onclick="cerrarMensajesPuesto()" class="pz-btn-sec" style="flex:0 0 auto;min-width:0">✕ Cerrar</button></div>'+
+      '<div class="pz-sec" style="margin-top:12px">¿A quién?</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'+
+        '<button onclick="pzMsgGrupo(\'disp\')" class="pz-msg-chip">🟢 Los disponibles</button>'+
+        '<button onclick="pzMsgGrupo(\'todos\')" class="pz-msg-chip">👥 Todos</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+(chips || '<span style="color:#888">No hay repartidores cargados</span>')+'</div>'+
+      '<div class="pz-sec" style="margin-top:14px">Mensaje</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+PZ_MSG_RAPIDOS.map(function(t, i){ return '<button onclick="pzMsgRapido('+i+')" class="pz-msg-rap">'+_pzEsc(t)+'</button>'; }).join('')+'</div>'+
+      '<textarea id="pzMsgTexto" rows="3" maxlength="400" placeholder="Escribí el mensaje…" class="pz-busca" style="resize:vertical">'+_pzEsc(_pzMsg.texto)+'</textarea>'+
+      '<button onclick="enviarMensajePuesto()" class="pz-btn-cobrar" style="background:#38bdf8;color:#04121c">✉️ ENVIAR'+(_pzMsg.para.length?' A '+(_pzMsg.para.length === 1 ? _pzEsc(_pzMsg.para[0]).toUpperCase() : _pzMsg.para.length+' REPARTIDORES'):'')+'</button>'+
+      '<div style="font-size:.75rem;color:#888;margin-top:6px;text-align:center">Le llega como notificación al celu y le aparece en la app, esté disponible o no.</div>'+
+      (enviados ? '<div class="pz-sec" style="margin-top:16px">Enviados hoy</div>'+enviados : '')+
+    '</div>';
+  if(teniaFoco){ var t2 = document.getElementById('pzMsgTexto'); if(t2){ t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); } }
+}
+// Cuando llega que un repartidor vio el mensaje, se actualiza solo.
+(function(){
+  var orig = renderDeliveryMensajes;
+  renderDeliveryMensajes = function(){ var r = orig.apply(this, arguments); if(_pzMsg.abierto) renderMensajesPuesto(); return r; };
+})();
+function pzMsgRapido(i){
+  var ta = document.getElementById('pzMsgTexto');
+  if(ta){ ta.value = PZ_MSG_RAPIDOS[i]; _pzMsg.texto = ta.value; ta.focus(); }
+}
+function enviarMensajePuesto(){
+  var ta = document.getElementById('pzMsgTexto');
+  var texto = ((ta && ta.value) || '').trim();
+  if(!_pzMsg.para.length){ showToast('Elegí a quién se lo mandás', true); return; }
+  if(!texto){ showToast('Escribí el mensaje', true); return; }
+  var ts = Date.now();
+  var doc = { id: ts, ts: ts, fecha: new Date(ts).toISOString(), texto: texto, de: (currentEmp ? currentEmp.nombre : 'Local')+' (Puesto)',
+    para: _pzMsg.para.slice(), modo: 'elegidos', leidoPor: {} };
+  window.__lrDB.collection('avisosDelivery').doc(String(ts)).set(doc).then(function(){
+    showToast('✉️ Mensaje enviado a '+(doc.para.length === 1 ? doc.para[0] : doc.para.length+' repartidores'));
+  }).catch(function(e){
+    showToast('No se pudo enviar: '+(e && e.message || e)+' — ¿el equipo está identificado?', true);
+  });
+  _msgDelCache.unshift(doc);
+  _pzMsg.texto = '';
+  if(ta) ta.value = '';
+  renderMensajesPuesto();
 }
 // Se refresca solo (los "hace X min") mientras no se está cobrando.
 setInterval(function(){ if(_pzActivo() && !_pz.cobroId) renderPuesto(); }, 30000);
