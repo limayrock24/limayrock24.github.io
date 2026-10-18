@@ -1,4 +1,30 @@
 <html lang="es"><head>
+<script>
+// ── SUCURSAL: LIMAY ROCK 1 / LIMAY ROCK 2 ─────────────────────────────────
+// Mismo sistema para los dos locales, cada uno con sus datos: Limay Rock 2 se
+// abre con ?suc=2 (link /limay2/, o el selector del admin). Sus datos van en
+// la base con el prefijo "l2_" y lo que guarda en el equipo (localStorage) va
+// aparte, así nunca se mezcla con Limay Rock 1.
+window.__lrSucursal = /[?&]suc=2(&|$)/.test(location.search) ? 2 : 1;
+window.__lrSucNombre = window.__lrSucursal === 2 ? 'LIMAY ROCK 2' : 'LIMAY ROCK 1';
+window.__lrSucCalle = window.__lrSucursal === 2 ? 'Urquiza' : 'Pascual Puente';
+if(window.__lrSucursal === 2){
+  document.documentElement.classList.add('suc2');
+  (function(){
+    // Datos del equipo (no del local) que se comparten entre los dos.
+    var COMUNES = ['lr_dispositivo_id', 'lr_dispositivo_nombre', 'lr_dispositivo_quien', 'lr_pin_bloqueo'];
+    var P = Storage.prototype, g = P.getItem, s = P.setItem, r = P.removeItem;
+    function k(x){ x = String(x); return (COMUNES.indexOf(x) >= 0 || x.indexOf('l2:') === 0) ? x : 'l2:' + x; }
+    P.getItem = function(x){ return g.call(this, k(x)); };
+    P.setItem = function(x, v){ return s.call(this, k(x), v); };
+    P.removeItem = function(x){ return r.call(this, k(x)); };
+  })();
+  // El panel de venta de Limay 2 vive en /limay2/ (su propia app instalable).
+  if(location.pathname.indexOf('/admin/') === -1 && window.top === window.self){
+    location.replace(location.pathname.replace(/[^\/]*$/, '') + 'limay2/');
+  }
+}
+</script>
 <!-- ═══════════════ FIREBASE — Limay Rock ═══════════════ -->
 <script>document.write('<script src="imagenes-productos.js?_=' + Date.now() + '"><\/script>');</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -89,6 +115,20 @@
     appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
   };
   firebase.initializeApp(firebaseConfig);
+  // Limay Rock 2: todas las colecciones del local van con el prefijo "l2_".
+  // Las comunes a los dos (avisos al dueño, equipos, repartidores, catálogo
+  // web de Limay 1) no llevan prefijo.
+  if(window.__lrSucursal === 2){
+    (function(){
+      var COMUNES = ['fcmTokens', 'dispositivos', 'avisosDelivery', 'seguimiento', 'opiniones', 'repartidoresPub', 'intentosPin'];
+      var FP = firebase.firestore.Firestore.prototype;
+      var map = function(p){ p = String(p); var seg = p.split('/')[0]; return (COMUNES.indexOf(seg) >= 0 || seg.indexOf('l2_') === 0) ? p : 'l2_' + p; };
+      var oc = FP.collection, od = FP.doc;
+      window.__lrColOriginal = function(db, p){ return oc.call(db, p); };   // para leer datos de Limay 1 a propósito
+      FP.collection = function(p){ return oc.call(this, map(p)); };
+      FP.doc = function(p){ return od.call(this, map(p)); };
+    })();
+  }
   // Identificación del equipo (ver lr-identificacion.js): tiene que ir antes
   // de que arranque cualquier escucha de la nube.
   if(window.__lrIniciarIdentificacion) window.__lrIniciarIdentificacion(location.pathname.indexOf('/admin/') !== -1 ? 'admin' : 'venta');
@@ -253,7 +293,10 @@
   }
   // También en la app LR Admin: la primera vez baja todo y queda guardado en
   // el celu, así las veces siguientes abre rápido y solo trae lo nuevo.
-  window.__lrDB.enablePersistence({synchronizeTabs:true}).then(function(){
+  // Limay 2 guarda su copia local aparte: si en el mismo equipo hay una
+  // pestaña de Limay 1 abierta, no comparten la copia (si la comparten, la
+  // pestaña de Limay 1 maneja la conexión de las dos y Limay 2 se traba).
+  window.__lrDB.enablePersistence({synchronizeTabs: window.__lrSucursal !== 2}).then(function(){
     window.__lrPersistInfo = 'copia local ok';
   }).catch(function(e){
     window.__lrPersistInfo = 'copia local: '+e.code;
@@ -2649,6 +2692,16 @@ header{background:linear-gradient(180deg,#0a0a0a,#111);border-bottom:3px solid v
 /* El logo ocupa el bloque de la esquina superior izquierda, alineado arriba
    para que acompañe la altura de la fila de botones. */
 .logo-wrap{display:flex;align-items:flex-start;padding:2px 14px 0 12px;flex-shrink:0}
+/* Sucursal: nombre del local en el encabezado */
+.lr-suc-badge{display:inline-block;margin:10px 0 0 6px;padding:3px 10px;border-radius:12px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1.5px;white-space:nowrap;align-self:flex-start;background:rgba(244,180,0,.12);color:#F4B400;border:1px solid rgba(244,180,0,.6)}
+html.suc2 .lr-suc-badge{background:rgba(56,189,248,.12);color:#38bdf8;border-color:rgba(56,189,248,.7)}
+html.suc2 body>header{border-bottom:2px solid #38bdf8}
+html.suc2 [onclick="switchTab('delivery')"],html.suc2 #estadoRepartidores,html.suc2 #btnDeliveryPend{display:none!important}
+.lr-suc-sel{display:flex;gap:6px;margin:6px 0 10px}
+.lr-suc-sel button{flex:1;background:var(--dark);border:2px solid var(--border);color:var(--gray);border-radius:8px;padding:9px 6px;font-family:Oswald,sans-serif;letter-spacing:1px;font-size:.8rem;cursor:pointer}
+.lr-suc-sel button.on1{border-color:#F4B400;color:#F4B400;background:rgba(244,180,0,.1)}
+.lr-suc-sel button.on2{border-color:#38bdf8;color:#38bdf8;background:rgba(56,189,248,.1)}
+
 @media(max-width:700px){ .logo-wrap{padding-left:8px} }
 /* El logo nuevo (logo-barra.png) es mucho más ancho que el anterior
    (apaisado en vez de apilado), así que se controla por ANCHO en vez de
@@ -8932,14 +8985,17 @@ function _hashPinAdmin(pin){
     return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
   });
 }
-function _hayPinAdmin(){ return (EMPLEADOS||[]).some(function(e){ return e && e.rol==='admin' && e.pinAdminHash; }); }
+function _adminsConPin(){
+  return (EMPLEADOS||[]).concat(window.__lrAdminsL1 || []).filter(function(e){ return e && e.rol==='admin' && e.pinAdminHash; });
+}
+function _hayPinAdmin(){ return _adminsConPin().length > 0 || window.__lrSucursal === 2; }
 function verificarPinAdmin(pin){
   pin = String(pin||'');
   if(!_hayPinAdmin()){
     return Promise.resolve(pin==='0000' || (EMPLEADOS||[]).some(function(e){ return e.rol==='admin' && e.pin===pin; }));
   }
   return _hashPinAdmin(pin).then(function(h){
-    return (EMPLEADOS||[]).some(function(e){ return e.rol==='admin' && e.pinAdminHash===h; });
+    return _adminsConPin().some(function(e){ return e.pinAdminHash===h; });
   }).catch(function(){ return false; });
 }
 // Pedir el PIN de admin y, si está bien, abrir el panel sin turno (link del
@@ -32708,6 +32764,51 @@ function htmlPrioridadDelivery(repartidores){
     : '')+
   '</div>';
 }
+// ── SUCURSAL: encabezado y selector del admin ────────────────────────────
+(function(){
+  function pintar(){
+    var lw = document.querySelector('header .logo-wrap');
+    if(lw && !document.getElementById('lrSucBadge')){
+      var b = document.createElement('span'); b.id = 'lrSucBadge'; b.className = 'lr-suc-badge';
+      b.textContent = window.__lrSucNombre + ' · ' + window.__lrSucCalle;
+      lw.appendChild(b);
+    }
+    if(window.__lrSucursal === 2) document.title = 'Limay Rock 2 · ' + document.title.replace(/^Limay Rock 2 · /, '');
+    var panel = document.querySelector('#adminOverlay .admin-panel');
+    if(panel && !document.getElementById('lrSucSel')){
+      var d = document.createElement('div'); d.id = 'lrSucSel';
+      if(window.__lrEsPanelAdmin){
+        // En el link del admin (y la app LR Admin) se elige qué local ver.
+        d.className = 'lr-suc-sel';
+        d.innerHTML = '<button class="'+(window.__lrSucursal===1?'on1':'')+'" onclick="cambiarSucursalAdmin(1)">🏪 LIMAY ROCK 1</button>'+
+          '<button class="'+(window.__lrSucursal===2?'on2':'')+'" onclick="cambiarSucursalAdmin(2)">🏪 LIMAY ROCK 2</button>';
+      } else {
+        // Abierto desde la caja: solo se muestra de qué local es.
+        d.innerHTML = '<span class="lr-suc-badge" style="margin:0 0 8px">'+window.__lrSucNombre+' · '+window.__lrSucCalle+'</span>';
+      }
+      var tabs = panel.querySelector('.tabs');
+      panel.insertBefore(d, tabs);
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintar); else pintar();
+})();
+function cambiarSucursalAdmin(n){
+  if(n === window.__lrSucursal) return;
+  location.href = location.pathname + (n === 2 ? '?suc=2' : '');
+}
+// En Limay 2, el PIN de admin del dueño (cargado en Limay 1) también abre el admin.
+(function(){
+  if(window.__lrSucursal !== 2 || !window.__lrColOriginal) return;
+  // Se lee cuando el equipo ya está identificado; si falla (sin señal), se reintenta.
+  var leyendo = false, t = setInterval(function(){
+    if(!window.__lrDB || !window.__lrUsuario || leyendo) return;
+    leyendo = true;
+    window.__lrColOriginal(window.__lrDB, 'empleados').where('rol', '==', 'admin').get().then(function(snap){
+      window.__lrAdminsL1 = snap.docs.map(function(d){ var e = d.data(); return { nombre: e.nombre, rol: 'admin', pinAdminHash: e.pinAdminHash || null }; });
+      clearInterval(t);
+    }).catch(function(e){ console.warn('admins Limay 1', e && e.message); setTimeout(function(){ leyendo = false; }, 5000); });
+  }, 500);
+})();
 function cambiarMaxPedidosRep(v){
   var n = Number(v) || 0;
   window.__lrMaxPedidosRep = n;
