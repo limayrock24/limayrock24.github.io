@@ -453,3 +453,131 @@ async function avisarMensaje(id, m) {
   const titulo = (typeof m.titulo === 'string' && m.titulo.trim()) ? m.titulo.trim().slice(0, 60) : '📣 Mensaje del local';
   await enviarATokens(tokens, titulo, cuerpo, { tag: 'mensaje', url: '/delivery/' });
 }
+
+// ── INGRESO DE REPARTIDORES (PIN verificado en la nube) ────────────────────
+// La app de delivery ya no baja la lista de empleados con los PIN: manda el
+// PIN acá, se verifica contra la base y, si está bien, se le da a ESE celular
+// un permiso a nombre de ese repartidor (un "token" con su nombre y el del
+// celular). Las reglas de la base revisan en cada pedido de datos que el
+// repartidor siga existiendo y con acceso, y que el celular no esté dado de
+// baja: si se lo borra o se da de baja el celular, pierde el acceso al
+// instante. 5 PIN mal seguidos en un celular → 30 segundos de espera.
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { getAuth } = require('firebase-admin/auth');
+
+const INTENTOS_MAX = 5;
+const ESPERA_MS = 30 * 1000;
+
+function idSeguroDoc(s) { return String(s || '').replace(/\//g, '-').slice(0, 120); }
+
+// Lo que la app de delivery puede ver de cada repartidor (sin PIN).
+function datosPublicosRepartidor(e) {
+  return {
+    nombre: e.nombre,
+    accesoDelivery: !!e.accesoDelivery,
+    disponibleDelivery: !!e.disponibleDelivery,
+    sinPedidos: !!e.sinPedidos,
+    rol: e.rol || '',
+    activo: e.activo !== false
+  };
+}
+
+// Copia sin PIN de los repartidores (repartidoresPub), al día con empleados.
+async function sincronizarEspejoRepartidores() {
+  const [emps, pub] = await Promise.all([db.collection('empleados').get(), db.collection('repartidoresPub').get()]);
+  const quedan = {};
+  const lote = db.batch();
+  let cambios = 0;
+  emps.forEach(doc => {
+    const e = doc.data();
+    if (!e || !e.accesoDelivery) return;
+    quedan[doc.id] = true;
+    const nuevo = datosPublicosRepartidor(e);
+    const viejo = pub.docs.find(d => d.id === doc.id);
+    if (!viejo || JSON.stringify(viejo.data()) !== JSON.stringify(nuevo)) { lote.set(db.collection('repartidoresPub').doc(doc.id), nuevo); cambios++; }
+  });
+  pub.forEach(d => { if (!quedan[d.id]) { lote.delete(d.ref); cambios++; } });
+  if (cambios) await lote.commit();
+}
+
+exports.accesoRepartidor = onCall({ region: REGION }, async (req) => {
+  const auth = req.auth;
+  const tk = (auth && auth.token) || {};
+  // Solo un celular habilitado: identificado con la cuenta de delivery, o que
+  // ya tiene el permiso de equipo que da esta misma función.
+  const esDelivery = tk.email === 'delivery@limayrock.app';
+  if (!auth || (!esDelivery && !tk.disp)) throw new HttpsError('permission-denied', 'Este celular no está habilitado');
+  const disp = idSeguroDoc(tk.disp || (req.data && req.data.disp));
+  if (!disp) throw new HttpsError('invalid-argument', 'Falta el identificador del celular');
+  const refDisp = db.collection('dispositivos').doc(disp);
+  const d = await refDisp.get();
+  if (d.exists && d.data().baja) throw new HttpsError('permission-denied', 'Este celular fue dado de baja. Hablá con el administrador.');
+  if (!d.exists) await refDisp.set({ panel: 'delivery', cuenta: 'delivery@limayrock.app', creado: new Date().toISOString() }, { merge: true });
+
+  const uid = 'disp_' + disp;
+  const accion = (req.data && req.data.accion) || 'entrar';
+  if (accion === 'salir') {
+    // Queda solo el permiso del celular (sin repartidor adentro).
+    return { token: await getAuth().createCustomToken(uid, { disp }) };
+  }
+
+  // Límite de intentos por celular.
+  const refInt = db.collection('intentosPin').doc(disp);
+  const ahora = Date.now();
+  const int = (await refInt.get()).data() || {};
+  if (int.bloqueadoHasta && int.bloqueadoHasta > ahora) {
+    return { ok: false, motivo: 'bloqueado', espera: Math.ceil((int.bloqueadoHasta - ahora) / 1000) };
+  }
+  const pin = String((req.data && req.data.pin) || '');
+  if (!/^\d{4}$/.test(pin)) throw new HttpsError('invalid-argument', 'PIN inválido');
+  const emps = await db.collection('empleados').get();
+  let emp = null, idEmp = null;
+  emps.forEach(doc => {
+    const e = doc.data();
+    if (!emp && e && String(e.pin) === pin && e.activo !== false && (e.accesoDelivery || e.rol === 'admin')) { emp = e; idEmp = doc.id; }
+  });
+  if (!emp) {
+    const fallos = (int.fallos || 0) + 1;
+    if (fallos >= INTENTOS_MAX) {
+      await refInt.set({ fallos: 0, bloqueadoHasta: ahora + ESPERA_MS, ultimo: new Date().toISOString() });
+      return { ok: false, motivo: 'bloqueado', espera: ESPERA_MS / 1000 };
+    }
+    await refInt.set({ fallos, bloqueadoHasta: 0, ultimo: new Date().toISOString() });
+    return { ok: false, motivo: 'pin', quedan: INTENTOS_MAX - fallos };
+  }
+  await refInt.set({ fallos: 0, bloqueadoHasta: 0, ultimo: new Date().toISOString() });
+  await refDisp.set({ quien: idEmp }, { merge: true });
+  try { await sincronizarEspejoRepartidores(); } catch (e) { console.warn('espejo repartidores', e.message); }
+  const token = await getAuth().createCustomToken(uid, { disp, rep: idEmp });
+  return { ok: true, token, emp: datosPublicosRepartidor(emp) };
+});
+
+// Cada cambio en empleados actualiza la copia sin PIN. Si se borra un
+// repartidor, sus celulares quedan dados de baja.
+exports.espejoRepartidores = onDocumentWritten(
+  { document: 'empleados/{id}', region: REGION },
+  async (event) => {
+    const id = event.params.id;
+    const despues = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    const antes = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const ref = db.collection('repartidoresPub').doc(id);
+    if (despues && despues.accesoDelivery) {
+      const nuevo = datosPublicosRepartidor(despues);
+      const actual = await ref.get();
+      if (!actual.exists || JSON.stringify(actual.data()) !== JSON.stringify(nuevo)) await ref.set(nuevo);
+    } else {
+      await ref.delete().catch(() => {});
+    }
+    // Sacarle el acceso ya lo frena (lo revisan las reglas); borrarlo además
+    // da de baja sus celulares.
+    const seFue = antes && antes.accesoDelivery && !despues;
+    if (seFue) {
+      const celus = await db.collection('dispositivos').where('quien', '==', id).get();
+      for (const c of celus.docs) {
+        await c.ref.set({ baja: true, bajaEn: new Date().toISOString(), bajaMotivo: 'repartidor borrado' }, { merge: true });
+      }
+      if (celus.size) console.log(`${id}: ${celus.size} celular(es) dados de baja`);
+    }
+  }
+);

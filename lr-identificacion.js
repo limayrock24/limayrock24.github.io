@@ -75,7 +75,9 @@
     if(!cerrada) setTimeout(arrancarPendientes, 8000);
 
     auth.onAuthStateChanged(function(user){
-      window.__lrUsuario = user ? user.email : null;
+      // Los celulares de repartidores, después del primer ingreso, quedan con
+      // un permiso propio de la nube (sin email): también cuentan como identificados.
+      window.__lrUsuario = user ? (user.email || 'equipo') : null;
       if(user || !cerrada){
         // Si las escuchas ya habían arrancado sin identificación (no debería
         // pasar con la base cerrada), se recarga para que arranquen bien.
@@ -108,7 +110,6 @@
       try{ if(typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) guardar('lr_dispositivo_quien', currentEmp.nombre); }catch(e){}
       var datos = {
         panel: window.__lrPanel || '',
-        cuenta: window.__lrUsuario || null,
         nombre: leer('lr_dispositivo_nombre') || '',
         ultimaVez: new Date().toISOString(),
         version: String(window.__LR_BUILD || ''),
@@ -119,6 +120,9 @@
       // sabe, no se manda: así no se borra el dueño que eligió el admin.
       var quien = (function(){ try{ return (typeof currentEmp !== 'undefined' && currentEmp && currentEmp.nombre) ? currentEmp.nombre : (leer('lr_dispositivo_quien') || ''); }catch(e){ return ''; } })();
       if(quien) datos.quien = quien;
+      // La cuenta solo se anota si es la de email (el permiso de la nube no la tiene).
+      if(window.__lrUsuario && window.__lrUsuario !== 'equipo') datos.cuenta = window.__lrUsuario;
+      else if(!window.__lrUsuario) datos.cuenta = null;
       window.__lrDB.collection('dispositivos').doc(idDispositivo()).set(datos, { merge: true }).catch(function(){});
     }catch(e){}
   }
@@ -180,6 +184,7 @@
     setTimeout(function(){ document.getElementById('lrIdentPass').focus(); }, 50);
   }
   window.__lrAbrirIdentificacion = abrirVentana;
+  window.__lrIdDispositivo = idDispositivo;
   window.__lrRegistrarDispositivo = function(){ registrarDispositivo(); };
 
   function abrirVentanaCuandoSePueda(){

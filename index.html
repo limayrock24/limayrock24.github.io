@@ -8146,8 +8146,43 @@ function initLogin() {
   if(typeof pintarCajaEquipo==='function') pintarCajaEquipo();
 }
 
+// ── LÍMITE DE INTENTOS DE PIN ─────────────────────────────────────────────
+// En todas las pantallas que piden PIN: 5 PIN equivocados seguidos en este
+// equipo → 30 segundos sin poder probar. Queda guardado en el equipo (recargar
+// la página no lo saltea). Funciona igual sin internet.
+var PIN_MAX_INTENTOS = 5, PIN_ESPERA_MS = 30000;
+function _pinBloq(){ try{ return JSON.parse(localStorage.getItem('lr_pin_bloqueo') || '{}') || {}; }catch(e){ return {}; } }
+function _pinBloqSet(o){ try{ localStorage.setItem('lr_pin_bloqueo', JSON.stringify(o)); }catch(e){} }
+function pinEsperaSeg(){ var b = _pinBloq(); return (b.hasta && b.hasta > Date.now()) ? Math.ceil((b.hasta - Date.now())/1000) : 0; }
+function pinFallo(){
+  var b = _pinBloq(), f = (b.fallos || 0) + 1;
+  if(f >= PIN_MAX_INTENTOS){ _pinBloqSet({ fallos: 0, hasta: Date.now() + PIN_ESPERA_MS }); return true; }
+  _pinBloqSet({ fallos: f, hasta: 0 });
+  return false;
+}
+function pinOk(){ _pinBloqSet({}); }
+// Muestra "esperá N s" en el cartel de error de esa pantalla mientras dure.
+function avisoPinEspera(elId){
+  var s = pinEsperaSeg();
+  if(!s) return false;
+  var el = document.getElementById(elId);
+  if(el){
+    if(!el.getAttribute('data-orig-pin')) el.setAttribute('data-orig-pin', el.textContent);
+    var tick = function(){
+      var r = pinEsperaSeg();
+      if(!r){ el.textContent = el.getAttribute('data-orig-pin'); el.classList.remove('show'); el.style.display = ''; return; }
+      el.textContent = '⛔ Demasiados intentos · esperá ' + r + ' s';
+      el.classList.add('show');
+      clearTimeout(el._pinT); el._pinT = setTimeout(tick, 500);
+    };
+    tick();
+  }
+  return true;
+}
+
 function lpp(d) {
   if(typeof esModoDelivery==='function' && esModoDelivery()) return;
+  if(avisoPinEspera('loginPinError')){ loginBuf=''; updateLoginDots(); return; }
   if(loginBuf.length>=4) return;
   loginBuf+=d; updateLoginDots();
   if(loginBuf.length===4) {
@@ -8161,6 +8196,7 @@ function lpp(d) {
         return;
       }
       if(esPinAdmin) {
+        pinOk();
         loginBuf=''; updateLoginDots();
         abrirAdminSinTurno();
         return;
@@ -8168,6 +8204,7 @@ function lpp(d) {
       if(window.__lrEsPuesto){ var _pinP = loginBuf; loginBuf=''; updateLoginDots(); entrarPuestoDelivery(_pinP); return; }
       // Buscar el empleado que tenga ese PIN
       var emp = EMPLEADOS.find(function(e){ return e.pin===loginBuf; });
+      if(emp) pinOk();
       if(emp && emp.rol === 'repartidor') {
         // Los repartidores no atienden el mostrador ni manejan caja: su PIN
         // sirve solo para el link /delivery/. Si lo usan acá, se les avisa.
@@ -8183,8 +8220,9 @@ function lpp(d) {
         document.getElementById('efecIniModal').classList.add('open');
         setTimeout(function(){ document.getElementById('efecIniMonto').focus(); }, 200);
       } else {
-        document.getElementById('loginPinError').classList.add('show');
         loginBuf=''; updateLoginDots();
+        if(pinFallo()){ avisoPinEspera('loginPinError'); return; }
+        document.getElementById('loginPinError').classList.add('show');
         setTimeout(function(){
           document.getElementById('loginPinError').classList.remove('show');
         },2000);
@@ -8919,6 +8957,7 @@ function openAdminPin() {
 }
 function closeAdminPin() { document.getElementById('adminPinOverlay').classList.remove('open'); adminBuf=''; updateAdminDots(); }
 function app(d) {
+  if(avisoPinEspera('adminPinError')){ adminBuf=''; updateAdminDots(); return; }
   if(adminBuf.length>=4) return;
   adminBuf+=d; updateAdminDots();
   if(adminBuf.length===4){
@@ -8926,11 +8965,12 @@ function app(d) {
       // PIN de admin (o, mientras no haya uno cargado, 0000 / el PIN del admin)
       verificarPinAdmin(adminBuf).then(function(ok){
         if(ok){
+          pinOk();
           closeAdminPin();
           if(window.__lrPinAdminParaSinTurno){ window.__lrPinAdminParaSinTurno = false; abrirAdminSinTurno(); }
           else openAdmin();
         }
-        else { document.getElementById('adminPinError').classList.add('show'); adminBuf=''; updateAdminDots(); }
+        else { adminBuf=''; updateAdminDots(); if(pinFallo()) avisoPinEspera('adminPinError'); else document.getElementById('adminPinError').classList.add('show'); }
       });
     },200);
   }
@@ -27834,6 +27874,7 @@ function arrancarModoDelivery(){
 var _dlPinBuf = '';
 
 function dlPinPress(d){
+  if(pinEsperaSeg()){ var e0 = document.getElementById('dlError'); if(e0) e0.textContent = '⛔ Demasiados intentos · esperá '+pinEsperaSeg()+' s'; return; }
   var err = document.getElementById('dlError');
   if(err) err.textContent = '';
   if(d === 'C'){ _dlPinBuf = _dlPinBuf.slice(0, -1); pintarDlDots(); return; }
@@ -27856,7 +27897,7 @@ function loginDelivery(){
     return e.accesoDelivery && String(e.pin) === _dlPinBuf;
   });
   if(!emp){
-    if(err) err.textContent = 'PIN incorrecto';
+    if(err) err.textContent = pinFallo() ? '⛔ Demasiados intentos · esperá 30 s' : 'PIN incorrecto';
     _dlPinBuf = '';
     pintarDlDots();
     if(navigator.vibrate) navigator.vibrate([60, 50, 60]);
@@ -29786,6 +29827,7 @@ function pedirPinRecepcion() {
 
 function recepPinPress(d) {
   if(d==='C'){ _recepPinBuf=_recepPinBuf.slice(0,-1); updateRecepPinDots(); return; }
+  if(avisoPinEspera('recepPinError')){ _recepPinBuf=''; updateRecepPinDots(); return; }
   if(_recepPinBuf.length>=4) return;
   _recepPinBuf += d;
   updateRecepPinDots();
@@ -29801,6 +29843,7 @@ function recepPinPress(d) {
         return;
       }
       if(_recepPinBuf === currentEmp.pin){
+        pinOk();
         document.getElementById('recepPinOverlay').classList.remove('open');
         _recepEmp = currentEmp;
         document.getElementById('recepEmpNombre').textContent = currentEmp.nombre + ' · ' +
@@ -29810,8 +29853,9 @@ function recepPinPress(d) {
         selRecepTab(recepPuedeRecepcion() ? 'egresos' : 'pedidos');
         _recepPinBuf='';
       } else {
-        document.getElementById('recepPinError').classList.add('show');
         _recepPinBuf=''; updateRecepPinDots();
+        if(pinFallo()){ avisoPinEspera('recepPinError'); return; }
+        document.getElementById('recepPinError').classList.add('show');
         setTimeout(function(){ document.getElementById('recepPinError').classList.remove('show'); },1500);
       }
     },150);
@@ -32033,7 +32077,8 @@ function cambiarModoCobroDelivery(modo){
 function entrarPuestoDelivery(pin){
   var emp = (EMPLEADOS||[]).find(function(e){ return e.pin === pin; });
   var err = function(t){ var e = document.getElementById('loginPinError'); if(e){ var orig = e.getAttribute('data-orig') || e.textContent; e.setAttribute('data-orig', orig); e.textContent = t; e.classList.add('show'); setTimeout(function(){ e.classList.remove('show'); e.textContent = orig; }, 3500); } };
-  if(!emp || emp.rol === 'repartidor'){ err('PIN incorrecto'); return; }
+  if(!emp || emp.rol === 'repartidor'){ if(pinFallo()) avisoPinEspera('loginPinError'); else err('PIN incorrecto'); return; }
+  pinOk();
   var ses = (window.__lrSesionesActivasCache || {})[String(emp.nombre).replace(/\//g,'-')];
   var vigente = ses && ses.turnoInicio && (Date.now() - new Date(ses.turnoInicio).getTime()) < 16*3600000;
   if(!vigente){ err(emp.nombre+': primero abrí tu turno en la Caja 1 o 2'); return; }
@@ -32818,7 +32863,7 @@ function pintarDeliveryEquipos(){
   };
   _equiposDel.forEach(function(d){ d._quien = quienDe(d); });
   var filas = activos.map(function(e){
-    var devs = _equiposDel.filter(function(d){ return d._quien === e.nombre && d.cuenta && reciente(d.ultimaVez); });
+    var devs = _equiposDel.filter(function(d){ return d._quien === e.nombre && d.cuenta && !d.baja && reciente(d.ultimaVez); });
     return { nombre: e.nombre, ok: devs.length > 0, devs: devs };
   }).sort(function(a,b){ return (a.ok?1:0) - (b.ok?1:0) || a.nombre.localeCompare(b.nombre); });
   var ok = filas.filter(function(f){ return f.ok; }).length, faltan = filas.length - ok;
@@ -32840,10 +32885,16 @@ function pintarDeliveryEquipos(){
           '<div style="min-width:0"><div style="font-size:.84rem;color:var(--white)">'+(f.ok ? '✅' : '❌')+' '+String(f.nombre).replace(/</g,'&lt;')+'</div>'+
           '<div style="font-size:.66rem;color:var(--gray)">'+(d ? (d.nombre ? String(d.nombre).replace(/</g,'&lt;')+' · ' : '')+(f.devs.length > 1 ? f.devs.length+' celulares · ' : '')+'versión '+(d.version||'?')+' · usado '+hace(d.ultimaVez) : 'Ningún celular identificado todavía')+'</div></div>'+
           '<div style="font-size:.7rem;font-weight:700;white-space:nowrap;color:'+(f.ok ? 'var(--green)' : '#F4B400')+'">'+(f.ok ? 'Identificado' : 'Falta identificar')+'</div>'+
-        '</div>';
+        '</div>'+
+        // Cada celular de ese repartidor, con su botón para darlo de baja.
+        f.devs.map(function(dv){
+          return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0 5px 22px;font-size:.66rem;color:var(--gray)">'+
+            '<span>📱 '+String(dv.nombre || modeloCelular(dv.navegador) || 'Celular').replace(/</g,'&lt;')+' · usado '+hace(dv.ultimaVez)+'</span>'+
+            '<button onclick="darDeBajaCelular(\''+String(dv._id).replace(/'/g,'')+'\', true)" style="background:transparent;border:1px solid rgba(248,113,113,.5);color:#f87171;border-radius:4px;padding:3px 8px;font-size:.64rem;cursor:pointer">Dar de baja</button></div>';
+        }).join('');
       }).join('')+
       (function(){
-        var sueltos = _equiposDel.filter(function(d){ return d.cuenta && reciente(d.ultimaVez) && !activos.some(function(e){ return e.nombre === d._quien; }); });
+        var sueltos = _equiposDel.filter(function(d){ return d.cuenta && !d.baja && reciente(d.ultimaVez) && !activos.some(function(e){ return e.nombre === d._quien; }); });
         // Los celulares identificados de los que no se sabe el dueño: el admin
         // elige de qué repartidor es cada uno (modelo del celu, versión y
         // cuándo se usó por última vez, para reconocerlo).
@@ -32860,7 +32911,19 @@ function pintarDeliveryEquipos(){
               '</select></div>';
           }).join('')+'</div>' : '';
       })()+
-      (filas.length && !faltan ? '<div style="font-size:.74rem;color:var(--green);margin-top:8px;font-weight:700">✅ Están todos identificados: ya se puede cerrar la base.</div>' : '')+
+      (function(){
+        // Los dados de baja (a mano o porque se borró el repartidor): no pueden
+        // entrar más. Se pueden reactivar si fue un error.
+        var bajas = _equiposDel.filter(function(d){ return d.baja; });
+        return bajas.length ? '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(255,255,255,.12)">'+
+          '<div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:4px">⛔ Celulares dados de baja ('+bajas.length+')</div>'+
+          bajas.map(function(d){
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;font-size:.7rem;color:var(--gray)">'+
+              '<span>📱 '+String(d.nombre || modeloCelular(d.navegador) || 'Celular').replace(/</g,'&lt;')+(d.quien ? ' · era de '+String(d.quien).replace(/</g,'&lt;') : '')+(d.bajaMotivo ? ' · '+String(d.bajaMotivo).replace(/</g,'&lt;') : '')+'</span>'+
+              '<button onclick="darDeBajaCelular(\''+String(d._id).replace(/'/g,'')+'\', false)" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.64rem;cursor:pointer">Reactivar</button></div>';
+          }).join('')+'</div>' : '';
+      })()+
+      (filas.length && !faltan ? '<div style="font-size:.74rem;color:var(--green);margin-top:8px;font-weight:700">✅ Están todos identificados.</div>' : '')+
       '<button onclick="renderDeliveryEquipos(true)" style="margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:6px 10px;font-size:.7rem;cursor:pointer">↻ Actualizar</button>'
     ) : '')+
   '</div>';
@@ -32874,6 +32937,20 @@ function modeloCelular(ua){
   if(/iPhone/.test(ua)) return 'iPhone';
   if(/Windows/.test(ua)) return 'Compu Windows';
   return ua ? 'Otro equipo' : '';
+}
+// Dar de baja un celular: deja de poder entrar al instante (lo revisan las
+// reglas de la base en cada pedido de datos). Reactivar lo vuelve a habilitar.
+function darDeBajaCelular(id, baja){
+  if(!id) return;
+  var hacer = function(){
+    window.__lrDB.collection('dispositivos').doc(id).set(baja
+      ? { baja: true, bajaEn: new Date().toISOString(), bajaMotivo: 'dado de baja por el admin' }
+      : { baja: false, reactivadoEn: new Date().toISOString() }, { merge: true })
+      .then(function(){ showToast(baja ? '⛔ Celular dado de baja: ya no puede entrar' : '✅ Celular reactivado'); renderDeliveryEquipos(true); })
+      .catch(function(e){ showToast('No se pudo: '+(e && e.message || e), true); });
+  };
+  if(!baja){ hacer(); return; }
+  askConfirm('¿Dar de baja este celular?\n\nDeja de poder entrar a la app de delivery en el momento. Si fue un error, se puede reactivar.').then(function(ok){ if(ok) hacer(); });
 }
 function asignarCelularRepartidor(id, nombre){
   if(!id || !nombre) return;

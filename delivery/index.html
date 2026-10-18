@@ -41,6 +41,7 @@
 -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script>
 <script src="../lr-identificacion.js?v=4"></script>
 <script src="../imagenes-productos.js" async></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -194,7 +195,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "28"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "29"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -308,8 +309,11 @@ window.__LR_BUILD = "28"; // versión de ESTA página — se bumpea a mano acá 
     }
   }, 8000);
 
-  // ── EMPLEADOS (login por PIN + disponibilidad) ──────────────────────────
-  window.__lrDB.collection('empleados').onSnapshot(function(snap){
+  // ── REPARTIDORES (disponibilidad) ───────────────────────────────────────
+  // Se lee la copia SIN PIN (repartidoresPub, la arma la nube). El PIN se
+  // verifica en la nube (accesoRepartidor): este celular nunca recibe la lista
+  // de empleados con sus PIN. Solo se puede leer con un repartidor adentro.
+  window.__lrDB.collection('repartidoresPub').onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){
       var d = doc.data();
@@ -347,18 +351,12 @@ window.__LR_BUILD = "28"; // versión de ESTA página — se bumpea a mano acá 
     ocultarCargaSiListo();
   });
 
+  // El repartidor solo puede cambiar su propia disponibilidad (las reglas no
+  // le dejan tocar nada más de empleados). La copia sin PIN se actualiza sola.
   window.__lrSaveEmpleados = function(lista){
-    var prev = window.__lrSync.ultimoEmpleadosSnapshot || {};
-    var promesas = [];
-    lista.forEach(function(e){
-      try{
-        var antes = prev[e.nombre];
-        if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
-          promesas.push(window.__lrDB.collection('empleados').doc(e.nombre).set(limpiarUndefined(e)));
-        }
-      }catch(err){ console.error('Error preparando empleado', e && e.nombre, err); promesas.push(Promise.reject(err)); }
-    });
-    return Promise.all(promesas);
+    var yo = currentEmp && (lista||[]).find(function(e){ return e.nombre === currentEmp.nombre; });
+    if(!yo) return Promise.resolve();
+    return window.__lrDB.collection('empleados').doc(idSeguro(yo.nombre)).update({ disponibleDelivery: !!yo.disponibleDelivery });
   };
   function getEmpleados(){ return (window.__lrSync.empleadosListos && Array.isArray(window.EMPLEADOS)) ? window.EMPLEADOS : []; }
   function saveEmpleados(emps){ window.EMPLEADOS = emps; return window.__lrSaveEmpleados(emps); }
@@ -742,7 +740,9 @@ function sonarAvisoPedido(){
 var currentEmp = null;
 var _dlPinBuf = '';
 
+var _dlBloqueoHasta = 0, _dlVerificando = false;
 function dlPinPress(d){
+  if(_dlVerificando || Date.now() < _dlBloqueoHasta) return;
   var err = document.getElementById('dlError');
   if(err) err.textContent = '';
   if(d === 'C'){ _dlPinBuf = _dlPinBuf.slice(0, -1); pintarDlDots(); return; }
@@ -755,39 +755,70 @@ function pintarDlDots(){
   var dots = document.querySelectorAll('#dlDots .dl-dot');
   for(var i = 0; i < dots.length; i++) dots[i].classList.toggle('filled', i < _dlPinBuf.length);
 }
+// El PIN se verifica en la nube: si está bien, este celular recibe el permiso
+// a nombre del repartidor y la app se recarga ya con sus datos. 5 PIN mal
+// seguidos → 30 segundos de espera (lo controla la nube, por celular).
+function _dlFnAcceso(){ return firebase.app().functions('southamerica-east1').httpsCallable('accesoRepartidor'); }
+function _dlEsperaPin(seg){
+  _dlBloqueoHasta = Date.now() + seg*1000;
+  var err = document.getElementById('dlError');
+  var tick = function(){
+    var r = Math.ceil((_dlBloqueoHasta - Date.now())/1000);
+    if(r <= 0){ if(err) err.textContent = ''; return; }
+    if(err) err.textContent = '⛔ Demasiados intentos. Esperá '+r+' s';
+    setTimeout(tick, 500);
+  };
+  tick();
+}
 function loginDelivery(){
   var err = document.getElementById('dlError');
-  var emp = (window.EMPLEADOS||[]).find(function(e){ return e.accesoDelivery && String(e.pin) === _dlPinBuf; });
-  if(!emp){
-    if(err) err.textContent = 'PIN incorrecto';
-    _dlPinBuf = ''; pintarDlDots();
-    if(navigator.vibrate) navigator.vibrate([60, 50, 60]);
-    return;
-  }
-  if(err) err.textContent = '';
+  var pin = _dlPinBuf;
   _dlPinBuf = ''; pintarDlDots();
-  currentEmp = emp;
-  guardarSesionApp(emp.nombre);
-  document.getElementById('deliveryLoginOverlay').style.display = 'none';
-  abrirPanelRepartidor();
+  _dlVerificando = true;
+  if(err){ err.style.color = '#aaa'; err.textContent = 'Verificando…'; }
+  var disp = window.__lrIdDispositivo ? window.__lrIdDispositivo() : '';
+  _dlFnAcceso()({ accion: 'entrar', pin: pin, disp: disp }).then(function(r){
+    var d = (r && r.data) || {};
+    if(err) err.style.color = '';
+    if(!d.ok){
+      _dlVerificando = false;
+      if(navigator.vibrate) navigator.vibrate([60, 50, 60]);
+      if(d.motivo === 'bloqueado'){ _dlEsperaPin(d.espera || 30); return; }
+      if(err) err.textContent = 'PIN incorrecto' + (d.quedan && d.quedan < 5 ? ' · te quedan '+d.quedan+' intento'+(d.quedan>1?'s':'') : '');
+      return;
+    }
+    return firebase.auth().signInWithCustomToken(d.token).then(function(){
+      guardarSesionApp(d.emp.nombre);
+      location.reload();
+    });
+  }).catch(function(e){
+    _dlVerificando = false;
+    if(err){ err.style.color = ''; err.textContent = (e && e.code === 'functions/permission-denied') ? (e.message || 'Este celular no está habilitado') : 'No se pudo verificar el PIN. Revisá la conexión.'; }
+  });
 }
 // En la app instalada el repartidor queda adentro hasta que toque "Salir"
 // (en el navegador sigue pidiendo el PIN cada vez, como siempre).
 var SK_SESION_APP = 'lr_delivery_sesion_app';
+function _almSesion(){ return esAppDelivery() ? localStorage : sessionStorage; }
 function guardarSesionApp(nombre){
-  if(!esAppDelivery()) return;
-  try{ if(nombre) localStorage.setItem(SK_SESION_APP, nombre); else localStorage.removeItem(SK_SESION_APP); }catch(e){}
+  try{ if(nombre) _almSesion().setItem(SK_SESION_APP, nombre); else _almSesion().removeItem(SK_SESION_APP); }catch(e){}
 }
 function intentarSesionGuardadaApp(){
-  if(currentEmp || !esAppDelivery()) return;
+  if(currentEmp) return;
   var nombre = null;
-  try{ nombre = localStorage.getItem(SK_SESION_APP); }catch(e){}
+  try{ nombre = _almSesion().getItem(SK_SESION_APP); }catch(e){}
   if(!nombre) return;
   var emp = (window.EMPLEADOS||[]).find(function(e){ return e.nombre === nombre && e.accesoDelivery; });
   if(!emp){ guardarSesionApp(null); return; }   // le sacaron el acceso: vuelve a pedir PIN
-  currentEmp = emp;
-  document.getElementById('deliveryLoginOverlay').style.display = 'none';
-  abrirPanelRepartidor();
+  // Tiene que coincidir con el permiso que dio la nube a este celular.
+  var u = firebase.auth().currentUser;
+  if(!u) return;
+  u.getIdTokenResult().then(function(t){
+    if(!t || !t.claims || t.claims.rep !== emp.nombre || currentEmp) return;
+    currentEmp = emp;
+    document.getElementById('deliveryLoginOverlay').style.display = 'none';
+    abrirPanelRepartidor();
+  }).catch(function(){});
 }
 document.addEventListener('keydown', function(e){
   // Con la ventana "Identificar este equipo" abierta, el teclado es de ella.
@@ -807,11 +838,19 @@ function salirModoDelivery(){
     sincronizarDeliveryConDisponibles();
   }
   if(currentEmp) apagarAvisosEsteEquipo(currentEmp.nombre, false);
+  var habia = !!currentEmp;
   currentEmp = null;
   guardarSesionApp(null);
   _dlPinBuf = ''; pintarDlDots();
   document.getElementById('repartidorOverlay').style.display = 'none';
   document.getElementById('deliveryLoginOverlay').style.display = 'flex';
+  // Se cambia el permiso por uno solo del celular: sin repartidor adentro no
+  // se puede leer nada. Se espera un toque para que salgan los últimos guardados.
+  if(habia) setTimeout(function(){
+    _dlFnAcceso()({ accion: 'salir' }).then(function(r){
+      return firebase.auth().signInWithCustomToken(r.data.token);
+    }).then(function(){ location.reload(); }).catch(function(e){ console.warn('salir', e && e.message); });
+  }, 1500);
 }
 
 // ── PANEL DE REPARTIDOR ───────────────────────────────────────────────────
@@ -1726,23 +1765,9 @@ document.addEventListener('DOMContentLoaded', function(){
   var intentos = 0;
   var esperar = setInterval(function(){
     intentos++;
-    if(window.__lrSync && window.__lrSync.empleadosListos && Array.isArray(window.EMPLEADOS)){
+    if(window.__lrSync && window.__lrSync.empleadosListos){
       clearInterval(esperar);
-      var repartidores = EMPLEADOS.filter(function(e){ return e.accesoDelivery; });
       var carg = document.getElementById('dlCargando');
-      if(!repartidores.length){
-        if(carg) carg.innerHTML = '<span style="color:#F4B400">Todavía no hay repartidores habilitados.<br>Pedile al administrador que te active el acceso.</span>';
-        return;
-      }
-      var pins = {}, duplicados = [];
-      repartidores.forEach(function(e){
-        if(pins[e.pin]) duplicados.push(e.nombre + ' y ' + pins[e.pin]);
-        pins[e.pin] = e.nombre;
-      });
-      if(duplicados.length){
-        if(carg) carg.innerHTML = '<span style="color:#ef4444">⚠ Hay repartidores con el mismo PIN (' + duplicados[0] + ').<br>Avisale al administrador que les asigne PINs distintos.</span>';
-        return;
-      }
       if(carg) carg.style.display = 'none';
     } else if(intentos > 120){
       clearInterval(esperar);

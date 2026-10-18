@@ -2,9 +2,11 @@
 // Se pegan a mano en la consola de Firebase: Firestore Database → Reglas.
 // Este archivo es la copia de referencia de lo que está publicado.
 //
-// ETAPA 3: base cerrada también para el delivery (los celulares de los
-// repartidores se identifican con la cuenta delivery@ y usan la app).
-// La cuenta delivery@ solo puede usar lo que necesita la app del repartidor.
+// ETAPA 3: base cerrada también para el delivery. El celular del repartidor
+// se habilita con la cuenta delivery@ y, al poner el PIN, la nube (función
+// accesoRepartidor) le da un permiso a nombre de ese repartidor. Sin
+// repartidor adentro, el celular no puede leer nada. Los PIN nunca llegan al
+// celular: los empleados solo los ven la caja y el admin.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -15,15 +17,20 @@ service cloud.firestore {
         && request.auth.token.email in ['local@limayrock.app', 'admin@limayrock.app'];
     }
 
-    // Equipos identificados (ver lr-identificacion.js), incluido el delivery.
-    function equipo() {
+    // Un repartidor adentro de un celular habilitado: el permiso lo da la nube
+    // con su nombre (rep) y el del celular (disp). Se revisa en cada pedido que
+    // siga existiendo, con acceso a delivery, y que el celular no esté dado de baja.
+    function esRep() {
       return request.auth != null
-        && request.auth.token.email in [
-          'local@limayrock.app',
-          'admin@limayrock.app',
-          'delivery@limayrock.app'
-        ];
+        && request.auth.token.get('rep', null) is string
+        && request.auth.token.get('disp', null) is string
+        && exists(/databases/$(database)/documents/empleados/$(request.auth.token.rep))
+        && (get(/databases/$(database)/documents/empleados/$(request.auth.token.rep)).data.get('accesoDelivery', false) == true
+            || get(/databases/$(database)/documents/empleados/$(request.auth.token.rep)).data.get('rol', '') == 'admin')
+        && get(/databases/$(database)/documents/dispositivos/$(request.auth.token.disp)).data.get('baja', false) != true;
     }
+    // Caja, admin o repartidor adentro de su celular.
+    function equipo() { return local() || esRep(); }
 
     // Catálogo web (público): solo puede VER productos, precios y stock.
     match /productos/{id}             { allow read: if true; }
@@ -78,11 +85,25 @@ service cloud.firestore {
       allow update: if equipo() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leidoPor']);
     }
 
-    // Lo que usa la app de delivery: solo equipos identificados.
-    match /empleados/{id}    { allow read, write: if equipo(); }
+    // Empleados (con los PIN): solo la caja y el admin. El repartidor solo puede
+    // cambiar su propia disponibilidad, sin poder leer nada.
+    match /empleados/{id} {
+      allow read, write: if local();
+      allow update: if esRep() && request.auth.token.rep == id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['disponibleDelivery']);
+    }
+    // Copia sin PIN de los repartidores (la arma la nube).
+    match /repartidoresPub/{id} { allow read: if equipo(); }
     match /config/{id}       { allow write: if id == 'deliveryActivo' && equipo(); }
     match /fcmTokens/{id}    { allow read, write: if equipo(); }
-    match /dispositivos/{id} { allow read, write: if equipo(); }
+    // Celulares: el admin los ve todos y los puede dar de baja. Cada celular
+    // solo puede anotarse a sí mismo y nunca sacarse la baja.
+    match /dispositivos/{id} {
+      allow read, write: if local();
+      allow create, update: if request.auth != null
+        && (request.auth.token.email == 'delivery@limayrock.app' || request.auth.token.get('disp', '') == id)
+        && request.resource.data.get('baja', false) == (resource == null ? false : resource.data.get('baja', false));
+    }
 
     // Todo lo demás (ventas, caja, cierres, egresos, stock, fiados, etc.):
     // solo la caja y el admin (el celular de delivery NO).
