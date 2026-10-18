@@ -11098,7 +11098,7 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
 // ── CIERRE DE TURNO ────────────────────────────────────────────────────────
 function cerrarTurno() {
   if(!currentEmp){ showToast('No hay sesión activa',true); return; }
-  if(window.__lrEsPuesto){ showToast('El turno se cierra en la caja ('+cajaTurnoActual()+'), no en la tablet', true); return; }
+  if(window.__lrEsPuesto){ showToast('El turno se cierra en la caja ('+cajaTurnoActual()+'), no en el Puesto Delivery', true); return; }
   askConfirm('¿Cerrás tu turno y salís de la sesión?').then(function(ok){
     if(!ok) return;
     abrirArqueoModal();
@@ -13351,7 +13351,7 @@ function savePedidosWeb(p) {
 // alias y el titular; si es efectivo, la pregunta de con cuánto abona para
 // preparar el vuelto. Lo hace el local porque es quien cobra y verifica.
 function enviarDatosCobro(id, yaConfirmado) {
-  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy esto se hace desde la tablet (Puesto Delivery)', true); return; }
+  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy esto se hace desde el Puesto Delivery', true); return; }
   var p = getPedidosWeb().find(function(x){ return x.id===id; });
   if(!p) return;
   // Sin ubicación el envío quedó a confirmar: no mandar los datos de pago con
@@ -29328,6 +29328,7 @@ function abrirDeliveryPendModal() {
       '</div>';
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
         '<div style="font-size:.85rem;color:var(--white)">👤 '+p.nombre+' · 📞 '+p.telefono+'</div>'+
+        htmlTelefonoPedido(p)+
         (p.direccion ? '<div style="font-size:.76rem;color:var(--light);margin-top:3px">📍 '+p.direccion+'</div>' : '')+
         (p.zona==='rural' ? '<div style="font-size:.72rem;color:#F4B400;margin-top:2px">🚜 Zona chacra/rural'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : (p.zona==='lejos' ? '<div style="font-size:.72rem;color:#f97316;margin-top:2px">🛣️ Zona más lejos'+(p.distanciaKm?' · '+p.distanciaKm+' km':'')+'</div>' : ''))+
         (p.medioPago ? '<div style="font-size:.74rem;margin-top:3px;color:'+(p.medioPago==='Efectivo'?'var(--green)':'#1e90ff')+'">'+(p.medioPago==='Efectivo'?'💵':'📲')+' '+p.medioPago+'</div>' : '')+
@@ -29341,7 +29342,7 @@ function abrirDeliveryPendModal() {
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;margin-top:8px">'+fmt(p.total)+envioTxt+' · '+hora+'</div>'+
         // El LOCAL es el único que habla con el cliente: le pasa los datos de
         // pago y confirma el cobro. El repartidor solo lleva el pedido.
-        (pedidoBloqueadoPorPuesto() ? '<div style="margin-top:8px;padding:10px;border:1px dashed var(--gold);border-radius:6px;text-align:center;color:var(--gold);font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px">🔒 '+(p.pagoConfirmado?'✓ COBRADO · ':'')+'Lo atiende y cobra la tablet (Puesto Delivery)</div>' : '')+
+        (pedidoBloqueadoPorPuesto() ? '<div style="margin-top:8px;padding:10px;border:1px dashed var(--gold);border-radius:6px;text-align:center;color:var(--gold);font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px">🔒 '+(p.pagoConfirmado?'✓ COBRADO · ':'')+'Lo atiende y cobra el Puesto Delivery</div>' : '')+
         '<div style="display:'+(pedidoBloqueadoPorPuesto()?'none':'flex')+';gap:6px;flex-wrap:wrap;margin-top:8px">'+
           '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
           '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Más mensajes</button>'+
@@ -29390,7 +29391,7 @@ function destrabarPedidoWeb(id){
   if(typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
 }
 function cargarPedidoAlCarrito(id) {
-  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy los pedidos web se cobran en la tablet (Puesto Delivery)', true); return; }
+  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy los pedidos web se cobran en el Puesto Delivery', true); return; }
   var pedidos = getPedidosWeb();
   var pedido = pedidos.find(function(p){ return p.id===id; });
   if(!pedido) return;
@@ -32014,7 +32015,7 @@ function cambiarModoCobroDelivery(modo){
   modo = modo === 'puesto' ? 'puesto' : 'cualquiera';
   window.__lrModoCobroDelivery = modo;
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').set({ modoCobro: modo }, { merge: true })
-    .then(function(){ showToast(modo === 'puesto' ? '🛵 Los pedidos web se cobran en la tablet (Puesto Delivery)' : '🖥 Los pedidos web se cobran en cualquier caja'); })
+    .then(function(){ showToast(modo === 'puesto' ? '🛵 Los pedidos web se cobran en el Puesto Delivery' : '🖥 Los pedidos web se cobran en cualquier caja'); })
     .catch(function(e){ showToast('No se pudo guardar: '+(e && e.message || e), true); });
   if(typeof renderDeliveryControl === 'function') try{ renderDeliveryControl(); }catch(e){}
   if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
@@ -32220,6 +32221,7 @@ function _pzTarjeta(p){
     '<div class="pz-cab"><div class="pz-nom">👤 '+_pzEsc(p.nombre)+'</div><div class="pz-tot">'+fmt(p.total||0)+'</div></div>'+
     '<div class="pz-sub">🕐 '+_pzHora(p.fecha)+' · <span style="color:'+(demora?'#f87171':'inherit')+'">'+_pzHace(p.fecha)+'</span>'+
       (p.envio>0 ? ' · envío '+fmt(p.envio) : '')+' · 📞 '+_pzEsc(p.telefono||'')+'</div>'+
+    htmlTelefonoPedido(p)+
     '<div class="pz-pills">'+rep+medio+
       (p.repartidor ? '<button onclick="abrirMensajesPuesto(this.getAttribute(\'data-n\'))" data-n="'+_pzEsc(p.repartidor)+'" class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.4);cursor:pointer">✉️ Mensaje a '+_pzEsc(p.repartidor)+'</button>' : '')+
     '</div>'+
@@ -32235,6 +32237,55 @@ function _pzTarjeta(p){
   '</div>';
 }
 
+
+// ── TELÉFONO DEL CLIENTE ──────────────────────────────────────────────────
+// Lo deja como código de área + número (10 dígitos), sin 0, sin 15 y sin +54,
+// que es como lo necesita WhatsApp. Si escriben solo el número local (con o
+// sin 15) se toma la característica 299 (Neuquén).
+function normalizarTelAR(txt){
+  var d = String(txt || '').replace(/\D/g, '');
+  if(d.indexOf('00') === 0) d = d.slice(2);
+  if(d.indexOf('54') === 0 && d.length >= 12) d = d.slice(2);
+  if(d.length === 11 && d.charAt(0) === '9') d = d.slice(1);
+  if(d.charAt(0) === '0') d = d.slice(1);
+  if(d.length === 12){ for(var k = 2; k <= 4; k++){ if(d.substr(k, 2) === '15'){ d = d.slice(0, k) + d.slice(k + 2); break; } } }
+  if(d.length === 9 && d.indexOf('15') === 0) d = '299' + d.slice(2);
+  if(d.length === 7) d = '299' + d;
+  return d;
+}
+function telValidoAR(d){ return /^[1-9]\d{9}$/.test(d) && !/(\d)\1{6,}/.test(d) && d.indexOf('1234567') === -1; }
+function telLindoAR(d){
+  if(d.length !== 10) return d;
+  return d.indexOf('11') === 0 ? '11 ' + d.slice(2, 6) + '-' + d.slice(6) : d.slice(0, 3) + ' ' + d.slice(3, 6) + '-' + d.slice(6);
+}
+function telefonoPareceMal(p){ return !telValidoAR(normalizarTelAR(p && p.telefono)); }
+// El cliente a veces escribe mal su número: el local lo corrige con el que se
+// ve en el WhatsApp del pedido y el repartidor recibe el bueno al instante.
+function corregirTelefonoPedido(id){
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === id; });
+  if(!p) return;
+  var txt = prompt('Teléfono correcto de '+p.nombre+'\n(copialo del WhatsApp donde llegó el pedido)', p.telefono || '');
+  if(txt === null) return;
+  var d = normalizarTelAR(txt);
+  if(!telValidoAR(d)){ alert('Ese número no está completo. Tiene que ser código de área + número (10 números), ej: 299 555 1234.'); return; }
+  var nuevo = telLindoAR(d);
+  if(nuevo === p.telefono){ showToast('Es el mismo número que ya tenía'); return; }
+  if(!p.telefonoAnterior) p.telefonoAnterior = p.telefono || '';
+  p.telefono = nuevo;
+  p.telefonoCorregidoPor = currentEmp ? currentEmp.nombre : 'Local';
+  savePedidosWeb(pedidos);
+  showToast('📞 Teléfono corregido: '+nuevo+' — el repartidor ya lo tiene');
+  if(typeof renderPuesto === 'function' && window.__lrEsPuesto) renderPuesto();
+  var m = document.getElementById('deliveryPendModal');
+  if(m && m.classList.contains('open')) abrirDeliveryPendModal();
+}
+function htmlTelefonoPedido(p){
+  var mal = telefonoPareceMal(p);
+  return (mal ? '<div style="margin-top:6px;padding:7px 9px;border:1px solid rgba(244,180,0,.6);border-radius:6px;background:rgba(244,180,0,.08);font-size:.76rem;color:#F4B400">⚠️ Revisá el teléfono: <b>'+_escMsg(p.telefono||'(vacío)')+'</b> parece mal cargado. Fijate el número en el WhatsApp del pedido.</div>' : '')+
+    (p.telefonoCorregidoPor ? '<div style="font-size:.7rem;color:#22c55e;margin-top:3px">📞 Corregido por '+_escMsg(p.telefonoCorregidoPor)+(p.telefonoAnterior?' (antes: '+_escMsg(p.telefonoAnterior)+')':'')+'</div>' : '')+
+    '<button onclick="corregirTelefonoPedido('+p.id+')" style="margin-top:5px;background:transparent;border:1px solid '+(mal?'#F4B400':'var(--border)')+';color:'+(mal?'#F4B400':'var(--gray)')+';border-radius:5px;padding:5px 10px;font-size:.72rem;cursor:pointer">✏️ Corregir teléfono</button>';
+}
 // ── Cobro de un pedido ──
 function abrirCobroPuesto(id){
   var p = getPedidosWeb().find(function(x){ return x.id === id; });
@@ -32899,9 +32950,9 @@ function renderDeliveryControl() {
         '<div style="font-size:.78rem;color:var(--light);margin-bottom:6px">🛵 ¿Dónde se atienden y cobran los pedidos web?</div>'+
         '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
           '<button onclick="cambiarModoCobroDelivery(\'cualquiera\')" style="flex:1;min-width:150px;background:'+(!deliveryEnPuesto()?'var(--gold)':'var(--card)')+';color:'+(!deliveryEnPuesto()?'var(--black)':'var(--gray)')+';border:1px solid '+(!deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">🖥 EN CUALQUIER CAJA</button>'+
-          '<button onclick="cambiarModoCobroDelivery(\'puesto\')" style="flex:1;min-width:150px;background:'+(deliveryEnPuesto()?'var(--gold)':'var(--card)')+';color:'+(deliveryEnPuesto()?'var(--black)':'var(--gray)')+';border:1px solid '+(deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">🛵 SOLO PUESTO DELIVERY (TABLET)</button>'+
+          '<button onclick="cambiarModoCobroDelivery(\'puesto\')" style="flex:1;min-width:150px;background:'+(deliveryEnPuesto()?'var(--gold)':'var(--card)')+';color:'+(deliveryEnPuesto()?'var(--black)':'var(--gray)')+';border:1px solid '+(deliveryEnPuesto()?'var(--gold)':'var(--border)')+';border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.72rem;font-weight:700;cursor:pointer">🛵 SOLO PUESTO DELIVERY</button>'+
         '</div>'+
-        '<div style="font-size:.64rem;color:var(--gray);margin-top:5px">'+(deliveryEnPuesto()?'Las cajas ven los pedidos pero no los cobran. La tablet: limayrock.com.ar/puesto/ · lo cobrado va a la caja del empleado que cobra.':'Como siempre: cualquier caja carga y cobra los pedidos.')+'</div>'+
+        '<div style="font-size:.64rem;color:var(--gray);margin-top:5px">'+(deliveryEnPuesto()?'Las cajas ven los pedidos pero no los cobran. Link del puesto: limayrock.com.ar/puesto/ (tablet, compu o celu) · lo cobrado va a la caja del empleado que cobra.':'Como siempre: cualquier caja carga y cobra los pedidos.')+'</div>'+
       '</div>'+
       htmlPrioridadDelivery(repartidores)+
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--dark);border-radius:6px;padding:9px 12px;margin-bottom:8px">'+

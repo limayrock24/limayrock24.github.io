@@ -421,8 +421,9 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       <input type="text" id="clienteNombre" placeholder="Nombre y apellido">
     </div>
     <div class="field">
-      <label>Tu teléfono</label>
-      <input type="tel" id="clienteTelefono" placeholder="Ej. 2995551234">
+      <label>Tu WhatsApp</label>
+      <input type="tel" id="clienteTelefono" placeholder="Ej. 299 555 1234" oninput="ayudaTelefono()" autocomplete="tel">
+      <div id="clienteTelAyuda" style="font-size:.74rem;color:var(--gray);margin-top:5px">Código de área + número, sin 0 ni 15. Es al que te avisa el repartidor cuando llega.</div>
     </div>
     <div class="field">
       <label>¿Dónde te lo llevamos?</label>
@@ -2077,8 +2078,51 @@ function cerrarAyuda(){
   document.getElementById('ayudaOverlay').classList.remove('show');
 }
 
+
+// ── TELÉFONO DEL CLIENTE ──────────────────────────────────────────────────
+// Lo deja como código de área + número (10 dígitos), sin 0, sin 15 y sin +54,
+// que es como lo necesita WhatsApp. Si escriben solo el número local (con o
+// sin 15) se toma la característica 299 (Neuquén).
+function normalizarTelAR(txt){
+  var d = String(txt || '').replace(/\D/g, '');
+  if(d.indexOf('00') === 0) d = d.slice(2);
+  if(d.indexOf('54') === 0 && d.length >= 12) d = d.slice(2);
+  if(d.length === 11 && d.charAt(0) === '9') d = d.slice(1);
+  if(d.charAt(0) === '0') d = d.slice(1);
+  if(d.length === 12){ for(var k = 2; k <= 4; k++){ if(d.substr(k, 2) === '15'){ d = d.slice(0, k) + d.slice(k + 2); break; } } }
+  if(d.length === 9 && d.indexOf('15') === 0) d = '299' + d.slice(2);
+  if(d.length === 7) d = '299' + d;
+  return d;
+}
+function telValidoAR(d){ return /^[1-9]\d{9}$/.test(d) && !/(\d)\1{6,}/.test(d) && d.indexOf('1234567') === -1; }
+function telLindoAR(d){
+  if(d.length !== 10) return d;
+  return d.indexOf('11') === 0 ? '11 ' + d.slice(2, 6) + '-' + d.slice(6) : d.slice(0, 3) + ' ' + d.slice(3, 6) + '-' + d.slice(6);
+}
+// Mientras escribe, se le muestra cómo quedó el número (así ve si le falta algo).
+function ayudaTelefono(){
+  var el = document.getElementById('clienteTelAyuda'); if(!el) return;
+  var raw = document.getElementById('clienteTelefono').value;
+  var d = normalizarTelAR(raw);
+  if(!raw.trim()){ el.style.color = 'var(--gray)'; el.textContent = 'Código de área + número, sin 0 ni 15. Es al que te avisa el repartidor cuando llega.'; return; }
+  if(telValidoAR(d)){ el.style.color = '#2ecc71'; el.textContent = '✓ Te avisamos al WhatsApp ' + telLindoAR(d); }
+  else { el.style.color = '#F4B400'; el.textContent = 'Faltan o sobran números: poné el código de área + tu número (ej. 299 555 1234).'; }
+}
+// El celular se acuerda del nombre y el WhatsApp para el próximo pedido.
+var SK_CLIENTE = 'lr_cliente_datos';
+function precargarDatosCliente(){
+  try{
+    var d = JSON.parse(localStorage.getItem(SK_CLIENTE) || 'null');
+    if(!d) return;
+    var n = document.getElementById('clienteNombre'), t = document.getElementById('clienteTelefono');
+    if(n && !n.value && d.nombre) n.value = d.nombre;
+    if(t && !t.value && d.telefono) t.value = d.telefono;
+    ayudaTelefono();
+  }catch(e){}
+}
 // Paso 1 → paso 2: de revisar el pedido a cargar los datos de entrega.
 function irADatos(){
+  precargarDatosCliente();
   document.getElementById('checkoutError').style.display = 'none';
   document.getElementById('cartOverlay').classList.remove('show');
   document.getElementById('datosOverlay').classList.add('show');
@@ -2339,6 +2383,11 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
+  if(!telValidoAR(normalizarTelAR(telefono))){
+    errEl.textContent = 'Revisá tu WhatsApp: poné el código de área + tu número, sin 0 ni 15 (ej. 299 555 1234). Es al que te avisa el repartidor cuando llega.';
+    errEl.style.display = 'block';
+    return;
+  }
   // Sin ubicación compartida hace falta al menos la dirección escrita.
   if(!UBICACION_GPS && !direccion){
     errEl.textContent = 'Compartí tu ubicación o escribí tu dirección (calle y número) para que el repartidor te encuentre.';
@@ -2372,6 +2421,10 @@ function irAConfirmar(){
   var _avEnv = document.getElementById('confirmEnvioAviso');
   if(!_avEnv){ _avEnv = document.createElement('div'); _avEnv.id = 'confirmEnvioAviso'; _avEnv.style.cssText = 'font-size:.74rem;color:#F4B400;margin-top:6px;text-align:right'; var _tr = document.getElementById('confirmTotal').parentNode; _tr.parentNode.insertBefore(_avEnv, _tr.nextSibling); }
   _avEnv.textContent = envioPendiente() ? 'El envío te lo confirma el local por WhatsApp según tu ubicación' : '';
+  // El WhatsApp bien a la vista antes de enviar, para que lo revise.
+  var _avTel = document.getElementById('confirmTelAviso');
+  if(!_avTel){ _avTel = document.createElement('div'); _avTel.id = 'confirmTelAviso'; _avTel.style.cssText = 'margin-top:10px;padding:9px 11px;border:1px solid rgba(46,204,113,.45);border-radius:8px;background:rgba(46,204,113,.08);font-size:.85rem;color:#ddd;text-align:center'; _avEnv.parentNode.insertBefore(_avTel, _avEnv.nextSibling); }
+  _avTel.innerHTML = '📲 El repartidor te avisa al WhatsApp <b style="color:#2ecc71;font-size:1rem">' + telLindoAR(normalizarTelAR(document.getElementById('clienteTelefono').value)) + '</b><br><span style="font-size:.72rem;color:var(--gray)">¿No es tu número? Tocá "Volver" y corregilo.</span>';
   document.getElementById('datosOverlay').classList.remove('show');
   document.getElementById('confirmOverlay').classList.add('show');
 }
@@ -2384,8 +2437,11 @@ function confirmarPedido(){
   if(sesionVencida) return;
   if(!DELIVERY_ACTIVO){ alert('El delivery está en pausa ahora — no podemos tomar pedidos, pero podés acercarte al local a comprar directo.'); return; }
   var nombre = document.getElementById('clienteNombre').value.trim();
-  var telefono = document.getElementById('clienteTelefono').value.trim();
+  var telefonoEscrito = document.getElementById('clienteTelefono').value.trim();
+  var _telN = normalizarTelAR(telefonoEscrito);
+  var telefono = telValidoAR(_telN) ? telLindoAR(_telN) : telefonoEscrito;
   var direccion = document.getElementById('clienteDireccion').value.trim();
+  try{ localStorage.setItem(SK_CLIENTE, JSON.stringify({ nombre: nombre, telefono: telefono })); }catch(e){}
 
   var items = Object.keys(CARRITO).map(function(k){ return CARRITO[k]; });
   var notasManuales = Object.keys(CARRITO_MANUAL).map(function(k){ return CARRITO_MANUAL[k]; });
@@ -2402,6 +2458,7 @@ function confirmarPedido(){
     fecha: new Date().toISOString(),
     nombre: nombre,
     telefono: telefono,
+    telefonoEscrito: telefonoEscrito !== telefono ? telefonoEscrito : null,
     direccion: direccion,
     referencia: (document.getElementById('clienteReferencia').value||'').trim(),
     gps: UBICACION_GPS,
