@@ -32880,6 +32880,112 @@ function htmlPrioridadDelivery(repartidores){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintar); else pintar();
 })();
+// ── REINICIAR LIMAY 2 (borrar lo de prueba antes de abrir) ─────────────────
+// Solo desde el admin de Limay 2. Borra lo que se hizo probando (ventas,
+// turnos, cierres, egresos, movimientos, saldos, traspasos con Limay 2) y deja
+// productos, precios, proveedores, categorías, empleados y configuración.
+// Nunca toca nada de Limay 1: cada colección se nombra con "l2_" a mano.
+var L2_DATOS_PRUEBA = ['ventas', 'cierres', 'cierresMes', 'sesionesActivas', 'consumos', 'egresos', 'fiados',
+  'consignaciones', 'delivery', 'prestamos', 'transferCuentas', 'cargasVirtuales', 'mensajesPunt', 'movimientos',
+  'retirosCaja', 'clientes', 'sorteos', 'logCatalogo', 'stockAlerts', 'stockMovsHistorial', 'historialCambios', 'pedidosProveedor'];
+(function(){
+  if(window.__lrSucursal !== 2 || typeof renderDashboard !== 'function') return;
+  var orig = renderDashboard;
+  renderDashboard = function(){
+    var r = orig.apply(this, arguments);
+    var el = document.getElementById('dashContent');
+    if(el && window.__lrEsPanelAdmin && !document.getElementById('l2Reiniciar')){
+      var d = document.createElement('div'); d.id = 'l2Reiniciar';
+      d.style.cssText = 'margin:24px 0 10px;padding:12px;border:1px dashed rgba(210,32,31,.5);border-radius:8px;text-align:center';
+      d.innerHTML = '<div style="font-size:.72rem;color:var(--gray);margin-bottom:8px">Antes de abrir el local: borrá todo lo que se hizo probando (ventas, turnos, cierres, egresos…). Los productos, proveedores y empleados quedan.</div>'+
+        '<button onclick="abrirReinicioL2()" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:8px 16px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">🧹 REINICIAR LIMAY 2 (BORRAR DATOS DE PRUEBA)</button>';
+      el.appendChild(d);
+    }
+    return r;
+  };
+})();
+function abrirReinicioL2(){
+  if(window.__lrSucursal !== 2) return;
+  var ov = document.getElementById('l2ReinicioOv');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'l2ReinicioOv'; ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(ov); }
+  ov.style.display = 'flex';
+  ov.innerHTML = '<div style="background:#161616;border:1.5px solid var(--red);border-radius:10px;max-width:440px;width:100%;padding:18px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1.5px;color:var(--red);margin-bottom:8px">🧹 REINICIAR LIMAY ROCK 2</div>'+
+    '<div style="font-size:.8rem;color:var(--light);line-height:1.5">Se <b>borra</b> de Limay 2: ventas, turnos, cierres, egresos, retiros, consumos, fiados, clientes, movimientos, saldos de caja y MP, y los traspasos con Limay 1.<br>'+
+    'Se <b>deja</b>: productos y precios, proveedores, categorías, combos, empleados y configuración.<br>'+
+    '<span style="color:var(--gray)">Limay 1 no se toca. Si hiciste traspasos de prueba, el stock que salió de Limay 1 no vuelve solo.</span></div>'+
+    '<label style="display:flex;gap:8px;align-items:center;margin:12px 0;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiStock" checked style="width:16px;height:16px;accent-color:var(--red)"> Poner el stock de todos los productos en 0</label>'+
+    '<div style="font-size:.75rem;color:var(--gray);margin-bottom:6px">Para confirmar, escribí <b style="color:var(--white)">REINICIAR</b>:</div>'+
+    '<input id="l2ReiTxt" autocomplete="off" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1.5px solid var(--border);color:var(--white);border-radius:5px;padding:10px;font-size:.95rem;letter-spacing:2px">'+
+    '<div id="l2ReiEstado" style="font-size:.78rem;color:var(--gold);margin-top:8px;min-height:1em"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById(\'l2ReinicioOv\').style.display=\'none\'" style="flex:1;background:none;border:1px solid var(--border);color:var(--light);border-radius:5px;padding:11px;cursor:pointer">Cancelar</button>'+
+    '<button id="l2ReiBtn" onclick="reiniciarLimay2()" style="flex:1;background:var(--red);border:none;color:#fff;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer">BORRAR Y REINICIAR</button></div>'+
+  '</div>';
+}
+function reiniciarLimay2(){
+  if(window.__lrSucursal !== 2 || !window.__lrColOriginal) return;
+  var txt = document.getElementById('l2ReiTxt'), est = document.getElementById('l2ReiEstado'), btn = document.getElementById('l2ReiBtn');
+  if(!txt || txt.value.trim().toUpperCase() !== 'REINICIAR'){ est.textContent = 'Escribí REINICIAR para confirmar.'; return; }
+  var ponerStock0 = document.getElementById('l2ReiStock').checked;
+  var db = window.__lrDB, col = function(n){ return window.__lrColOriginal(db, 'l2_' + n); };
+  btn.disabled = true; btn.style.opacity = '.5';
+  var borrarTodo = function(ref){
+    return ref.get().then(function(snap){
+      var docs = snap.docs, p = Promise.resolve();
+      for(var i = 0; i < docs.length; i += 400){
+        (function(t){ p = p.then(function(){ var b = db.batch(); t.forEach(function(d){ b.delete(d.ref); }); return b.commit(); }); })(docs.slice(i, i + 400));
+      }
+      return p.then(function(){ return docs.length; });
+    });
+  };
+  est.textContent = 'Revisando que no haya turnos abiertos…';
+  col('sesionesActivas').get({ source: 'server' }).then(function(s){
+    var abiertos = [];
+    s.forEach(function(d){ var x = d.data(); if(x.turnoInicio && Date.now() - new Date(x.turnoInicio).getTime() < 16*3600000) abiertos.push(x.nombre || d.id); });
+    if(abiertos.length) throw new Error('Hay turnos abiertos en Limay 2 ('+abiertos.join(', ')+'). Cerralos primero.');
+    var total = 0, p = Promise.resolve();
+    L2_DATOS_PRUEBA.forEach(function(n){
+      p = p.then(function(){ est.textContent = 'Borrando '+n+'…'; return borrarTodo(col(n)).then(function(k){ total += k; }); });
+    });
+    return p.then(function(){
+      est.textContent = 'Borrando traspasos de prueba…';
+      var tr = window.__lrColOriginal(db, 'traspasos');
+      return Promise.all([borrarTodo(tr.where('desde', '==', 2)), borrarTodo(tr.where('hacia', '==', 2))]);
+    }).then(function(){
+      est.textContent = 'Poniendo saldos en 0…';
+      var hoy = fechaLocalStr();
+      return Promise.all([
+        col('config').doc('liquidez').set({ saldoLC: 0, saldoMP: 0, periodoDesde: hoy }, { merge: true }),
+        col('config').doc('prodCount').delete(),
+        col('config').doc('semanasColchon').delete()
+      ]);
+    }).then(function(){
+      if(!ponerStock0) return;
+      est.textContent = 'Poniendo el stock en 0…';
+      return col('inventario').get().then(function(snap){
+        var docs = snap.docs, q = Promise.resolve();
+        for(var i = 0; i < docs.length; i += 400){
+          (function(t){ q = q.then(function(){ var b = db.batch(); t.forEach(function(d){ b.set(d.ref, { stock: 0 }, { merge: true }); }); return b.commit(); }); })(docs.slice(i, i + 400));
+        }
+        return q;
+      });
+    }).then(function(){
+      // Lo guardado en este equipo para Limay 2 (copias y pendientes) también se limpia.
+      try{
+        var borrar = [];
+        for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if(k && k.indexOf('l2:') === 0) borrar.push(k); }
+        borrar.forEach(function(k){ localStorage.removeItem(k); });
+      }catch(e){}
+      est.style.color = 'var(--green)';
+      est.textContent = '✅ Listo: Limay 2 quedó en cero ('+total+' registros de prueba borrados). Recargando…';
+      setTimeout(function(){ location.reload(); }, 2500);
+    });
+  }).catch(function(e){
+    btn.disabled = false; btn.style.opacity = '1';
+    est.style.color = 'var(--red)';
+    est.textContent = '⚠ ' + ((e && e.message) || e);
+  });
+}
 // ── RESUMEN "LAS DOS" (admin) ────────────────────────────────────────────
 // Junta los números de Limay Rock 1 y 2 en una sola pantalla. Usa la misma
 // cuenta que el Inicio de cada local, así los números coinciden.
