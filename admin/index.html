@@ -121,7 +121,7 @@ if(window.__lrSucursal === 2){
     (function(){
       // Los empleados son una sola lista para los dos locales (cada uno dice
       // en qué local trabaja); sus turnos, horas y cierres van en cada local.
-      var COMUNES = ['empleados', 'fcmTokens', 'dispositivos', 'avisosDelivery', 'seguimiento', 'opiniones', 'repartidoresPub', 'intentosPin'];
+      var COMUNES = ['empleados', 'fcmTokens', 'dispositivos', 'avisosDelivery', 'seguimiento', 'opiniones', 'repartidoresPub', 'intentosPin', 'traspasos'];
       var FP = firebase.firestore.Firestore.prototype;
       var map = function(p){ p = String(p); var seg = p.split('/')[0]; return (COMUNES.indexOf(seg) >= 0 || seg.indexOf('l2_') === 0) ? p : 'l2_' + p; };
       var oc = FP.collection, od = FP.doc;
@@ -6824,6 +6824,7 @@ body.night-on{background:#080005}
     <div class="recep-tab-btn" id="rt-precios" onclick="selRecepTab('precios')">✏️ Precios</div>
     <div class="recep-tab-btn" id="rt-pedidos" onclick="selRecepTab('pedidos')">🛒 Pedidos</div>
     <div class="recep-tab-btn" id="rt-bajas" onclick="selRecepTab('bajas')">🗑 Bajas</div>
+    <div class="recep-tab-btn" id="rt-traspaso" onclick="selRecepTab('traspaso')">🔁 Traspaso</div>
   </div>
   <div class="recep-body">
     <!-- Sub-pane: Recepción de mercadería -->
@@ -6858,6 +6859,10 @@ body.night-on{background:#080005}
     <!-- Sub-pane: Bajas de producto (vencido / roto / otro) -->
     <div class="recep-pane" id="recepPaneBajas">
       <div id="recepBajasContent"></div>
+    </div>
+    <!-- Sub-pane: Traspasos entre locales -->
+    <div class="recep-pane" id="recepPaneTraspaso">
+      <div id="recepTraspasoContent"></div>
     </div>
     <!-- Sub-pane: Egresos -->
     <div class="recep-pane" id="recepPaneEgresos">
@@ -19608,7 +19613,7 @@ function toggleMovDet(id) {
 }
 
 var MOV_ICONOS = {
-  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️',
+  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️', traspaso: '🔁',
   'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱',
   'consignacion': '📦', 'cobro-consignacion': '✅', 'devolucion-consignacion': '↩', suelto: '📦'
 };
@@ -19620,7 +19625,7 @@ var MOV_COLORES = {
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
-  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)',
+  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)', traspaso: 'Traspaso entre locales',
   'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo',
   'consignacion': 'Consignación', 'cobro-consignacion': 'Cobro de consignación', 'devolucion-consignacion': 'Devolución de consignación',
   suelto: 'Abierto para venta suelta'
@@ -19705,7 +19710,7 @@ function renderMovimientos() {
     // secciones distintas; adentro cada uno se distingue por su etiqueta.
     var coincideTipo;
     // Lo de mercadería (ingresos, correcciones, bajas) está en Productos → Movimientos.
-    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock') return false;
+    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso') return false;
     if(!tipoFil) coincideTipo = true;
     else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
     else if(tipoFil === 'consignaciones') coincideTipo = (m.tipo==='consignacion' || m.tipo==='cobro-consignacion' || m.tipo==='devolucion-consignacion');
@@ -23059,7 +23064,7 @@ function construirMovProductos(desde, hasta) {
   var bajasInfo = getStockMovs().filter(function(x){ return x.tipo === 'baja'; });
   var movs = getMovimientos().filter(function(m){
     var tm = new Date(m.fecha).getTime();
-    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock') && tm >= desde && tm <= hasta;
+    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso') && tm >= desde && tm <= hasta;
   }).slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
   var lote = null;
   movs.forEach(function(m){
@@ -23077,6 +23082,13 @@ function construirMovProductos(desde, hasta) {
       var it = { nombre: m.producto, txt: (m.cantidad>0?'+':'')+m.cantidad+' u.', extra: (m.stockAntes!=null && m.stockDespues!=null ? m.stockAntes+' → '+m.stockDespues : '') };
       if(lote && lote.quien === m.responsable && t - lote.tUlt <= 120000){ lote.items.push(it); lote.nombres.push(m.producto); lote.tUlt = t; }
       else { lote = { t:t, tUlt:t, cat:'ingreso', icono:'📥', quien:m.responsable, items:[it], nombres:[m.producto] }; ev.push(lote); }
+      return;
+    }
+    if(m.tipo === 'traspaso'){
+      lote = null;
+      var trIt = (m.items||[]).map(function(it){ return { nombre: it.nombre, txt: (it.qty>0?'+':'')+it.qty+' u.', extra: (it.stock!=null ? 'queda '+it.stock : '') }; });
+      ev.push({ t:t, cat:'traspaso', icono:'🔁', quien:m.responsable, titulo: m.resumen || 'Traspaso',
+        items: trIt.length ? trIt : null, nombres: (m.items||[]).map(function(it){ return it.nombre; }) });
       return;
     }
     lote = null;
@@ -23151,7 +23163,7 @@ function renderLogCatalogo() {
   if(per) per.innerHTML = [['hoy','Hoy'],['semana','Esta semana']].map(function(x){ return chip('periodo', x[0], x[1], _movProdPeriodo===x[0]); }).join('') +
     '<select class="sel-mes" onchange="cambiarMovProd(\'periodo\', this.value)" style="flex:1;background:'+(periodoEsMes(_movProdPeriodo)?'var(--gold)':'none')+';color:'+(periodoEsMes(_movProdPeriodo)?'var(--black)':'var(--gray)')+';border:1px solid '+(periodoEsMes(_movProdPeriodo)?'var(--gold)':'var(--border)')+';border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:.5px">'+opcionesMesHtml(periodoEsMes(_movProdPeriodo)?_movProdPeriodo:'mes')+'</select>';
   var tip = document.getElementById('movProdTipos');
-  if(tip) tip.innerHTML = [['todo','Todo'],['ingreso','📥 Ingresos'],['correccion','🔧 Correcciones'],['baja','🗑 Bajas'],['precio','💲 Precios'],['nuevo','✚ Nuevos']].map(function(x){ return chip('tipo', x[0], x[1], _movProdTipo===x[0]); }).join('');
+  if(tip) tip.innerHTML = [['todo','Todo'],['ingreso','📥 Ingresos'],['correccion','🔧 Correcciones'],['baja','🗑 Bajas'],['traspaso','🔁 Traspasos'],['precio','💲 Precios'],['nuevo','✚ Nuevos']].map(function(x){ return chip('tipo', x[0], x[1], _movProdTipo===x[0]); }).join('');
 
   var term = ((document.getElementById('movProdBuscar')||{}).value || '').toLowerCase().trim();
   var rgMP = getFechasRango(_movProdPeriodo);
@@ -23383,7 +23395,7 @@ function renderDashboard() {
 
   if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥'};
+    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
     // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
@@ -23452,10 +23464,10 @@ function renderDashboard() {
       // sigue mostrando la plata, para compararla con lo que se le pagó.
       var esStockMov = function(t, m){
         if(t === 'ingreso') return !!(m && m.producto) && !(m.total > 0);
-        return t === 'ajuste-stock' || t === 'baja-stock';
+        return t === 'ajuste-stock' || t === 'baja-stock' || t === 'traspaso';
       };
       var textoStock = function(m){
-        var nom = {'ajuste-stock':'Ajuste de stock', 'baja-stock':'Baja de stock', 'ingreso':'Ingreso de mercadería'}[m.tipo] || m.tipo;
+        var nom = {'ajuste-stock':'Ajuste de stock', 'baja-stock':'Baja de stock', 'ingreso':'Ingreso de mercadería', 'traspaso':'Traspaso'}[m.tipo] || m.tipo;
         var dif = Number(m.cantidad||0);
         var cambio = (m.stockAntes != null && m.stockDespues != null) ? ' ('+m.stockAntes+' → '+m.stockDespues+')' : '';
         return {texto: nom+': '+(m.producto || m.resumen || '—')+cambio, unidades: (dif>0?'+':'')+dif+' u.'};
@@ -26132,7 +26144,7 @@ function recepPuedePedidos() {
 function aplicarPermisosRecep() {
   if(_recepEmp && currentEmp && _recepEmp.nombre === currentEmp.nombre) _recepEmp = currentEmp;
   var rec = recepPuedeRecepcion(), ped = recepPuedePedidos();
-  ['egresos','merc','precios','bajas'].forEach(function(t){ var b = document.getElementById('rt-'+t); if(b) b.style.display = rec ? '' : 'none'; });
+  ['egresos','merc','precios','bajas','traspaso'].forEach(function(t){ var b = document.getElementById('rt-'+t); if(b) b.style.display = rec ? '' : 'none'; });
   var bp = document.getElementById('rt-pedidos'); if(bp) bp.style.display = ped ? '' : 'none';
   var activa = document.querySelector('.recep-tab-btn.active');
   if(activa && activa.style.display === 'none' && document.getElementById('recepScreen').classList.contains('open')){
@@ -26437,8 +26449,8 @@ function descartarBorradorRecep() {
 }
 
 function selRecepTab(tab) {
-  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos', pedidos:'Pedidos', bajas:'Bajas'};
-  ['merc','precios','egresos','pedidos','bajas'].forEach(function(t){
+  var paneMap = {merc:'Merc', precios:'Precios', egresos:'Egresos', pedidos:'Pedidos', bajas:'Bajas', traspaso:'Traspaso'};
+  ['merc','precios','egresos','pedidos','bajas','traspaso'].forEach(function(t){
     var btn = document.getElementById('rt-'+t);
     var pane= document.getElementById('recepPane'+paneMap[t]);
     if(btn) btn.classList.toggle('active', t===tab);
@@ -26451,6 +26463,7 @@ function selRecepTab(tab) {
   if(tab==='precios') initRecepCatalogo();
   if(tab==='pedidos') renderRecepPedidos();
   if(tab==='bajas') renderRecepBajas();
+  if(tab==='traspaso') renderRecepTraspaso();
   if(tab==='egresos') initRecepEgresos();
 }
 
@@ -29941,7 +29954,8 @@ function recepPinPress(d) {
           ((currentEmp.rol==='admin' || currentEmp.accesoRecepcion) ? (currentEmp.accesoPedidos ? 'Recepción y Pedidos' : 'Acceso Recepción') : 'Armar pedidos');
         document.getElementById('recepScreen').classList.add('open');
         aplicarPermisosRecep();
-        selRecepTab(recepPuedeRecepcion() ? 'egresos' : 'pedidos');
+        selRecepTab(recepPuedeRecepcion() ? (_trAbrirAlEntrar ? 'traspaso' : 'egresos') : 'pedidos');
+        _trAbrirAlEntrar = false;
         _recepPinBuf='';
       } else {
         _recepPinBuf=''; updateRecepPinDots();
@@ -32829,6 +32843,332 @@ function htmlPrioridadDelivery(repartidores){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintar); else pintar();
 })();
+// ── TRASPASOS DE MERCADERÍA ENTRE LOCALES ────────────────────────────────
+// Un local envía (su stock baja al enviar) y el otro confirma lo que llegó
+// (su stock sube recién ahí). Si llegó distinto, queda anotada la diferencia.
+// Mientras no se recibió, el que lo envió lo puede anular (el stock vuelve).
+var _trLista = [];          // lo que se está armando para enviar
+var _trPendientes = [];     // enviados al otro local o por recibir acá (en vivo)
+var _trAbrirAlEntrar = false;
+function trMiLocal(){ return window.__lrSucursal === 2 ? 2 : 1; }
+function trOtroLocal(){ return trMiLocal() === 2 ? 1 : 2; }
+function trNombreLocal(n){ return 'LIMAY ROCK ' + n; }
+function trCol(){ return window.__lrDB.collection('traspasos'); }
+function trResp(){ return (typeof _recepEmp!=='undefined' && _recepEmp) ? _recepEmp.nombre : (currentEmp ? currentEmp.nombre : 'Admin'); }
+function trPorRecibir(){ return _trPendientes.filter(function(t){ return t.hacia === trMiLocal(); }); }
+function trEnviadosPend(){ return _trPendientes.filter(function(t){ return t.desde === trMiLocal(); }); }
+function trFechaCorta(iso){ var d = new Date(iso); return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
+
+// Anota el traspaso en Movimientos (Productos → Movimientos del admin).
+function trAnotarMovimiento(items, signo, extra, resumen){
+  var movs = getMovimientos();
+  var total = 0;
+  movs.push({
+    id: Date.now() + Math.random(), fecha: new Date().toISOString(), tipo: 'traspaso',
+    items: items.map(function(it){ total += it.cant; return { nombre: it.n, qty: signo*it.cant, stock: it.stock }; }),
+    cantidad: signo*total, extra: extra, resumen: resumen, responsable: trResp()
+  });
+  if(movs.length > 2000) movs = movs.slice(-2000);
+  saveMovimientos(movs);
+}
+function trSumarStock(items, signo){
+  var inv = getStockInv();
+  items.forEach(function(it){
+    if(!inv[it.n]) inv[it.n] = { stock: 0, minimo: 0 };
+    inv[it.n].stock = Math.max(0, (Number(inv[it.n].stock)||0) + signo*it.cant);
+    it.stock = inv[it.n].stock;
+  });
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Traspaso ('+items.length+')');
+  if(typeof renderInventario === 'function') try{ renderInventario(); }catch(e){}
+}
+
+// Escucha en vivo los traspasos sin terminar (de los dos lados).
+(function(){
+  var t = setInterval(function(){
+    if(!window.__lrDB || !window.__lrUsuario || window.__lrEsPuesto) return;
+    clearInterval(t);
+    trCol().where('estado', '==', 'enviado').onSnapshot(function(snap){
+      var antes = trPorRecibir().length;
+      _trPendientes = [];
+      snap.forEach(function(d){ var x = d.data(); x._id = d.id; _trPendientes.push(x); });
+      _trPendientes.sort(function(a,b){ return String(a.fecha).localeCompare(String(b.fecha)); });
+      var ahora = trPorRecibir().length;
+      if(ahora > antes && antes >= 0 && window.__trYaCargo) showToast('🚚 Llegó un traspaso de '+trNombreLocal(trOtroLocal())+' — confirmalo en Recepción → Traspaso');
+      window.__trYaCargo = true;
+      pintarAvisoTraspaso();
+      var pane = document.getElementById('recepPaneTraspaso');
+      if(pane && pane.classList.contains('active')) pintarTraspasosPendientes();
+    }, function(e){ console.warn('traspasos', e); });
+  }, 1000);
+})();
+
+// Píldora en el encabezado de la caja cuando hay algo por recibir.
+function pintarAvisoTraspaso(){
+  var hr = document.querySelector('header .header-right');
+  if(!hr) return;
+  var el = document.getElementById('lrAvisoTraspaso');
+  var n = trPorRecibir().length;
+  if(!n){ if(el) el.style.display = 'none'; return; }
+  if(!el){
+    el = document.createElement('span'); el.id = 'lrAvisoTraspaso';
+    el.style.cssText = 'cursor:pointer;font-family:Oswald,sans-serif;font-size:.63rem;letter-spacing:1px;padding:3px 9px;border-radius:12px;background:rgba(56,189,248,.15);color:#38bdf8;border:1px solid rgba(56,189,248,.7);white-space:nowrap';
+    el.onclick = irATraspasoPorRecibir;
+    hr.appendChild(el);
+  }
+  el.textContent = '🚚 Traspaso por recibir' + (n > 1 ? ' ('+n+')' : '');
+  el.style.display = '';
+}
+function irATraspasoPorRecibir(){
+  var rs = document.getElementById('recepScreen');
+  if(rs && rs.classList.contains('open') && typeof recepPuedeRecepcion==='function' && recepPuedeRecepcion()){ selRecepTab('traspaso'); return; }
+  if(!currentEmp){ showToast('Abrí un turno para recibir el traspaso', true); return; }
+  if(!(currentEmp.rol === 'admin' || currentEmp.accesoRecepcion)){
+    showToast('Lo confirma alguien con acceso a Recepción', true); return;
+  }
+  _trAbrirAlEntrar = true;
+  pedirPinRecepcion();
+}
+
+function renderRecepTraspaso(){
+  var el = document.getElementById('recepTraspasoContent');
+  if(!el) return;
+  var otro = trNombreLocal(trOtroLocal());
+  el.innerHTML =
+    '<div id="trPorRecibirCont"></div>'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:#38bdf8;margin:6px 0 8px;text-transform:uppercase">🚚 Enviar mercadería a '+otro+'</div>'+
+    '<div style="font-size:.78rem;color:var(--gray);margin-bottom:10px">Buscá o escaneá cada producto y cargá cuántas unidades salen. El stock de acá baja al enviar; el de '+otro+' sube cuando ellos confirman que llegó.</div>'+
+    '<input type="text" id="trBuscar" placeholder="🔍 Buscar producto o escanear código..." autocomplete="off" oninput="buscarProductoTraspaso()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();elegirPrimerResultadoTraspaso();}" style="width:100%;background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:6px;padding:11px 12px;font-family:Barlow,sans-serif;font-size:.9rem;box-sizing:border-box">'+
+    '<div id="trResultados" style="margin-top:6px"></div>'+
+    '<div id="trListaCont" style="margin-top:12px"></div>'+
+    '<div id="trEnviadosCont"></div>'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);margin:18px 0 8px;text-transform:uppercase">Últimos traspasos</div>'+
+    '<div id="trHistorialCont"><div style="font-size:.75rem;color:var(--gray)">Cargando…</div></div>';
+  pintarListaTraspaso();
+  pintarTraspasosPendientes();
+  pintarHistorialTraspasos();
+  setTimeout(function(){ var i = document.getElementById('trBuscar'); if(i && !trPorRecibir().length) i.focus(); }, 100);
+}
+function buscarProductoTraspaso(){
+  var inp = document.getElementById('trBuscar'), res = document.getElementById('trResultados');
+  if(!inp || !res) return;
+  var t = normalizarNombreProd(inp.value);
+  if(!t){ res.innerHTML = ''; return; }
+  var inv = getStockInv();
+  var exactos = PRODUCTS.filter(function(p){ return p.codigo && p.codigo === inp.value.trim(); });
+  var lista = exactos.length ? exactos : PRODUCTS.filter(function(p){ return normalizarNombreProd(p.name).indexOf(t) !== -1; }).slice(0, 8);
+  if(!lista.length){ res.innerHTML = '<div style="font-size:.75rem;color:var(--gray);padding:8px 2px">No se encontró ningún producto.</div>'; return; }
+  res.innerHTML = lista.map(function(p){
+    var s = inv[p.name] ? inv[p.name].stock : 0;
+    var nEsc = p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return '<div onclick="agregarProductoTraspaso(\''+nEsc+'\')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:5px;padding:10px 12px;margin-bottom:4px;cursor:pointer">'+
+      '<span style="font-size:.85rem;color:var(--white)">'+escBaja(p.name)+'</span>'+
+      '<span style="font-size:.72rem;color:var(--gray);white-space:nowrap">Stock: '+s+' · <span style="color:#38bdf8;font-weight:700">+ Agregar</span></span>'+
+    '</div>';
+  }).join('');
+}
+function elegirPrimerResultadoTraspaso(){
+  var inp = document.getElementById('trBuscar');
+  if(!inp || !inp.value.trim()) return;
+  var cod = inp.value.trim();
+  var p = PRODUCTS.find(function(x){ return x.codigo && x.codigo === cod; });
+  if(!p){
+    var t = normalizarNombreProd(cod);
+    var l = PRODUCTS.filter(function(x){ return normalizarNombreProd(x.name).indexOf(t) !== -1; });
+    if(l.length === 1) p = l[0];
+  }
+  if(p) agregarProductoTraspaso(p.name);
+}
+function agregarProductoTraspaso(nombre){
+  var ya = _trLista.find(function(x){ return x.n === nombre; });
+  if(ya) ya.cant = (parseInt(ya.cant)||0) + 1;
+  else _trLista.push({ n: nombre, cant: 1 });
+  var inp = document.getElementById('trBuscar'); if(inp){ inp.value = ''; inp.focus(); }
+  var res = document.getElementById('trResultados'); if(res) res.innerHTML = '';
+  pintarListaTraspaso();
+}
+function cambiarCantTraspaso(i, v){ if(_trLista[i]) _trLista[i].cant = v; }
+function quitarProductoTraspaso(i){ _trLista.splice(i, 1); pintarListaTraspaso(); }
+function pintarListaTraspaso(){
+  var el = document.getElementById('trListaCont');
+  if(!el) return;
+  if(!_trLista.length){ el.innerHTML = ''; return; }
+  var inv = getStockInv();
+  el.innerHTML = _trLista.map(function(it, i){
+    var s = inv[it.n] ? inv[it.n].stock : 0;
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid rgba(56,189,248,.45);border-radius:6px;padding:9px 10px;margin-bottom:6px">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.85rem;color:var(--white)">'+escBaja(it.n)+'</div><div style="font-size:.68rem;color:var(--gray)">Hay acá: '+s+'</div></div>'+
+      '<input type="number" min="1" inputmode="numeric" value="'+escBaja(it.cant)+'" oninput="cambiarCantTraspaso('+i+',this.value)" style="width:70px;background:#111;border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:8px;font-size:.9rem;text-align:center">'+
+      '<span style="font-size:.72rem;color:var(--gray)">u.</span>'+
+      '<button type="button" onclick="quitarProductoTraspaso('+i+')" style="background:none;border:none;color:var(--gray);font-size:1rem;cursor:pointer">✕</button>'+
+    '</div>';
+  }).join('')+
+  '<input type="text" id="trNota" placeholder="Nota opcional — ej: lo lleva Martín en el auto" style="width:100%;box-sizing:border-box;background:#111;border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:9px;font-size:.8rem;margin:4px 0 8px">'+
+  '<button type="button" onclick="enviarTraspaso()" style="width:100%;background:#38bdf8;color:#04121c;border:none;border-radius:6px;padding:13px;font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;font-weight:700;cursor:pointer">🚚 Enviar '+(_trLista.length===1?'1 producto':_trLista.length+' productos')+' a '+trNombreLocal(trOtroLocal())+'</button>';
+}
+function enviarTraspaso(){
+  if(!_trLista.length) return;
+  var inv = getStockInv();
+  for(var i = 0; i < _trLista.length; i++){
+    var c = parseInt(_trLista[i].cant);
+    if(!c || c <= 0){ showToast('Cargá las unidades de '+_trLista[i].n, true); return; }
+    var hay = inv[_trLista[i].n] ? Number(inv[_trLista[i].n].stock)||0 : 0;
+    if(c > hay && !confirm('⚠ '+_trLista[i].n+': vas a enviar '+c+' y el sistema dice que acá hay '+hay+'.\n\n¿Lo enviás igual?')) return;
+  }
+  var otro = trNombreLocal(trOtroLocal());
+  var resumen = _trLista.map(function(it){ return '• '+it.n+': '+parseInt(it.cant)+' u.'; }).join('\n');
+  if(!confirm('¿Enviar a '+otro+'?\n\n'+resumen)) return;
+  var notaEl = document.getElementById('trNota');
+  var items = _trLista.map(function(it){
+    var p = PRODUCTS.find(function(x){ return x.name === it.n; });
+    var prod = null; try{ prod = p ? JSON.parse(JSON.stringify(p)) : null; }catch(e){}
+    return { n: it.n, cant: parseInt(it.cant), prod: prod };
+  });
+  var id = 'tr' + Date.now() + Math.random().toString(36).slice(2,6);
+  var doc = {
+    id: id, fecha: new Date().toISOString(), estado: 'enviado',
+    desde: trMiLocal(), hacia: trOtroLocal(), enviadoPor: trResp(),
+    nota: notaEl ? notaEl.value.trim() : '', items: items
+  };
+  trCol().doc(id).set(doc).catch(function(e){ showToast('⚠ No se pudo guardar el traspaso: '+(e && e.message || e), true); });
+  var mov = items.map(function(it){ return { n: it.n, cant: it.cant }; });
+  trSumarStock(mov, -1);
+  trAnotarMovimiento(mov, -1, 'A '+otro, 'Traspaso a '+otro+' · '+mov.length+' producto'+(mov.length===1?'':'s'));
+  _trLista = [];
+  autoSaveNow();
+  showToast('🚚 Traspaso enviado a '+otro+' — cuando llegue, lo confirman allá');
+  renderRecepTraspaso();
+}
+function pintarTraspasosPendientes(){
+  var el = document.getElementById('trPorRecibirCont');
+  if(el){
+    var pr = trPorRecibir();
+    el.innerHTML = !pr.length ? '' :
+      '<div style="font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:2px;color:#38bdf8;margin-bottom:8px;text-transform:uppercase">📥 Por recibir</div>'+
+      pr.map(function(t){
+        return '<div style="background:rgba(56,189,248,.08);border:1.5px solid rgba(56,189,248,.7);border-radius:8px;padding:12px;margin-bottom:14px">'+
+          '<div style="font-size:.85rem;color:var(--white);font-weight:700">De '+trNombreLocal(t.desde)+' · '+trFechaCorta(t.fecha)+'</div>'+
+          '<div style="font-size:.72rem;color:var(--gray);margin-bottom:8px">Lo envió '+escBaja(t.enviadoPor||'—')+(t.nota?' · '+escBaja(t.nota):'')+'</div>'+
+          '<div style="font-size:.7rem;color:var(--light);margin-bottom:6px">Contá lo que llegó. Si algo vino distinto, corregí el número:</div>'+
+          (t.items||[]).map(function(it, k){
+            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,.06)">'+
+              '<span style="flex:1;font-size:.84rem;color:var(--white)">'+escBaja(it.n)+'</span>'+
+              '<span style="font-size:.7rem;color:var(--gray)">enviaron '+it.cant+'</span>'+
+              '<input type="number" min="0" inputmode="numeric" id="trRec_'+t._id+'_'+k+'" value="'+it.cant+'" style="width:64px;background:#111;border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:7px;font-size:.88rem;text-align:center">'+
+            '</div>';
+          }).join('')+
+          '<button type="button" onclick="recibirTraspaso(\''+t._id+'\')" style="width:100%;margin-top:10px;background:var(--green);color:#04170b;border:none;border-radius:6px;padding:12px;font-family:Oswald,sans-serif;font-size:.88rem;letter-spacing:1px;font-weight:700;cursor:pointer">✅ Confirmar lo que llegó</button>'+
+        '</div>';
+      }).join('');
+  }
+  var en = document.getElementById('trEnviadosCont');
+  if(en){
+    var ep = trEnviadosPend();
+    en.innerHTML = !ep.length ? '' :
+      '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);margin:18px 0 8px;text-transform:uppercase">Enviados, todavía sin confirmar</div>'+
+      ep.map(function(t){
+        var n = (t.items||[]).reduce(function(a, it){ return a + it.cant; }, 0);
+        return '<div style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:9px 10px;margin-bottom:6px">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:.82rem;color:var(--white)">A '+trNombreLocal(t.hacia)+' · '+(t.items||[]).length+((t.items||[]).length===1?' producto':' productos')+' ('+n+' u.)</div>'+
+          '<div style="font-size:.68rem;color:var(--gray)">'+trFechaCorta(t.fecha)+' · '+escBaja(t.enviadoPor||'')+' · ⏳ esperando que lo confirmen</div></div>'+
+          '<button type="button" onclick="anularTraspaso(\''+t._id+'\')" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;padding:6px 10px;font-size:.72rem;cursor:pointer">Anular</button>'+
+        '</div>';
+      }).join('');
+  }
+}
+// Confirmar y anular van "con candado": si el otro local lo anuló o ya lo
+// recibió un segundo antes, no se aplica dos veces.
+function trCambiarEstado(id, estadoNuevo, extra){
+  var ref = trCol().doc(id);
+  return window.__lrDB.runTransaction(function(tx){
+    return tx.get(ref).then(function(d){
+      if(!d.exists) throw new Error('El traspaso ya no existe');
+      var t = d.data();
+      if(t.estado !== 'enviado') throw new Error(t.estado === 'recibido' ? 'Ya fue recibido' : 'Ya fue anulado');
+      tx.update(ref, Object.assign({ estado: estadoNuevo }, extra));
+      return t;
+    });
+  });
+}
+function recibirTraspaso(id){
+  var t = _trPendientes.find(function(x){ return x._id === id; });
+  if(!t) return;
+  var recibidos = [], difs = [];
+  for(var k = 0; k < (t.items||[]).length; k++){
+    var it = t.items[k];
+    var inp = document.getElementById('trRec_'+id+'_'+k);
+    var v = inp ? parseInt(inp.value) : it.cant;
+    if(isNaN(v) || v < 0){ showToast('Revisá la cantidad de '+it.n, true); return; }
+    recibidos.push({ n: it.n, cant: v });
+    if(v !== it.cant) difs.push('• '+it.n+': enviaron '+it.cant+', llegaron '+v);
+  }
+  var msg = difs.length ? '⚠ Llegó distinto a lo enviado:\n\n'+difs.join('\n')+'\n\nQueda anotada la diferencia para el dueño. ¿Confirmás?' : '¿Confirmás que llegó todo bien? ('+recibidos.length+' productos)';
+  if(!confirm(msg)) return;
+  trCambiarEstado(id, 'recibido', {
+    recibidoPor: trResp(), recibidoEn: new Date().toISOString(),
+    recibidos: recibidos, conDiferencia: difs.length > 0
+  }).then(function(){
+    // Productos que todavía no existen en este local: se crean igual que en el otro.
+    var nuevos = [];
+    t.items.forEach(function(it){
+      if(it.prod && !PRODUCTS.some(function(p){ return p.name === it.n; })) nuevos.push(it.prod);
+    });
+    if(nuevos.length && window.__lrSaveProductos){
+      nuevos.forEach(function(p){ PRODUCTS.push(p); });
+      window.__lrSaveProductos(PRODUCTS, [], nuevos.map(function(p){ return p.name; }));
+    }
+    var mov = recibidos.filter(function(r){ return r.cant > 0; });
+    var de = trNombreLocal(t.desde);
+    trSumarStock(mov, 1);
+    trAnotarMovimiento(mov, 1, 'De '+de, 'Traspaso de '+de+' · '+mov.length+' producto'+(mov.length===1?'':'s'));
+    autoSaveNow();
+    showToast(difs.length ? '✅ Recibido (con diferencia anotada)' : '✅ Traspaso recibido — stock actualizado');
+    renderRecepTraspaso();
+  }).catch(function(e){
+    var m = (e && e.message) || String(e);
+    showToast(/offline|unavailable|network/i.test(m) ? '⚠ Sin internet: confirmalo cuando vuelva la conexión' : '⚠ '+m, true);
+  });
+}
+function anularTraspaso(id){
+  var t = _trPendientes.find(function(x){ return x._id === id; });
+  if(!t) return;
+  if(!confirm('¿Anular este traspaso a '+trNombreLocal(t.hacia)+'?\n\nLa mercadería vuelve al stock de acá.')) return;
+  trCambiarEstado(id, 'anulado', { anuladoPor: trResp(), anuladoEn: new Date().toISOString() }).then(function(){
+    var mov = t.items.map(function(it){ return { n: it.n, cant: it.cant }; });
+    trSumarStock(mov, 1);
+    trAnotarMovimiento(mov, 1, 'Anulado', 'Traspaso anulado (vuelve al stock) · '+mov.length+' producto'+(mov.length===1?'':'s'));
+    autoSaveNow();
+    showToast('↩ Traspaso anulado — el stock volvió');
+    renderRecepTraspaso();
+  }).catch(function(e){
+    var m = (e && e.message) || String(e);
+    showToast(/offline|unavailable|network/i.test(m) ? '⚠ Sin internet: anulalo cuando vuelva la conexión' : '⚠ '+m, true);
+  });
+}
+function pintarHistorialTraspasos(){
+  var el = document.getElementById('trHistorialCont');
+  if(!el) return;
+  trCol().orderBy('fecha', 'desc').limit(30).get().then(function(snap){
+    var lista = [];
+    snap.forEach(function(d){ var x = d.data(); if(x.estado !== 'enviado') lista.push(x); });
+    if(!lista.length){ el.innerHTML = '<div style="font-size:.75rem;color:var(--gray)">Todavía no hubo traspasos.</div>'; return; }
+    el.innerHTML = lista.slice(0, 15).map(function(t){
+      var salio = t.desde === trMiLocal();
+      var difs = [];
+      if(t.estado === 'recibido' && t.recibidos){
+        t.items.forEach(function(it, k){ var r = t.recibidos[k]; if(r && r.cant !== it.cant) difs.push(escBaja(it.n)+': '+it.cant+' → '+r.cant); });
+      }
+      var estado = t.estado === 'anulado' ? '<span style="color:var(--gray)">anulado</span>' :
+        (difs.length ? '<span style="color:var(--red)">⚠ llegó distinto</span>' : '<span style="color:var(--green)">✓ recibido</span>');
+      return '<div style="background:var(--card);border:1px solid '+(difs.length?'rgba(210,32,31,.5)':'var(--border)')+';border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--white)"><span>'+(salio?'📤 A '+trNombreLocal(t.hacia):'📥 De '+trNombreLocal(t.desde))+' · '+(t.items||[]).length+((t.items||[]).length===1?' producto':' productos')+'</span>'+estado+'</div>'+
+        '<div style="font-size:.68rem;color:var(--gray)">'+trFechaCorta(t.fecha)+' · envió '+escBaja(t.enviadoPor||'—')+(t.recibidoPor?' · recibió '+escBaja(t.recibidoPor):'')+'</div>'+
+        '<div style="font-size:.7rem;color:var(--light);margin-top:3px">'+(t.items||[]).map(function(it){ return escBaja(it.n)+' ×'+it.cant; }).join(' · ')+'</div>'+
+        (difs.length ? '<div style="font-size:.7rem;color:#f87171;margin-top:3px">Diferencia: '+difs.join(' · ')+'</div>' : '')+
+      '</div>';
+    }).join('');
+  }).catch(function(){ el.innerHTML = '<div style="font-size:.75rem;color:var(--gray)">No se pudo cargar el historial (¿sin internet?).</div>'; });
+}
 // ── PASAR A LIMAY 2 ───────────────────────────────────────────────────────
 // Desde el admin de Limay Rock 1: se tildan productos y proveedores y se
 // copian a Limay Rock 2 (con precio, costo, código, categoría y foto; el stock
