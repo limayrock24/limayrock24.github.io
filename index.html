@@ -2600,6 +2600,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Limay Rock">
+<script>
+// Puesto Delivery: al instalarlo ("Agregar a pantalla principal") tiene que
+// abrir el puesto, no el panel de venta, y con su propio nombre.
+if(/[?&]puesto=1/.test(location.search)){
+  document.querySelector('link[rel="manifest"]').href = 'manifest-puesto.json';
+  var _amt = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if(_amt) _amt.content = 'Puesto Deli';
+}
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Barlow:wght@400;500;600;700&display=swap');
 :root{
