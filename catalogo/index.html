@@ -905,6 +905,11 @@ function unificarCombos(){
   _combosCopia.forEach(function(cb){ porNombre[cb.nombre] = cb; });
   _combosDirecto.forEach(function(cb){ porNombre[cb.nombre] = cb; }); // la fuente real manda
   var lista = Object.keys(porNombre).map(function(n){ return porNombre[n]; });
+  // El orden que eligió el local (▲▼ en el admin); los que no tienen, al final por nombre.
+  lista.sort(function(a, b){
+    var oa = (typeof a.orden === 'number') ? a.orden : 1e9, ob = (typeof b.orden === 'number') ? b.orden : 1e9;
+    return (oa - ob) || String(a.nombre).localeCompare(String(b.nombre), 'es');
+  });
   PROMOS = lista;
   COMBOS = lista;
   if(lista.length) window.__lrErrorCombos = null;
@@ -919,7 +924,10 @@ function normalizarCombo(d){
     descripcion: d.descripcion || '',
     items: d.items || [],
     imgUrl: d.imgUrl || null,
-    armado: !!d.armado
+    armado: !!d.armado,
+    destacado: !!d.destacado,
+    etiquetaDestacado: d.etiquetaDestacado || '',
+    orden: (typeof d.orden === 'number') ? d.orden : null
   };
 }
 
@@ -1175,8 +1183,33 @@ function renderList(){
         '</div>';
       }).join('');
 
-      if(htmlDestacadosSueltos || htmlGrupos){
-        htmlImperdibles = '<div class="cat-title">🔥 Imperdibles hoy</div>' + htmlDestacadosSueltos + htmlGrupos;
+      // Combos destacados: primero de todo, en tarjeta grande.
+      var htmlCombosDest = (typeof COMBOS !== 'undefined' ? COMBOS : []).map(function(cb, i){
+        if(!cb.destacado) return '';
+        var sinStock = comboArmadoSinStock(cb);
+        var enCarrito = comboCantEnCarrito(cb.nombre);
+        var tieneVariable = (cb.items||[]).some(function(it){ return it.tipo === 'variable'; });
+        var imgHtml = cb.imgUrl
+          ? '<img class="imperdible-thumb" src="'+cb.imgUrl+'" alt="" onclick="event.stopPropagation();ampliarImagen(\''+escJs(cb.imgUrl)+'\',\''+escJs(cb.nombre)+'\')" style="cursor:pointer;'+(sinStock && !enCarrito?'opacity:.35':'')+'">'
+          : '<div class="imperdible-thumb-placeholder" style="font-size:1.8rem">'+(cb.emoji||'🎁')+'</div>';
+        var detalle = (cb.items||[]).map(function(it){ return it.tipo === 'variable' ? (it.etiqueta || 'elegís sabor') : textoItemCombo(it); }).join(' + ');
+        var badgeHtml = '<div class="imperdible-badge">'+(cb.etiquetaDestacado || '🎁 Combo')+'</div>';
+        var ctrlHtml = (sinStock && !enCarrito)
+          ? '<span class="sin-stock-tag">Sin stock</span>'
+          : '<div class="qty-ctrl">'+
+              (enCarrito ? '<button class="qty-btn" onclick="quitarComboPorIndice('+i+')">−</button><span class="qty-num">'+enCarrito+'</span>' : '')+
+              (sinStock ? '' : '<button class="qty-btn add" onclick="agregarComboPorIndice('+i+')">+</button>')+
+            '</div>';
+        return '<div class="imperdible-card" style="'+(sinStock && !enCarrito?'opacity:.55':'')+'">'+
+          imgHtml+
+          '<div class="prod-info">'+badgeHtml+'<div class="prod-name">'+(cb.emoji||'🎁')+' '+cb.nombre+'</div>'+
+            (detalle ? '<div style="font-size:.68rem;color:var(--gray);line-height:1.3;margin:1px 0 2px">'+detalle+'</div>' : '')+
+            '<div class="prod-price">'+fmt(cb.precio)+'</div></div>'+
+          ctrlHtml+
+        '</div>';
+      }).join('');
+      if(htmlCombosDest || htmlDestacadosSueltos || htmlGrupos){
+        htmlImperdibles = '<div class="cat-title">🔥 Imperdibles hoy</div>' + htmlCombosDest + htmlDestacadosSueltos + htmlGrupos;
       }
     }
   }catch(e){ console.error('Error dibujando imperdibles:', e); }
@@ -1196,7 +1229,7 @@ function renderList(){
     // sin filtro de categoría. Si el cliente está buscando algo puntual, los
     // combos en el medio del resultado estorban en vez de ayudar.
     var combosVisibles = (typeof COMBOS !== 'undefined' && COMBOS.length && !term)
-      ? COMBOS.slice()
+      ? COMBOS.filter(function(cb){ return !cb.destacado; })
       : [];
     if(combosVisibles.length && CATEGORIA_SEL === 'Todas'){
       htmlCombos = '<div class="cat-title">🎁 Combos y promos</div>' +

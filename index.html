@@ -2494,7 +2494,11 @@ if(window.__lrSucursal === 2){
           items: cb.items || [],
           activo: true,
           esCombo: true,
-          armado: !!cb.armado
+          armado: !!cb.armado,
+          destacado: !!cb.destacado,
+          etiquetaDestacado: cb.etiquetaDestacado || null,
+          orden: (typeof cb.orden === 'number') ? cb.orden : null,
+          imgUrl: cb.imgUrl || null
         }).catch(function(e){ console.error('No se pudo publicar el combo', cb.nombre, e); });
       });
 
@@ -2521,6 +2525,7 @@ if(window.__lrSucursal === 2){
   window.__lrDB.collection(window.__lrCOL.combos).onSnapshot(function(snap){
     var lista = [], mapa = {};
     snap.forEach(function(doc){ var d=doc.data(); lista.push(d); mapa[d.nombre]=JSON.parse(JSON.stringify(d)); });
+    lista.sort(ordenCombos);   // el orden que eligió el dueño (▲▼ en Admin → Combos)
     window.__lrCombosCache = lista;
     window.__lrSync.ultimoCombosSnapshot = mapa;
     window.__lrSync.combosListos = true;
@@ -6449,6 +6454,15 @@ body.night-on{background:#080005}
           <input type="text" inputmode="numeric" id="cmCodigo" placeholder="Escaneá el código de la cajita" autocomplete="off">
         </div>
         <div style="font-size:.7rem;color:var(--gray);line-height:1.45">Los productos de adentro se descuentan cuando registrás que armaste (botón <b>📦 Armé</b> en la lista de combos). Al venderlo solo baja la cantidad de armados. El contenido tiene que ser fijo (sin sabores a elegir).</div>
+      </div>
+    </div>
+    <div style="background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px 12px;margin-bottom:10px">
+      <label style="display:flex;align-items:flex-start;gap:10px;font-size:.78rem;color:var(--light);cursor:pointer">
+        <input type="checkbox" id="cmDestacado" onchange="document.getElementById('cmEtiquetaWrap').style.display=this.checked?'block':'none'" style="width:20px;height:20px;margin-top:1px;accent-color:var(--gold);cursor:pointer;flex-shrink:0">
+        <span>🔥 <b>Destacar en el catálogo web</b>: aparece primero, arriba de todo, en "Imperdibles hoy", en tarjeta grande.</span>
+      </label>
+      <div id="cmEtiquetaWrap" style="display:none;margin-top:8px">
+        <input type="text" id="cmEtiquetaDestacado" maxlength="30" placeholder="Etiqueta opcional (ej: 🎄 Especial Navidad)" style="width:100%;box-sizing:border-box">
       </div>
     </div>
     <div class="field">
@@ -30555,7 +30569,8 @@ function renderCombos() {
     card.innerHTML =
       '<div class="cc-icon" style="'+(combo.imgUrl?'width:44px;height:44px':'')+'">'+iconoGestion+'</div>'+
       '<div class="cc-body">'+
-        '<div class="cc-name">'+combo.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+'</div>'+
+        '<div class="cc-name">'+combo.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+
+          (combo.destacado?' <span style="font-size:.6rem;color:var(--gold);border:1px solid rgba(244,180,0,.6);border-radius:8px;padding:1px 6px;vertical-align:middle">🔥 Destacado</span>':'')+'</div>'+
         '<div class="cc-prods">'+(prodNames||'Sin productos')+'</div>'+
         (combo.armado ? (function(){
           var hay = stockComboArmado(combo);
@@ -30568,6 +30583,10 @@ function renderCombos() {
         })() : '')+
       '</div>'+
       '<div class="cc-price">'+fmt(combo.precio||0)+'</div>'+
+      '<div style="display:flex;flex-direction:column;gap:3px;margin-left:6px" onclick="event.stopPropagation()">'+
+        '<button title="Subir" '+(i===0?'disabled ':'')+'onclick="event.stopPropagation();moverCombo('+i+',-1)" style="background:none;border:1px solid var(--border);color:'+(i===0?'#444':'var(--light)')+';border-radius:4px;width:28px;height:22px;cursor:pointer;font-size:.7rem">▲</button>'+
+        '<button title="Bajar" '+(i===COMBOS.length-1?'disabled ':'')+'onclick="event.stopPropagation();moverCombo('+i+',1)" style="background:none;border:1px solid var(--border);color:'+(i===COMBOS.length-1?'#444':'var(--light)')+';border-radius:4px;width:28px;height:22px;cursor:pointer;font-size:.7rem">▼</button>'+
+      '</div>'+
       '<button onclick="event.stopPropagation();toggleComboActivo('+i+')" style="background:transparent;border:1px solid '+(pausado?'var(--green)':'var(--gray)')+';color:'+(pausado?'var(--green)':'var(--gray)')+';border-radius:4px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:.5px;white-space:nowrap;cursor:pointer;flex-shrink:0">'+(pausado?'▶ Activar':'⏸ Pausar')+'</button>';
     el.appendChild(card);
   });
@@ -30577,6 +30596,19 @@ function renderCombos() {
 // Pausa/activa un combo sin borrarlo: desaparece de la venta y del catálogo
 // web (sincronizarCombosConCatalogo ya filtra por activo), pero queda
 // guardado tal cual para reactivarlo cuando haga falta.
+// Orden de los combos: el que elige el dueño con ▲▼; los que no tienen, al final por nombre.
+function ordenCombos(a, b){
+  var oa = (a && typeof a.orden === 'number') ? a.orden : 1e9, ob = (b && typeof b.orden === 'number') ? b.orden : 1e9;
+  return (oa - ob) || String(a && a.nombre || '').localeCompare(String(b && b.nombre || ''), 'es');
+}
+function moverCombo(idx, dir){
+  var j = idx + dir;
+  if(j < 0 || j >= COMBOS.length) return;
+  var tmp = COMBOS[idx]; COMBOS[idx] = COMBOS[j]; COMBOS[j] = tmp;
+  COMBOS.forEach(function(c, k){ c.orden = k; });
+  saveCombos(COMBOS);
+  renderCombos();
+}
 function toggleComboActivo(idx) {
   var combo = COMBOS[idx];
   if(!combo) return;
@@ -31121,6 +31153,8 @@ function abrirComboModal(idx) {
     document.getElementById('cmActivo').checked = (combo.activo !== false);
     document.getElementById('cmArmado').checked = !!combo.armado;
     document.getElementById('cmCodigo').value = combo.codigo || '';
+    document.getElementById('cmDestacado').checked = !!combo.destacado;
+    document.getElementById('cmEtiquetaDestacado').value = combo.etiquetaDestacado || '';
     _cmProductos = (combo.items||[]).slice();
     if(tit) tit.textContent = 'Editar — '+combo.nombre;
     if(del) del.style.display = 'block';
@@ -31137,6 +31171,8 @@ function abrirComboModal(idx) {
     document.getElementById('cmActivo').checked = true;
     document.getElementById('cmArmado').checked = false;
     document.getElementById('cmCodigo').value = '';
+    document.getElementById('cmDestacado').checked = false;
+    document.getElementById('cmEtiquetaDestacado').value = '';
     _cmProductos = [];
     if(tit) tit.textContent = '🎁 Nuevo combo';
     if(del) del.style.display = 'none';
@@ -31147,6 +31183,7 @@ function abrirComboModal(idx) {
   }
   if(idxEl) idxEl.value = idx !== null ? idx : -1;
   cmToggleArmado();
+  document.getElementById('cmEtiquetaWrap').style.display = document.getElementById('cmDestacado').checked ? 'block' : 'none';
   renderCmProdList();
   actualizarCmResumen();
   document.getElementById('comboModalOverlay').classList.add('open');
@@ -31467,6 +31504,15 @@ function guardarComboModal() {
   }
   // Si se renombra un combo armado, su cantidad pasa al nombre nuevo.
   var anterior = (idx >= 0 && COMBOS[idx]) ? COMBOS[idx] : null;
+  if(document.getElementById('cmDestacado').checked){
+    data.destacado = true;
+    var etq = (document.getElementById('cmEtiquetaDestacado').value || '').trim();
+    if(etq) data.etiquetaDestacado = etq;
+  }
+  // Su lugar en la lista: el que tenía, o al final si es nuevo.
+  var maxOrden = COMBOS.reduce(function(m, c){ return Math.max(m, typeof c.orden === 'number' ? c.orden : -1); }, -1);
+  if(anterior){ if(typeof anterior.orden === 'number') data.orden = anterior.orden; }
+  else if(maxOrden >= 0) data.orden = maxOrden + 1;
   if(anterior && anterior.armado && anterior.nombre !== nombre){
     var invR = getStockInv(), kv = stockKeyCombo(anterior.nombre), kn = stockKeyCombo(nombre);
     if(invR[kv]){
