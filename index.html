@@ -2493,7 +2493,8 @@ if(window.__lrSucursal === 2){
           precio: cb.precio,
           items: cb.items || [],
           activo: true,
-          esCombo: true
+          esCombo: true,
+          armado: !!cb.armado
         }).catch(function(e){ console.error('No se pudo publicar el combo', cb.nombre, e); });
       });
 
@@ -6437,6 +6438,19 @@ body.night-on{background:#080005}
       <label for="cmActivo" style="font-size:.78rem;color:var(--light);cursor:pointer">Combo activo (aparece en venta y en el catálogo web)</label>
       <input type="checkbox" id="cmActivo" checked style="width:20px;height:20px;accent-color:var(--green);cursor:pointer">
     </div>
+    <div style="background:var(--dark);border:1px solid var(--border);border-radius:5px;padding:9px 12px;margin-bottom:10px">
+      <label style="display:flex;align-items:flex-start;gap:10px;font-size:.78rem;color:var(--light);cursor:pointer">
+        <input type="checkbox" id="cmArmado" onchange="cmToggleArmado()" style="width:20px;height:20px;margin-top:1px;accent-color:#38bdf8;cursor:pointer;flex-shrink:0">
+        <span>📦 <b>Combo armado</b> (cajita o pack que se arma antes y se vende cerrado). Tiene su propia cantidad y se puede escanear.</span>
+      </label>
+      <div id="cmArmadoCampos" style="display:none;margin-top:10px">
+        <div class="field" style="margin-bottom:6px">
+          <label>Código de barras (opcional)</label>
+          <input type="text" inputmode="numeric" id="cmCodigo" placeholder="Escaneá el código de la cajita" autocomplete="off">
+        </div>
+        <div style="font-size:.7rem;color:var(--gray);line-height:1.45">Los productos de adentro se descuentan cuando registrás que armaste (botón <b>📦 Armé</b> en la lista de combos). Al venderlo solo baja la cantidad de armados. El contenido tiene que ser fijo (sin sabores a elegir).</div>
+      </div>
+    </div>
     <div class="field">
       <label>Productos incluidos (<span id="cmProdCount">0</span>)</label>
       <div class="prov-add-search">
@@ -10072,6 +10086,12 @@ function anularVentaDirecto(id, alTerminar) {
     var inv = getStockInv();
     (v.items||[]).forEach(function(item){
       if(item.manual) return;
+      if(item.comboArmado && item.comboNombre) {
+        var kca = stockKeyCombo(item.comboNombre);
+        if(!inv[kca]) inv[kca] = { nombre: kca, stock: 0, minimo: 0 };
+        inv[kca].stock = (Number(inv[kca].stock)||0) + item.qty;
+        return;
+      }
       if(item.esCombo && item.comboItems) {
         // Combo: devolver stock de cada componente
         item.comboItems.forEach(function(ci){
@@ -19658,7 +19678,7 @@ function toggleMovDet(id) {
 }
 
 var MOV_ICONOS = {
-  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️', traspaso: '🔁',
+  ingreso: '📥', venta: '💰', consumo: '🧾', fiado: '📋', egreso: '💸', retiro: '💵', 'ingreso-caja': '💵', 'carga-virtual': '📱', prestamo: '💰', 'transfer-cuentas': '🔄', 'ajuste-stock': '📋', 'baja-stock': '🗑️', traspaso: '🔁', armado: '📦',
   'cobro-fiado': '✅', 'fiado-parcial': '📋', 'cambio-efectivo': '💱',
   'consignacion': '📦', 'cobro-consignacion': '✅', 'devolucion-consignacion': '↩', suelto: '📦'
 };
@@ -19670,7 +19690,7 @@ var MOV_COLORES = {
 };
 var MOV_LABELS = {
   ingreso: 'Ingreso de mercadería', venta: 'Venta', consumo: 'Consumo',
-  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)', traspaso: 'Traspaso entre locales',
+  fiado: 'Fiado', egreso: 'Egreso / Pago', retiro: 'Retiro de caja', 'ingreso-caja': 'Ingreso de caja', 'carga-virtual': 'Carga virtual', prestamo: 'Préstamo', 'transfer-cuentas': 'Transferencia entre cuentas', 'ajuste-stock': 'Corrección de stock (conteo)', 'baja-stock': 'Baja de stock (vencido/dañado)', traspaso: 'Traspaso entre locales', armado: 'Combos armados / desarmados',
   'cobro-fiado': 'Cobro de fiado', 'fiado-parcial': 'Fiado parcial', 'cambio-efectivo': 'Cambio de efectivo',
   'consignacion': 'Consignación', 'cobro-consignacion': 'Cobro de consignación', 'devolucion-consignacion': 'Devolución de consignación',
   suelto: 'Abierto para venta suelta'
@@ -19755,7 +19775,7 @@ function renderMovimientos() {
     // secciones distintas; adentro cada uno se distingue por su etiqueta.
     var coincideTipo;
     // Lo de mercadería (ingresos, correcciones, bajas) está en Productos → Movimientos.
-    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso') return false;
+    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado') return false;
     if(!tipoFil) coincideTipo = true;
     else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
     else if(tipoFil === 'consignaciones') coincideTipo = (m.tipo==='consignacion' || m.tipo==='cobro-consignacion' || m.tipo==='devolucion-consignacion');
@@ -20098,7 +20118,7 @@ function abrirArmarPedidoSinProveedor() {
   var inv = getStockInv();
   var nombresConProv = {};
   proveedores.forEach(function(pv){ (pv.productos||[]).forEach(function(n){ nombresConProv[n]=true; }); });
-  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n]; });
+  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n] && !esClaveCombo(n); });
   abrirArmarPedidoModal('Sin proveedor asignado', sinProvNombres);
 }
 
@@ -20735,7 +20755,7 @@ function renderPedidos() {
   // Productos con stock cargado pero sin proveedor asignado a ninguno
   var nombresConProv = {};
   proveedores.forEach(function(pv){ (pv.productos||[]).forEach(function(n){ nombresConProv[n]=true; }); });
-  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n]; });
+  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n] && !esClaveCombo(n); });
   if(sinProvNombres.length){
     renderProvCard({nombre:'Sin proveedor asignado', productos:sinProvNombres}, true);
   }
@@ -20787,7 +20807,7 @@ function exportarPedidosPDF() {
 
   var nombresConProv = {};
   proveedores.forEach(function(pv){ (pv.productos||[]).forEach(function(n){ nombresConProv[n]=true; }); });
-  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n]; });
+  var sinProvNombres = Object.keys(inv).filter(function(n){ return !nombresConProv[n] && !esClaveCombo(n); });
   seccionesHtml += tablaProveedor('Sin proveedor asignado', sinProvNombres, null, null);
 
   abrirVentanaPDF('Lista de Pedido — '+new Date().toLocaleDateString('es-AR'),
@@ -21621,6 +21641,9 @@ function procesarScan(codigo) {
     return;
   }
 
+  // Combo armado con su código (ej: la cajita)
+  var cbScan = comboArmadoPorCodigo(codigo);
+  if(cbScan) { addComboToCart(cbScan); return; }
   // Buscar producto por código
   var prod = PRODUCTS.find(function(p){ return p.codigo === codigo; });
   if(prod) {
@@ -23109,7 +23132,7 @@ function construirMovProductos(desde, hasta) {
   var bajasInfo = getStockMovs().filter(function(x){ return x.tipo === 'baja'; });
   var movs = getMovimientos().filter(function(m){
     var tm = new Date(m.fecha).getTime();
-    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso') && tm >= desde && tm <= hasta;
+    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado') && tm >= desde && tm <= hasta;
   }).slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
   var lote = null;
   movs.forEach(function(m){
@@ -23129,10 +23152,10 @@ function construirMovProductos(desde, hasta) {
       else { lote = { t:t, tUlt:t, cat:'ingreso', icono:'📥', quien:m.responsable, items:[it], nombres:[m.producto] }; ev.push(lote); }
       return;
     }
-    if(m.tipo === 'traspaso'){
+    if(m.tipo === 'traspaso' || m.tipo === 'armado'){
       lote = null;
       var trIt = (m.items||[]).map(function(it){ return { nombre: it.nombre, txt: (it.qty>0?'+':'')+it.qty+' u.', extra: (it.stock!=null ? 'queda '+it.stock : '') }; });
-      ev.push({ t:t, cat:'traspaso', icono:'🔁', quien:m.responsable, titulo: m.resumen || 'Traspaso',
+      ev.push({ t:t, cat:m.tipo, icono:(m.tipo === 'armado' ? '📦' : '🔁'), quien:m.responsable, titulo: m.resumen || 'Traspaso',
         items: trIt.length ? trIt : null, nombres: (m.items||[]).map(function(it){ return it.nombre; }) });
       return;
     }
@@ -23208,7 +23231,7 @@ function renderLogCatalogo() {
   if(per) per.innerHTML = [['hoy','Hoy'],['semana','Esta semana']].map(function(x){ return chip('periodo', x[0], x[1], _movProdPeriodo===x[0]); }).join('') +
     '<select class="sel-mes" onchange="cambiarMovProd(\'periodo\', this.value)" style="flex:1;background:'+(periodoEsMes(_movProdPeriodo)?'var(--gold)':'none')+';color:'+(periodoEsMes(_movProdPeriodo)?'var(--black)':'var(--gray)')+';border:1px solid '+(periodoEsMes(_movProdPeriodo)?'var(--gold)':'var(--border)')+';border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:.5px">'+opcionesMesHtml(periodoEsMes(_movProdPeriodo)?_movProdPeriodo:'mes')+'</select>';
   var tip = document.getElementById('movProdTipos');
-  if(tip) tip.innerHTML = [['todo','Todo'],['ingreso','📥 Ingresos'],['correccion','🔧 Correcciones'],['baja','🗑 Bajas'],['traspaso','🔁 Traspasos'],['precio','💲 Precios'],['nuevo','✚ Nuevos']].map(function(x){ return chip('tipo', x[0], x[1], _movProdTipo===x[0]); }).join('');
+  if(tip) tip.innerHTML = [['todo','Todo'],['ingreso','📥 Ingresos'],['correccion','🔧 Correcciones'],['baja','🗑 Bajas'],['traspaso','🔁 Traspasos'],['armado','📦 Armados'],['precio','💲 Precios'],['nuevo','✚ Nuevos']].map(function(x){ return chip('tipo', x[0], x[1], _movProdTipo===x[0]); }).join('');
 
   var term = ((document.getElementById('movProdBuscar')||{}).value || '').toLowerCase().trim();
   var rgMP = getFechasRango(_movProdPeriodo);
@@ -23441,7 +23464,7 @@ function renderDashboard() {
 
   if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁'};
+    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
     // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
@@ -23510,10 +23533,10 @@ function renderDashboard() {
       // sigue mostrando la plata, para compararla con lo que se le pagó.
       var esStockMov = function(t, m){
         if(t === 'ingreso') return !!(m && m.producto) && !(m.total > 0);
-        return t === 'ajuste-stock' || t === 'baja-stock' || t === 'traspaso';
+        return t === 'ajuste-stock' || t === 'baja-stock' || t === 'traspaso' || t === 'armado';
       };
       var textoStock = function(m){
-        var nom = {'ajuste-stock':'Ajuste de stock', 'baja-stock':'Baja de stock', 'ingreso':'Ingreso de mercadería', 'traspaso':'Traspaso'}[m.tipo] || m.tipo;
+        var nom = {'ajuste-stock':'Ajuste de stock', 'baja-stock':'Baja de stock', 'ingreso':'Ingreso de mercadería', 'traspaso':'Traspaso', 'armado':'Combos armados'}[m.tipo] || m.tipo;
         var dif = Number(m.cantidad||0);
         var cambio = (m.stockAntes != null && m.stockDespues != null) ? ' ('+m.stockAntes+' → '+m.stockDespues+')' : '';
         return {texto: nom+': '+(m.producto || m.resumen || '—')+cambio, unidades: (dif>0?'+':'')+dif+' u.'};
@@ -23667,7 +23690,7 @@ function renderDashboard() {
 
     '<div class="dash-section-title">⚠ Alertas</div>'+
     (function(){ var sf = productosSinFichaStock(); return sf.length ? '<div class="dash-alert danger" onclick="crearFichasStockFaltantes()" style="cursor:pointer">📦 '+sf.length+' producto'+(sf.length>1?'s':'')+' SIN FICHA DE STOCK (figuran siempre disponibles en el catálogo) — '+sf.slice(0,3).join(', ')+(sf.length>3?'...':'')+' · tocá para crearlas</div>' : ''; })()+
-    (sinStock.length>0?'<div class="dash-alert danger" data-tab="stock" style="cursor:pointer">🔴 '+sinStock.length+' SIN STOCK — '+sinStock.slice(0,3).map(function(a){return a.nombre;}).join(', ')+(sinStock.length>3?'...':'')+'</div>':'')+
+    (sinStock.length>0?'<div class="dash-alert danger" data-tab="stock" style="cursor:pointer">🔴 '+sinStock.length+' SIN STOCK — '+sinStock.slice(0,3).map(function(a){return nombreVisibleStock(a.nombre);}).join(', ')+(sinStock.length>3?'...':'')+'</div>':'')+
     (pocoStock.length>0?'<div class="dash-alert warn" data-tab="stock" style="cursor:pointer">🟡 '+pocoStock.length+' con poco stock</div>':'')+
     (sinStock.length===0&&pocoStock.length===0?'<div class="dash-alert ok">✓ Sin alertas de stock</div>':'')+
     (fiadosPend.length>0?'<div class="dash-alert warn" data-tab="fiados" style="cursor:pointer">💳 '+fiadosPend.length+' fiado'+(fiadosPend.length>1?'s':'')+' pendientes — '+fmt(totalFiado)+'</div>':'')+
@@ -29639,8 +29662,9 @@ function cargarPedidoAlCarrito(id) {
   // tocado desde el panel de venta — se cobra el precio del combo y el stock de
   // cada producto que lo compone se descuenta por separado.
   (pedido.combos||[]).forEach(function(cb){
+    var real = getCombos().find(function(x){ return x && x.nombre === cb.nombre; });
     for(var n = 0; n < (cb.cantidad||1); n++){
-      cart.push({
+      var lineaCb = {
         name: (cb.emoji||'🎁')+' '+cb.nombre,
         precio: cb.precio,
         qty: 1,
@@ -29648,7 +29672,9 @@ function cargarPedidoAlCarrito(id) {
         esCombo: true,
         comboItems: (cb.items||[]).slice(),
         cat: 'Combo'
-      });
+      };
+      if(real && real.armado){ lineaCb.comboArmado = true; lineaCb.comboNombre = real.nombre; }
+      cart.push(lineaCb);
     }
   });
 
@@ -30132,6 +30158,7 @@ function limpiarProductosFantasma() {
     // En el stock el nombre tiene que coincidir EXACTO con el del producto
     // (así se lo busca al vender o cargar): una ficha con otra mayúscula o un
     // espacio de más es una ficha vieja que no usa nadie, aunque se "parezca".
+    if(esClaveCombo(k)) return;   // cantidad de un combo armado, no es un producto
     if(!PRODUCTS.some(function(p){ return p && p.name === k; })) plan.stock.push(k);
   });
 
@@ -30530,6 +30557,15 @@ function renderCombos() {
       '<div class="cc-body">'+
         '<div class="cc-name">'+combo.nombre+(pausado?' <span style="color:var(--gray);font-weight:400;font-size:.65rem">(pausado)</span>':'')+'</div>'+
         '<div class="cc-prods">'+(prodNames||'Sin productos')+'</div>'+
+        (combo.armado ? (function(){
+          var hay = stockComboArmado(combo);
+          return '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px" onclick="event.stopPropagation()">'+
+            '<span style="font-size:.72rem;font-weight:700;color:'+(hay>0?'#38bdf8':'var(--red)')+'">📦 '+(hay>0?'Armadas: '+hay:'SIN STOCK')+'</span>'+
+            (combo.codigo ? '<span style="font-size:.62rem;color:var(--gray)">· cód. '+combo.codigo+'</span>' : '')+
+            '<button onclick="event.stopPropagation();armarCombos('+i+')" style="background:rgba(56,189,248,.12);border:1px solid #38bdf8;color:#38bdf8;border-radius:4px;padding:3px 9px;font-size:.66rem;cursor:pointer">📦 Armé</button>'+
+            '<button onclick="event.stopPropagation();desarmarCombos('+i+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 9px;font-size:.66rem;cursor:pointer">↩ Desarmé</button>'+
+          '</div>';
+        })() : '')+
       '</div>'+
       '<div class="cc-price">'+fmt(combo.precio||0)+'</div>'+
       '<button onclick="event.stopPropagation();toggleComboActivo('+i+')" style="background:transparent;border:1px solid '+(pausado?'var(--green)':'var(--gray)')+';color:'+(pausado?'var(--green)':'var(--gray)')+';border-radius:4px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:.5px;white-space:nowrap;cursor:pointer;flex-shrink:0">'+(pausado?'▶ Activar':'⏸ Pausar')+'</button>';
@@ -30585,7 +30621,11 @@ function buildCombosGrid() {
     btn.innerHTML =
       '<div class="cf-icon" style="'+(combo.imgUrl?'width:38px;height:38px':'')+'">'+iconoCombo+'</div>'+
       '<div class="cf-name">'+combo.nombre+'</div>'+
-      '<div class="cf-price">'+fmt(combo.precio||0)+'</div>';
+      '<div class="cf-price">'+fmt(combo.precio||0)+'</div>'+
+      (combo.armado ? (stockComboArmado(combo) > 0
+        ? '<div style="font-size:.58rem;color:#38bdf8;margin-top:2px">📦 quedan '+stockComboArmado(combo)+'</div>'
+        : '<div style="font-size:.58rem;color:var(--red);font-weight:700;margin-top:2px">SIN STOCK</div>') : '');
+    if(combo.armado && stockComboArmado(combo) <= 0) btn.style.opacity = '.6';
     btn.onclick = function() { addComboToCart(combo); };
     grid.appendChild(btn);
   });
@@ -30715,7 +30755,7 @@ var _combosSeparados = {1:{}, 2:{}};
 function armarCombosAuto(arr){
   var key = arr === cart2 ? 2 : 1;
   if(arr === cart && _pedidoWebEnCarrito) return [];
-  var combos = getCombos().filter(function(cb){ return cb && cb.activo !== false && cb.nombre && !_combosSeparados[key][cb.nombre]; })
+  var combos = getCombos().filter(function(cb){ return cb && cb.activo !== false && cb.nombre && !cb.armado && !_combosSeparados[key][cb.nombre]; })
     .sort(function(a,b){ return _unidadesCombo(b) - _unidadesCombo(a); });
   // 1) Se desarman los combos que se armaron solos, para recalcular todo de
   // cero (si no, el primer combo que se completaba se quedaba con productos
@@ -30798,6 +30838,95 @@ function separarComboAuto(arr, h){
   showToast('✂ Combo separado: quedan los productos sueltos');
 }
 
+// ── COMBOS ARMADOS (cajita/pack que se arma antes, con código y stock propio) ──
+// Los productos de adentro se descuentan del stock cuando se registra que se
+// armaron (📦 Armé en Admin → Combos). Al vender, solo baja la cantidad de
+// cajitas. Su stock vive en el inventario con la clave "combo:<nombre>".
+function stockKeyCombo(nombre){ return 'combo:' + nombre; }
+function esClaveCombo(k){ return String(k||'').indexOf('combo:') === 0; }
+// Nombre para mostrar en alertas: "combo:Cajita" → "📦 Cajita".
+function nombreVisibleStock(n){ return esClaveCombo(n) ? '📦 ' + String(n).slice(6) : n; }
+function stockComboArmado(cb){
+  var e = getStockInv()[stockKeyCombo(cb.nombre)];
+  return e ? (Number(e.stock) || 0) : 0;
+}
+function comboArmadoPorCodigo(cod){
+  cod = String(cod||'').trim();
+  if(!cod) return null;
+  return getCombos().find(function(cb){ return cb && cb.armado && cb.codigo && String(cb.codigo) === cod && cb.activo !== false; }) || null;
+}
+// Productos de adentro con stock (los manuales no llevan stock).
+function _itemsStockCombo(cb){ return (cb.items||[]).filter(function(it){ return it && it.tipo !== 'manual' && it.tipo !== 'variable' && it.nombre; }); }
+function _movArmado(items, resumen){
+  var movs = getMovimientos();
+  movs.push({ id: Date.now() + Math.random(), fecha: new Date().toISOString(), tipo: 'armado', items: items,
+    cantidad: 0, resumen: resumen, responsable: currentEmp ? currentEmp.nombre : 'Admin' });
+  if(movs.length > 2000) movs = movs.slice(-2000);
+  saveMovimientos(movs);
+}
+function armarCombos(idx){
+  var cb = COMBOS[idx];
+  if(!cb || !cb.armado) return;
+  var n = parseInt(prompt('📦 ¿Cuántas "'+cb.nombre+'" armaste?\n\nSe descuentan del stock los productos que lleva cada una.', '1'), 10);
+  if(!n || n <= 0) return;
+  var inv = getStockInv(), faltan = [], lineas = [];
+  _itemsStockCombo(cb).forEach(function(it){
+    var usa = (Number(it.qty)||1) * n, hay = inv[it.nombre] ? (Number(inv[it.nombre].stock)||0) : 0;
+    lineas.push('• '+it.nombre+': usa '+usa+' (hay '+hay+' → quedan '+(hay-usa)+')');
+    if(usa > hay) faltan.push(it.nombre);
+  });
+  var msg = '¿Registrás que armaste '+n+' "'+cb.nombre+'"?\n\n'+lineas.join('\n')+
+    (faltan.length ? '\n\n⚠ No alcanza el stock de: '+faltan.join(', ')+'. Si igual las armaste, el stock de esos productos queda en negativo hasta que lo corrijas.' : '');
+  if(!confirm(msg)) return;
+  var movItems = [];
+  _itemsStockCombo(cb).forEach(function(it){
+    var usa = (Number(it.qty)||1) * n;
+    if(!inv[it.nombre]) inv[it.nombre] = { nombre: it.nombre, stock: 0, minimo: 0 };
+    inv[it.nombre].stock = (Number(inv[it.nombre].stock)||0) - usa;
+    movItems.push({ nombre: it.nombre, qty: -usa, stock: inv[it.nombre].stock });
+  });
+  var k = stockKeyCombo(cb.nombre);
+  if(!inv[k]) inv[k] = { nombre: k, stock: 0, minimo: 0 };
+  inv[k].stock = (Number(inv[k].stock)||0) + n;
+  movItems.unshift({ nombre: (cb.emoji||'🎁')+' '+cb.nombre, qty: n, stock: inv[k].stock });
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Armado de '+n+' '+cb.nombre);
+  _movArmado(movItems, 'Armado: '+n+' × '+cb.nombre);
+  autoSaveNow();
+  renderCombos();
+  if(typeof renderInventario === 'function') try{ renderInventario(); }catch(e){}
+  showToast('📦 '+n+' "'+cb.nombre+'" armadas — hay '+inv[k].stock);
+}
+function desarmarCombos(idx){
+  var cb = COMBOS[idx];
+  if(!cb || !cb.armado) return;
+  var hay = stockComboArmado(cb);
+  if(hay <= 0){ showToast('No hay "'+cb.nombre+'" armadas para desarmar', true); return; }
+  var n = parseInt(prompt('↩ ¿Cuántas "'+cb.nombre+'" desarmaste? (hay '+hay+')\n\nLos productos de adentro vuelven al stock.', '1'), 10);
+  if(!n || n <= 0) return;
+  if(n > hay){ showToast('Solo hay '+hay+' armadas', true); return; }
+  if(!confirm('¿Registrás que desarmaste '+n+' "'+cb.nombre+'"?\n\nLos productos de adentro vuelven al stock.')) return;
+  var inv = getStockInv(), movItems = [];
+  _itemsStockCombo(cb).forEach(function(it){
+    var vuelve = (Number(it.qty)||1) * n;
+    if(!inv[it.nombre]) inv[it.nombre] = { nombre: it.nombre, stock: 0, minimo: 0 };
+    inv[it.nombre].stock = (Number(inv[it.nombre].stock)||0) + vuelve;
+    movItems.push({ nombre: it.nombre, qty: vuelve, stock: inv[it.nombre].stock });
+  });
+  var k = stockKeyCombo(cb.nombre);
+  inv[k].stock = (Number(inv[k].stock)||0) - n;
+  movItems.unshift({ nombre: (cb.emoji||'🎁')+' '+cb.nombre, qty: -n, stock: inv[k].stock });
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Desarmado de '+n+' '+cb.nombre);
+  _movArmado(movItems, 'Desarmado: '+n+' × '+cb.nombre);
+  autoSaveNow();
+  renderCombos();
+  showToast('↩ '+n+' "'+cb.nombre+'" desarmadas — hay '+inv[k].stock);
+}
+function cmToggleArmado(){
+  var on = document.getElementById('cmArmado').checked;
+  document.getElementById('cmArmadoCampos').style.display = on ? 'block' : 'none';
+}
 function addComboToCart(combo) {
   var grupos = (combo.items||[]).filter(function(it){ return it.tipo === 'variable'; });
   if(grupos.length) {
@@ -30812,6 +30941,11 @@ function addComboToCart(combo) {
 function agregarComboResueltoAlCarrito(combo, itemsResueltos) {
   var inv = getStockInv();
   var warnings = [];
+  if(combo.armado){
+    var hayA = stockComboArmado(combo), yaEnCarrito = 0;
+    cart.forEach(function(i){ if(i.comboArmado && i.comboNombre === combo.nombre) yaEnCarrito += i.qty; });
+    if(hayA - yaEnCarrito <= 0) showToast('⚠️ No quedan "'+combo.nombre+'" armadas en el sistema (hay '+hayA+')', true);
+  } else
   (itemsResueltos||[]).forEach(function(item) {
     var stockActual = inv[item.nombre] ? inv[item.nombre].stock : undefined;
     if(stockActual !== undefined && stockActual < item.qty) {
@@ -30828,6 +30962,7 @@ function agregarComboResueltoAlCarrito(combo, itemsResueltos) {
     esCombo: true,
     comboItems: itemsResueltos||[]
   };
+  if(combo.armado){ cartItem.comboArmado = true; cartItem.comboNombre = combo.nombre; }
   // Dos combos iguales pero con distinto sabor elegido NO se agrupan en la
   // misma línea — si no, se perdería cuál sabor corresponde a cuál unidad.
   var existing = cart.find(function(i){
@@ -30984,6 +31119,8 @@ function abrirComboModal(idx) {
     var precioEl = document.getElementById('cmPrecio');
     if(precioEl) { precioEl.value = (combo.precio||0).toLocaleString('es-AR'); }
     document.getElementById('cmActivo').checked = (combo.activo !== false);
+    document.getElementById('cmArmado').checked = !!combo.armado;
+    document.getElementById('cmCodigo').value = combo.codigo || '';
     _cmProductos = (combo.items||[]).slice();
     if(tit) tit.textContent = 'Editar — '+combo.nombre;
     if(del) del.style.display = 'block';
@@ -30998,6 +31135,8 @@ function abrirComboModal(idx) {
     var precioEl2 = document.getElementById('cmPrecio');
     if(precioEl2) precioEl2.value = '';
     document.getElementById('cmActivo').checked = true;
+    document.getElementById('cmArmado').checked = false;
+    document.getElementById('cmCodigo').value = '';
     _cmProductos = [];
     if(tit) tit.textContent = '🎁 Nuevo combo';
     if(del) del.style.display = 'none';
@@ -31007,6 +31146,7 @@ function abrirComboModal(idx) {
     document.getElementById('cmQuitarFotoBtn').style.display = 'none';
   }
   if(idxEl) idxEl.value = idx !== null ? idx : -1;
+  cmToggleArmado();
   renderCmProdList();
   actualizarCmResumen();
   document.getElementById('comboModalOverlay').classList.add('open');
@@ -31312,6 +31452,29 @@ function guardarComboModal() {
   if(!precio || precio <= 0) { showToast('Ingresá el precio del combo', true); return; }
   if(!_cmProductos.length) { showToast('Agregá al menos un producto al combo', true); return; }
   var data = { nombre: nombre, emoji: emoji, precio: precio, items: _cmProductos.slice(), activo: document.getElementById('cmActivo').checked, imgUrl: (window._cmImgUrlActual!==undefined ? window._cmImgUrlActual : null) };
+  var armado = document.getElementById('cmArmado').checked;
+  var codigo = (document.getElementById('cmCodigo').value || '').trim();
+  if(armado){
+    if(_cmProductos.some(function(it){ return it.tipo === 'variable'; })){ showToast('Un combo armado tiene contenido fijo: sacá los grupos con sabor a elegir', true); return; }
+    if(codigo){
+      var prodCod = PRODUCTS.find(function(p){ return p.codigo && String(p.codigo) === codigo; });
+      if(prodCod){ showToast('Ese código ya es del producto "'+prodCod.name+'"', true); return; }
+      var otroCb = COMBOS.find(function(c, i){ return i !== idx && c.codigo && String(c.codigo) === codigo; });
+      if(otroCb){ showToast('Ese código ya es del combo "'+otroCb.nombre+'"', true); return; }
+    }
+    data.armado = true;
+    data.codigo = codigo || null;
+  }
+  // Si se renombra un combo armado, su cantidad pasa al nombre nuevo.
+  var anterior = (idx >= 0 && COMBOS[idx]) ? COMBOS[idx] : null;
+  if(anterior && anterior.armado && anterior.nombre !== nombre){
+    var invR = getStockInv(), kv = stockKeyCombo(anterior.nombre), kn = stockKeyCombo(nombre);
+    if(invR[kv]){
+      invR[kn] = { nombre: kn, stock: Number(invR[kv].stock)||0, minimo: invR[kv].minimo||0 };
+      delete invR[kv];
+      saveStockInv(invR, [kv]);
+    }
+  }
 
   if(idx >= 0 && COMBOS[idx]) {
     COMBOS[idx] = data;
@@ -34966,7 +35129,7 @@ function exportarTopPDF() {
 function exportarStockCSV() {
   var rows = ['Producto,Tipo,Empleado,Fecha,Estado'];
   getStockAlerts().forEach(function(a){
-    rows.push('"'+a.nombre+'","'+(a.tipo==='sin'?'Sin stock':'Poco stock')+'","'+a.empleado+'","'+
+    rows.push('"'+nombreVisibleStock(a.nombre)+'","'+(a.tipo==='sin'?'Sin stock':'Poco stock')+'","'+a.empleado+'","'+
       new Date(a.fecha).toLocaleString('es-AR')+'",'+(a.resuelta?'Resuelto':'Pendiente'));
   });
   descargarCSV('StockAlertas', rows);
@@ -34974,7 +35137,7 @@ function exportarStockCSV() {
 
 function exportarStockPDF() {
   var rows=getStockAlerts().map(function(a){
-    return '<tr><td>'+a.nombre+'</td><td>'+(a.tipo==='sin'?'🔴 Sin stock':'🟡 Poco stock')+'</td>'+
+    return '<tr><td>'+nombreVisibleStock(a.nombre)+'</td><td>'+(a.tipo==='sin'?'🔴 Sin stock':'🟡 Poco stock')+'</td>'+
       '<td>'+a.empleado+'</td><td>'+new Date(a.fecha).toLocaleString('es-AR')+'</td>'+
       '<td style="color:'+(a.resuelta?'green':'red')+'">'+(a.resuelta?'✓ Resuelto':'⚠ Pendiente')+'</td></tr>';
   }).join('');
@@ -35093,7 +35256,7 @@ function exportarReporteGeneral() {
       '<h3 style="color:#e74c3c;font-size:13px;margin-bottom:8px;margin-top:16px">⚠ Alertas de Stock Pendientes</h3>'+
       '<table><thead><tr><th>Producto</th><th>Tipo</th><th>Empleado</th></tr></thead><tbody>'+
       alertasPend.map(function(a){
-        return '<tr><td>'+a.nombre+'</td><td>'+(a.tipo==='sin'?'Sin stock':'Poco stock')+'</td><td>'+a.empleado+'</td></tr>';
+        return '<tr><td>'+nombreVisibleStock(a.nombre)+'</td><td>'+(a.tipo==='sin'?'Sin stock':'Poco stock')+'</td><td>'+a.empleado+'</td></tr>';
       }).join('')+'</tbody></table>':''
     );
 
@@ -35838,6 +36001,15 @@ function descontarStock(items, tipoMov) {
 
   items.forEach(function(item){
     if(item.manual) return;
+    if(item.comboArmado && item.comboNombre) {
+      // Combo armado: sus productos ya se descontaron al armarlo; baja la cajita.
+      var kc = stockKeyCombo(item.comboNombre);
+      if(!inv[kc]) inv[kc] = { nombre: kc, stock: 0, minimo: 0 };
+      descontarUnProd(kc, item.qty);
+      registrarMovimiento('Venta (Combo)', (item.name || item.comboNombre), item.qty,
+        (Number(inv[kc].stock)||0) + item.qty, Number(inv[kc].stock)||0, resp);
+      return;
+    }
     if(item.esCombo && item.comboItems && item.comboItems.length) {
       // Combo: descontar cada componente individualmente
       item.comboItems.forEach(function(ci){

@@ -918,7 +918,8 @@ function normalizarCombo(d){
     precio: Number(d.precio) || 0,
     descripcion: d.descripcion || '',
     items: d.items || [],
-    imgUrl: d.imgUrl || null
+    imgUrl: d.imgUrl || null,
+    armado: !!d.armado
   };
 }
 
@@ -1203,6 +1204,8 @@ function renderList(){
         combosVisibles.map(function(cb){
           var i = COMBOS.indexOf(cb);
           var enCarrito = comboCantEnCarrito(cb.nombre);
+          // Combo armado (cajita): tiene su propia cantidad en el stock.
+          var cbSinStock = comboArmadoSinStock(cb);
           var detalle = (cb.items||[]).map(function(it){
             if(it.tipo === 'variable') return it.etiqueta || 'elegís sabor';
             return textoItemCombo(it);
@@ -1217,12 +1220,13 @@ function renderList(){
               (detalle ? '<div style="font-size:.7rem;color:var(--gray);margin-top:2px;line-height:1.35">'+detalle+'</div>' : '')+
               '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">'+
                 '<div class="prod-price">'+fmt(cb.precio)+'</div>'+
+                (cbSinStock && !enCarrito ? '<span class="sin-stock-tag">Sin stock</span>' :
                 '<div class="qty-ctrl">'+
                   (enCarrito
                     ? '<button class="qty-btn" onclick="quitarComboPorIndice('+i+')">−</button><span class="qty-num">'+enCarrito+'</span>'
                     : '')+
-                  '<button class="qty-btn add" onclick="agregarComboPorIndice('+i+')">+</button>'+
-                '</div>'+
+                  (cbSinStock ? '' : '<button class="qty-btn add" onclick="agregarComboPorIndice('+i+')">+</button>')+
+                '</div>')+
               '</div>'+
             '</div>'+
           '</div>';
@@ -1252,9 +1256,16 @@ function agregarComboPorIndice(i){
   if(cb) agregarCombo(cb.nombre);
 }
 
+function comboArmadoSinStock(cb){
+  if(!cb || !cb.armado) return false;
+  var k = 'combo:' + cb.nombre;
+  if(!(k in STOCK)) return true;
+  return STOCK[k] - comboCantEnCarrito(cb.nombre) <= 0;
+}
 function agregarCombo(nombre){
   var cb = COMBOS.find(function(x){ return x.nombre === nombre; });
   if(!cb) return;
+  if(comboArmadoSinStock(cb)) return;
   var tieneVariable = (cb.items||[]).some(function(it){ return it.tipo === 'variable'; });
   if(tieneVariable){
     abrirComboVarSelector(cb);
