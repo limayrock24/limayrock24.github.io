@@ -4341,6 +4341,7 @@ body.night-on{background:#080005}
       </div>
       <div class="delivery-hint">Se suma al total pero no ingresa a caja — es del repartidor.</div>
     </div>
+    <div id="mpCarritoAviso1" style="display:none"></div>
     <button class="confirmar-btn" id="confirmarBtn" onclick="confirmarVenta()" disabled="" style="background: var(--green); color: var(--black);">✓ CONFIRMAR</button>
   </div>
 </div>
@@ -4439,6 +4440,7 @@ body.night-on{background:#080005}
       </div>
       <div class="delivery-hint">Se suma al total pero no ingresa a caja — es del repartidor.</div>
     </div>
+    <div id="mpCarritoAviso2" style="display:none"></div>
     <button class="confirmar-btn" id="confirmarBtn2" onclick="confirmarVenta2()" disabled style="background:var(--green);color:var(--black)">✓ CONFIRMAR</button>
   </div>
 </div>
@@ -4956,7 +4958,7 @@ body.night-on{background:#080005}
           </div>
           <div class="field">
             <label>Monto ($)</label>
-            <input type="text" inputmode="numeric" id="eMonto" placeholder="0" oninput="formatMontoInput(this)">
+            <input type="text" inputmode="decimal" id="eMonto" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this)">
           </div>
         </div>
         <div class="field" id="eProvNuevoWrap" style="display:none">
@@ -4993,8 +4995,8 @@ body.night-on{background:#080005}
         </div>
         <div id="eMixtoWrap" style="display:none;margin-top:8px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="numeric" id="eMixtoEfec" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEgAdmin()"></div>
-            <div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="numeric" id="eMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEgAdmin()"></div>
+            <div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="decimal" id="eMixtoEfec" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this);actualizarTotalMixtoEgAdmin()"></div>
+            <div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="decimal" id="eMixtoTransf" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this);actualizarTotalMixtoEgAdmin()"></div>
           </div>
           <div style="font-size:.68rem;color:var(--gray);margin-top:4px;text-align:right" id="eMixtoTotal">Total: $0</div>
         </div>
@@ -7751,10 +7753,26 @@ function formatMontoInput(input) {
 }
 
 // Devuelve el valor numérico real de un input formateado con puntos de miles
+// (acepta centavos con coma: "123.456,78" → 123456.78)
 function getMontoInputValue(inputId) {
   var input = document.getElementById(inputId);
   if(!input) return 0;
-  return parseFloat(input.value.replace(/\D/g,''))||0;
+  return parseFloat(String(input.value).replace(/\./g,'').replace(',', '.').replace(/[^\d.]/g,''))||0;
+}
+// Como formatMontoInput, pero deja poner centavos con coma (hasta 2), para
+// los pagos a proveedores que piden el monto exacto (ej: 123.456,78).
+function formatMontoDecInput(input) {
+  if(!input) return;
+  var v = input.value.replace(/\./g,'');
+  var i = v.indexOf(',');
+  var ent = (i === -1 ? v : v.slice(0, i)).replace(/\D/g,'');
+  var dec = i === -1 ? null : v.slice(i+1).replace(/\D/g,'').slice(0, 2);
+  if(!ent && dec === null){ input.value = ''; return; }
+  var cursorFromEnd = input.value.length - input.selectionStart;
+  var out = (ent ? Number(ent).toLocaleString('es-AR') : '0') + (dec !== null ? ','+dec : '');
+  input.value = out;
+  var pos = out.length - cursorFromEnd; if(pos < 0) pos = 0;
+  input.setSelectionRange(pos, pos);
 }
 
 // (Compatibilidad con código viejo que aún llame formatMontoLive con un display separado)
@@ -13171,6 +13189,179 @@ function marcaMPVenta(m){
     : ' <span style="color:var(--gold)" title="Se confirmó a mano: se revisa en el cierre de Mercado Pago">⏳ a revisar</span>';
 }
 
+// ── MERCADO PAGO DESDE EL CARRITO ───────────────────────────────────────────
+// Apenas el empleado elige Transferencia (o Mixto con parte por transferencia)
+// en el Carrito 1 o 2, se mira cada 6 segundos si ya entró un pago de ese
+// monto, sin reservarlo todavía. Si entró, el carrito avisa "Ya entró" y al
+// tocar Confirmar el resumen lo toma al instante. Solo mira: el pago se
+// reserva recién en el resumen, como siempre.
+var _mpCarritoOcupado = false;
+function mpCarritoRevisar(){
+  if(_mpCarritoOcupado || window.__lrMpCarritoApagado || !navigator.onLine) return;
+  if(!window.firebase || !firebase.auth || !firebase.auth().currentUser) return;
+  if(typeof currentEmp === 'undefined' || !currentEmp) return;
+  var ov = document.getElementById('confirmOverlay');
+  var pend = [1, 2].filter(function(c){
+    var m = montoTransferenciaConfirm(c);
+    if(!(m > 0) || (ov && ov.classList.contains('open'))){ pintarMpCarrito(c, null); return false; }
+    return true;
+  });
+  if(!pend.length) return;
+  _mpCarritoOcupado = true;
+  var i = 0;
+  var sig = function(){
+    if(i >= pend.length){ _mpCarritoOcupado = false; return; }
+    var c = pend[i++], monto = montoTransferenciaConfirm(c);
+    _mpLlamar('mpEsperarPago', { monto: monto, ref: 'mirar', soloMirar: true, desde: Date.now() - 10*60000,
+      local: window.__lrSucursal || 1, caja: cajaTurnoActual() }).then(function(d){
+      if(montoTransferenciaConfirm(c) === monto) pintarMpCarrito(c, d.ok ? d : null);
+      sig();
+    }).catch(function(err){
+      var m = String((err && (err.code || err.message)) || '');
+      if(/not-found|permission|unauthenticated|failed-precondition/i.test(m)) window.__lrMpCarritoApagado = true;
+      _mpCarritoOcupado = false;
+    });
+  };
+  sig();
+}
+function pintarMpCarrito(c, pago){
+  var el = document.getElementById('mpCarritoAviso'+c); if(!el) return;
+  if(!pago){ if(el.style.display !== 'none'){ el.style.display = 'none'; el.innerHTML = ''; } return; }
+  el.style.display = 'block';
+  el.innerHTML = '<div style="background:rgba(46,204,113,.15);border:1px solid #2ecc71;color:#2ecc71;border-radius:6px;padding:8px 10px;margin:6px 0;font-size:.8rem;text-align:center">'+
+    '✅ <b>Ya entró una transferencia de '+fmt(pago.monto)+'</b> a las '+new Date(pago.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false})+' — tocá CONFIRMAR</div>';
+}
+setInterval(mpCarritoRevisar, 6000);
+
+// ── EGRESOS PAGADOS POR MERCADO PAGO ────────────────────────────────────────
+// Un egreso pagado con Mercado Pago (QR o link) se busca en la cuenta entre
+// los pagos que SALEN, por monto exacto (con centavos) y hasta 24 horas antes
+// de cargarlo (se suele cargar un rato después de pagar). Si aparece, queda
+// "✅ en MP". Las transferencias a un CBU/alias de proveedor no figuran en esa
+// lista de Mercado Pago: esas se confirman más adelante con los reportes.
+function egresoVaPorMP(e){
+  return !!(e && (e.medio === 'MercadoPago' || e.medio === 'Transferencia' || (e.medio === 'Mixto' && e.mixto && Number(e.mixto.transferencia) > 0)));
+}
+function montoMPEgreso(e){ return e.medio === 'Mixto' ? (Number(e.mixto && e.mixto.transferencia) || 0) : (Number(e.monto) || 0); }
+var _mpEgIntentado = {};
+function mpConfirmarEgreso(id){
+  if((window.__lrSucursal || 1) !== 1 || window.__lrMpEgApagado) return;
+  var e = getEgresos().find(function(x){ return x.id === id; });
+  if(!e || e.mpPago || !egresoVaPorMP(e) || !(montoMPEgreso(e) > 0)) return;
+  _mpEgIntentado[id] = Date.now();
+  _mpLlamar('mpBuscarEgreso', { egresoId: String(id), monto: montoMPEgreso(e), ts: new Date(e.ts || e.id).getTime(), local: 1 }).then(function(d){
+    if(!d.ok) return;
+    var lista = getEgresos();
+    var x = lista.find(function(y){ return y.id === id; });
+    if(!x || x.mpPago) return;
+    x.mpPago = { id: d.id, fecha: d.fecha };
+    saveEgresos(lista);
+    if(typeof renderEgresos === 'function') try{ renderEgresos(); }catch(err){}
+  }).catch(function(err){
+    var m = String((err && (err.code || err.message)) || '');
+    if(/not-found|permission|unauthenticated|failed-precondition/i.test(m)) window.__lrMpEgApagado = true;
+  });
+}
+// Al mirar la lista: los de los últimos 2 días que todavía no aparecieron se
+// vuelven a buscar (cada 10 minutos como mucho, de a 5).
+function mpReintentarEgresos(lista){
+  var hace2d = Date.now() - 2*86400000, n = 0;
+  (lista || []).forEach(function(e){
+    if(n >= 5 || !e || e.mpPago || !egresoVaPorMP(e)) return;
+    if(new Date(e.ts || e.id).getTime() < hace2d) return;
+    if(_mpEgIntentado[e.id] && Date.now() - _mpEgIntentado[e.id] < 10*60000) return;
+    n++; mpConfirmarEgreso(e.id);
+  });
+}
+
+// ── TABLERO DEL DUEÑO ───────────────────────────────────────────────────────
+// Un botoncito en el Inicio del admin que despliega los avisos que conviene
+// mirar. Cerrado no ocupa lugar; queda abierto o cerrado como lo dejaste.
+var SK_TABLERO = 'lr_tablero_abierto';
+function tableroAbierto(){ try{ return localStorage.getItem(SK_TABLERO) === '1'; }catch(e){ return !!window.__lrTableroAbierto; } }
+function toggleTablero(){
+  var ab = !tableroAbierto();
+  window.__lrTableroAbierto = ab;
+  try{ localStorage.setItem(SK_TABLERO, ab ? '1' : '0'); }catch(e){}
+  renderDashboard();
+}
+function alertasTablero(){
+  var al = [], suc = window.__lrSucursal || 1, ahora = Date.now();
+  var hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+  var tVenta = function(v){ return new Date(v.fecha).getTime(); };
+  // Delivery (solo Limay 1)
+  if(suc === 1){
+    if(window.__lrDeliveryActivo !== false && typeof repartidoresDisponibles === 'function' && repartidoresDisponibles().length === 0)
+      al.push({ n:'rojo', t:'🛵 El catálogo está abierto y no hay ningún repartidor disponible' });
+    var esperando = getPedidosWeb().filter(function(p){
+      var edad = ahora - new Date(p.fecha).getTime();
+      return !p.anulado && p.estado !== 'resuelto' && p.estadoDelivery !== 'entregado' && !p.repartidor && edad > 15*60000 && edad < 6*3600000;
+    });
+    if(esperando.length) al.push({ n:'rojo', t:'🛵 '+esperando.length+' pedido'+(esperando.length===1?'':'s')+' esperando repartidor hace más de 15 minutos' });
+  }
+  // Turnos abiertos hace mucho
+  var ses = window.__lrSesionesActivasCache || {};
+  Object.keys(ses).forEach(function(n){
+    var s = ses[n]; if(!s || !s.turnoInicio) return;
+    var h = (ahora - new Date(s.turnoInicio).getTime()) / 3600000;
+    if(h > 12 && h < 16) al.push({ n:'amarillo', t:'⏰ '+n+' tiene el turno abierto hace '+Math.floor(h)+' horas: ¿se olvidó de cerrar?' });
+  });
+  // Faltantes sin descontar
+  var falt = getCierres().filter(function(c){ return faltantePendienteCierre(c) > 0; });
+  if(falt.length) al.push({ n:'rojo', t:'🔴 Faltantes sin descontar: '+falt.length+' cierre'+(falt.length===1?'':'s')+' por '+fmt(falt.reduce(function(s, c){ return s + faltantePendienteCierre(c); }, 0)) });
+  // Los más vendidos (últimos 30 días) con stock bajo
+  var desde = ahora - 30*86400000, conteo = {};
+  VENTAS.forEach(function(v){
+    if(v.anulada || tVenta(v) < desde) return;
+    (v.items || []).forEach(function(i){ if(i.esCombo || i.manual || !i.name) return; conteo[i.name] = (conteo[i.name] || 0) + (Number(i.qty) || 0); });
+  });
+  var inv = getStockInv();
+  var bajos = Object.keys(conteo).sort(function(a, b){ return conteo[b] - conteo[a]; }).slice(0, 30).filter(function(n){
+    var f = inv[n]; if(!f) return false;
+    return (Number(f.stock) || 0) <= (Number(f.minimo) > 0 ? Number(f.minimo) : 2);
+  });
+  if(bajos.length) al.push({ n:'amarillo', t:'📦 '+bajos.length+' de los más vendidos con stock bajo: '+
+    bajos.slice(0, 6).map(function(n){ return escBaja(n)+' ('+(Number(inv[n].stock)||0)+')'; }).join(', ')+(bajos.length > 6 ? '…' : '') });
+  // Transferencias de hoy confirmadas a mano (solo Limay 1, que tiene Mercado Pago)
+  if(suc === 1){
+    var rev = VENTAS.filter(function(v){
+      return !v.anulada && !v.fiadoCarga && tVenta(v) >= hoy0.getTime() && !v.mpPago &&
+        (v.medio === 'Transferencia' || (v.medio === 'Mixto' && v.mixto && Number(v.mixto.transferencia) > 0));
+    });
+    if(rev.length) al.push({ n:'info', t:'📲 '+rev.length+' transferencia'+(rev.length===1?'':'s')+' de hoy confirmada'+(rev.length===1?'':'s')+' a mano: se revisan en el cierre de Mercado Pago' });
+  }
+  // Ventas de hoy contra el mismo día de la semana pasada, hasta esta hora
+  var suma = function(ini, fin){
+    return VENTAS.filter(function(v){ var t = tVenta(v); return !v.anulada && !v.fiadoCarga && t >= ini && t <= fin; })
+      .reduce(function(s, v){ return s + (Number(v.total) || 0) - (Number(v.recargo) || 0); }, 0);
+  };
+  var hoyV = suma(hoy0.getTime(), ahora), antV = suma(hoy0.getTime() - 7*86400000, ahora - 7*86400000);
+  if(antV > 0){
+    var pct = Math.round((hoyV - antV) / antV * 100);
+    var dia = new Date(ahora - 7*86400000).toLocaleDateString('es-AR', { weekday:'long' });
+    al.push({ n: pct <= -15 ? 'amarillo' : 'info', t:'💸 Hoy van '+fmt(hoyV)+' contra '+fmt(antV)+' el '+dia+' pasado a esta hora ('+(pct >= 0 ? '+' : '')+pct+'%)' });
+  }
+  // Productos a la venta sin costo
+  var sinCosto = PRODUCTS.filter(function(p){ return Number(p.pventa) > 0 && !(Number(p.costo) > 0); }).length;
+  if(sinCosto) al.push({ n:'info', t:'🧾 '+sinCosto+' producto'+(sinCosto===1?'':'s')+' a la venta sin costo cargado: el margen y la ganancia dan mal' });
+  return al;
+}
+function tableroHtml(){
+  var al = alertasTablero();
+  var importantes = al.filter(function(x){ return x.n !== 'info'; }).length;
+  var ab = tableroAbierto();
+  var col = al.some(function(x){ return x.n === 'rojo'; }) ? 'var(--red)' : importantes ? 'var(--gold)' : 'var(--gray)';
+  var btn = '<button onclick="toggleTablero()" style="background:none;border:1px solid '+col+';color:'+col+';border-radius:14px;padding:3px 12px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">'+
+    '📋 TABLERO'+(importantes ? ' · '+importantes+' aviso'+(importantes===1?'':'s') : '')+' '+(ab ? '▲' : '▼')+'</button>';
+  if(!ab) return '<div style="text-align:right;margin-bottom:6px">'+btn+'</div>';
+  var colores = { rojo:'var(--red)', amarillo:'var(--gold)', info:'var(--light)' };
+  return '<div style="text-align:right;margin-bottom:6px">'+btn+'</div>'+
+    '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px">'+
+      (al.length ? al.map(function(x){ return '<div style="font-size:.78rem;color:'+colores[x.n]+';padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05)">'+x.t+'</div>'; }).join('')
+        : '<div style="font-size:.78rem;color:var(--green)">✅ Todo en orden</div>')+
+    '</div>';
+}
+
 // ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────
 // El arqueo de cada turno controla el efectivo; esto controla lo que se cobró
 // por transferencia (al alias de Mercado Pago): ¿llegó de verdad, y completo?
@@ -15688,6 +15879,7 @@ function registrarEgreso() {
   cambiarCatEgreso();
   selEgMedio('Efectivo');
   renderEgresos();
+  mpConfirmarEgreso(egreso.id);
 }
 
 function renderEgresos() {
@@ -15696,6 +15888,7 @@ function renderEgresos() {
   if(!list) return;
 
   var filtrados = getEgFiltrados();
+  mpReintentarEgresos(getEgresos());
 
   // KPIs por categoría
   if(kpisEl) {
@@ -15747,7 +15940,7 @@ function renderEgresos() {
         (e.nota?'<div style="color:var(--gray);font-size:.7rem;margin-top:1px">'+e.nota+'</div>':'')+
         (e.responsable?'<div style="font-size:.65rem;color:var(--gray);margin-top:1px">Registró: '+e.responsable+'</div>':'')+
       '</span>'+
-      '<span class="egreso-medio">'+e.medio+'</span>'+
+      '<span class="egreso-medio">'+e.medio+(e.mpPago?' <span style="color:var(--green)" title="El pago figura en Mercado Pago">✅ en MP</span>':'')+'</span>'+
       '<span class="egreso-monto">−'+fmt(e.monto)+'</span>'+
       '<button class="egreso-del" onclick="eliminarEgreso('+e.id+')">🗑</button>';
     list.appendChild(row);
@@ -24356,7 +24549,7 @@ function renderDashboard() {
     : '';
 
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
-  el.innerHTML = avisoSinConfirmar + (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
+  el.innerHTML = avisoSinConfirmar + tableroHtml() + (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full centrado','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
@@ -28458,7 +28651,7 @@ function initRecepEgresos() {
       '<label>Nombre del proveedor nuevo</label>'+
       '<input type="text" id="recEgProvNuevo" placeholder="Ej: Distribuidora Pérez">'+
     '</div>'+
-    '<div class="field"><label>Monto ($)</label><input type="text" inputmode="numeric" id="recEgMonto" placeholder="0" oninput="formatMontoInput(this)"></div>'+
+    '<div class="field"><label>Monto ($)</label><input type="text" inputmode="decimal" id="recEgMonto" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this)"></div>'+
     '<div class="field"><label>Medio de pago</label>'+
       '<div style="display:flex;gap:8px;margin-top:4px">'+
         '<button class="receg-medio-btn" id="recegm-MercadoPago" onclick="selRecEgMedio(\'MercadoPago\')" style="flex:1">💳 Mercado Pago</button>'+
@@ -28469,8 +28662,8 @@ function initRecepEgresos() {
     '</div>'+
     '<div id="recEgMixtoWrap" style="display:none">'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
-        '<div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="numeric" id="recEgMixtoEfec" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEg()"></div>'+
-        '<div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="numeric" id="recEgMixtoTransf" placeholder="0" oninput="formatMontoInput(this);actualizarTotalMixtoEg()"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:.68rem">Efectivo $</label><input type="text" inputmode="decimal" id="recEgMixtoEfec" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this);actualizarTotalMixtoEg()"></div>'+
+        '<div class="field" style="margin:0"><label style="font-size:.68rem">Mercado Pago $</label><input type="text" inputmode="decimal" id="recEgMixtoTransf" placeholder="0 (centavos con coma)" oninput="formatMontoDecInput(this);actualizarTotalMixtoEg()"></div>'+
       '</div>'+
       '<div style="font-size:.68rem;color:var(--gray);margin-top:4px;text-align:right" id="recEgMixtoTotal">Total: $0</div>'+
     '</div>'+
@@ -28580,6 +28773,7 @@ function confirmarEgresoRecep() {
   egresos.push(egreso);
   window.__lrEgresosCache = egresos;
   guardarOperacionProtegida('Egresos', getEgresos, 'Pago a '+prov+' ('+fmt(monto)+')');
+  mpConfirmarEgreso(egreso.id);
   autoSaveNow();
 
   // Registrar en movimientos

@@ -790,6 +790,15 @@ exports.mpEsperarPago = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, a
   const candidatos = (await mpPagosAprobados(j.results))
     .filter(p => !p.tarjeta && Math.abs(p.monto - monto) < 0.01 && p.fecha >= desde)
     .sort((a, b) => a.fecha - b.fecha);
+  // Desde el carrito solo se mira (sin reservar): ¿hay uno libre de ese monto?
+  if (d.soloMirar) {
+    if (!candidatos.length) return { ok: false };
+    const snaps = await db.getAll(...candidatos.map(p => db.collection('mpCobros').doc(p.id)));
+    for (let k = 0; k < candidatos.length; k++) {
+      if (!(snaps[k].exists && snaps[k].data().usadoPor)) return { ok: true, id: candidatos[k].id, monto: candidatos[k].monto, fecha: candidatos[k].fecha, soloMirar: true };
+    }
+    return { ok: false };
+  }
   for (const p of candidatos) {
     const doc = db.collection('mpCobros').doc(p.id);
     const mio = await db.runTransaction(async (t) => {
@@ -1030,3 +1039,44 @@ async function cierreMPAutomatico(refCierre, c) {
   if (sinCargar.length) out.push(`💡 ${sinCargar.length} cobro${sinCargar.length === 1 ? '' : 's'} en MP sin venta cargada (${pesos(sinCargar.reduce((t, p) => t + p.monto, 0))})`);
   return out;
 }
+
+// ── EGRESOS PAGADOS POR MERCADO PAGO ────────────────────────────────────────
+// Busca un pago que SALIÓ de la cuenta (QR o link: verdulería, pollería...)
+// del monto exacto del egreso, hasta 24 horas antes de cargarlo, y lo reserva
+// para ese egreso. Las transferencias a un CBU/alias no figuran en esta lista
+// de Mercado Pago (para esas van a hacer falta los reportes de movimientos).
+exports.mpBuscarEgreso = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, async (req) => {
+  mpCuentaQuePuede(req, ['local@limayrock.app', 'admin@limayrock.app']);
+  const d = req.data || {};
+  const monto = Math.round((Number(d.monto) || 0) * 100) / 100;
+  const idEg = String(d.egresoId || '').replace(/\D/g, '');
+  const ts = Number(d.ts) || Date.now();
+  if (!(monto > 0) || !idEg) throw new HttpsError('invalid-argument', 'Falta el monto o el egreso');
+  const ref = 'egreso-' + idEg;
+  const yo = await mpCuentaPropia();
+  if (!yo) throw new HttpsError('failed-precondition', 'No se pudo identificar la cuenta de Mercado Pago');
+  const desde = ts - 24 * 3600000, hasta = ts + 30 * 60000;
+  let crudos = [];
+  for (let pag = 0; pag < 5; pag++) {
+    const j = await mpGet('/v1/payments/search?sort=date_created&criteria=desc&limit=100&offset=' + (pag * 100) + '&range=date_created&begin_date=NOW-3DAYS&end_date=NOW');
+    const res = j.results || [];
+    crudos = crudos.concat(res);
+    if (res.length < 100 || new Date(res[res.length - 1].date_created).getTime() < desde) break;
+  }
+  const candidatos = crudos.filter(p => p.status === 'approved' && mpSentido(p, yo) === 'sale').map(mpResumirPago)
+    .filter(p => Math.abs(p.monto - monto) < 0.01 && p.fecha >= desde && p.fecha <= hasta)
+    .sort((a, b) => Math.abs(a.fecha - ts) - Math.abs(b.fecha - ts));
+  for (const p of candidatos) {
+    const doc = db.collection('mpCobros').doc(p.id);
+    const mio = await db.runTransaction(async (t) => {
+      const s2 = await t.get(doc);
+      const u = s2.exists ? s2.data().usadoPor : null;
+      if (u && u.ref !== ref) return false;
+      t.set(doc, { monto: p.monto, fecha: p.fecha, tipo: p.tipo, medio: p.medio, sale: true,
+        usadoPor: { ref: ref, local: 1, egreso: idEg, en: Date.now() } }, { merge: true });
+      return true;
+    });
+    if (mio) return { ok: true, id: p.id, monto: p.monto, fecha: p.fecha };
+  }
+  return { ok: false };
+});
