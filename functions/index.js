@@ -911,3 +911,17 @@ exports.mpCobrarPedido = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, 
   }
   return { ok: false, motivo: 'sin-pago' };
 });
+
+// ── DELIVERY: AVISO AL REPARTIDOR CUANDO EL PEDIDO QUEDA COBRADO ────────────
+// Con la app abierta ya le suena; esto le llega también con la app cerrada,
+// sobre todo cuando el pedido se cobra solo por Mercado Pago y nadie le avisa.
+exports.avisoPedidoCobrado = onDocumentUpdated(
+  { document: 'pedidosWeb/{id}', region: REGION },
+  async (event) => {
+    const antes = event.data.before.data() || {}, despues = event.data.after.data() || {};
+    if (antes.pagoConfirmado || !despues.pagoConfirmado || !despues.repartidor || despues.anulado) return;
+    const tokens = await tokensRepartidores(n => n === despues.repartidor);
+    if (!tokens.length) return;
+    await enviarATokens(tokens, '✅ Pedido pagado', 'El pedido de ' + (despues.nombre || 'un cliente') + ' ya está pagado: pasá a retirarlo.', { tag: 'pedido-' + event.params.id, url: '/delivery/' });
+  }
+);
