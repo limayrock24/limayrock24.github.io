@@ -367,6 +367,12 @@ function avisoTurnoCerrado(L) {
     }
 
     const lineas = [`${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
+    // Con cuánto quedó la caja (lo que contó el empleado) y con cuánto había abierto.
+    const aq = c.arqueo || {};
+    if (!c.automatico && aq.contado !== undefined && aq.contado !== null) {
+      lineas.push(`💵 Cerró con ${pesos(Number(aq.contado) || 0)} en caja` +
+        (aq.efectivoInicial !== undefined && aq.efectivoInicial !== null ? ` (abrió con ${pesos(Number(aq.efectivoInicial) || 0)})` : ''));
+    }
     try { lineas.push(...(await resumenDelTurno(c, L))); }
     catch (e) { console.error('No se pudo armar el resumen del turno', e); }
     // Cierre de Mercado Pago hecho solo: se guarda en el cierre y va en el aviso.
