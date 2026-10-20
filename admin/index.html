@@ -11287,7 +11287,8 @@ function htmlEstadoPedidoWeb(p) {
   } else {
     h += fila('var(--gold)', '⏳ Ningún repartidor lo tomó todavía'+(p.liberadoEn?' (un repartidor lo soltó a las '+hh(p.liberadoEn)+')':''));
   }
-  if(p.pagoConfirmado) h += fila('var(--green)', '💰 Cobrado'+(p.cobradoEn?' a las '+hh(p.cobradoEn):''));
+  if(p.pagoConfirmado) h += fila('var(--green)', '💰 Cobrado'+(p.cobradoEn?' a las '+hh(p.cobradoEn):'')+(p.cobroAuto?' · 🤖 solo, por Mercado Pago':''));
+  else if(p.mpPago) h += fila('#38bdf8', '✅ Llegó la transferencia a las '+hh(new Date(p.mpPago.fecha).toISOString())+' — se está registrando la venta');
   else if(p.estado === 'cargado') h += fila('var(--gold)', '🛒 Cargado al carrito'+(p.cargadoCaja && hayVariasCajas() ? ' de la Caja '+p.cargadoCaja : ' del local')+' — falta confirmar el cobro');
   else h += fila('var(--gray)', '💳 Sin cobrar — se cobra cargándolo al carrito en el panel de venta');
   if(p.estadoDelivery === 'entregado') h += fila('var(--green)', '✅ Entregado'+(p.entregadoEn?' a las '+hh(p.entregadoEn):''));
@@ -11307,7 +11308,7 @@ function htmlCambiosPedidoWeb(p, grande) {
   return h;
 }
 
-function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
+function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta, auto){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id===id; });
   if(!p || p.pagoConfirmado) return;
@@ -11325,8 +11326,10 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta){
   p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
   p.listoParaRetirar = true;
   if(ventaId) p.ventaId = ventaId;
+  if(auto) p.cobroAuto = true;
   savePedidosWeb(pedidos);
-  showToast('💰 Pedido de '+p.nombre+' cobrado — el repartidor ya puede retirarlo');
+  showToast(auto ? '💰 Llegó la transferencia del pedido de '+p.nombre+': cobrado solo — el repartidor ya puede retirarlo'
+    : '💰 Pedido de '+p.nombre+' cobrado — el repartidor ya puede retirarlo');
   if(typeof actualizarDeliveryPendBadge==='function') actualizarDeliveryPendBadge();
 }
 
@@ -12933,6 +12936,16 @@ function mpEsperaIniciar(carrito){
   var suc = window.__lrSucursal || 1;
   _mpEspera = { ref: 'L'+suc+'-C'+cajaTurnoActual()+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
     monto: monto, carrito: carrito, desde: Date.now() - 10*60000, inicio: Date.now(), pago: null, timer: null, cuenta: 0, frenado: false, errores: 0 };
+  // Pedido de delivery cuya transferencia ya llegó (se cobra a mano porque
+  // cambió algo): el pago ya está reconocido, no hay que esperarlo.
+  var ped = _pedidoWebEnCarrito ? getPedidosWeb().find(function(x){ return x.id === _pedidoWebEnCarrito; }) : null;
+  if(ped && ped.mpPago && !ped.pagoConfirmado && Math.abs(Number(ped.mpPago.monto) - monto) < 0.01){
+    _mpEspera.pago = { id: ped.mpPago.id, fecha: ped.mpPago.fecha, monto: ped.mpPago.monto };
+    _mpEspera.ref = 'pedido-'+ped.id; _mpEspera.dePedido = true; _mpEspera.cuenta = 5;
+    pintarMpEspera('recibido');
+    _mpEspera.timer = setInterval(mpEsperaTic, 1000);
+    return;
+  }
   pintarMpEspera('esperando');
   mpEsperaConsultar();
 }
@@ -12962,7 +12975,7 @@ function mpEsperaConsultar(){
     if(_mpEspera !== e) return;
     var m = String((err && (err.code || err.message)) || '');
     // Función todavía no subida o cuenta sin permiso: no se insiste, se confirma a mano como siempre.
-    if(/not-found|permission|unauthenticated/i.test(m)){ var box = document.getElementById('mpEsperaBox'); if(box) box.style.display = 'none'; _mpEspera = null; return; }
+    if(/not-found|permission|unauthenticated|failed-precondition/i.test(m)){ var box = document.getElementById('mpEsperaBox'); if(box) box.style.display = 'none'; _mpEspera = null; return; }
     e.errores++;
     pintarMpEspera(e.errores >= 2 ? 'error' : 'esperando');
     e.timer = setTimeout(mpEsperaConsultar, 10000);
@@ -12995,7 +13008,7 @@ function mpEsperaTomar(carrito){
   if(!e) return null;
   if(e.timer){ clearInterval(e.timer); clearTimeout(e.timer); }
   if(!e.pago) return null;
-  if(e.carrito !== carrito){ _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){}); return null; }
+  if(e.carrito !== carrito){ if(!e.dePedido) _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){}); return null; }
   return { id: e.pago.id, fecha: e.pago.fecha, ref: e.ref };
 }
 // Se cerró sin confirmar ("Volver"): se deja de esperar y el pago, si se había reclamado, queda libre.
@@ -13004,7 +13017,7 @@ function mpEsperaSoltar(){
   var box = document.getElementById('mpEsperaBox'); if(box) box.style.display = 'none';
   if(!e) return;
   if(e.timer){ clearInterval(e.timer); clearTimeout(e.timer); }
-  if(e.pago) _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){});
+  if(e.pago && !e.dePedido) _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){});
 }
 function pintarMpEspera(estado){
   var e = _mpEspera, box = document.getElementById('mpEsperaBox'); if(!e || !box) return;
@@ -13033,6 +13046,107 @@ function pintarMpEspera(estado){
       '⏳ Esperando la transferencia de <b>'+fmt(e.monto)+'</b>…'+
       '<div style="color:var(--gray);font-size:.72rem">Cuando llegue a Mercado Pago se confirma sola. Si ya viste el comprobante, podés confirmar igual.</div></div>';
   }
+}
+
+// ── DELIVERY: COBRO AUTOMÁTICO POR MERCADO PAGO ─────────────────────────────
+// Un pedido del catálogo que eligió transferencia y ya fue confirmado (el
+// cliente ve el alias y el monto en el seguimiento) se cobra solo cuando entra
+// la plata: el equipo que cobra los delivery (la caja o el Puesto, según el
+// modo elegido en el admin) pregunta cada 15 segundos por esos pedidos. La
+// nube decide qué equipo registra la venta, así nunca se cobra dos veces.
+// La venta queda igual que si la hubieran cargado al carrito (stock, caja del
+// turno, envío) y el pedido pasa a "Cobrado": el repartidor ya puede salir.
+// Si el total no coincide (se cambió algo, un suelto sin precio), no se
+// inventa nada: avisa que llegó el pago y la venta se registra a mano.
+function _mpDispId(){
+  try{
+    var d = localStorage.getItem('lr_mp_disp');
+    if(!d){ d = 'd'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem('lr_mp_disp', d); }
+    return d;
+  }catch(e){ return window.__lrMpDisp || (window.__lrMpDisp = 'd'+Math.random().toString(36).slice(2,10)); }
+}
+function equipoCobraDeliveryAuto(){
+  if((window.__lrSucursal || 1) !== 1) return false;
+  if(window.__lrEsPanelAdmin || window.__lrAdminSinTurno) return false;
+  if(typeof currentEmp === 'undefined' || !currentEmp) return false;
+  return deliveryEnPuesto() ? !!window.__lrEsPuesto : !window.__lrEsPuesto;
+}
+function pedidoEsperaTransferencia(p){
+  return !!(p && p.medioPago === 'Transferencia' && !p.pagoConfirmado && !p.anulado && !p.ventaId &&
+    p.avisos && p.avisos.confirmado && p.estado !== 'cargado' && p.estado !== 'resuelto' &&
+    !(p.envioAConfirmar && !p.envioConfirmado) && (Date.now() - new Date(p.fecha).getTime()) < 24*3600000);
+}
+var _mpDeliOcupado = false;
+function vigilarPedidosMP(){
+  if(_mpDeliOcupado || window.__lrMpDeliApagado || !equipoCobraDeliveryAuto() || !navigator.onLine) return;
+  var lista = getPedidosWeb().filter(pedidoEsperaTransferencia);
+  if(!lista.length) return;
+  _mpDeliOcupado = true;
+  var i = 0;
+  var sig = function(){
+    if(i >= lista.length){ _mpDeliOcupado = false; return; }
+    var p = lista[i++];
+    _mpLlamar('mpCobrarPedido', { pedidoId: String(p.id), disp: _mpDispId(), local: 1 }).then(function(d){
+      if(d.ok && d.ganador) cobrarPedidoAutomatico(p.id, d.pago);
+      sig();
+    }).catch(function(err){
+      var m = String((err && (err.code || err.message)) || '');
+      // Función no subida, cuenta sin permiso o Mercado Pago sin conectar: no se insiste hasta recargar.
+      if(/not-found|permission|unauthenticated|failed-precondition/i.test(m)) window.__lrMpDeliApagado = true;
+      _mpDeliOcupado = false;
+    });
+  };
+  sig();
+}
+setInterval(vigilarPedidosMP, 15000);
+function cobrarPedidoAutomatico(id, pago){
+  var pedido = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!pedido || pedido.pagoConfirmado || pedido.ventaId || !equipoCobraDeliveryAuto()) return;
+  if(VENTAS.some(function(v){ return v.pedidoWebId === id && !v.anulada; })) return;
+  var lineas = [];
+  var lp = lineasDePedidoWeb(lineas, pedido);
+  var subtotal = lineas.reduce(function(s, i){ return s + i.subtotal; }, 0);
+  var envio = lp.envio > 0 ? lp.envio : 0;
+  if(lp.faltaPrecio > 0 || !lineas.length || Math.abs(subtotal + envio - Number(pago.monto)) > 1){
+    var av = window.__lrMpAvisado || (window.__lrMpAvisado = {});
+    if(!av[id]){ av[id] = 1; showToast('✅ Llegó la transferencia del pedido de '+pedido.nombre+' — cargalo al carrito para registrar la venta'); }
+    if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
+    return;
+  }
+  var venta = {
+    id: Date.now()+3,
+    fecha: new Date().toISOString(),
+    empleado: currentEmp ? currentEmp.nombre : '—',
+    turno: turnoActual(),
+    caja: cajaTurnoActual(),
+    medio: 'Transferencia',
+    mixto: null,
+    subtotal: subtotal,
+    recargo: 0,
+    total: subtotal,
+    delivery: envio > 0 ? envio : null,
+    items: JSON.parse(JSON.stringify(lineas)),
+    clienteDni: null,
+    puntosGanados: 0,
+    anulada: false,
+    pedidoWebId: id,
+    mpPago: { id: pago.id, fecha: pago.fecha, ref: pago.ref },
+    cobroAuto: true
+  };
+  VENTAS.push(venta);
+  saveVentas(VENTAS, [venta.id]);
+  if(typeof guardarSesionActiva === 'function') guardarSesionActiva();
+  if(envio > 0){
+    var dl = getDeliveries();
+    dl.push({ id: venta.id, fecha: venta.fecha, empleado: venta.empleado, turno: venta.turno, monto: envio, ventaId: venta.id });
+    saveDeliveries(dl);
+  }
+  autoSaveNow();
+  registrarOperacion('venta', lineas, subtotal, venta.empleado, 'Delivery cobrado solo por Mercado Pago'+(envio>0?' + Delivery '+fmt(envio):''), 0, venta.id);
+  updateProdCount(lineas);
+  descontarStock(lineas, 'venta');
+  marcarPedidoWebCobrado(id, venta.id, envio, venta.items, true);
+  if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
 }
 
 // ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────
@@ -13126,7 +13240,7 @@ function buscarCierreMPAuto(c){
   var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
   rev.auto = { estado: 'buscando' };
   pintarCierreMP();
-  _mpLlamar('mpCobrosRango', { desde: ini - 15*60000, hasta: fin + 20*60000 }).then(function(d){
+  _mpLlamar('mpCobrosRango', { desde: ini - 15*60000, hasta: fin + 20*60000, local: window.__lrSucursal || 1 }).then(function(d){
     if(_mpRev !== rev) return;
     emparejarCierreMP(c, d.cobros || []);
     pintarCierreMP();
@@ -29054,9 +29168,10 @@ function sincronizarSeguimiento(lista){
     // mientras no esté cobrado. Así el cliente transfiere el monto final,
     // con los cambios que se hayan hecho, y no antes.
     var conf0 = p.avisos && p.avisos.confirmado;
-    var pago = (p.medioPago === 'Transferencia' && conf0 && !p.pagoConfirmado && !p.anulado && etapa !== 'entregado')
+    // Si la transferencia ya llegó (p.mpPago) se deja de mostrar el alias.
+    var pago = (p.medioPago === 'Transferencia' && conf0 && !p.pagoConfirmado && !p.mpPago && !p.anulado && etapa !== 'entregado')
       ? {alias: ALIAS_MP, titular: TITULAR_MP, monto: Number(p.total) || 0} : null;
-    var firma = etapa + '|' + (rep || '') + '|' + (pago ? pago.monto : '') + '|' + (p.pagoConfirmado ? 'c' : '');
+    var firma = etapa + '|' + (rep || '') + '|' + (pago ? pago.monto : '') + '|' + ((p.pagoConfirmado || p.mpPago) ? 'c' : '');
     if(cache[p.seguimiento] === firma) return;
     cache[p.seguimiento] = firma;
     var conf = p.avisos && p.avisos.confirmado ? p.avisos.confirmado.ts : null;
@@ -29065,7 +29180,7 @@ function sincronizarSeguimiento(lista){
       etapa: etapa,
       repartidor: (etapa === 'en_camino' || etapa === 'entregado') ? rep : null,
       pago: pago,
-      pagado: !!p.pagoConfirmado,
+      pagado: !!(p.pagoConfirmado || p.mpPago),
       pasos: {
         recibido: p.fecha || null,
         preparando: conf || p.cobradoEn || p.tomadoEn || null,
@@ -29093,7 +29208,7 @@ function mensajeConfirmacionPedido(p){
     msg += '▸ Mercado Pago\n';
     msg += '▸ Titular: ' + TITULAR_MP + '\n';
     msg += '▸ Monto: *' + fmt(p.total) + '*\n\n';
-    msg += '✅ Mandanos el comprobante por acá y sale tu pedido para tu casa.\n\n';
+    msg += '✅ Transferí el monto exacto: cuando nos llega se confirma solo y sale tu pedido para tu casa.\n\n';
     msg += '¡Gracias por la compra! 🙌';
   } else if(p.medioPago === 'Efectivo'){
     msg += '\n💵 *VAS A PAGAR EN EFECTIVO: ' + fmt(p.total) + '*\n\n';
@@ -30167,7 +30282,11 @@ function abrirDeliveryPendModal() {
           '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
           '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Más mensajes</button>'+
           (p.pagoConfirmado
-            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO</div>'
+            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO'+(p.cobroAuto?' · 🤖 MP':'')+'</div>'
+            : p.mpPago
+            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.68rem">✅ Ya transfirió '+fmt(p.mpPago.monto)+'</div>'
+            : pedidoEsperaTransferencia(p)
+            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.68rem">⏳ Esperando la transferencia (se cobra solo)</div>'
             : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
           (pedidoTrabadoEnOtraCaja(p)
             ? '<div style="flex:1;min-width:120px;text-align:center;padding:6px;border:1px dashed var(--gold);border-radius:5px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">🔒 Lo está cobrando la Caja '+p.cargadoCaja+(p.cargadoPor?' ('+p.cargadoPor+')':'')+
@@ -30210,6 +30329,88 @@ function destrabarPedidoWeb(id){
   savePedidosWeb(pedidos);
   if(typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
 }
+// Arma las líneas de un pedido web (combos, productos, sueltos y los cambios
+// hechos en el local) sobre la lista que se le pase: el carrito, al cargarlo
+// a mano, o una lista aparte, cuando se cobra solo por Mercado Pago.
+function lineasDePedidoWeb(dest, pedido){
+  // Combos pedidos desde el catálogo web: se cargan igual que si se hubieran
+  // tocado desde el panel de venta — se cobra el precio del combo y el stock de
+  // cada producto que lo compone se descuenta por separado.
+  (pedido.combos||[]).forEach(function(cb){
+    var real = getCombos().find(function(x){ return x && x.nombre === cb.nombre; });
+    for(var n = 0; n < (cb.cantidad||1); n++){
+      var lineaCb = {
+        name: (cb.emoji||'🎁')+' '+cb.nombre,
+        precio: cb.precio,
+        qty: 1,
+        subtotal: cb.precio,
+        esCombo: true,
+        comboItems: (cb.items||[]).slice(),
+        cat: 'Combo'
+      };
+      if(real && real.armado){ lineaCb.comboArmado = true; lineaCb.comboNombre = real.nombre; }
+      dest.push(lineaCb);
+    }
+  });
+
+  (pedido.items||[]).forEach(function(it){
+    var prod = PRODUCTS.find(function(p){ return p.name===it.nombre; });
+    var precio = prod ? ((isNocturno() && prod.pnoc) ? prod.pnoc : prod.pventa) : it.precio;
+    var existing = dest.find(function(i){ return i.name===it.nombre; });
+    if(existing){ existing.qty += it.cantidad; existing.subtotal = existing.precio*existing.qty; }
+    else { dest.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
+  });
+
+  // Si el pedido ya se había cambiado en el local (se volvió a cargar), se
+  // carga como quedó, no como vino del catálogo.
+  (pedido.itemsAgregados||[]).forEach(function(it){
+    var ex = dest.find(function(i){ return i.name===it.nombre; });
+    if(ex){ ex.qty += it.cantidad; ex.subtotal = ex.precio*ex.qty; }
+    else {
+      var prod = PRODUCTS.find(function(x){ return x.name===it.nombre; });
+      dest.push({name:it.nombre, precio:it.precio||0, qty:it.cantidad, subtotal:(it.precio||0)*it.cantidad, cat: prod?prod.cat:''});
+    }
+  });
+  var _quitarDespues = (pedido.itemsQuitados||[]).slice();
+
+  // Sueltos pedidos desde el catálogo web (fiambrería, pan, frutas/verduras,
+  // etc.) — antes se perdían: quedaban solo como texto en la ventana de
+  // Pedidos, no se sumaban al carrito ni al total a cobrar. Ahora se cargan
+  // como ítem manual, uno por cada suelto pedido, con la categoría real
+  // puesta en "cat" para que salgan bien clasificados en los reportes de
+  // ventas por categoría (igual que si el empleado los hubiera tipeado a
+  // mano en el mostrador).
+  var faltaConfirmarPrecio = 0;
+  (pedido.notasManuales||[]).forEach(function(n){
+    if(!n.precio){ faltaConfirmarPrecio++; }
+    dest.push({
+      name: n.nombre + (n.texto ? ' ('+n.texto+')' : ''),
+      precio: n.precio || 0,
+      qty: 1,
+      subtotal: n.precio || 0,
+      cat: n.categoria || 'Manual',
+      manual: true
+    });
+  });
+  _quitarDespues.forEach(function(it){
+    for(var k = dest.length-1, resta = it.cantidad; k >= 0 && resta > 0; k--){
+      if(dest[k].name !== it.nombre) continue;
+      var saca = Math.min(resta, dest[k].qty);
+      dest[k].qty -= saca; resta -= saca;
+      dest[k].subtotal = dest[k].precio*dest[k].qty;
+      if(dest[k].qty <= 0) dest.splice(k, 1);
+    }
+  });
+
+  // El costo de envío que ya se le cobró a este cliente en el catálogo.
+  // Se usa el campo guardado directamente (más confiable que recalcularlo
+  // restando total - productos, que puede dar mal si algún dato viejo no
+  // tenía esos campos completos).
+  var envioDelPedido = (typeof pedido.envio === 'number') ? pedido.envio
+    : (pedido.total||0) - (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
+  return { faltaPrecio: faltaConfirmarPrecio, envio: envioDelPedido };
+}
+
 function cargarPedidoAlCarrito(id) {
   if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy los pedidos web se cobran en el Puesto Delivery', true); return; }
   var pedidos = getPedidosWeb();
@@ -30232,84 +30433,11 @@ function cargarPedidoAlCarrito(id) {
     setTimeout(function(){ showToast('⚠️ Este pedido llegó sin ubicación: falta confirmar el envío (elegí la zona en Pedidos)', true); }, 600);
   }
 
-  // Combos pedidos desde el catálogo web: se cargan igual que si se hubieran
-  // tocado desde el panel de venta — se cobra el precio del combo y el stock de
-  // cada producto que lo compone se descuenta por separado.
-  (pedido.combos||[]).forEach(function(cb){
-    var real = getCombos().find(function(x){ return x && x.nombre === cb.nombre; });
-    for(var n = 0; n < (cb.cantidad||1); n++){
-      var lineaCb = {
-        name: (cb.emoji||'🎁')+' '+cb.nombre,
-        precio: cb.precio,
-        qty: 1,
-        subtotal: cb.precio,
-        esCombo: true,
-        comboItems: (cb.items||[]).slice(),
-        cat: 'Combo'
-      };
-      if(real && real.armado){ lineaCb.comboArmado = true; lineaCb.comboNombre = real.nombre; }
-      cart.push(lineaCb);
-    }
-  });
-
-  (pedido.items||[]).forEach(function(it){
-    var prod = PRODUCTS.find(function(p){ return p.name===it.nombre; });
-    var precio = prod ? ((isNocturno() && prod.pnoc) ? prod.pnoc : prod.pventa) : it.precio;
-    var existing = cart.find(function(i){ return i.name===it.nombre; });
-    if(existing){ existing.qty += it.cantidad; existing.subtotal = existing.precio*existing.qty; }
-    else { cart.push({name:it.nombre, precio:precio, qty:it.cantidad, subtotal:precio*it.cantidad, cat: prod?prod.cat:''}); }
-  });
-
-  // Si el pedido ya se había cambiado en el local (se volvió a cargar), se
-  // carga como quedó, no como vino del catálogo.
-  (pedido.itemsAgregados||[]).forEach(function(it){
-    var ex = cart.find(function(i){ return i.name===it.nombre; });
-    if(ex){ ex.qty += it.cantidad; ex.subtotal = ex.precio*ex.qty; }
-    else {
-      var prod = PRODUCTS.find(function(x){ return x.name===it.nombre; });
-      cart.push({name:it.nombre, precio:it.precio||0, qty:it.cantidad, subtotal:(it.precio||0)*it.cantidad, cat: prod?prod.cat:''});
-    }
-  });
-  var _quitarDespues = (pedido.itemsQuitados||[]).slice();
-
-  // Sueltos pedidos desde el catálogo web (fiambrería, pan, frutas/verduras,
-  // etc.) — antes se perdían: quedaban solo como texto en la ventana de
-  // Pedidos, no se sumaban al carrito ni al total a cobrar. Ahora se cargan
-  // como ítem manual, uno por cada suelto pedido, con la categoría real
-  // puesta en "cat" para que salgan bien clasificados en los reportes de
-  // ventas por categoría (igual que si el empleado los hubiera tipeado a
-  // mano en el mostrador).
-  var faltaConfirmarPrecio = 0;
-  (pedido.notasManuales||[]).forEach(function(n){
-    if(!n.precio){ faltaConfirmarPrecio++; }
-    cart.push({
-      name: n.nombre + (n.texto ? ' ('+n.texto+')' : ''),
-      precio: n.precio || 0,
-      qty: 1,
-      subtotal: n.precio || 0,
-      cat: n.categoria || 'Manual',
-      manual: true
-    });
-  });
-  if(faltaConfirmarPrecio > 0){
-    showToast('⚠️ '+faltaConfirmarPrecio+' producto(s) suelto(s) sin precio — cargalo a mano en el carrito antes de cobrar', true);
+  var _lp = lineasDePedidoWeb(cart, pedido);
+  if(_lp.faltaPrecio > 0){
+    showToast('⚠️ '+_lp.faltaPrecio+' producto(s) suelto(s) sin precio — cargalo a mano en el carrito antes de cobrar', true);
   }
-  _quitarDespues.forEach(function(it){
-    for(var k = cart.length-1, resta = it.cantidad; k >= 0 && resta > 0; k--){
-      if(cart[k].name !== it.nombre) continue;
-      var saca = Math.min(resta, cart[k].qty);
-      cart[k].qty -= saca; resta -= saca;
-      cart[k].subtotal = cart[k].precio*cart[k].qty;
-      if(cart[k].qty <= 0) cart.splice(k, 1);
-    }
-  });
-
-  // El costo de envío que ya se le cobró a este cliente en el catálogo.
-  // Se usa el campo guardado directamente (más confiable que recalcularlo
-  // restando total - productos, que puede dar mal si algún dato viejo no
-  // tenía esos campos completos).
-  var envioDelPedido = (typeof pedido.envio === 'number') ? pedido.envio
-    : (pedido.total||0) - (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
+  var envioDelPedido = _lp.envio;
   if(envioDelPedido > 0){
     _deliveryActivo = true;
     _deliveryMonto = envioDelPedido;
@@ -33193,11 +33321,13 @@ function _pzTarjeta(p){
     ? '<span class="pz-pill" style="background:rgba(34,197,94,.15);color:#22c55e">🛵 Lo lleva '+_pzEsc(p.repartidor)+(p.retiradoEn?' · en camino':'')+'</span>'
     : '<span class="pz-pill" style="background:rgba(255,255,255,.07);color:#aaa">⏳ Sin repartidor todavía</span>';
   var medio = (p.medioPago && !p.pagoConfirmado) ? '<span class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8">'+(p.medioPago==='Efectivo'?'💵':'📲')+' Quiere pagar con '+_pzEsc(p.medioPago)+'</span>' : '';
+  if(!cobrado && p.mpPago) medio = '<span class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8">✅ Ya transfirió '+fmt(p.mpPago.monto)+'</span>';
+  else if(pedidoEsperaTransferencia(p)) medio = '<span class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8">⏳ Esperando la transferencia (se cobra solo)</span>';
   var trabado = pedidoTrabadoEnOtraCaja(p);
   var acciones;
   if(cobrado){
     acciones =
-      '<div class="pz-cobrado">✅ COBRADO'+(p.cobradoPor?' por '+_pzEsc(p.cobradoPor):'')+' · '+_pzHora(p.cobradoEn)+'</div>'+
+      '<div class="pz-cobrado">✅ COBRADO'+(p.cobroAuto?' SOLO POR MERCADO PAGO':(p.cobradoPor?' por '+_pzEsc(p.cobradoPor):''))+' · '+_pzHora(p.cobradoEn)+'</div>'+
       '<div class="pz-fila">'+
         '<button onclick="abrirMensajesCliente('+p.id+')" class="pz-btn-sec">💬 Mensajes al cliente</button>'+
         '<button onclick="cerrarPedidoWebEntregado('+p.id+')" class="pz-btn-sec" style="color:#22c55e;border-color:rgba(34,197,94,.5)">✓ Entregado</button>'+

@@ -754,6 +754,10 @@ async function mpPagosAprobados(results) {
 function mpCuentaQuePuede(req, cuentas) {
   const email = String((req.auth && req.auth.token && req.auth.token.email) || '').toLowerCase();
   if (cuentas.indexOf(email) === -1) throw new HttpsError('permission-denied', 'Esta cuenta no puede consultar Mercado Pago');
+  // Limay 2 cobra en otra cuenta de Mercado Pago (la de su titular): hasta que
+  // esté configurada no se busca nada, para no confirmar una venta de Limay 2
+  // con plata que entró a la cuenta de Limay 1.
+  if (Number(req.data && req.data.local) === 2) throw new HttpsError('failed-precondition', 'Limay 2 todavía no tiene su cuenta de Mercado Pago conectada');
 }
 
 // La caja pregunta: ¿entró un pago de $monto en los últimos minutos que nadie
@@ -846,4 +850,64 @@ exports.mpCobrosRango = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN], tim
     snaps.forEach((s, k) => { const u = s.exists ? s.data().usadoPor : null; lote[k].usadoPor = u ? { ref: u.ref, local: u.local || 1 } : null; });
   }
   return { cobros: pagos.sort((a, b) => a.fecha - b.fecha) };
+});
+
+// ── DELIVERY: COBRO AUTOMÁTICO DE PEDIDOS POR TRANSFERENCIA ─────────────────
+// Un pedido del catálogo que eligió transferencia y ya fue confirmado por el
+// local (el cliente ve el alias y el monto en el seguimiento) se cobra solo
+// cuando entra el pago. La caja o el Puesto que cobra los delivery pregunta
+// por cada pedido pendiente; acá, en una sola transacción, se reclama el pago
+// y se anota en el pedido (mpPago) qué equipo registra la venta, así dos
+// equipos nunca cobran el mismo pedido dos veces.
+exports.mpCobrarPedido = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, async (req) => {
+  mpCuentaQuePuede(req, ['local@limayrock.app', 'admin@limayrock.app']);
+  const d = req.data || {};
+  const pid = String(d.pedidoId || ''), disp = String(d.disp || '').slice(0, 40);
+  if (!/^\d+$/.test(pid) || !disp) throw new HttpsError('invalid-argument', 'Falta el pedido o el equipo');
+  const pedRef = db.collection('pedidosWeb').doc(pid);
+  const ped = await pedRef.get();
+  if (!ped.exists) return { ok: false, motivo: 'no-existe' };
+  const p = ped.data();
+  if (p.pagoConfirmado || p.anulado) return { ok: false, motivo: 'cerrado' };
+  if (p.medioPago !== 'Transferencia' || !(p.avisos && p.avisos.confirmado)) return { ok: false, motivo: 'no-corresponde' };
+  const ref = 'pedido-' + pid;
+  // Ya se encontró el pago antes: lo registra el mismo equipo, o cualquiera si
+  // el que lo tomó no lo registró en 3 minutos (se cerró, se cortó internet).
+  const yaTomado = async () => db.runTransaction(async (t) => {
+    const s2 = await t.get(pedRef);
+    const m = s2.exists ? s2.data().mpPago : null;
+    if (!m) return null;
+    if (s2.data().pagoConfirmado) return { ok: false, motivo: 'cerrado' };
+    const libre = m.disp === disp || (Date.now() - (Number(m.en) || 0)) > 180000;
+    if (libre && m.disp !== disp) t.update(pedRef, { 'mpPago.disp': disp, 'mpPago.en': Date.now() });
+    return { ok: true, ganador: libre, pago: { id: m.id, fecha: m.fecha, monto: m.monto, ref: ref } };
+  });
+  const previo = await yaTomado();
+  if (previo) return previo;
+  const monto = Math.round((Number(p.total) || 0) * 100) / 100;
+  if (!(monto > 0)) return { ok: false, motivo: 'sin-monto' };
+  // Desde un rato antes de que el local confirmara el pedido.
+  const desde = new Date(p.avisos.confirmado.ts).getTime() - 10 * 60000;
+  const j = await mpGet('/v1/payments/search?sort=date_created&criteria=desc&limit=100&range=date_created&begin_date=NOW-1DAYS&end_date=NOW');
+  const candidatos = (await mpPagosAprobados(j.results))
+    .filter(x => !x.tarjeta && Math.abs(x.monto - monto) < 0.01 && x.fecha >= desde)
+    .sort((a, b) => a.fecha - b.fecha);
+  for (const x of candidatos) {
+    const cobRef = db.collection('mpCobros').doc(x.id);
+    const r = await db.runTransaction(async (t) => {
+      const [sc, sp] = await Promise.all([t.get(cobRef), t.get(pedRef)]);
+      if (!sp.exists || sp.data().pagoConfirmado) return { ok: false, motivo: 'cerrado' };
+      if (sp.data().mpPago) return 'reintentar';
+      const u = sc.exists ? sc.data().usadoPor : null;
+      if (u && u.ref !== ref) return null;
+      const pago = { id: x.id, fecha: x.fecha, monto: x.monto };
+      t.set(cobRef, { monto: x.monto, fecha: x.fecha, tipo: x.tipo, medio: x.medio,
+        usadoPor: { ref: ref, local: 1, caja: 0, pedido: pid, en: Date.now() } }, { merge: true });
+      t.update(pedRef, { mpPago: Object.assign({ disp: disp, en: Date.now() }, pago) });
+      return { ok: true, ganador: true, pago: Object.assign({ ref: ref }, pago) };
+    });
+    if (r === 'reintentar') return (await yaTomado()) || { ok: false, motivo: 'reintentar' };
+    if (r) return r;
+  }
+  return { ok: false, motivo: 'sin-pago' };
 });
