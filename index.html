@@ -8,6 +8,9 @@
 window.__lrSucursal = /[?&]suc=2(&|$)/.test(location.search) ? 2 : 1;
 window.__lrSucNombre = window.__lrSucursal === 2 ? 'LIMAY ROCK 2' : 'LIMAY ROCK 1';
 window.__lrSucCalle = window.__lrSucursal === 2 ? 'Urquiza' : 'Pascual Puente';
+// Link propio de la Caja 2 (/caja2/ abre esto con ?caja=2): ese link es
+// siempre la Caja 2, sin depender de lo que se haya elegido en el equipo.
+window.__lrCajaLink = /[?&]caja=2(&|$)/.test(location.search) ? 2 : null;
 if(window.__lrSucursal === 2){
   document.documentElement.classList.add('suc2');
   (function(){
@@ -7921,6 +7924,7 @@ function cajaEquipo(){
   // caja que haya quedado guardada en el navegador (si en esa compu alguna vez
   // se abrió la caja como Caja 2, el admin mostraba dos cajas sin haberlas).
   if(window.__lrEsPanelAdmin) return 1;
+  if(window.__lrCajaLink) return window.__lrCajaLink;
   try{ return parseInt(localStorage.getItem(SK_CAJA_EQUIPO), 10) === 2 ? 2 : 1; }catch(e){ return 1; }
 }
 function cajaDe(r){ return (r && Number(r.caja) === 2) ? 2 : 1; }
@@ -8052,6 +8056,7 @@ function limpiarSesionActiva(nombre) {
       })
       .sort(function(a,b){ return new Date(b.turnoInicio) - new Date(a.turnoInicio); });
     window.__lrSesionActivaCache = restantes.length ? restantes[0] : null;
+    window.__lrSesionesVigentes = restantes;
   }
   if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva(nombre);
 }
@@ -8071,18 +8076,21 @@ setInterval(function(){
   });
 }, 1000);
 function getSesionActivaGuardada() {
+  // Con dos cajas, cada equipo solo retoma (o cierra) el turno de SU caja:
+  // si no, al cerrar la Caja 2 aparecía el turno de la Caja 1 como "sin
+  // cerrar" y se lo podía retomar o cerrar desde el equipo equivocado.
+  var miCaja = cajaEquipo();
   try {
     var local = JSON.parse(localStorage.getItem(SK_SESION_ACTIVA)||'null');
-    if(local) return local;
+    if(local && (!local.caja || cajaDe(local) === miCaja)) return local;
   } catch(e){}
   // Si no hay nada local (por ejemplo, se borraron los datos del navegador
   // sin cerrar turno antes), usamos la copia que ya vive en Firebase — no
   // tiene TODOS los datos del empleado (PIN, etc.), pero sí lo esencial
   // para poder cerrar el turno correctamente: con quién, desde cuándo, y
   // con cuánto efectivo abrió.
-  if(window.__lrSesionActivaCache && window.__lrSesionActivaCache.turnoInicio){
-    return window.__lrSesionActivaCache;
-  }
+  var deEstaCaja = (window.__lrSesionesVigentes || []).filter(function(x){ return x && x.turnoInicio && cajaDe(x) === miCaja; });
+  if(deEstaCaja.length) return deEstaCaja[0];
   return null;
 }
 
@@ -8406,6 +8414,12 @@ function lpp(d) {
       if(emp) {
         loginBuf=''; updateLoginDots();
         // Un turno abierto a la vez: si tiene turno abierto en el otro local, no abre acá.
+        // Y tampoco si ya lo tiene abierto en la otra caja de este mismo local.
+        var _sv = (window.__lrSesionesActivasCache || {})[String(emp.nombre).replace(/\//g,'-')];
+        if(_sv && _sv.turnoInicio && (Date.now() - new Date(_sv.turnoInicio).getTime()) < 16*3600000 && cajaDe(_sv) !== cajaEquipo()){
+          alert('👤 '+emp.nombre+', tenés un turno abierto en la Caja '+cajaDe(_sv)+'.\n\nCerralo allá antes de abrir uno en esta caja.');
+          return;
+        }
         turnoAbiertoEnOtroLocal(emp).then(function(otro){
           if(otro){ alert('👤 '+emp.nombre+', tenés un turno abierto en '+otro+'.\n\nCerralo allá antes de abrir uno acá.'); return; }
           // Guardar empleado temporalmente y pedir efectivo inicial
@@ -24340,7 +24354,8 @@ function renderDashboard() {
     var cajaEq = cajaEquipo();
     var bCaja = function(n){ return '<button onclick="elegirCajaEquipo('+n+')" style="background:'+(cajaEq===n?'var(--gold)':'var(--dark)')+';color:'+(cajaEq===n?'var(--black)':'var(--gray)')+';border:1px solid '+(cajaEq===n?'var(--gold)':'var(--border)')+';border-radius:5px;padding:6px 14px;font-family:Oswald,sans-serif;font-size:.78rem;font-weight:700;letter-spacing:1px;cursor:pointer">CAJA '+n+'</button>'; };
     retiroBtn = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 14px;margin-bottom:10px">'+
-      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🖥 Este equipo es la</span>'+bCaja(1)+bCaja(2)+
+      '<span style="font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;color:var(--white)">🖥 Este equipo es la</span>'+
+      (window.__lrCajaLink ? '<b style="font-family:Oswald,sans-serif;color:var(--gold)">CAJA 2</b><span style="font-size:.68rem;color:var(--gray)">(link de la Caja 2)</span>' : bCaja(1)+bCaja(2))+
       '<span style="font-size:.68rem;color:var(--gray)">Cada puesto de venta con su cajón: las ventas y el efectivo de cada turno se cuentan por caja.</span>'+
     '</div>' + retiroBtn;
   }

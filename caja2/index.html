@@ -1,0 +1,25 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Caja 2 · Limay Rock</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Caja 2">
+<style>html,body{margin:0;height:100%;background:#0a0a0a;overflow:hidden}iframe{border:0;width:100%;height:100%;display:block}</style>
+</head><body>
+<!-- La Caja 2 de Limay Rock 1 es el mismo sistema de la caja, abierto con ?caja=2
+     (ese link es siempre la Caja 2, sin depender de lo elegido en el equipo).
+     Esta carpeta tiene su propio manifiesto: al instalarla queda una app aparte
+     ("Caja 2") que no pisa la de la Caja 1 ni la de admin.
+     En limayrock.com.ar la raíz es el catálogo, por eso se va a la dirección de GitHub. -->
+<script>
+if(['limayrock24.github.io','localhost','127.0.0.1'].indexOf(location.hostname) === -1){
+  location.replace('https://limayrock24.github.io/caja2/');
+} else {
+  document.write('<iframe src="../?caja=2" title="Caja 2" allow="clipboard-read; clipboard-write; fullscreen; camera"></iframe>');
+}
+</script>
+</body></html>
