@@ -158,6 +158,36 @@ if(window.__lrSucursal === 2){
   // App "Limay Rock Admin" (Android): los avisos llegan por la app, con el
   // logo propio, en vez de por Chrome. El celular se anota en la misma lista
   // (fcmTokens) con el mismo "destino", así las funciones no cambian.
+  // ── Archivos dentro de la app LR Admin ────────────────────────────────
+  // La app es una ventana de Android que no sabe descargar los archivos que
+  // arma la página (PDF de pedidos, liquidaciones, CSV, respaldos...). Si la
+  // app trae su puente "LimayRockArchivos", cada descarga se manda al menú
+  // Compartir de Android (WhatsApp, Drive, guardar). En Chrome y en las
+  // compus no existe ese puente y todo descarga como siempre.
+  (function(){
+    var nativo = window.LimayRockArchivos;
+    if(!nativo || typeof nativo.compartir !== 'function') return;
+    function compartir(url, nombre){
+      fetch(url).then(function(r){ return r.blob(); }).then(function(b){
+        var lector = new FileReader();
+        lector.onload = function(){
+          var b64 = String(lector.result || '').split(',')[1] || '';
+          var ok = false;
+          try{ ok = nativo.compartir(b64, nombre || 'archivo', b.type || 'application/octet-stream'); }catch(e){}
+          if(!ok && typeof showToast === 'function') showToast('No se pudo abrir Compartir para ' + nombre, true);
+        };
+        lector.readAsDataURL(b);
+      }).catch(function(){ if(typeof showToast === 'function') showToast('No se pudo preparar el archivo', true); });
+    }
+    function esDescarga(a){ return a && a.download && /^(blob:|data:)/.test(String(a.href || '')); }
+    var P = HTMLAnchorElement.prototype, clickOrig = P.click, dispatchOrig = P.dispatchEvent;
+    P.click = function(){ if(esDescarga(this)){ compartir(this.href, this.download); return; } return clickOrig.apply(this, arguments); };
+    // jsPDF descarga "disparando" un clic sobre el enlace en vez de llamar a click().
+    P.dispatchEvent = function(ev){
+      if(ev && ev.type === 'click' && esDescarga(this)){ compartir(this.href, this.download); return true; }
+      return dispatchOrig.apply(this, arguments);
+    };
+  })();
   window.__lrEsAppAdmin = function(){
     try{
       return /LimayRockAdminApp/.test(navigator.userAgent) && !!window.Capacitor &&
