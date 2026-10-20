@@ -915,7 +915,7 @@ exports.mpCobrarPedido = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, 
 // ── DELIVERY: AVISO A LOS REPARTIDORES CUANDO EL PEDIDO QUEDA COBRADO ───────
 // Pensado para cuando el local está movido y el pedido se cobra solo por
 // Mercado Pago: el repartidor se entera enseguida y va yendo al local. Si ya
-// lo tomó alguien, le llega a ese; si no, a todos los repartidores.
+// lo tomó alguien, le llega a ese; si no, a los repartidores disponibles.
 exports.avisoPedidoCobrado = onDocumentUpdated(
   { document: 'pedidosWeb/{id}', region: REGION },
   async (event) => {
@@ -926,7 +926,11 @@ exports.avisoPedidoCobrado = onDocumentUpdated(
       const tokens = await tokensRepartidores(n => n === despues.repartidor);
       if (tokens.length) await enviarATokens(tokens, '✅ Pedido pagado', 'El pedido de ' + nombre + ' ya está pagado: pasá por el local a retirarlo.', { tag: 'pedido-' + event.params.id, url: '/delivery/' });
     } else {
-      await notificar('repartidor', '✅ Pedido pagado', 'El pedido de ' + nombre + ' ya está pagado y nadie lo tomó: tomalo y pasá por el local.', { tag: 'pedido-' + event.params.id, url: '/delivery/' });
+      const emps = await db.collection('empleados').get();
+      const disponibles = emps.docs.map(d => d.data())
+        .filter(e => e && e.accesoDelivery && e.disponibleDelivery && !e.sinPedidos).map(e => e.nombre);
+      const tokens = await tokensRepartidores(n => disponibles.indexOf(n) !== -1);
+      if (tokens.length) await enviarATokens(tokens, '✅ Pedido pagado', 'El pedido de ' + nombre + ' ya está pagado y nadie lo tomó: tomalo y pasá por el local.', { tag: 'pedido-' + event.params.id, url: '/delivery/' });
     }
   }
 );
