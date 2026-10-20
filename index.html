@@ -13158,6 +13158,19 @@ function cobrarPedidoAutomatico(id, pago){
   if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
 }
 
+// Marca en los movimientos del turno si una venta por transferencia ya se vio
+// llegar a Mercado Pago (la caja la confirmó con "Pago recibido", o se cobró
+// sola por delivery) o si se confirmó a mano y queda para el cierre.
+function marcaMPVenta(m){
+  if(!m || m.tipo !== 'venta' || !m.refId) return '';
+  var v = VENTAS.find(function(x){ return x.id === m.refId; });
+  if(!v || v.anulada) return '';
+  var transf = v.medio === 'Transferencia' || (v.medio === 'Mixto' && v.mixto && Number(v.mixto.transferencia) > 0);
+  if(!transf) return '';
+  return v.mpPago ? ' <span style="color:var(--green)" title="La plata ya entró a Mercado Pago">✅ en MP</span>'
+    : ' <span style="color:var(--gold)" title="Se confirmó a mano: se revisa en el cierre de Mercado Pago">⏳ a revisar</span>';
+}
+
 // ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────
 // El arqueo de cada turno controla el efectivo; esto controla lo que se cobró
 // por transferencia (al alias de Mercado Pago): ¿llegó de verdad, y completo?
@@ -24258,6 +24271,7 @@ function renderDashboard() {
             var montoNeto = (m.tipo==='venta') ? (m.total - m.recargo) : m.total;
             var recargoTxt = (m.tipo==='venta' && m.recargo>0) ? ' <span style="color:var(--gray)">(+'+fmt(m.recargo)+' recargo)</span>' : '';
             var medioTxt = m.extra ? ' <span style="color:var(--gray)">· '+m.extra+'</span>'+recargoTxt : recargoTxt;
+            medioTxt += marcaMPVenta(m);
             if(ventaAnulada){
               return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem;opacity:.5;text-decoration:line-through">'+
                 '<span style="color:var(--light)">'+hora+' '+icono+' '+m.texto+medioTxt+' <span style="text-decoration:none;color:var(--red);font-weight:700">❌ ANULADA</span></span>'+
