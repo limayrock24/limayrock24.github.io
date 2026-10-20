@@ -1328,6 +1328,9 @@ if(window.__lrSucursal === 2){
     // Si solo cambió el "de dónde vino" (copia del equipo → nube) no hay
     // documentos nuevos: se anota y listo, sin rearmar nada.
     window.__lrVentasDesdeNube = !snap.metadata.fromCache;
+    // Lo reciente ya confirmado por la nube: el historial viejo que se baja
+    // después (app del celu) no vuelve a mostrar "poniéndose al día".
+    if(!snap.metadata.fromCache) window.__lrVentasRecientesOk = true;
     if(window.__lrSync.ventasListos && !snap.docChanges().length) return;
     var _r = inc(snap), lista = _r.lista, mapa = _r.mapa;
     window.VENTAS = lista;
@@ -23684,7 +23687,7 @@ function renderDashboard() {
     turnoVivoHtml = '<div style="background:var(--card);border:1px solid var(--gold);border-radius:8px;padding:12px 16px;margin-bottom:10px;color:var(--gold);font-size:.85rem">⏳ Confirmando con el local cuál es el turno en curso…</div>';
     avisoTurnoFantasma = '';
   }
-  var avisoSinConfirmar = (window.__lrVentasDesdeNube !== true || window.__lrSesionesDesdeNube !== true)
+  var avisoSinConfirmar = ((window.__lrVentasDesdeNube !== true && !window.__lrVentasRecientesOk) || window.__lrSesionesDesdeNube !== true)
     ? '<div style="background:rgba(245,194,0,.12);border:1px solid var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:10px;color:var(--gold);font-size:.78rem">⏳ Poniéndose al día con el local — ventas y saldos pueden estar atrasados unos minutos. Se actualiza solo.</div>'
     : '';
 
