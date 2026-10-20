@@ -4706,6 +4706,7 @@ body.night-on{background:#080005}
       </div>
       <!-- Sub-pane: Liquidación -->
       <div id="empSubLiquidacion" style="display:none">
+        <div id="liqModoBtns" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
           <select class="rent-period-btn sel-mes active" id="lp-mes" onchange="selPeriodoLiq(this.value)"></select>
           <button class="rent-period-btn" id="lp-semana" onclick="selPeriodoLiq('semana')">Esta semana</button>
@@ -17435,8 +17436,6 @@ function toggleLiqEmp(nombre) {
 }
 
 function renderLiquidacion() {
-  var cierres  = getCierres();
-  var consumos = getConsumos();
   var grid     = document.getElementById('liquidacionGrid');
   if(!grid) return;
 
@@ -17446,7 +17445,13 @@ function renderLiquidacion() {
   } else {
     rangoLiq = getFechasRango(_periodoLiq||'mes');
   }
-
+  if(liqModoDos()) cargarLiqOtro(rangoLiq);
+  pintarLiqModo();
+  var cierres  = _liqCierres();
+  var consumos = _liqConsumos();
+  // Lo de cada local por separado (cada uno paga su parte)
+  var porLoc = {};
+  var pl = function(n, L){ var e = porLoc[n] || (porLoc[n] = {}); return e[L] || (e[L] = {turnos:0, minPagos:0, consumo:0, faltante:0}); };
   var empData={};
   cierres.filter(function(c){
     var d = new Date(c.fecha);
@@ -17460,6 +17465,7 @@ function renderLiquidacion() {
     else empData[c.empleado].minPagos += minutosPagados(c);
     if(multTurno(c) > 1) empData[c.empleado].turnosEsp.push(c);
     empData[c.empleado].turnos      += 1;
+    var _pl = pl(c.empleado, localDe(c)); _pl.turnos += 1; if(!c.pagado) _pl.minPagos += minutosPagados(c);
     empData[c.empleado].ventas      += c.cantVentas||0;
     empData[c.empleado].totalVentas += c.total||0;
   });
@@ -17471,6 +17477,7 @@ function renderLiquidacion() {
     return c.tipo==='empleado' && !c.saldado && d >= rangoLiq.desde && d <= rangoLiq.hasta;
   }).forEach(function(c){
     consEmp[c.empleado]=(consEmp[c.empleado]||0)+pendienteConsumo(c);
+    pl(c.empleado, localDe(c)).consumo += pendienteConsumo(c);
   });
 
   // Faltantes de caja pendientes de descontar (diferencia negativa en el cierre, no marcada como saldada)
@@ -17481,6 +17488,7 @@ function renderLiquidacion() {
   }).forEach(function(c){
     // Efectivo + Mercado Pago (cierre de MP): los dos se descuentan igual.
     faltEmp[c.empleado] = (faltEmp[c.empleado]||0) + faltantePendienteCierre(c);
+    pl(c.empleado, localDe(c)).faltante += faltantePendienteCierre(c);
   });
 
   var empleados = getEmpleados();
@@ -17554,6 +17562,14 @@ function renderLiquidacion() {
         '<div class="liq-row"><span class="liq-lbl">💰 Sueldo estimado</span><span class="liq-val ing">'+(valorHora>0?fmt(sueldo):'Configurá el valor hora')+'</span></div>'+
         '<div class="liq-row"><span class="liq-lbl">🛒 Consumos a descontar</span><span class="liq-val egr">−'+fmt(consumo)+'</span></div>'+
         (faltante>0?'<div class="liq-row"><span class="liq-lbl">🔴 Faltantes de caja</span><span class="liq-val egr">−'+fmt(faltante)+'</span></div>':'')+
+        (liqModoDos() ? [1, 2].map(function(L){
+          var x = (porLoc[emp.nombre] || {})[L]; if(!x) return '';
+          var paga = Math.round((x.minPagos/60) * valorHora) - x.consumo - x.faltante;
+          return '<div class="liq-row" style="background:rgba(255,255,255,.03)"><span class="liq-lbl">🏪 Paga Limay '+L+'</span>'+
+            '<span class="liq-val" style="text-align:right">'+x.turnos+' turno'+(x.turnos===1?'':'s')+' · '+Math.floor(x.minPagos/60)+'h'+(x.minPagos%60?' '+Math.round(x.minPagos%60)+'m':'')+
+            (x.consumo ? ' · consumos −'+fmt(x.consumo) : '')+(x.faltante ? ' · faltantes −'+fmt(x.faltante) : '')+
+            ' → <b style="color:var(--gold)">'+(valorHora>0?fmt(paga):'—')+'</b></span></div>';
+        }).join('') : '')+
       '</div>'+
       '<div class="liq-neto">'+
         '<span class="liq-neto-lbl">A pagar</span>'+
@@ -17561,14 +17577,59 @@ function renderLiquidacion() {
       '</div>'+
       ((valorHora>0 && (d.minPagos>0 || consumo>0 || faltante>0)) ?
         '<button class="btn-liq-saldar" style="background:var(--green);color:var(--black);border-color:var(--green);font-weight:700" onclick="registrarPagoLiquidacion(\''+nomEsc+'\')">💵 Registrar pago de la liquidación ('+fmt(neto)+')</button>' : '')+
-      (consumo>0 ? '<button class="btn-liq-saldar" onclick="marcarConsumosSaldados(\''+emp.nombre+'\')">✓ Marcar consumos como descontados</button>' : '')+
-      (faltante>0 ? '<button class="btn-liq-saldar" style="border-color:rgba(204,0,0,.4);color:var(--red)" onclick="marcarFaltantesSaldados(\''+emp.nombre+'\')">✓ Marcar faltantes como descontados</button>' : '')+
+      // Estos dos botones tocan solo lo de este local: aparecen si acá hay algo.
+      (((liqModoDos() ? ((porLoc[emp.nombre]||{})[liqLocalAca()]||{}).consumo : consumo) > 0) ? '<button class="btn-liq-saldar" onclick="marcarConsumosSaldados(\''+emp.nombre+'\')">✓ Marcar consumos como descontados'+(liqModoDos()?' (solo Limay '+liqLocalAca()+')':'')+'</button>' : '')+
+      (((liqModoDos() ? ((porLoc[emp.nombre]||{})[liqLocalAca()]||{}).faltante : faltante) > 0) ? '<button class="btn-liq-saldar" style="border-color:rgba(204,0,0,.4);color:var(--red)" onclick="marcarFaltantesSaldados(\''+emp.nombre+'\')">✓ Marcar faltantes como descontados'+(liqModoDos()?' (solo Limay '+liqLocalAca()+')':'')+'</button>' : '')+
       '</div>';
     grid.appendChild(card);
   });
   if(!grid.children.length){
     grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">Nadie trabajó horas en este período</div>';
   }
+}
+
+// ── LIQUIDACIÓN DE LOS DOS LOCALES ──────────────────────────────────────────
+// Un empleado puede trabajar en Limay 1 y en Limay 2: con "Los dos locales"
+// la liquidación suma sus turnos, consumos y faltantes de los dos (mismo valor
+// hora) y muestra cuánto le paga cada local, porque cada uno paga su parte.
+// Lo del otro local se trae de la nube para el período elegido; los registros
+// de acá no se tocan ni se marcan: los del otro llevan _local.
+var SK_LIQ_MODO = 'lr_liq_modo';
+function liqModoDos(){ try{ return localStorage.getItem(SK_LIQ_MODO) !== 'local'; }catch(e){ return window.__lrLiqModo !== 'local'; } }
+function setLiqModo(m){ window.__lrLiqModo = m; try{ localStorage.setItem(SK_LIQ_MODO, m); }catch(e){} renderLiquidacion(); }
+function liqLocalAca(){ return window.__lrSucursal === 2 ? 2 : 1; }
+function liqLocalOtro(){ return liqLocalAca() === 2 ? 1 : 2; }
+function localDe(x){ return (x && x._local) ? x._local : liqLocalAca(); }
+var _liqOtro = { clave: '', cierres: [], consumos: [], cargando: false, listo: false, error: '' };
+function cargarLiqOtro(rango, forzar){
+  var clave = rango.desde.toISOString()+'|'+rango.hasta.toISOString();
+  if(!forzar && _liqOtro.clave === clave && (_liqOtro.cargando || _liqOtro.listo)) return;
+  _liqOtro = { clave: clave, cierres: [], consumos: [], cargando: true, listo: false, error: '' };
+  var otro = liqLocalOtro(), d = rango.desde.toISOString(), h = rango.hasta.toISOString();
+  Promise.all([
+    ldCol(otro, 'cierres').where('fecha', '>=', d).where('fecha', '<=', h).get(),
+    ldCol(otro, 'consumos').where('fecha', '>=', d).where('fecha', '<=', h).get()
+  ]).then(function(r){
+    if(_liqOtro.clave !== clave) return;
+    var tag = function(s){ var a = []; s.forEach(function(doc){ var x = doc.data(); x._local = otro; x._docId = doc.id; a.push(x); }); return a; };
+    _liqOtro.cierres = tag(r[0]); _liqOtro.consumos = tag(r[1]);
+    _liqOtro.cargando = false; _liqOtro.listo = true;
+    renderLiquidacion();
+  }).catch(function(e){
+    if(_liqOtro.clave !== clave) return;
+    _liqOtro.cargando = false; _liqOtro.error = String((e && e.message) || e);
+    renderLiquidacion();
+  });
+}
+function _liqCierres(){ return liqModoDos() ? getCierres().concat(_liqOtro.cierres) : getCierres(); }
+function _liqConsumos(){ return liqModoDos() ? getConsumos().concat(_liqOtro.consumos) : getConsumos(); }
+function pintarLiqModo(){
+  var cont = document.getElementById('liqModoBtns'); if(!cont) return;
+  var dos = liqModoDos();
+  var b = function(m, txt, on){ return '<button class="rent-period-btn'+(on?' active':'')+'" onclick="setLiqModo(\''+m+'\')">'+txt+'</button>'; };
+  cont.innerHTML = b('dos', '🏪🏪 Los dos locales', dos) + b('local', '🏪 Solo Limay '+liqLocalAca(), !dos) +
+    (dos ? (_liqOtro.cargando ? '<span style="font-size:.7rem;color:var(--gold)">⏳ Trayendo los datos de Limay '+liqLocalOtro()+'…</span>'
+      : _liqOtro.error ? '<span style="font-size:.7rem;color:var(--red)">⚠ No se pudo traer Limay '+liqLocalOtro()+': '+escBaja(_liqOtro.error)+'</span>' : '') : '');
 }
 
 function setValorHoraEmpleado(nombre, valor) {
@@ -17681,35 +17742,69 @@ function registrarPagoLiquidacion(nombreEmp) {
   var emp = getEmpleados().find(function(e){ return e.nombre===nombreEmp; });
   var valorHora = emp ? (parseFloat(emp.valorHora)||0) : 0;
   var cierres = getCierres(), consumos = getConsumos();
-  var turnos = cierres.filter(function(c){ return c.empleado===nombreEmp && !c.pagado && enRango(c.fecha); });
-  var cons = consumos.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && enRango(c.fecha); });
-  var falt = cierres.filter(function(c){ return c.empleado===nombreEmp && c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado && enRango(c.fecha); });
+  if(liqModoDos() && _liqOtro.cargando){ showToast('Esperá a que terminen de llegar los datos del otro local', true); return; }
+  var todosC = _liqCierres(), todosK = _liqConsumos();
+  var turnos = todosC.filter(function(c){ return c.empleado===nombreEmp && !c.pagado && enRango(c.fecha); });
+  var cons = todosK.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombreEmp && !c.saldado && enRango(c.fecha); });
+  // Faltantes de efectivo y de Mercado Pago, igual que en la tarjeta.
+  var falt = todosC.filter(function(c){ return c.empleado===nombreEmp && faltantePendienteCierre(c) > 0 && enRango(c.fecha); });
   var minPago = turnos.reduce(function(s,c){ return s+minutosPagados(c); },0);
   var sueldo = Math.round((minPago/60)*valorHora);
   var totCons = cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
-  var totFalt = falt.reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
+  var totFalt = falt.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
   var neto = sueldo - totCons - totFalt;
+  // Cuánto paga cada local
+  var porL = {};
+  [1, 2].forEach(function(L){
+    var mt = turnos.filter(function(c){ return localDe(c)===L; }).reduce(function(s,c){ return s+minutosPagados(c); },0);
+    var kc = cons.filter(function(c){ return localDe(c)===L; }).reduce(function(s,c){ return s+pendienteConsumo(c); },0);
+    var kf = falt.filter(function(c){ return localDe(c)===L; }).reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+    if(mt || kc || kf) porL[L] = Math.round((mt/60)*valorHora) - kc - kf;
+  });
+  var dosLoc = Object.keys(porL).length > 1;
   var txt = 'Registrar el pago de la liquidación de '+nombreEmp+':\n\n'+
     '• '+turnos.length+' turno'+(turnos.length===1?'':'s')+' ('+Math.floor(minPago/60)+'h '+Math.round(minPago%60)+'m a pagar) → sueldo '+fmt(sueldo)+'\n'+
     (cons.length ? '• Consumos a descontar: −'+fmt(totCons)+'\n' : '')+
     (falt.length ? '• Faltantes de caja: −'+fmt(totFalt)+'\n' : '')+
-    '\nTOTAL PAGADO: '+fmt(neto)+'\n\nLos turnos quedan como pagados y los consumos/faltantes como descontados. ¿Confirmás?';
+    '\nTOTAL PAGADO: '+fmt(neto)+'\n'+
+    (dosLoc ? Object.keys(porL).map(function(L){ return '   · Paga Limay '+L+': '+fmt(porL[L]); }).join('\n')+'\n' : '')+
+    '\nLos turnos quedan como pagados y los consumos/faltantes como descontados'+(dosLoc?' en los dos locales':'')+'. ¿Confirmás?';
   askConfirm(txt).then(function(ok){
     if(!ok) return;
     var ahoraISO = new Date().toISOString();
-    var idsT = {}; turnos.forEach(function(c){ idsT[c.fecha] = true; });
-    var idsF = {}; falt.forEach(function(c){ idsF[c.fecha] = true; });
+    var aca = function(c){ return !c._local; };
+    var idsT = {}; turnos.filter(aca).forEach(function(c){ idsT[c.fecha] = true; });
+    var idsF = {}; falt.filter(aca).forEach(function(c){ idsF[c.fecha] = true; });
     cierres.forEach(function(c){
       if(c.empleado !== nombreEmp) return;
       if(idsT[c.fecha]){ c.pagado = true; c.fechaPagado = ahoraISO; }
-      if(idsF[c.fecha] && c.arqueo){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; }
+      if(idsF[c.fecha]){
+        if(faltanteCajaCierre(c) > 0){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; }
+        if(faltanteMPCierre(c) > 0){ c.mp.faltanteSaldado = true; c.mp.fechaFaltanteSaldado = ahoraISO; }
+      }
     });
     saveCierres(cierres);
-    if(cons.length){
-      var idsC = {}; cons.forEach(function(c){ idsC[c.id] = true; });
+    var consAca = cons.filter(aca);
+    if(consAca.length){
+      var idsC = {}; consAca.forEach(function(c){ idsC[c.id] = true; });
       consumos.forEach(function(c){ if(idsC[c.id]){ c.saldado = true; c.fechaSaldado = ahoraISO; c.montoDescontado = c.total||0; } });
       saveConsumos(consumos);
     }
+    // Lo del otro local se marca directo en su base (sin traer todo).
+    var otros = [];
+    var cambiosC = {};
+    turnos.filter(function(c){ return c._local; }).forEach(function(c){ (cambiosC[c._docId] = cambiosC[c._docId] || {}).pagado = true; cambiosC[c._docId].fechaPagado = ahoraISO; });
+    falt.filter(function(c){ return c._local; }).forEach(function(c){
+      var u = cambiosC[c._docId] = cambiosC[c._docId] || {};
+      if(faltanteCajaCierre(c) > 0){ u['arqueo.faltanteSaldado'] = true; u['arqueo.fechaFaltanteSaldado'] = ahoraISO; }
+      if(faltanteMPCierre(c) > 0){ u['mp.faltanteSaldado'] = true; u['mp.fechaFaltanteSaldado'] = ahoraISO; }
+    });
+    Object.keys(cambiosC).forEach(function(id){ otros.push(ldCol(liqLocalOtro(), 'cierres').doc(id).update(cambiosC[id])); });
+    cons.filter(function(c){ return c._local; }).forEach(function(c){
+      otros.push(ldCol(liqLocalOtro(), 'consumos').doc(c._docId).update({ saldado: true, fechaSaldado: ahoraISO, montoDescontado: c.total||0 }));
+    });
+    if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); })
+      .catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+liqLocalOtro()+': '+((e && e.message) || e), true); });
     showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')');
     renderLiquidacion();
     if(typeof renderHoras === 'function') renderHoras();
@@ -17748,8 +17843,8 @@ function exportarLiquidacionPDF(nombre) {
   var empleados = getEmpleados();
   var empObj    = empleados.find(function(e){ return e.nombre===nombre; });
   var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
-  var cierres   = getCierres();
-  var consumos  = getConsumos();
+  var cierres   = _liqCierres();
+  var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
   var periodoTxt = _liqDesde && _liqHasta
     ? new Date(_liqDesde+'T00:00:00').toLocaleDateString('es-AR')+' al '+new Date(_liqHasta+'T00:00:00').toLocaleDateString('es-AR')
@@ -17773,7 +17868,7 @@ function exportarLiquidacionPDF(nombre) {
     var difTxt = ((c.arqueo && c.arqueo.diferencia<0) ? ' · <span style="color:#CC0000">faltante $'+Number(Math.abs(c.arqueo.diferencia)).toLocaleString('es-AR')+(c.arqueo.faltanteSaldado?' (ya descontado)':'')+'</span>' : '')+
       ((c.mp && c.mp.diferencia<0) ? ' · <span style="color:#CC0000">faltante Mercado Pago $'+Number(Math.abs(c.mp.diferencia)).toLocaleString('es-AR')+(c.mp.faltanteSaldado?' (ya descontado)':'')+'</span>' : '');
     var mP = multTurno(c);
-    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+(c.pagado?' <span style="color:#27ae60">(ya pagado)</span>':'')+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
+    return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+(liqModoDos()?' · L'+localDe(c):'')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+(c.pagado?' <span style="color:#27ae60">(ya pagado)</span>':'')+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
   }).join('');
 
   var contenido=
@@ -17787,6 +17882,13 @@ function exportarLiquidacionPDF(nombre) {
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e74c3c">$'+Number(consumo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Faltantes de caja</div><div class="v" style="color:#e74c3c">$'+Number(faltante).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">A PAGAR</div><div class="v" style="color:#CC0000;font-size:18px">$'+Number(neto).toLocaleString('es-AR')+'</div></div>'+
+      (liqModoDos() ? [1, 2].map(function(L){
+        var mc = misCierres.filter(function(c){ return localDe(c)===L; });
+        var kc = consumos.filter(function(c){ var d=new Date(c.fecha); return localDe(c)===L&&c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
+        if(!mc.length && !kc) return '';
+        var paga = Math.round((mc.reduce(function(s,c){return s+(c.pagado?0:minutosPagados(c));},0)/60)*valorHora) - kc - mc.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+        return '<div class="kpi"><div class="l">Paga Limay '+L+'</div><div class="v">$'+Number(paga).toLocaleString('es-AR')+'</div></div>';
+      }).join('') : '')+
     '</div>'+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Detalle de turnos</h3>'+
     '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Duración</th><th>Pago</th><th>Ventas</th></tr></thead><tbody>'+turnosRows+'</tbody></table>';
@@ -17799,8 +17901,8 @@ function exportarLiquidacionPDF(nombre) {
 function exportarPDFEmpleado(nombre) {
   var empObj    = getEmpleados().find(function(e){ return e.nombre===nombre; });
   var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
-  var cierres   = getCierres();
-  var consumos  = getConsumos();
+  var cierres   = _liqCierres();
+  var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
   var periodoTxt = _liqDesde && _liqHasta
     ? new Date(_liqDesde+'T00:00:00').toLocaleDateString('es-AR')+' al '+new Date(_liqHasta+'T00:00:00').toLocaleDateString('es-AR')
@@ -17845,7 +17947,7 @@ function exportarPDFEmpleado(nombre) {
     yaPagadas: minYaPagos > 0 ? txtHs(minYaPagos) : '', totalConsumo: totalConsumo,
     turnos: misCierres.map(function(c){
       var m = multTurno(c);
-      return { dia: diaTxt(c.fecha), horario: hora(c.horaInicio)+' a '+hora(c.horaFin),
+      return { dia: diaTxt(c.fecha)+(liqModoDos()?' · Limay '+localDe(c):''), horario: hora(c.horaInicio)+' a '+hora(c.horaFin),
                dur: c.durMinutos ? txtHs(c.durMinutos) : '—', mult: m>1 ? textoMult(m) : '', pagado: !!c.pagado };
     }),
     consumos: misConsumos.map(function(c){
