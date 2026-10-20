@@ -11922,7 +11922,11 @@ function renderCierres() {
   var emps = getEmpleados().filter(function(e){ return !empEsDelivery(e) || e.nombre === filtroActual; })
     .map(function(e){ return e.nombre; });
 
-  var html = '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin-bottom:10px">⏹ Historial de cierres de turno</div>';
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">⏹ Historial de cierres de turno</div>'+
+    // Prueba de la confirmación automática con Mercado Pago (solo el admin propio).
+    (window.__lrEsPanelAdmin ? '<button onclick="probarConexionMP()" style="background:none;border:1px solid rgba(56,189,248,.5);color:#38bdf8;border-radius:5px;padding:4px 10px;font-size:.66rem;cursor:pointer;font-family:Oswald,sans-serif;letter-spacing:.5px">🔌 Probar conexión con Mercado Pago</button>' : '')+
+  '</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
   html += '<select id="cierresFiltroEmp" onchange="window._cierresFiltroEmp=this.value;renderCierres()" style="background:var(--card);border:1.5px solid var(--border);color:var(--white);border-radius:4px;padding:7px 10px;font-family:Barlow,sans-serif;font-size:.82rem">';
   html += '<option value="">👥 Todos los empleados</option>';
@@ -12804,6 +12808,61 @@ function toggleVentasDetalleCierre(idx) {
   }
   div.style.display = 'block';
   if(btnTxt) btnTxt.textContent = '▲ Ocultar ventas';
+}
+
+// ── MERCADO PAGO: PRUEBA DE CONEXIÓN ──────────────────────────────────────
+// Le pide a la nube (función mpPruebaMovimientos) los cobros de los últimos
+// días de la cuenta de Mercado Pago, para ver si las transferencias al alias
+// aparecen con su monto y su hora. Es solo lectura: no toca nada.
+function probarConexionMP(){
+  var ov = document.getElementById('mpPruebaOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'mpPruebaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.85);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    document.body.appendChild(ov);
+  }
+  var marco = function(cuerpo){
+    return '<div style="background:#161616;border:1px solid #38bdf8;border-radius:10px;max-width:760px;width:100%;padding:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<div style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1.5px;color:#38bdf8">🔌 PRUEBA DE CONEXIÓN CON MERCADO PAGO</div>'+
+        '<button onclick="document.getElementById(\'mpPruebaOverlay\').style.display=\'none\'" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>'+
+      '</div>'+cuerpo+'</div>';
+  };
+  ov.style.display = 'flex';
+  ov.innerHTML = marco('<div style="color:var(--gray);padding:20px;text-align:center">⏳ Consultando Mercado Pago (últimos 2 días)…</div>');
+  var cargar = function(){
+    if(firebase.functions) return Promise.resolve();
+    return new Promise(function(res, rej){
+      var s = document.createElement('script');
+      s.src = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js';
+      s.onload = res; s.onerror = function(){ rej(new Error('sin internet')); };
+      document.head.appendChild(s);
+    });
+  };
+  cargar().then(function(){
+    return firebase.app().functions('southamerica-east1').httpsCallable('mpPruebaMovimientos')({ dias: 2 });
+  }).then(function(r){
+    var d = r.data || {}, lista = d.movimientos || [];
+    var filas = lista.map(function(m){
+      var f = m.fecha ? new Date(m.fecha) : null;
+      return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'+
+        '<td style="padding:5px;white-space:nowrap">'+(f ? f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—')+'</td>'+
+        '<td style="padding:5px;text-align:right;color:var(--gold)">'+fmt(m.monto||0)+'</td>'+
+        '<td style="padding:5px">'+escBaja(m.tipo||'')+' · '+escBaja(m.medio||'')+'</td>'+
+        '<td style="padding:5px">'+escBaja(m.operacion||'')+(m.origen?' · '+escBaja(m.origen):'')+'</td>'+
+        '<td style="padding:5px">'+escBaja(m.estado||'')+'</td></tr>';
+    }).join('');
+    ov.innerHTML = marco(
+      '<div style="font-size:.8rem;color:var(--light);margin-bottom:8px">✅ La conexión funciona. Mercado Pago informó <b>'+(d.total||0)+'</b> cobro'+((d.total||0)===1?'':'s')+' en los últimos 2 días (se muestran hasta 100).</div>'+
+      '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Fijate si aparecen las <b>transferencias al alias</b> que recibiste (buscá montos que reconozcas). Sacale una captura a esta pantalla y mandámela: no tiene datos de los clientes.</div>'+
+      (filas ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.74rem;color:var(--light)"><tr style="color:var(--gray);text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px;text-align:right">Monto</th><th style="padding:5px">Tipo · medio</th><th style="padding:5px">Operación</th><th style="padding:5px">Estado</th></tr>'+filas+'</table></div>'
+        : '<div style="color:var(--gray);padding:10px">No hubo cobros en ese período.</div>'));
+  }).catch(function(e){
+    var m = (e && e.message) || String(e);
+    var ayuda = /not-found|NOT_FOUND|internal/i.test(m) ? 'Puede que la función todavía no esté subida a la nube (falta el paso de Cloud Shell).' :
+      /permission/i.test(m) ? 'Esta prueba se hace desde el admin (link del admin o la app LR Admin).' : '';
+    ov.innerHTML = marco('<div style="color:var(--red);padding:12px">⚠ No se pudo consultar: '+escBaja(m)+'</div>'+(ayuda?'<div style="font-size:.78rem;color:var(--gray);padding:0 12px 12px">'+ayuda+'</div>':''));
+  });
 }
 
 // ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────

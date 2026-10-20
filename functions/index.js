@@ -633,3 +633,39 @@ exports.sincronizarProductoL2aL1 = onDocumentWritten(
   { document: 'l2_productos/{id}', region: REGION },
   (event) => sincronizarProductoEntreLocales(event, 'productos')
 );
+
+// ── MERCADO PAGO: PRUEBA DE CONEXIÓN (solo lectura) ─────────────────────────
+// Primer paso para que el sistema confirme solo que cada transferencia llegó:
+// trae los cobros que entraron a la cuenta de Mercado Pago en los últimos días
+// (monto, hora y tipo; sin datos de los clientes), para ver si las
+// transferencias al alias aparecen. La clave de la cuenta se guarda como
+// secreto en la nube (MP_ACCESS_TOKEN): nunca está en el código ni la ve nadie.
+// Solo la puede usar el admin.
+const { defineSecret } = require('firebase-functions/params');
+const MP_ACCESS_TOKEN = defineSecret('MP_ACCESS_TOKEN');
+
+exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, async (req) => {
+  const email = req.auth && req.auth.token && req.auth.token.email;
+  if (email !== 'admin@limayrock.app') throw new HttpsError('permission-denied', 'Solo desde el admin');
+  const dias = Math.min(Math.max(parseInt(req.data && req.data.dias, 10) || 2, 1), 7);
+  const url = 'https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=100' +
+    '&range=date_created&begin_date=NOW-' + dias + 'DAYS&end_date=NOW';
+  let r;
+  try { r = await fetch(url, { headers: { Authorization: 'Bearer ' + MP_ACCESS_TOKEN.value() } }); }
+  catch (e) { throw new HttpsError('unavailable', 'No se pudo conectar con Mercado Pago'); }
+  if (!r.ok) throw new HttpsError('unavailable', 'Mercado Pago respondió ' + r.status + (r.status === 401 ? ' (la clave no es válida)' : ''));
+  const j = await r.json();
+  return {
+    total: (j.paging && j.paging.total) || 0,
+    movimientos: (j.results || []).map(p => ({
+      fecha: p.date_approved || p.date_created,
+      monto: p.transaction_amount,
+      neto: p.transaction_details ? p.transaction_details.net_received_amount : null,
+      estado: p.status,
+      tipo: p.payment_type_id,
+      medio: p.payment_method_id,
+      operacion: p.operation_type,
+      origen: p.point_of_interaction ? [p.point_of_interaction.type, p.point_of_interaction.sub_type].filter(Boolean).join(' / ') : ''
+    }))
+  };
+});
