@@ -651,7 +651,7 @@ exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN
   const url = 'https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=100' +
     '&range=date_created&begin_date=NOW-' + dias + 'DAYS&end_date=NOW';
   let r;
-  try { r = await fetch(url, { headers: { Authorization: 'Bearer ' + MP_ACCESS_TOKEN.value() } }); }
+  try { r = await fetch(url, { headers: { Authorization: 'Bearer ' + String(MP_ACCESS_TOKEN.value() || '').trim() } }); }
   catch (e) { throw new HttpsError('unavailable', 'No se pudo conectar con Mercado Pago'); }
   if (!r.ok) throw new HttpsError('unavailable', 'Mercado Pago respondió ' + r.status + (r.status === 401 ? ' (la clave no es válida)' : ''));
   const j = await r.json();
