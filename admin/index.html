@@ -15784,10 +15784,31 @@ function renderRentDetalle() {
 // de desglose de combos/manuales que Ventas por categoría (prorratea combos
 // por precio de venta de cada componente; los ítems sueltos/manuales no
 // tienen costo cargado así que van como "sin costo").
-function calcularMargenBrutoDeVentas(ventasList) {
+// opciones.porCategoria: además arma el mismo cálculo separado por categoría
+// (lo usa el informe para asesoría). Es la MISMA cuenta, no una paralela: así
+// el informe y Rentabilidad/Inicio dan siempre los mismos números.
+function calcularMargenBrutoDeVentas(ventasList, opciones) {
   var prodByName = {};
   PRODUCTS.forEach(function(p){ prodByName[p.name] = p; });
   var costoTotal = 0, revConCosto = 0, revSinCosto = 0;
+  var conCat = !!(opciones && opciones.porCategoria);
+  var porCat = {};
+  var presetsCat = conCat ? getManualPresets() : [];
+  // Anota un ítem (o la parte de un combo) en su categoría. costo === null
+  // quiere decir "sin costo cargado": suma facturación pero no margen.
+  function anotar(cat, nombre, qty, monto, costo){
+    if(!conCat) return;
+    var c = porCat[cat] || (porCat[cat] = { qty:0, rev:0, revConCosto:0, revSinCosto:0, costo:0, sinCosto:{}, productos:{} });
+    c.qty += qty; c.rev += monto;
+    if(costo === null){ c.revSinCosto += monto; c.sinCosto[nombre] = true; }
+    else { c.revConCosto += monto; c.costo += costo; }
+    var pr = c.productos[nombre] || (c.productos[nombre] = { qty:0, rev:0 });
+    pr.qty += qty; pr.rev += monto;
+  }
+  function catDeProducto(nombre){ var p = prodByName[nombre]; return (p && p.cat) || 'Sin categoría'; }
+  // Componente suelto de un combo: misma regla que una venta suelta (su
+  // categoría si es un ítem manual rápido; si no, "Sueltos sin categoría asignada").
+  function catDeManualCombo(itM){ var cm = itM && itM.categoria; return (cm && presetsCat.indexOf(cm) !== -1) ? cm : 'Sueltos sin categoría asignada'; }
   (ventasList||[]).forEach(function(v){
     if(v.anulada || v.fiadoCarga) return;
     (v.items||[]).forEach(function(i){
@@ -15809,11 +15830,15 @@ function calcularMargenBrutoDeVentas(ventasList) {
           // un producto; sin costo, va como "sin costo".
           if(ci.tipo === 'manual'){
             var itMan = itemManualDeCombo(ci);
+            var qtyMan = (i.qty||1) * (ci.unidadItem === 'unidad' ? (ci.qty||1) : 1);
             if(itMan && itMan.costoKg){
-              costoTotal += itMan.costoKg * factorItemManualCombo(ci) * (i.qty||1);
+              var costoMan = itMan.costoKg * factorItemManualCombo(ci) * (i.qty||1);
+              costoTotal += costoMan;
               revConCosto += montoAsignado;
+              anotar(catDeManualCombo(itMan), ci.nombre, qtyMan, montoAsignado, costoMan);
             } else {
               revSinCosto += montoAsignado;
+              anotar(catDeManualCombo(itMan), ci.nombre, qtyMan, montoAsignado, null);
             }
             return;
           }
@@ -15821,22 +15846,27 @@ function calcularMargenBrutoDeVentas(ventasList) {
           if(prod && prod.costo){
             costoTotal += prod.costo * cantidadReal;
             revConCosto += montoAsignado;
+            anotar(catDeProducto(ci.nombre), ci.nombre, cantidadReal, montoAsignado, prod.costo * cantidadReal);
           } else {
             revSinCosto += montoAsignado;
+            anotar(catDeProducto(ci.nombre), ci.nombre, cantidadReal, montoAsignado, null);
           }
         });
         return;
       }
       if(i.manual){
         revSinCosto += (i.subtotal||0);
+        if(conCat) anotar(categoriaDeItem(i), i.name, (i.qty||0), (i.subtotal||0), null);
         return;
       }
       var prod = prodByName[i.name];
       if(prod && prod.costo){
         costoTotal += prod.costo * (i.qty||0);
         revConCosto += (i.subtotal||0);
+        anotar(catDeProducto(i.name), i.name, (i.qty||0), (i.subtotal||0), prod.costo * (i.qty||0));
       } else {
         revSinCosto += (i.subtotal||0);
+        anotar(catDeProducto(i.name), i.name, (i.qty||0), (i.subtotal||0), null);
       }
     });
   });
@@ -15847,7 +15877,8 @@ function calcularMargenBrutoDeVentas(ventasList) {
     revSinCosto: revSinCosto,
     revTotal: revTotal,
     margenBruto: revConCosto - costoTotal,
-    pctCobertura: revTotal>0 ? (revConCosto/revTotal*100) : 100
+    pctCobertura: revTotal>0 ? (revConCosto/revTotal*100) : 100,
+    porCategoria: conCat ? porCat : null
   };
 }
 
@@ -20959,68 +20990,61 @@ function exportarInformeAsesoriaPDF() {
   var desde = desdeStr ? new Date(desdeStr+'T00:00:00') : new Date(hoy.getFullYear(), hoy.getMonth()-2, 1);
   var hasta = hastaStr ? new Date(hastaStr+'T23:59:59') : hoy;
 
-  var ventas = VENTAS.filter(function(v){
-    if(v.anulada) return false;
-    var d = new Date(v.fecha);
-    return d>=desde && d<=hasta;
-  });
+  // ── 1) Resumen financiero: la MISMA cuenta que Rentabilidad
+  // (calcularResumenRentabilidad), así los números del informe coinciden
+  // con los del panel: ingresos netos, egresos, cargas virtuales y margen.
+  var resumen = calcularResumenRentabilidad({ desde: desde, hasta: hasta });
+  // La carga de un fiado no es una venta cobrada: la mercadería cuenta cuando
+  // se cobra (la venta "Cobro fiado" trae los mismos ítems). Antes el informe
+  // la contaba dos veces (al anotarla y al cobrarla).
+  var ventas = resumen.ventas.filter(function(v){ return !v.fiadoCarga; });
 
   if(!ventas.length){
     showToast('No hay ventas registradas en ese período', true);
     return;
   }
 
-  // ── 1) Resumen financiero (misma fórmula que Rentabilidad) ──
-  var egresos = getEgresos().filter(function(e){
-    var d = new Date(e.fecha+'T12:00:00');
-    return d>=desde && d<=hasta;
-  });
-  var totalEgresos = egresos.reduce(function(s,e){return s+e.monto;},0);
-
-  var medios={Efectivo:0,Transferencia:0,'Débito':0};
-  ventas.forEach(function(v){
-    if(v.medio==='Mixto' && v.mixto){
-      medios.Efectivo      += v.mixto.efectivo      || 0;
-      medios.Transferencia += v.mixto.transferencia || 0;
-      medios['Débito']     += (v.mixto.debito||0) + (v.recargo||0); // el Posnet cobró la parte de débito + su recargo
-    } else {
-      medios[v.medio] = (medios[v.medio]||0) + v.total;
-    }
-  });
-  // Posnet neto = bruto − recargo (exacto, mismo criterio que Ventas y Auditoría)
-  var netoDebito = medios['Débito'] - ventas.reduce(function(s,v){ return s+(v.recargo||0); },0);
-  var cargasVirtuales = getCargasVirtuales().filter(function(c){
-    var d = new Date(c.fecha);
-    return d>=desde && d<=hasta;
-  });
-  var gananciaCargas = cargasVirtuales.reduce(function(s,c){ return s+c.ganancia; },0);
-  var ingresosNetos = medios.Efectivo + medios.Transferencia + netoDebito + gananciaCargas + (medios['Cobro fiado']||0);
-  var neto = ingresosNetos - totalEgresos;
-
+  var totalEgresos = resumen.totalEgresos;
+  var ingresosNetos = resumen.ingresosNetos;
+  var neto = resumen.neto;
   var ticketPromedio = ingresosNetos / ventas.length;
 
-  // ── 2) Ventas por categoría (y, adentro de cada una, sus productos) ──
-  var porCategoria = {};
-  var porCategoriaProducto = {}; // porCategoriaProducto[cat][nombreProducto] = {qty, rev}
-  ventas.forEach(function(v){
-    (v.items||[]).forEach(function(it){
-      var cat = categoriaDeItem(it);
-      if(!porCategoria[cat]) porCategoria[cat] = {qty:0, rev:0};
-      porCategoria[cat].qty += it.qty||0;
-      porCategoria[cat].rev += it.subtotal||0;
+  // Margen bruto general y por categoría (combos repartidos entre las
+  // categorías de sus productos; lo que no tiene costo cargado queda afuera
+  // del margen y se avisa, sin inventar un número).
+  var margenInf = calcularMargenBrutoDeVentas(ventas, { porCategoria: true });
+  var pctMargenGral = margenInf.revConCosto > 0 ? (margenInf.margenBruto / margenInf.revConCosto * 100) : 0;
 
-      if(!porCategoriaProducto[cat]) porCategoriaProducto[cat] = {};
-      if(!porCategoriaProducto[cat][it.name]) porCategoriaProducto[cat][it.name] = {qty:0, rev:0};
-      porCategoriaProducto[cat][it.name].qty += it.qty||0;
-      porCategoriaProducto[cat][it.name].rev += it.subtotal||0;
-    });
-  });
+  // ── 2) Ventas por categoría (y, adentro de cada una, sus productos) ──
+  var porCategoria = margenInf.porCategoria || {};
+  var porCategoriaProducto = {}; // porCategoriaProducto[cat][nombreProducto] = {qty, rev}
+  Object.keys(porCategoria).forEach(function(cat){ porCategoriaProducto[cat] = porCategoria[cat].productos; });
   var catsOrdenadas = Object.keys(porCategoria).sort(function(a,b){ return porCategoria[b].rev-porCategoria[a].rev; });
   var revTotalCats = catsOrdenadas.reduce(function(s,c){ return s+porCategoria[c].rev; },0);
+  var notasSinCosto = [];
   var filasCategoria = catsOrdenadas.map(function(c){
     var d = porCategoria[c];
     var pct = revTotalCats>0 ? Math.round(d.rev/revTotalCats*100) : 0;
-    return '<tr><td>'+c+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td><td>'+pct+'%</td></tr>';
+    var sinCosto = Object.keys(d.sinCosto);
+    var marca = '';
+    if(sinCosto.length){
+      notasSinCosto.push(c);
+      marca = '<sup>'+notasSinCosto.length+'</sup>';
+    }
+    // Sin nada con costo cargado no hay margen para mostrar.
+    var hayCosto = d.revConCosto > 0;
+    var margenCat = d.revConCosto - d.costo;
+    return '<tr><td>'+c+(sinCosto.length?' *':'')+marca+'</td><td>'+Math.round(d.qty*100)/100+'</td><td>'+fmt(Math.round(d.rev))+'</td><td>'+pct+'%</td>'+
+      '<td>'+(hayCosto ? fmt(Math.round(d.costo)) : '—')+'</td>'+
+      '<td>'+(hayCosto ? fmt(Math.round(margenCat)) : '—')+'</td>'+
+      '<td>'+(hayCosto ? Math.round(margenCat / d.revConCosto * 100)+'%' : '—')+'</td></tr>';
+  }).join('');
+  var filaTotalCategorias = '<tr style="font-weight:bold;background:#f5f5f5"><td>Total</td><td></td><td>'+fmt(Math.round(revTotalCats))+'</td><td>100%</td>'+
+    '<td>'+fmt(Math.round(margenInf.costoTotal))+'</td><td>'+fmt(Math.round(margenInf.margenBruto))+'</td><td>'+Math.round(pctMargenGral)+'%</td></tr>';
+  var notaPieCategorias = notasSinCosto.map(function(c, k){
+    var d = porCategoria[c];
+    var n = Object.keys(d.sinCosto).length;
+    return '<p style="font-size:10px;color:#666;margin:2px 0">* '+(k+1)+') '+c+': '+n+' producto'+(n===1?'':'s')+' sin costo cargado ('+fmt(Math.round(d.revSinCosto))+' de facturación) '+(n===1?'quedó':'quedaron')+' fuera del costo y del margen.</p>';
   }).join('');
 
   // Top 8 productos DENTRO de cada categoría — para saber, cuando una
@@ -21032,9 +21056,9 @@ function exportarInformeAsesoriaPDF() {
     var nombresOrdenados = Object.keys(productosCat).sort(function(a,b){ return productosCat[b].rev-productosCat[a].rev; }).slice(0,8);
     var filasProd = nombresOrdenados.map(function(nombre){
       var d = productosCat[nombre];
-      return '<tr><td style="padding-left:16px;color:#555">'+nombre+'</td><td>'+d.qty+'</td><td>'+fmt(d.rev)+'</td></tr>';
+      return '<tr><td style="padding-left:16px;color:#555">'+nombre+'</td><td>'+Math.round(d.qty*100)/100+'</td><td>'+fmt(Math.round(d.rev))+'</td></tr>';
     }).join('');
-    return '<tr><td colspan="3" style="background:#f5f5f5;font-weight:bold">'+cat+' — '+fmt(porCategoria[cat].rev)+'</td></tr>'+filasProd;
+    return '<tr><td colspan="3" style="background:#f5f5f5;font-weight:bold">'+cat+' — '+fmt(Math.round(porCategoria[cat].rev))+'</td></tr>'+filasProd;
   }).join('');
 
   // ── 3) Top 15 productos ──
@@ -21143,7 +21167,7 @@ function exportarInformeAsesoriaPDF() {
     var refMes = new Date(hoy.getFullYear(), hoy.getMonth()-m, 1);
     var finMes = new Date(hoy.getFullYear(), hoy.getMonth()-m+1, 0, 23,59,59);
     var ventasMes = VENTAS.filter(function(v){
-      if(v.anulada) return false;
+      if(v.anulada || v.fiadoCarga) return false;
       var d = new Date(v.fecha);
       return d>=refMes && d<=finMes;
     });
@@ -21186,14 +21210,22 @@ function exportarInformeAsesoriaPDF() {
 
     '<div class="kpis">'+
       '<div class="kpi"><div class="l">Ingresos netos</div><div class="v">'+fmt(ingresosNetos)+'</div></div>'+
+      '<div class="kpi"><div class="l">Margen bruto</div><div class="v">'+fmt(Math.round(margenInf.margenBruto))+' · '+Math.round(pctMargenGral)+'%</div></div>'+
       '<div class="kpi"><div class="l">Egresos</div><div class="v">'+fmt(totalEgresos)+'</div></div>'+
       '<div class="kpi"><div class="l">Resultado neto</div><div class="v">'+fmt(neto)+'</div></div>'+
       '<div class="kpi"><div class="l">Ventas totales</div><div class="v">'+ventas.length+'</div></div>'+
       '<div class="kpi"><div class="l">Ticket promedio</div><div class="v">'+fmt(ticketPromedio)+'</div></div>'+
     '</div>'+
 
+    // Las notas van como <p>: el PDF descargado solo toma títulos, KPIs, tablas y párrafos.
+    '<p style="font-size:10px;color:#666;margin:-8px 0 12px">Margen bruto = facturación - costo de la mercadería vendida (costo actual de cada producto). El % es sobre lo vendido que tiene costo cargado'+
+      (margenInf.revSinCosto > 0 ? ' ('+Math.round(margenInf.pctCobertura)+'% de la facturación; '+fmt(Math.round(margenInf.revSinCosto))+' sin costo cargado quedó afuera)' : '')+
+      '. No incluye la ganancia de cargas virtuales (ya está en Ingresos netos).</p>'+
+
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Ventas por categoría</h3>'+
-    '<table><thead><tr><th>Categoría</th><th>Unidades</th><th>Facturación</th><th>% del total</th></tr></thead><tbody>'+filasCategoria+'</tbody></table>'+
+    '<p style="font-size:10px;color:#666;margin:0 0 6px">Los combos se reparten entre las categorías de sus productos. Las cargas de fiado cuentan cuando se cobran.</p>'+
+    '<table><thead><tr><th>Categoría</th><th>Unidades</th><th>Facturación</th><th>% del total</th><th>Costo</th><th>Margen $</th><th>Margen %</th></tr></thead><tbody>'+filasCategoria+filaTotalCategorias+'</tbody></table>'+
+    (notaPieCategorias ? '<div style="margin-top:6px">'+notaPieCategorias+'</div>' : '')+
 
     '<h3 style="color:#CC0000;font-size:13px;margin:18px 0 8px">Top productos dentro de cada categoría</h3>'+
     '<div style="font-size:10px;color:#666;margin-bottom:6px">Hasta 8 productos por categoría, para saber qué productos puntuales explican la facturación de cada rubro.</div>'+
