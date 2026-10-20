@@ -35021,6 +35021,9 @@ function abrirVentanaPDF(titulo, contenido) {
     contenido;
   overlay.classList.add('open');
   overlay.scrollTop = 0;
+  // Mientras se mira la vista previa, se va bajando el generador de PDF: así
+  // "Descargar PDF" sale enseguida (en el celu, bajarlo recién ahí tardaba).
+  try{ cargarJsPDF().catch(function(){}); }catch(e){}
 }
 function closePrintOverlay() {
   document.getElementById('printOverlay').classList.remove('open');
@@ -35028,7 +35031,15 @@ function closePrintOverlay() {
 
 var _html2pdfCargado = false;
 var _jsPdfCargado = false;
+var _jsPdfPromesa = null;
 function cargarJsPDF() {
+  // Una sola descarga aunque se pida dos veces (vista previa + botón).
+  if(_jsPdfPromesa) return _jsPdfPromesa;
+  _jsPdfPromesa = _cargarJsPDFUnaVez();
+  _jsPdfPromesa.catch(function(){ _jsPdfPromesa = null; });
+  return _jsPdfPromesa;
+}
+function _cargarJsPDFUnaVez() {
   return new Promise(function(resolve, reject){
     if(window.jspdf && window.jspdf.jsPDF && _jsPdfCargado){ resolve(); return; }
     var s1 = document.createElement('script');
