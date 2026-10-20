@@ -669,3 +669,156 @@ exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN
     }))
   };
 });
+
+// ── MERCADO PAGO: CONFIRMACIÓN AUTOMÁTICA DE COBROS ─────────────────────────
+// Dos usos, siempre de solo lectura sobre la cuenta (no mueve plata):
+//  1) En la caja, al confirmar una venta por transferencia, la caja pregunta
+//     cada pocos segundos si ya entró un pago de ese monto (mpEsperarPago).
+//  2) En el cierre de Mercado Pago, el admin trae todos los cobros del turno
+//     para emparejarlos con las ventas (mpCobrosRango).
+// Cada pago de Mercado Pago se puede usar para UNA sola venta: el "reclamo"
+// se anota en mpCobros/{id del pago} dentro de una transacción, así dos cajas
+// (o los dos locales) que esperan el mismo monto nunca se quedan con el mismo.
+// Solo se guarda monto, hora y tipo: nunca datos de los clientes.
+
+function mpClave() { return String(MP_ACCESS_TOKEN.value() || '').trim(); }
+
+async function mpGet(path) {
+  let r;
+  try { r = await fetch('https://api.mercadopago.com' + path, { headers: { Authorization: 'Bearer ' + mpClave() } }); }
+  catch (e) { throw new HttpsError('unavailable', 'No se pudo conectar con Mercado Pago'); }
+  if (!r.ok) {
+    const err = new HttpsError('unavailable', 'Mercado Pago respondió ' + r.status + (r.status === 401 ? ' (la clave no es válida)' : ''));
+    err.mpStatus = r.status;
+    throw err;
+  }
+  return r.json();
+}
+
+// Número de cuenta propio, para quedarse solo con lo que ENTRA (si algún día se
+// paga algo desde la cuenta, ese pago no tiene que confundirse con un cobro).
+let _mpCuentaId = null;
+async function mpCuentaPropia() {
+  if (_mpCuentaId) return _mpCuentaId;
+  try { const u = await mpGet('/users/me'); _mpCuentaId = u && u.id ? String(u.id) : null; } catch (e) { _mpCuentaId = null; }
+  return _mpCuentaId;
+}
+
+// Las tarjetas (Point, QR pagado con tarjeta) se cobran como Débito en la
+// caja, no como transferencia: no se usan para emparejar.
+const MP_TIPOS_TARJETA = ['credit_card', 'debit_card', 'prepaid_card'];
+
+function mpResumirPago(p) {
+  return {
+    id: String(p.id),
+    fecha: new Date(p.date_approved || p.date_created).getTime(),
+    monto: Number(p.transaction_amount) || 0,
+    tipo: p.payment_type_id || '',
+    medio: p.payment_method_id || '',
+    operacion: p.operation_type || '',
+    tarjeta: MP_TIPOS_TARJETA.indexOf(p.payment_type_id) !== -1
+  };
+}
+
+async function mpPagosAprobados(results) {
+  const yo = await mpCuentaPropia();
+  return (results || []).filter(p => p.status === 'approved' &&
+    !(yo && p.collector_id && String(p.collector_id) !== yo)).map(mpResumirPago);
+}
+
+function mpCuentaQuePuede(req, cuentas) {
+  const email = String((req.auth && req.auth.token && req.auth.token.email) || '').toLowerCase();
+  if (cuentas.indexOf(email) === -1) throw new HttpsError('permission-denied', 'Esta cuenta no puede consultar Mercado Pago');
+}
+
+// La caja pregunta: ¿entró un pago de $monto en los últimos minutos que nadie
+// haya usado? Si sí, lo reclama para esta venta (ref) y lo devuelve.
+exports.mpEsperarPago = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, async (req) => {
+  mpCuentaQuePuede(req, ['local@limayrock.app', 'admin@limayrock.app']);
+  const d = req.data || {};
+  const monto = Math.round((Number(d.monto) || 0) * 100) / 100;
+  const ref = String(d.ref || '').slice(0, 80);
+  if (!(monto > 0) || !ref) throw new HttpsError('invalid-argument', 'Falta el monto o la venta');
+  // Se aceptan pagos de hasta 15 minutos antes (el cliente a veces transfiere
+  // antes de que se termine de cargar el carrito).
+  const desde = Math.max(Number(d.desde) || 0, Date.now() - 15 * 60000);
+  // Los 50 cobros más nuevos alcanzan de sobra para los últimos 15 minutos.
+  const j = await mpGet('/v1/payments/search?sort=date_created&criteria=desc&limit=50&range=date_created&begin_date=NOW-1DAYS&end_date=NOW');
+  const candidatos = (await mpPagosAprobados(j.results))
+    .filter(p => !p.tarjeta && Math.abs(p.monto - monto) < 0.01 && p.fecha >= desde)
+    .sort((a, b) => a.fecha - b.fecha);
+  for (const p of candidatos) {
+    const doc = db.collection('mpCobros').doc(p.id);
+    const mio = await db.runTransaction(async (t) => {
+      const s = await t.get(doc);
+      const u = s.exists ? s.data().usadoPor : null;
+      if (u && u.ref !== ref) return false;
+      t.set(doc, {
+        monto: p.monto, fecha: p.fecha, tipo: p.tipo, medio: p.medio,
+        usadoPor: { ref: ref, local: Number(d.local) === 2 ? 2 : 1, caja: Number(d.caja) || 1, en: Date.now() }
+      }, { merge: true });
+      return true;
+    });
+    if (mio) return { ok: true, id: p.id, monto: p.monto, fecha: p.fecha };
+  }
+  return { ok: false };
+});
+
+// Si la venta no se confirmó (tocaron "Volver"), el pago queda libre para otra.
+exports.mpLiberarPago = onCall({ region: REGION }, async (req) => {
+  mpCuentaQuePuede(req, ['local@limayrock.app', 'admin@limayrock.app']);
+  const d = req.data || {};
+  const id = String(d.id || ''), ref = String(d.ref || '');
+  if (!id || !ref) return { ok: false };
+  const doc = db.collection('mpCobros').doc(id);
+  return db.runTransaction(async (t) => {
+    const s = await t.get(doc);
+    if (!s.exists || !s.data().usadoPor || s.data().usadoPor.ref !== ref) return { ok: false };
+    t.update(doc, { usadoPor: FieldValue.delete() });
+    return { ok: true };
+  });
+});
+
+// Todos los cobros entre dos horas (el turno completo, sin el tope de 100),
+// con la marca de si alguna caja ya los usó para una venta.
+exports.mpCobrosRango = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN], timeoutSeconds: 120 }, async (req) => {
+  mpCuentaQuePuede(req, ['admin@limayrock.app']);
+  const d = req.data || {};
+  const desde = Number(d.desde) || 0, hasta = Number(d.hasta) || Date.now();
+  if (!(desde > 0) || hasta <= desde) throw new HttpsError('invalid-argument', 'Rango de horas inválido');
+  if (hasta - desde > 3 * 86400000) throw new HttpsError('invalid-argument', 'El rango no puede pasar de 3 días');
+  const LIM = 100, MAX_PAG = 40;
+  const traer = async (rango) => {
+    let todos = [];
+    for (let pag = 0; pag < MAX_PAG; pag++) {
+      const j = await mpGet('/v1/payments/search?sort=date_created&criteria=desc&limit=' + LIM + '&offset=' + (pag * LIM) + '&range=date_created&' + rango);
+      const res = j.results || [];
+      todos = todos.concat(res);
+      if (res.length < LIM) break;
+      // Ya pasamos el comienzo del rango (vienen del más nuevo al más viejo).
+      const ult = res[res.length - 1];
+      if (new Date(ult.date_created).getTime() < desde - 3600000) break;
+    }
+    return todos;
+  };
+  let crudos;
+  try {
+    crudos = await traer('begin_date=' + encodeURIComponent(new Date(desde - 3600000).toISOString()) +
+      '&end_date=' + encodeURIComponent(new Date(hasta + 3600000).toISOString()));
+  } catch (e) {
+    // Si Mercado Pago no acepta las fechas exactas, se pide por días y se filtra acá.
+    if (e.mpStatus !== 400) throw e;
+    const dias = Math.min(Math.ceil((Date.now() - desde) / 86400000) + 1, 30);
+    crudos = await traer('begin_date=NOW-' + dias + 'DAYS&end_date=NOW');
+  }
+  const vistos = {};
+  const pagos = (await mpPagosAprobados(crudos))
+    .filter(p => p.fecha >= desde && p.fecha <= hasta && !vistos[p.id] && (vistos[p.id] = true));
+  // Marcas de uso (qué caja / qué venta se quedó con cada pago).
+  for (let i = 0; i < pagos.length; i += 100) {
+    const lote = pagos.slice(i, i + 100);
+    const snaps = await db.getAll(...lote.map(p => db.collection('mpCobros').doc(p.id)));
+    snaps.forEach((s, k) => { const u = s.exists ? s.data().usadoPor : null; lote[k].usadoPor = u ? { ref: u.ref, local: u.local || 1 } : null; });
+  }
+  return { cobros: pagos.sort((a, b) => a.fecha - b.fecha) };
+});

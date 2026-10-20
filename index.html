@@ -4467,6 +4467,7 @@ body.night-on{background:#080005}
     <h3>✅ Confirmá la venta</h3>
     <div class="confirm-items" id="confirmItems"><div class="confirm-item"><span class="confirm-item-name">Galletitas Rex 125gr</span><span class="confirm-item-qty">×1</span><span class="confirm-item-sub">$ 3.000</span></div><div class="confirm-item"><span class="confirm-item-name">Mogul Rollo 35g</span><span class="confirm-item-qty">×1</span><span class="confirm-item-sub">$ 1.000</span></div><div class="confirm-item"><span class="confirm-item-name">Caramelos Halls</span><span class="confirm-item-qty">×1</span><span class="confirm-item-sub">$ 1.500</span></div><div class="confirm-item"><span class="confirm-item-name">Beldent tableta</span><span class="confirm-item-qty">×1</span><span class="confirm-item-sub">$ 1.500</span></div></div>
     <div class="confirm-totals" id="confirmTotals"><div class="confirm-total-row"><span class="lbl">Subtotal</span><span class="val">$ 7.000</span></div><div class="confirm-total-row recargo"><span class="lbl">Recargo débito (10%)</span><span class="val">+$ 700</span></div><div class="confirm-total-row"><span class="lbl">Medio de pago</span><span class="val">Débito</span></div><div class="confirm-total-row FINAL"><span class="lbl">TOTAL A COBRAR</span><span class="val">$ 7.700</span></div></div>
+    <div id="mpEsperaBox" style="display:none"></div>
     <div class="confirm-btns">
       <button class="confirm-cancel" onclick="closeConfirm()">✕ Volver</button>
       <button class="confirm-ok" onclick="if(_confirmCarrito===2){doConfirmarVenta2();}else{doConfirmarVenta();}">✓ Confirmar</button>
@@ -8995,9 +8996,11 @@ function confirmarVenta2() {
     '<div class="confirm-total-row FINAL"><span class="lbl">TOTAL A COBRAR</span><span class="val">'+fmt(total)+'</span></div>';
 
   document.getElementById('confirmOverlay').classList.add('open');
+  mpEsperaIniciar(_confirmCarrito);
 }
 
 function doConfirmarVenta2() {
+  var mpPago = mpEsperaTomar(2);
   closeConfirm();
   var subtotal = cart2.reduce(function(s,i){ return s+i.subtotal; },0);
   var mixData  = mixtoActivo2 ? getMixtoData2() : null;
@@ -9040,6 +9043,8 @@ function doConfirmarVenta2() {
   // Si es un pedido del catálogo, la venta queda vinculada al pedido desde el
   // primer guardado (antes se anotaba después de guardar y no llegaba a la nube).
   if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
+  // Pago que Mercado Pago confirmó mientras estaba abierto el resumen: el cierre de MP lo da por llegado.
+  if(mpPago) venta.mpPago = mpPago;
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
   // Republicar el estado del turno junto con la venta. Si por cualquier motivo
@@ -9060,7 +9065,7 @@ function doConfirmarVenta2() {
 
   var totalMostrado = totalVenta + delivery;
   document.getElementById('ventaOkMonto').textContent = fmt(totalMostrado);
-  document.getElementById('ventaOkMedio').textContent = medioFinal + (recargo>0?' (con recargo '+getDebitoPct()+'%)':'') + (delivery>0?' · 🛵 '+fmt(delivery):'') + ' · Carrito 2';
+  document.getElementById('ventaOkMedio').textContent = medioFinal + (recargo>0?' (con recargo '+getDebitoPct()+'%)':'') + (delivery>0?' · 🛵 '+fmt(delivery):'') + ' · Carrito 2' + (mpPago?' · ✅ pago recibido':'');
   var okPuntos = document.getElementById('ventaOkPuntos');
   if(okPuntos) {
     if(puntosResult.puntos > 0) {
@@ -10994,11 +10999,13 @@ function confirmarVenta() {
     '<div class="confirm-total-row FINAL"><span class="lbl">TOTAL A COBRAR</span><span class="val">'+fmt(total)+'</span></div>';
 
   document.getElementById('confirmOverlay').classList.add('open');
+  mpEsperaIniciar(_confirmCarrito);
 }
 
-function closeConfirm() { document.getElementById('confirmOverlay').classList.remove('open'); }
+function closeConfirm() { mpEsperaSoltar(); document.getElementById('confirmOverlay').classList.remove('open'); }
 
 function doConfirmarVenta() {
+  var mpPago = mpEsperaTomar(1);
   closeConfirm();
   var subtotal = cart.reduce(function(s,i){ return s+i.subtotal; },0);
   var mixData  = mixtoActivo ? getMixtoData() : null;
@@ -11045,6 +11052,8 @@ function doConfirmarVenta() {
   // Igual que en el Carrito 2: la venta queda vinculada al pedido web desde el
   // primer guardado (si se anota después, no llega a la nube).
   if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
+  // Pago que Mercado Pago confirmó mientras estaba abierto el resumen: el cierre de MP lo da por llegado.
+  if(mpPago) venta.mpPago = mpPago;
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
 
@@ -11069,7 +11078,7 @@ function doConfirmarVenta() {
 
   var totalMostrado = totalVenta + delivery;
   document.getElementById('ventaOkMonto').textContent = fmt(totalMostrado);
-  document.getElementById('ventaOkMedio').textContent = pagoSel + (recargo>0?' (con recargo '+getDebitoPct()+'%)':'') + (delivery>0?' · 🛵 '+fmt(delivery):'');
+  document.getElementById('ventaOkMedio').textContent = pagoSel + (recargo>0?' (con recargo '+getDebitoPct()+'%)':'') + (delivery>0?' · 🛵 '+fmt(delivery):'') + (mpPago?' · ✅ pago recibido':'');
   var okPuntos = document.getElementById('ventaOkPuntos');
   if(okPuntos) {
     if(puntosResult.puntos > 0) {
@@ -12874,6 +12883,145 @@ function probarConexionMP(){
   });
 }
 
+// ── MERCADO PAGO EN LA CAJA: "PAGO RECIBIDO" ───────────────────────────────
+// Al confirmar una venta por transferencia (o la parte por transferencia de un
+// pago mixto), la caja le pregunta a la nube cada pocos segundos si ya entró
+// a Mercado Pago un pago de ese monto. Cuando llega muestra "✅ Pago recibido"
+// y a los 3 segundos confirma sola. Nunca bloquea: si Mercado Pago tarda o no
+// hay internet, se confirma a mano como siempre y queda para revisar en el
+// cierre. Cada pago se usa para una sola venta (lo controla la nube), así dos
+// cajas o los dos locales esperando el mismo monto no se quedan con el mismo.
+var _mpEspera = null;   // { ref, monto, carrito, desde, inicio, pago, timer, cuenta, frenado, errores }
+function _mpLlamar(nombre, datos){
+  var cargar = (firebase.functions) ? Promise.resolve() : (window._mpFnScript || (window._mpFnScript = new Promise(function(res, rej){
+    var s = document.createElement('script');
+    s.src = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js';
+    s.onload = res; s.onerror = function(){ window._mpFnScript = null; rej(new Error('sin internet')); };
+    document.head.appendChild(s);
+  })));
+  return cargar.then(function(){
+    return firebase.app().functions('southamerica-east1').httpsCallable(nombre)(datos || {});
+  }).then(function(r){ return r.data || {}; });
+}
+// Lo que el cliente tiene que transferir en la venta que se está confirmando.
+function montoTransferenciaConfirm(carrito){
+  var mix, items, medio, deliv;
+  if(carrito === 2){ mix = mixtoActivo2 ? getMixtoData2() : null; items = cart2; medio = pagoSel2; deliv = _delivery2Activo ? _delivery2Monto : 0; }
+  else { mix = mixtoActivo ? getMixtoData() : null; items = cart; medio = pagoSel; deliv = _deliveryActivo ? _deliveryMonto : 0; }
+  if(mix) return Number(mix.transferencia) || 0;
+  if(medio !== 'Transferencia') return 0;
+  return items.reduce(function(s, i){ return s + i.subtotal; }, 0) + (Number(deliv) || 0);
+}
+function mpEsperaIniciar(carrito){
+  mpEsperaSoltar();
+  var box = document.getElementById('mpEsperaBox'); if(!box) return;
+  var monto = montoTransferenciaConfirm(carrito);
+  if(!(monto > 0) || !window.firebase || !firebase.auth || !firebase.auth().currentUser){ box.style.display = 'none'; return; }
+  var suc = window.__lrSucursal || 1;
+  _mpEspera = { ref: 'L'+suc+'-C'+cajaTurnoActual()+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
+    monto: monto, carrito: carrito, desde: Date.now() - 10*60000, inicio: Date.now(), pago: null, timer: null, cuenta: 0, frenado: false, errores: 0 };
+  pintarMpEspera('esperando');
+  mpEsperaConsultar();
+}
+function mpEsperaConsultar(){
+  var e = _mpEspera; if(!e || e.pago) return;
+  e.timer = null;
+  var ov = document.getElementById('confirmOverlay');
+  if(!ov || !ov.classList.contains('open')){ mpEsperaSoltar(); return; }
+  if(Date.now() - e.inicio > 10*60000){ pintarMpEspera('vencido'); return; }
+  _mpLlamar('mpEsperarPago', { monto: e.monto, ref: e.ref, desde: e.desde, local: window.__lrSucursal || 1, caja: cajaTurnoActual() }).then(function(d){
+    if(_mpEspera !== e){
+      // Se cerró mientras se consultaba: si justo reclamó un pago, se libera.
+      if(d.ok) _mpLlamar('mpLiberarPago', { id: d.id, ref: e.ref }).catch(function(){});
+      return;
+    }
+    e.errores = 0;
+    if(d.ok){
+      e.pago = { id: d.id, fecha: d.fecha, monto: d.monto };
+      e.cuenta = 3;
+      pintarMpEspera('recibido');
+      e.timer = setInterval(mpEsperaTic, 1000);
+      return;
+    }
+    pintarMpEspera('esperando');
+    e.timer = setTimeout(mpEsperaConsultar, (Date.now() - e.inicio) < 120000 ? 4000 : 8000);
+  }).catch(function(err){
+    if(_mpEspera !== e) return;
+    var m = String((err && (err.code || err.message)) || '');
+    // Función todavía no subida o cuenta sin permiso: no se insiste, se confirma a mano como siempre.
+    if(/not-found|permission|unauthenticated/i.test(m)){ var box = document.getElementById('mpEsperaBox'); if(box) box.style.display = 'none'; _mpEspera = null; return; }
+    e.errores++;
+    pintarMpEspera(e.errores >= 2 ? 'error' : 'esperando');
+    e.timer = setTimeout(mpEsperaConsultar, 10000);
+  });
+}
+function mpEsperaTic(){
+  var e = _mpEspera; if(!e || !e.pago || e.frenado) return;
+  e.cuenta--;
+  if(e.cuenta > 0){ pintarMpEspera('recibido'); return; }
+  clearInterval(e.timer); e.timer = null;
+  var ov = document.getElementById('confirmOverlay');
+  if(!ov || !ov.classList.contains('open') || _confirmCarrito !== e.carrito) return;
+  if(e.carrito === 2) doConfirmarVenta2(); else doConfirmarVenta();
+}
+function mpEsperaFrenar(){
+  var e = _mpEspera; if(!e || !e.pago) return;
+  e.frenado = true;
+  if(e.timer){ clearInterval(e.timer); e.timer = null; }
+  pintarMpEspera('recibido');
+}
+function mpEsperaReintentar(){
+  var e = _mpEspera; if(!e) return;
+  e.inicio = Date.now(); e.errores = 0;
+  pintarMpEspera('esperando');
+  mpEsperaConsultar();
+}
+// Al confirmar la venta: se queda con el pago recibido (si hubo) para guardarlo en la venta.
+function mpEsperaTomar(carrito){
+  var e = _mpEspera; _mpEspera = null;
+  if(!e) return null;
+  if(e.timer){ clearInterval(e.timer); clearTimeout(e.timer); }
+  if(!e.pago) return null;
+  if(e.carrito !== carrito){ _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){}); return null; }
+  return { id: e.pago.id, fecha: e.pago.fecha, ref: e.ref };
+}
+// Se cerró sin confirmar ("Volver"): se deja de esperar y el pago, si se había reclamado, queda libre.
+function mpEsperaSoltar(){
+  var e = _mpEspera; _mpEspera = null;
+  var box = document.getElementById('mpEsperaBox'); if(box) box.style.display = 'none';
+  if(!e) return;
+  if(e.timer){ clearInterval(e.timer); clearTimeout(e.timer); }
+  if(e.pago) _mpLlamar('mpLiberarPago', { id: e.pago.id, ref: e.ref }).catch(function(){});
+}
+function pintarMpEspera(estado){
+  var e = _mpEspera, box = document.getElementById('mpEsperaBox'); if(!e || !box) return;
+  box.style.display = 'block';
+  var st = 'border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-size:.8rem;line-height:1.4;';
+  var btn = 'background:none;border:1px solid currentColor;color:inherit;border-radius:5px;padding:5px 10px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer;margin-top:6px';
+  if(estado === 'recibido'){
+    var h = new Date(e.pago.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false});
+    box.innerHTML = '<div style="'+st+'background:rgba(46,204,113,.15);border:1px solid #2ecc71;color:#2ecc71">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px">✅ PAGO RECIBIDO · '+fmt(e.pago.monto)+'</div>'+
+      '<div style="color:var(--light)">Entró a Mercado Pago a las '+h+'.</div>'+
+      (e.frenado ? '<div style="color:var(--light)">Tocá <b>✓ Confirmar</b> para terminar la venta.</div>'
+        : '<div style="color:var(--light)">Se confirma sola en <b>'+e.cuenta+'</b>…</div><button onclick="mpEsperaFrenar()" style="'+btn+'">✋ Frenar</button>')+
+    '</div>';
+  } else if(estado === 'vencido'){
+    box.innerHTML = '<div style="'+st+'background:rgba(244,180,0,.1);border:1px solid var(--gold);color:var(--gold)">'+
+      '⏳ No llegó una transferencia de '+fmt(e.monto)+' en 10 minutos.'+
+      '<div style="color:var(--light)">Si el cliente te mostró el comprobante, confirmá igual: queda para revisar en el cierre.</div>'+
+      '<button onclick="mpEsperaReintentar()" style="'+btn+'">🔄 Volver a buscar</button></div>';
+  } else if(estado === 'error'){
+    box.innerHTML = '<div style="'+st+'background:rgba(244,180,0,.1);border:1px solid var(--gold);color:var(--gold)">'+
+      '⚠ No se puede consultar Mercado Pago ahora (sigo intentando).'+
+      '<div style="color:var(--light)">Si ya viste el pago en el celular, confirmá igual.</div></div>';
+  } else {
+    box.innerHTML = '<div style="'+st+'background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.5);color:#38bdf8">'+
+      '⏳ Esperando la transferencia de <b>'+fmt(e.monto)+'</b>…'+
+      '<div style="color:var(--gray);font-size:.72rem">Cuando llegue a Mercado Pago se confirma sola. Si ya la viste en el celular, podés confirmar igual.</div></div>';
+  }
+}
+
 // ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────
 // El arqueo de cada turno controla el efectivo; esto controla lo que se cobró
 // por transferencia (al alias de Mercado Pago): ¿llegó de verdad, y completo?
@@ -12887,17 +13035,23 @@ function probarConexionMP(){
 // misma caja que el cierre de efectivo (ver construirVentasDetalleCierreHtml).
 function cobrosMPDeCierre(c){
   if(!c || !c.horaInicio || !c.horaFin) return [];
-  var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
+  return cobrosMPEnRango(new Date(c.horaInicio).getTime(), new Date(c.horaFin).getTime(), cajaDe(c));
+}
+// caja = null → las de todas las cajas (para no emparejar un pago que es de la otra caja).
+function cobrosMPEnRango(ini, fin, caja){
   return VENTAS.filter(function(v){
     if(v.anulada || v.fiadoCarga) return false;
     var fv = new Date(v.fecha).getTime();
-    return fv >= ini && fv <= fin && cajaDe(v) === cajaDe(c);
+    return fv >= ini && fv <= fin && (caja == null || cajaDe(v) === caja);
   }).map(function(v){
     var monto = v.medio === 'Transferencia' ? (Number(v.total)||0)
       : (v.medio === 'Mixto' && v.mixto ? (Number(v.mixto.transferencia)||0) : 0);
     if(!(monto > 0)) return null;
     return {
       id: String(v.id), fecha: v.fecha, monto: monto, mixto: v.medio === 'Mixto', delivery: !!v.pedidoWebId,
+      // Con delivery cobrado en la caja, el cliente transfiere la venta + el envío.
+      montoConEnvio: (v.medio === 'Transferencia' && Number(v.delivery) > 0) ? monto + Number(v.delivery) : 0,
+      mpPago: v.mpPago || null,
       resumen: (v.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ') || '—'
     };
   }).filter(Boolean).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
@@ -12933,7 +13087,8 @@ function abrirCierreMP(idx){
     items: cobros.map(function(x){
       var p = previos[x.id];
       return { id: x.id, fecha: x.fecha, monto: x.monto, resumen: x.resumen, mixto: x.mixto, delivery: x.delivery,
-        estado: p ? p.estado : 'pend', recibido: p ? p.recibido : null, origen: p ? (p.origen || 'manual') : null };
+        estado: p ? p.estado : 'pend', recibido: p ? p.recibido : null, origen: p ? (p.origen || 'manual') : null,
+        mpId: p ? (p.mpId || null) : null, mpHora: p ? (p.mpHora || null) : null };
     }) };
   var ov = document.getElementById('cierreMPOverlay');
   if(!ov){
@@ -12943,6 +13098,85 @@ function abrirCierreMP(idx){
   }
   ov.style.display = 'flex';
   pintarCierreMP();
+  buscarCierreMPAuto(c);
+}
+// ── Confirmación automática del cierre ──
+// Trae de Mercado Pago todos los cobros del turno y empareja cada venta por
+// transferencia con un cobro del mismo monto y hora parecida (de 15 minutos
+// antes a 20 después). Las ventas que la caja ya confirmó al cobrar (venta.mpPago)
+// se dan por llegadas directamente. Lo revisado a mano antes no se pisa.
+// Solo desde la cuenta del admin (la nube no deja consultar desde la caja).
+function buscarCierreMPAuto(c){
+  var u = window.firebase && firebase.auth && firebase.auth().currentUser;
+  if(!u || String(u.email||'').toLowerCase() !== 'admin@limayrock.app') return;
+  var rev = _mpRev;
+  var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
+  rev.auto = { estado: 'buscando' };
+  pintarCierreMP();
+  _mpLlamar('mpCobrosRango', { desde: ini - 15*60000, hasta: fin + 20*60000 }).then(function(d){
+    if(_mpRev !== rev) return;
+    emparejarCierreMP(c, d.cobros || []);
+    pintarCierreMP();
+  }).catch(function(err){
+    if(_mpRev !== rev) return;
+    rev.auto = { estado: 'error', msg: String((err && err.message) || err) };
+    pintarCierreMP();
+  });
+}
+function emparejarCierreMP(c, cobros){
+  var rev = _mpRev, suc = window.__lrSucursal || 1;
+  var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
+  var usado = {};
+  // Pagos ya usados en otros cierres de este local.
+  getCierres().forEach(function(x){
+    if(x.fecha === c.fecha && x.empleado === c.empleado) return;
+    ((x.mp && x.mp.items) || []).forEach(function(it){ if(it.mpId) usado[it.mpId] = true; });
+  });
+  // Pagos que reclamó la caja del otro local (o una venta que no es de acá).
+  var refsDeAca = {};
+  VENTAS.forEach(function(v){ if(v.mpPago && v.mpPago.ref) refsDeAca[v.mpPago.ref] = true; });
+  cobros.forEach(function(p){ if(p.usadoPor && ((p.usadoPor.local||1) !== suc)) usado[p.id] = true; });
+  var porId = {}; cobros.forEach(function(p){ porId[p.id] = p; });
+  var asignado = {};   // id del pago → id de la venta
+  var deEste = {}; rev.items.forEach(function(it){ deEste[it.id] = it; });
+  // 1) Lo que la caja ya confirmó al cobrar, y lo emparejado antes.
+  var ventas = cobrosMPEnRango(ini - 60000, fin, null);
+  ventas.forEach(function(v){
+    var it = deEste[v.id];
+    var pid = (v.mpPago && v.mpPago.id) || (it && it.mpId) || null;
+    if(pid && !usado[pid]) asignado[pid] = v.id;
+  });
+  // 2) El resto, por monto y hora, del más viejo al más nuevo.
+  ventas.forEach(function(v){
+    var it = deEste[v.id];
+    if((v.mpPago && v.mpPago.id) || (it && it.mpId)) return;
+    var fv = new Date(v.fecha).getTime(), mejor = null, dtMejor = Infinity;
+    cobros.forEach(function(p){
+      if(p.tarjeta || usado[p.id] || asignado[p.id]) return;
+      if(p.usadoPor && refsDeAca[p.usadoPor.ref]) return;   // es de otra venta de acá
+      if(Math.abs(p.monto - v.monto) >= 0.01 && !(v.montoConEnvio && Math.abs(p.monto - v.montoConEnvio) < 0.01)) return;
+      var dt = p.fecha - fv;
+      if(dt < -15*60000 || dt > 20*60000) return;
+      if(Math.abs(dt) < dtMejor){ dtMejor = Math.abs(dt); mejor = p; }
+    });
+    if(mejor) asignado[mejor.id] = v.id;
+  });
+  var ventasPorId = {}; ventas.forEach(function(v){ ventasPorId[v.id] = v; });
+  var porVenta = {}; Object.keys(asignado).forEach(function(pid){ porVenta[asignado[pid]] = pid; });
+  var encontrados = 0;
+  rev.items.forEach(function(it){
+    var pid = porVenta[it.id]; if(!pid) return;
+    encontrados++;
+    var p = porId[pid], v = ventasPorId[it.id];
+    it.mpId = pid; it.mpHora = p ? p.fecha : (it.mpHora || (v && v.mpPago && v.mpPago.fecha) || null);
+    // Lo revisado a mano no se pisa; lo pendiente se da por llegado.
+    if(it.estado === 'pend' || it.origen === 'auto'){ it.estado = 'ok'; it.recibido = it.monto; it.origen = 'auto'; }
+  });
+  // Cobros que entraron en el horario del turno y no son de ninguna venta.
+  var sinCargar = cobros.filter(function(p){
+    return !p.tarjeta && !usado[p.id] && !asignado[p.id] && !(p.usadoPor && refsDeAca[p.usadoPor.ref]) && p.fecha >= ini && p.fecha <= fin;
+  });
+  rev.auto = { estado: 'listo', encontrados: encontrados, total: rev.items.length, sinCargar: sinCargar };
 }
 function cerrarCierreMP(){ var ov = document.getElementById('cierreMPOverlay'); if(ov) ov.style.display = 'none'; _mpRev = null; }
 function totalesCierreMP(){
@@ -12971,12 +13205,20 @@ function pintarCierreMP(){
       '<button onclick="cerrarCierreMP()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>'+
     '</div>'+
     '<div style="font-size:.78rem;color:var(--light);margin-bottom:4px">'+escBaja(_mpRev.titulo)+'</div>'+
-    '<div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Abrí la app de Mercado Pago, mirá lo que entró en ese horario y marcá cada cobro. Si llegó otro monto, cargá lo que llegó de verdad.</div>'+
+    (function(){
+      var a = _mpRev.auto, st = 'font-size:.74rem;border-radius:6px;padding:7px 10px;margin-bottom:10px;';
+      if(!a) return '<div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Abrí la app de Mercado Pago, mirá lo que entró en ese horario y marcá cada cobro. Si llegó otro monto, cargá lo que llegó de verdad.</div>';
+      if(a.estado === 'buscando') return '<div style="'+st+'color:#38bdf8;background:rgba(56,189,248,.08)">⏳ Buscando los cobros del turno en Mercado Pago…</div>';
+      if(a.estado === 'error') return '<div style="'+st+'color:var(--gold);background:rgba(244,180,0,.08)">⚠ No se pudo consultar Mercado Pago ('+escBaja(a.msg)+'). Revisá a mano con la app.</div>';
+      var faltan = a.total - a.encontrados;
+      return '<div style="'+st+'color:var(--light);background:rgba(56,189,248,.08)">🤖 El sistema encontró en Mercado Pago <b>'+a.encontrados+' de '+a.total+'</b> cobro'+(a.total===1?'':'s')+'.'+
+        (faltan === 1 ? ' El que queda revisalo a mano con la app.' : faltan ? ' Los '+faltan+' que quedan revisalos a mano con la app.' : ' ¡Llegó todo!')+'</div>';
+    })()+
     _mpRev.items.map(function(it, i){
       var hora = new Date(it.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       return '<div style="background:var(--card);border:1px solid '+(it.estado==='no'||it.estado==='distinto'?'rgba(204,0,0,.5)':it.estado==='ok'?'rgba(46,204,113,.4)':'var(--border)')+';border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'+
-          '<div style="font-size:.8rem;color:var(--white)">'+hora+(it.mixto?' · <span style="color:var(--gray)">parte de un pago mixto</span>':'')+(it.delivery?' · 🛵 delivery':'')+(it.origen==='auto'?' · <span style="color:#38bdf8">confirmado por el sistema</span>':'')+'</div>'+
+          '<div style="font-size:.8rem;color:var(--white)">'+hora+(it.mixto?' · <span style="color:var(--gray)">parte de un pago mixto</span>':'')+(it.delivery?' · 🛵 delivery':'')+(it.origen==='auto'?' · <span style="color:#38bdf8">✅ en MP'+(it.mpHora?' '+new Date(it.mpHora).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'')+'</span>':'')+'</div>'+
           '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+fmt(it.monto)+'</div>'+
         '</div>'+
         '<div style="font-size:.68rem;color:var(--gray);margin:2px 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escBaja(it.resumen)+'</div>'+
@@ -12986,6 +13228,12 @@ function pintarCierreMP(){
         '</div>'+
       '</div>';
     }).join('')+
+    ((_mpRev.auto && _mpRev.auto.sinCargar && _mpRev.auto.sinCargar.length) ?
+      '<div style="border:1px dashed rgba(244,180,0,.5);border-radius:6px;padding:8px 10px;margin:8px 0;font-size:.74rem;color:var(--light)">'+
+        '<div style="color:var(--gold);margin-bottom:4px">💡 Entraron a Mercado Pago en ese horario y no figuran como venta por transferencia:</div>'+
+        _mpRev.auto.sinCargar.map(function(p){ return '<div style="display:flex;justify-content:space-between"><span>'+new Date(p.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'</span><b style="color:var(--gold)">'+fmt(p.monto)+'</b></div>'; }).join('')+
+        '<div style="color:var(--gray);font-size:.68rem;margin-top:4px">Pueden ser de Limay 2, de un pedido del catálogo, de algo cobrado con otro medio o de una venta que no se cargó.</div>'+
+      '</div>' : '')+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">'+
       '<button onclick="marcarTodoCierreMP()" style="flex:1;background:none;border:1px solid #2ecc71;color:#2ecc71;border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">✓ Llegó todo bien</button>'+
     '</div>'+
@@ -13003,6 +13251,7 @@ function marcarCobroMP(i, est){
   it.estado = (it.estado === est) ? 'pend' : est;
   it.recibido = it.estado === 'ok' ? it.monto : (it.estado === 'no' ? 0 : (it.estado === 'distinto' ? (it.recibido != null && it.recibido !== it.monto ? it.recibido : null) : null));
   it.origen = 'manual';
+  if(it.estado !== 'ok'){ it.mpId = null; it.mpHora = null; }
   pintarCierreMP();
 }
 function cambiarRecibidoMP(i, inp){
@@ -13029,7 +13278,7 @@ function guardarCierreMP(){
   var anterior = c.mp || {};
   c.mp = {
     esperado: t.esperado, recibido: t.recibido, diferencia: t.diferencia, pendientes: t.pendientes,
-    items: _mpRev.items.map(function(it){ return { id: it.id, monto: it.monto, estado: it.estado, recibido: it.estado === 'pend' ? null : (it.estado === 'ok' ? it.monto : Number(it.recibido)||0), origen: it.origen || 'manual' }; }),
+    items: _mpRev.items.map(function(it){ return { id: it.id, monto: it.monto, estado: it.estado, recibido: it.estado === 'pend' ? null : (it.estado === 'ok' ? it.monto : Number(it.recibido)||0), origen: it.origen || 'manual', mpId: it.mpId || null, mpHora: it.mpHora || null }; }),
     revisadoPor: currentEmp ? currentEmp.nombre : 'Admin', revisadoEn: new Date().toISOString(),
     // Si ya se había descontado y el faltante no cambió, sigue descontado.
     faltanteSaldado: !!(anterior.faltanteSaldado && anterior.diferencia === t.diferencia)
