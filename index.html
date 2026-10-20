@@ -19524,7 +19524,12 @@ function saldarFiadoBtn(btn) {
   if(cliente) saldarFiado(cliente);
 }
 
+// Ya no hay botón que lo use. Si vuelve a usarse, pasa por el cobro común:
+// así se pregunta el medio de pago (y si es Mercado Pago, se factura).
 function saldarFiado(cliente) {
+  abrirCobroFiado(cliente);
+}
+function saldarFiadoViejo(cliente) {
   askConfirm('¿Marcás todos los fiados de '+cliente+' como pagados?').then(function(ok){
     if(!ok) return;
     var fiados = getFiados();
@@ -22682,8 +22687,11 @@ function confirmarCobroFiado() {
       nota:     (_cobroTipo==='total'?'Cobro total':'Cobro parcial')+' CEFHAS',
       anulada:  false
     };
+    // Facturación electrónica: solo si CEFHAS paga por Mercado Pago.
+    if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(ventaCefhas, { nombre: 'CEFHAS' }); if(_fPed) ventaCefhas.facturaPedido = _fPed; }
     VENTAS.push(ventaCefhas);
     saveVentas(VENTAS, [ventaCefhas.id]);
+    if(window.__lrFact) window.__lrFact.ventaGuardada(ventaCefhas);
     autoSaveNow();
     registrarOperacion('venta', ventaCefhas.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _cobroMedio+' — CEFHAS', 0, ventaCefhas.id);
 
