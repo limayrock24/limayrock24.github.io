@@ -1,0 +1,37 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": [
+    {
+      "source": "functions-facturacion",
+      "codebase": "facturacion",
+      "ignore": [
+        "node_modules",
+        "test",
+        ".git",
+        "*.local",
+        "*.pem",
+        "*.key",
+        "*.crt",
+        "*.csr",
+        "README.md"
+      ]
+    }
+  ],
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "functions": {
+      "port": 5001
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  }
+}

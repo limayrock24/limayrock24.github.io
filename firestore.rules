@@ -105,8 +105,17 @@ service cloud.firestore {
         && request.resource.data.get('baja', false) == (resource == null ? false : resource.data.get('baja', false));
     }
 
+    // Facturación electrónica: los comprobantes los escribe SOLO la nube
+    // (functions-facturacion/). La caja y el admin pueden verlos, no tocarlos.
+    match /facturas/{id}          { allow read: if local(); }
+    match /facturacionEstado/{id} { allow read: if local(); }
+    // arcaPrivado (token de ARCA, numeración): nadie desde afuera.
+
     // Todo lo demás (ventas, caja, cierres, egresos, stock, fiados, etc.):
     // solo la caja y el admin (el celular de delivery NO).
-    match /{document=**} { allow read, write: if local(); }
+    match /{coleccion}/{resto=**} {
+      allow read, write: if local()
+        && !(coleccion in ['facturas', 'facturacionEstado', 'arcaPrivado']);
+    }
   }
 }

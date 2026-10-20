@@ -1,0 +1,8 @@
+node_modules/
+functions-facturacion/.secret.local
+functions-facturacion/.env.local
+*.pem
+*.key
+*.csr
+*.crt
+*-debug.log

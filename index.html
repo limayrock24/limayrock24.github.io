@@ -30,6 +30,7 @@ if(window.__lrSucursal === 2){
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="lr-identificacion.js?v=5"></script>
+<script src="lr-facturacion.js?v=1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
@@ -125,7 +126,13 @@ if(window.__lrSucursal === 2){
     messagingSenderId: "391677998496",
     appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
   };
+  // Emulador local para pruebas (nunca en la página publicada): solo si se
+  // abre desde la misma compu (localhost) con ?emulador=1 en la dirección.
+  // Usa un proyecto "demo" que no existe en internet: imposible tocar la base real.
+  window.__lrEmulador = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]emulador=1/.test(location.search);
+  if(window.__lrEmulador) firebaseConfig.projectId = 'demo-limayrock';
   firebase.initializeApp(firebaseConfig);
+  if(window.__lrEmulador) firebase.auth().useEmulator('http://127.0.0.1:9099');
   // Limay Rock 2: todas las colecciones del local van con el prefijo "l2_".
   // Las comunes a los dos (avisos al dueño, equipos, repartidores, catálogo
   // web de Limay 1) no llevan prefijo.
@@ -290,6 +297,7 @@ if(window.__lrSucursal === 2){
   window.__lrDB.settings(/LimayRockAdminApp/.test(navigator.userAgent)
     ? { experimentalForceLongPolling: true }
     : { experimentalAutoDetectLongPolling: true });
+  if(window.__lrEmulador) window.__lrDB.useEmulator('127.0.0.1', 8080);
   // Persistencia offline: si se corta el wifi un rato, el sistema sigue andando
   // con lo último sincronizado y se pone al día solo cuando vuelve la conexión.
   // Va en TODOS los paneles, admin incluido: sin esta copia el admin tenía que
@@ -4508,6 +4516,7 @@ body.night-on{background:#080005}
       <button class="ftbtn" id="sd-consumos"     onclick="switchTab('consumos')">🏪 Consumos del local</button>
       <button class="ftbtn" id="sd-rentabilidad" onclick="switchTab('rentabilidad')">📈 Rentabilidad</button>
       <button class="ftbtn" id="sd-movimientos"  onclick="switchTab('movimientos')">📋 Movimientos</button>
+      <button class="ftbtn" id="sd-facturas"     onclick="switchTab('facturas')">🧾 Facturas</button>
     </div>
 
     <!-- Subbarra de Clientes: todo lo que hace a la relación con el cliente
@@ -4620,6 +4629,7 @@ body.night-on{background:#080005}
       </div><!-- cierre real de pane-ventas, estaba mal puesto antes del export-bar -->
 
     <!-- PRODUCTOS MÁS VENDIDOS -->
+    <div class="tab-pane" id="pane-facturas"></div>
     <div class="tab-pane" id="pane-productos">
       <div style="font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:2px;color:var(--gray);margin-bottom:10px;text-transform:uppercase">Top productos más vendidos</div>
       <div class="top-prod-list" id="topProdList"></div>
@@ -8961,6 +8971,13 @@ function confirmarVenta2() {
     '<div class="confirm-total-row"><span class="lbl">Medio de pago</span><span class="val">'+medioTxt+'</span></div>'+
     '<div class="confirm-total-row FINAL"><span class="lbl">TOTAL A COBRAR</span><span class="val">'+fmt(total)+'</span></div>';
 
+  // Facturación: aviso de cuánto se factura (lo que entra a Mercado Pago).
+  if(window.__lrFact){
+    var _fm2 = mixtoActivo2 ? getMixtoData2() : null;
+    var _fr2 = _fm2 ? (_fm2.debito>0 ? Math.round(_fm2.debito*(getDebitoPct()/100)) : 0) : recargo;
+    window.__lrFact.avisoConfirm(_fm2 ? 'Mixto' : pagoSel2, _fm2, subtotal + _fr2, _fr2);
+  }
+
   document.getElementById('confirmOverlay').classList.add('open');
 }
 
@@ -9007,8 +9024,12 @@ function doConfirmarVenta2() {
   // Si es un pedido del catálogo, la venta queda vinculada al pedido desde el
   // primer guardado (antes se anotaba después de guardar y no llegaba a la nube).
   if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
+  // Facturación electrónica: la venta sale marcada para que la nube emita la
+  // Factura C (solo si hubo cobro por Mercado Pago).
+  if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(venta); if(_fPed) venta.facturaPedido = _fPed; }
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
+  if(window.__lrFact) window.__lrFact.ventaGuardada(venta);
   // Republicar el estado del turno junto con la venta. Si por cualquier motivo
   // el registro del turno no llegó a la nube al abrirlo, se recompone acá: es
   // imposible que haya ventas y el turno no figure.
@@ -9219,7 +9240,7 @@ function switchTab(tab) {
   // Cierres arranca siempre en "Hoy" cada vez que se entra desde otra pantalla
   var paneCierresPrev = document.getElementById('pane-cierres');
   if(tab==='cierres' && !(paneCierresPrev && paneCierresPrev.classList.contains('active'))) window._cierresPeriodo = 'hoy';
-  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','opiniones','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes'];
+  var tabs=['dashboard','ventas','empleados','catalogo','stock','cierres','inventario','consumos','egresos','rentabilidad','fiados','consignacion','puntos','sorteos','opiniones','movimientos','pedidos','reportes','logcat','proveedores','combos','imperdibles','codigos','delivery','mensajes','facturas'];
   // Usar el atributo onclick para identificar cada botón — más robusto que índice
   document.querySelectorAll('.tab-btn').forEach(function(btn){
     // El botón de la sección Productos se maneja aparte: tiene que quedar
@@ -9270,7 +9291,7 @@ function switchTab(tab) {
   if(btnGrupoC) btnGrupoC.classList.toggle('active', esClientes);
 
   // Sección Dinero: control del efectivo y resultados del negocio.
-  var pantallasDinero = ['ventas','cierres','egresos','consumos','rentabilidad','movimientos'];
+  var pantallasDinero = ['ventas','cierres','egresos','consumos','rentabilidad','movimientos','facturas'];
   var esDinero = pantallasDinero.indexOf(tab) !== -1;
 
   var subD = document.getElementById('subtabsDinero');
@@ -9324,6 +9345,7 @@ function switchTab(tab) {
   if(tab==='sorteos') renderSorteos();
   if(tab==='opiniones') cargarOpiniones();
   if(tab==='movimientos') initMovimientos();
+  if(tab==='facturas' && window.__lrFact) window.__lrFact.renderAdmin(document.getElementById('pane-facturas'));
   if(tab==='pedidos') renderPedidos();
   // Al entrar a Combos, se republican en el catálogo del cliente sin comparar
   // contra la última copia. Es la garantía de que lo que ve el dueño en esta
@@ -10960,6 +10982,13 @@ function confirmarVenta() {
     '<div class="confirm-total-row"><span class="lbl">Medio de pago</span><span class="val">'+pagoSel+'</span></div>'+
     '<div class="confirm-total-row FINAL"><span class="lbl">TOTAL A COBRAR</span><span class="val">'+fmt(total)+'</span></div>';
 
+  // Facturación: aviso de cuánto se factura (lo que entra a Mercado Pago).
+  if(window.__lrFact){
+    var _fm = mixtoActivo ? getMixtoData() : null;
+    var _fr = _fm ? (_fm.debito>0 ? Math.round(_fm.debito*(getDebitoPct()/100)) : 0) : recargo;
+    window.__lrFact.avisoConfirm(_fm ? 'Mixto' : pagoSel, _fm, subtotal + _fr, _fr);
+  }
+
   document.getElementById('confirmOverlay').classList.add('open');
 }
 
@@ -11012,8 +11041,12 @@ function doConfirmarVenta() {
   // Igual que en el Carrito 2: la venta queda vinculada al pedido web desde el
   // primer guardado (si se anota después, no llega a la nube).
   if(_pedidoWebEnCarrito) venta.pedidoWebId = _pedidoWebEnCarrito;
+  // Facturación electrónica: la venta sale marcada para que la nube emita la
+  // Factura C (solo si hubo cobro por Mercado Pago).
+  if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(venta); if(_fPed) venta.facturaPedido = _fPed; }
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
+  if(window.__lrFact) window.__lrFact.ventaGuardada(venta);
 
   // Registrar delivery por separado
   if(delivery > 0) {
@@ -19196,8 +19229,12 @@ function confirmarFiadoParcial(){
     nota:     'Pago parcial de '+nombre+' — quedó debiendo '+fmt(resto),
     anulada:  false
   };
+  // Facturación electrónica: la venta sale marcada para que la nube emita la
+  // Factura C (solo si hubo cobro por Mercado Pago).
+  if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(venta); if(_fPed) venta.facturaPedido = _fPed; }
   VENTAS.push(venta);
   saveVentas(VENTAS, [venta.id]);
+  if(window.__lrFact) window.__lrFact.ventaGuardada(venta);
 
   // 2) El resto queda anotado en la cuenta corriente del cliente
   var fiados = getFiados();
