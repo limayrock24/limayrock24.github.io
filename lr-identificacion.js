@@ -22,6 +22,16 @@
   // sin identificar NO puede funcionar (la nube le rechazaría todo y quedaría
   // vendiendo sin guardar), así que se pide la identificación obligatoria.
   var BASE_CERRADA = { venta: true, admin: true, delivery: true };
+  // Cuentas con las que puede quedar identificado cada panel. Caja y admin
+  // comparten la sesión con el link de delivery (mismo sitio): si en este
+  // equipo alguien entró al delivery, la sesión queda con esa cuenta, la nube
+  // le niega los datos del local y el panel queda "poniéndose al día" para
+  // siempre (y sin poder leer los PIN). Por eso acá se pide la del local.
+  var CUENTAS_PANEL = { venta: ['local@limayrock.app', 'admin@limayrock.app'], admin: ['local@limayrock.app', 'admin@limayrock.app'] };
+  function cuentaSirve(panel, user){
+    var ok = CUENTAS_PANEL[panel];
+    return !ok || (!!user && ok.indexOf(String(user.email || '').toLowerCase()) !== -1);
+  }
 
   function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
   function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
@@ -75,6 +85,10 @@
     if(!cerrada) setTimeout(arrancarPendientes, 8000);
 
     auth.onAuthStateChanged(function(user){
+      // En caja y admin, otra cuenta (la de delivery o el permiso de un celular
+      // de repartidor) cuenta como "sin identificar": se pide la del local.
+      window.__lrCuentaAjena = (user && !cuentaSirve(panel, user)) ? (user.email || 'la de un celular de delivery') : null;
+      if(window.__lrCuentaAjena) user = null;
       // Los celulares de repartidores, después del primer ingreso, quedan con
       // un permiso propio de la nube (sin email): también cuentan como identificados.
       window.__lrUsuario = user ? (user.email || 'equipo') : null;
@@ -180,6 +194,7 @@
     var obligatoria = !!window.__lrIdentObligatoria && !window.__lrUsuario;
     document.getElementById('lrIdentCancelar').style.display = obligatoria ? 'none' : 'block';
     if(obligatoria) document.getElementById('lrIdentSub').textContent = (NOMBRE_PANEL[window.__lrPanel] || 'Este panel') + ' · este equipo tiene que identificarse para poder funcionar';
+    if(window.__lrCuentaAjena) document.getElementById('lrIdentSub').textContent = 'Este equipo quedó identificado con otra cuenta (' + window.__lrCuentaAjena + '). Identificalo de nuevo con el usuario del ' + (window.__lrPanel === 'admin' ? 'admin' : 'local') + '.';
     ov.style.display = 'flex';
     setTimeout(function(){ document.getElementById('lrIdentPass').focus(); }, 50);
   }
@@ -212,6 +227,8 @@
     if(!nombre){ mostrarError('Poné un nombre para este equipo (ej: Netbook del local).'); return; }
     var btn = document.getElementById('lrIdentBtn');
     btn.disabled = true; btn.textContent = 'Identificando…';
+    var cuentas = CUENTAS_PANEL[window.__lrPanel];
+    if(cuentas && cuentas.indexOf(email) === -1){ btn.disabled = false; btn.textContent = 'Identificar'; mostrarError('Este panel usa el usuario del local o del admin.'); return; }
     window.__lrAuth.signInWithEmailAndPassword(email, pass).then(function(cred){
       if(cred && cred.user) window.__lrUsuario = cred.user.email;
       guardar('lr_dispositivo_nombre', nombre);
