@@ -12878,7 +12878,7 @@ function probarConexionMP(){
 // Al confirmar una venta por transferencia (o la parte por transferencia de un
 // pago mixto), la caja le pregunta a la nube cada pocos segundos si ya entró
 // a Mercado Pago un pago de ese monto. Cuando llega muestra "✅ Pago recibido"
-// y a los 3 segundos confirma sola. Nunca bloquea: si Mercado Pago tarda o no
+// y a los 5 segundos confirma sola. Nunca bloquea: si Mercado Pago tarda o no
 // hay internet, se confirma a mano como siempre y queda para revisar en el
 // cierre. Cada pago se usa para una sola venta (lo controla la nube), así dos
 // cajas o los dos locales esperando el mismo monto no se quedan con el mismo.
@@ -12929,7 +12929,7 @@ function mpEsperaConsultar(){
     e.errores = 0;
     if(d.ok){
       e.pago = { id: d.id, fecha: d.fecha, monto: d.monto };
-      e.cuenta = 3;
+      e.cuenta = 5;
       pintarMpEspera('recibido');
       e.timer = setInterval(mpEsperaTic, 1000);
       return;
