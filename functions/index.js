@@ -36,6 +36,11 @@ const db = getFirestore();
 // entera de los cambios.
 const REGION = 'southamerica-east1';
 
+// Clave de la cuenta de Mercado Pago de Limay 1, guardada como secreto en la
+// nube (ver la sección MERCADO PAGO más abajo).
+const { defineSecret } = require('firebase-functions/params');
+const MP_ACCESS_TOKEN = defineSecret('MP_ACCESS_TOKEN');
+
 /**
  * Manda una notificación a todos los dispositivos de un tipo de destinatario.
  * @param {string} destino  'dueno' o 'repartidor'
@@ -364,10 +369,15 @@ function avisoTurnoCerrado(L) {
     const lineas = [`${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
     try { lineas.push(...(await resumenDelTurno(c, L))); }
     catch (e) { console.error('No se pudo armar el resumen del turno', e); }
+    // Cierre de Mercado Pago hecho solo: se guarda en el cierre y va en el aviso.
+    if (!L.col && !c.automatico) {
+      try { const linMP = await cierreMPAutomatico(event.data.ref, c); if (linMP) lineas.push(...linMP); }
+      catch (e) { console.error('No se pudo hacer el cierre de Mercado Pago', e); lineas.push('📲 MP: no se pudo revisar (revisalo desde el admin)'); }
+    }
     await notificar('dueno', L.etq + `🔴 Turno cerrado — ${hora}`, lineas.join('\n'), { tag: L.col + 'turno', url: L.url });
   };
 }
-exports.avisoTurnoCerrado = onDocumentCreated({ document: 'cierres/{fecha}', region: REGION }, avisoTurnoCerrado(LR1));
+exports.avisoTurnoCerrado = onDocumentCreated({ document: 'cierres/{fecha}', region: REGION, secrets: [MP_ACCESS_TOKEN], timeoutSeconds: 120 }, avisoTurnoCerrado(LR1));
 exports.avisoTurnoCerradoL2 = onDocumentCreated({ document: 'l2_cierres/{fecha}', region: REGION }, avisoTurnoCerrado(LR2));
 
 function duracion(min) {
@@ -641,8 +651,6 @@ exports.sincronizarProductoL2aL1 = onDocumentWritten(
 // transferencias al alias aparecen. La clave de la cuenta se guarda como
 // secreto en la nube (MP_ACCESS_TOKEN): nunca está en el código ni la ve nadie.
 // Solo la puede usar el admin.
-const { defineSecret } = require('firebase-functions/params');
-const MP_ACCESS_TOKEN = defineSecret('MP_ACCESS_TOKEN');
 
 exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN] }, async (req) => {
   const email = req.auth && req.auth.token && req.auth.token.email;
@@ -808,14 +816,9 @@ exports.mpLiberarPago = onCall({ region: REGION }, async (req) => {
   });
 });
 
-// Todos los cobros entre dos horas (el turno completo, sin el tope de 100),
-// con la marca de si alguna caja ya los usó para una venta.
-exports.mpCobrosRango = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN], timeoutSeconds: 120 }, async (req) => {
-  mpCuentaQuePuede(req, ['admin@limayrock.app']);
-  const d = req.data || {};
-  const desde = Number(d.desde) || 0, hasta = Number(d.hasta) || Date.now();
-  if (!(desde > 0) || hasta <= desde) throw new HttpsError('invalid-argument', 'Rango de horas inválido');
-  if (hasta - desde > 3 * 86400000) throw new HttpsError('invalid-argument', 'El rango no puede pasar de 3 días');
+// Todos los cobros que entraron entre dos horas (paginado), con la marca de
+// si alguna caja o pedido ya los usó.
+async function mpCobrosEntre(desde, hasta) {
   const LIM = 100, MAX_PAG = 40;
   const traer = async (rango) => {
     let todos = [];
@@ -849,6 +852,18 @@ exports.mpCobrosRango = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN], tim
     const snaps = await db.getAll(...lote.map(p => db.collection('mpCobros').doc(p.id)));
     snaps.forEach((s, k) => { const u = s.exists ? s.data().usadoPor : null; lote[k].usadoPor = u ? { ref: u.ref, local: u.local || 1 } : null; });
   }
+  return pagos;
+}
+
+// Todos los cobros entre dos horas (el turno completo, sin el tope de 100),
+// con la marca de si alguna caja ya los usó para una venta.
+exports.mpCobrosRango = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN], timeoutSeconds: 120 }, async (req) => {
+  mpCuentaQuePuede(req, ['admin@limayrock.app']);
+  const d = req.data || {};
+  const desde = Number(d.desde) || 0, hasta = Number(d.hasta) || Date.now();
+  if (!(desde > 0) || hasta <= desde) throw new HttpsError('invalid-argument', 'Rango de horas inválido');
+  if (hasta - desde > 3 * 86400000) throw new HttpsError('invalid-argument', 'El rango no puede pasar de 3 días');
+  const pagos = await mpCobrosEntre(desde, hasta);
   return { cobros: pagos.sort((a, b) => a.fecha - b.fecha) };
 });
 
@@ -934,3 +949,78 @@ exports.avisoPedidoCobrado = onDocumentUpdated(
     }
   }
 );
+
+// ── CIERRE DE MERCADO PAGO AUTOMÁTICO AL CERRAR EL TURNO ────────────────────
+// Lo mismo que hace el admin al tocar "📲 MP sin revisar", pero solo, apenas
+// el empleado cierra la caja: busca en Mercado Pago cada venta por
+// transferencia del turno (monto y hora, o el pago que la caja ya confirmó)
+// y guarda el resultado en el cierre. Lo que no encuentra queda "a revisar"
+// (nunca se da por faltante solo: puede llegar tarde o venir en dos partes).
+// Devuelve las líneas para el aviso del turno cerrado.
+async function cierreMPAutomatico(refCierre, c) {
+  const ini = Date.parse(c.horaInicio), fin = Date.parse(c.horaFin);
+  if (!ini || !fin || fin <= ini) return null;
+  const caja = Number(c.caja) === 2 ? 2 : 1;
+  const snapV = await db.collection('ventas').where('id', '>=', ini - 60000).where('id', '<=', fin).get();
+  const ventas = [];
+  snapV.forEach(d => {
+    const v = d.data();
+    if (!v || v.anulada || v.fiadoCarga) return;
+    const fv = Date.parse(v.fecha); if (!(fv >= ini - 60000 && fv <= fin)) return;
+    const monto = v.medio === 'Transferencia' ? (Number(v.total) || 0) : (v.medio === 'Mixto' && v.mixto ? (Number(v.mixto.transferencia) || 0) : 0);
+    if (!(monto > 0)) return;
+    ventas.push({ id: String(v.id), fecha: fv, monto, caja: Number(v.caja) === 2 ? 2 : 1,
+      montoConEnvio: (v.medio === 'Transferencia' && Number(v.delivery) > 0) ? monto + Number(v.delivery) : 0,
+      mpPago: v.mpPago || null });
+  });
+  ventas.sort((a, b) => a.fecha - b.fecha);
+  const delTurno = ventas.filter(v => v.caja === caja && v.fecha >= ini);
+  if (!delTurno.length) return null;
+  const cobros = await mpCobrosEntre(ini - 15 * 60000, fin + 20 * 60000);
+  // Pagos ya usados en otros cierres de los últimos días.
+  const usado = {};
+  const snapC = await db.collection('cierres').where('horaFin', '>=', new Date(ini - 2 * 86400000).toISOString()).get();
+  snapC.forEach(d => { if (d.id === refCierre.id) return; const m = d.data().mp; ((m && m.items) || []).forEach(it => { if (it.mpId) usado[it.mpId] = true; }); });
+  const refsDeAca = {};
+  ventas.forEach(v => { if (v.mpPago && v.mpPago.ref) refsDeAca[v.mpPago.ref] = true; });
+  cobros.forEach(p => {
+    // Reclamados por Limay 2 o por una venta que no está en este horario: no se tocan.
+    if (p.usadoPor && ((p.usadoPor.local || 1) !== 1 || !refsDeAca[p.usadoPor.ref])) usado[p.id] = true;
+  });
+  const porId = {}; cobros.forEach(p => { porId[p.id] = p; });
+  const asignado = {};
+  ventas.forEach(v => { if (v.mpPago && v.mpPago.id && !usado[v.mpPago.id]) asignado[v.mpPago.id] = v.id; });
+  ventas.forEach(v => {
+    if (v.mpPago && v.mpPago.id) return;
+    let mejor = null, dtMejor = Infinity;
+    cobros.forEach(p => {
+      if (p.tarjeta || usado[p.id] || asignado[p.id] || p.usadoPor) return;
+      if (Math.abs(p.monto - v.monto) >= 0.01 && !(v.montoConEnvio && Math.abs(p.monto - v.montoConEnvio) < 0.01)) return;
+      const dt = p.fecha - v.fecha;
+      if (dt < -15 * 60000 || dt > 20 * 60000) return;
+      if (Math.abs(dt) < dtMejor) { dtMejor = Math.abs(dt); mejor = p; }
+    });
+    if (mejor) asignado[mejor.id] = v.id;
+  });
+  const porVenta = {}; Object.keys(asignado).forEach(pid => { porVenta[asignado[pid]] = pid; });
+  let esperado = 0, recibido = 0, pendientes = 0, montoPend = 0;
+  const items = delTurno.map(v => {
+    const pid = porVenta[v.id];
+    esperado += v.monto;
+    if (!pid) { pendientes++; montoPend += v.monto; return { id: v.id, monto: v.monto, estado: 'pend', recibido: null, origen: 'auto', mpId: null, mpHora: null }; }
+    recibido += v.monto;
+    const p = porId[pid];
+    return { id: v.id, monto: v.monto, estado: 'ok', recibido: v.monto, origen: 'auto', mpId: pid, mpHora: p ? p.fecha : (v.mpPago && v.mpPago.fecha) || null };
+  });
+  const sinCargar = cobros.filter(p => !p.tarjeta && !usado[p.id] && !asignado[p.id] && !p.usadoPor && p.fecha >= ini && p.fecha <= fin);
+  await refCierre.update({ mp: {
+    esperado, recibido, diferencia: 0, pendientes, items,
+    revisadoPor: 'Sistema (automático)', revisadoEn: new Date().toISOString(), faltanteSaldado: false,
+    automatico: true, sinCargar: sinCargar.map(p => ({ fecha: p.fecha, monto: p.monto }))
+  } });
+  const out = [];
+  if (!pendientes) out.push(`📲 MP ✅ llegó todo (${pesos(recibido)} en ${items.length} transferencia${items.length === 1 ? '' : 's'})`);
+  else out.push(`📲 MP: ${items.length - pendientes} de ${items.length} confirmadas · revisar ${pendientes} (${pesos(montoPend)})`);
+  if (sinCargar.length) out.push(`💡 ${sinCargar.length} cobro${sinCargar.length === 1 ? '' : 's'} en MP sin venta cargada (${pesos(sinCargar.reduce((t, p) => t + p.monto, 0))})`);
+  return out;
+}
