@@ -13306,9 +13306,9 @@ function alertasTablero(){
     var h = (ahora - new Date(s.turnoInicio).getTime()) / 3600000;
     if(h > 12 && h < 16) al.push({ n:'amarillo', t:'⏰ '+n+' tiene el turno abierto hace '+Math.floor(h)+' horas: ¿se olvidó de cerrar?' });
   });
-  // Faltantes sin descontar
-  var falt = getCierres().filter(function(c){ return faltantePendienteCierre(c) > 0; });
-  if(falt.length) al.push({ n:'rojo', t:'🔴 Faltantes sin descontar: '+falt.length+' cierre'+(falt.length===1?'':'s')+' por '+fmt(falt.reduce(function(s, c){ return s + faltantePendienteCierre(c); }, 0)) });
+  // Faltantes sin descontar (del último mes: los más viejos ya se liquidaron)
+  var falt = getCierres().filter(function(c){ return faltantePendienteCierre(c) > 0 && (ahora - new Date(c.fecha).getTime()) < 31*86400000; });
+  if(falt.length) al.push({ n:'rojo', t:'🔴 Faltantes sin descontar del último mes: '+falt.length+' cierre'+(falt.length===1?'':'s')+' por '+fmt(falt.reduce(function(s, c){ return s + faltantePendienteCierre(c); }, 0)) });
   // Los más vendidos (últimos 30 días) con stock bajo
   var desde = ahora - 30*86400000, conteo = {};
   VENTAS.forEach(function(v){
@@ -13330,12 +13330,18 @@ function alertasTablero(){
     });
     if(rev.length) al.push({ n:'info', t:'📲 '+rev.length+' transferencia'+(rev.length===1?'':'s')+' de hoy confirmada'+(rev.length===1?'':'s')+' a mano: se revisan en el cierre de Mercado Pago' });
   }
-  // Ventas de hoy contra el mismo día de la semana pasada, hasta esta hora
-  var suma = function(ini, fin){
-    return VENTAS.filter(function(v){ var t = tVenta(v); return !v.anulada && !v.fiadoCarga && t >= ini && t <= fin; })
-      .reduce(function(s, v){ return s + (Number(v.total) || 0) - (Number(v.recargo) || 0); }, 0);
+  // Ventas de hoy contra el mismo día de la semana pasada, hasta esta hora.
+  // Mismo criterio que "Neto cobrado hoy": ventas y cobros de fiados sin el
+  // recargo del Posnet, más la ganancia de las cargas virtuales.
+  var suma = function(dia, hasta){
+    var ini = dia.getTime();
+    var v = getVentasYFiadosDelDia(dia.toDateString()).filter(function(x){ return !x.fiadoCarga && !x.anulada && tVenta(x) <= hasta; })
+      .reduce(function(s, x){ return s + (Number(x.total) || 0) - (Number(x.recargo) || 0); }, 0);
+    var cv = getCargasVirtuales().filter(function(c){ var t = new Date(c.fecha).getTime(); return t >= ini && t <= hasta; })
+      .reduce(function(s, c){ return s + (Number(c.ganancia) || 0); }, 0);
+    return v + cv;
   };
-  var hoyV = suma(hoy0.getTime(), ahora), antV = suma(hoy0.getTime() - 7*86400000, ahora - 7*86400000);
+  var hoyV = suma(hoy0, ahora), antV = suma(new Date(hoy0.getTime() - 7*86400000), ahora - 7*86400000);
   if(antV > 0){
     var pct = Math.round((hoyV - antV) / antV * 100);
     var dia = new Date(ahora - 7*86400000).toLocaleDateString('es-AR', { weekday:'long' });
