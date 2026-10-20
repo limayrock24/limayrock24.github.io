@@ -24458,7 +24458,7 @@ function renderDashboard() {
       })
         .map(function(m){
           if(esStockMov(m.tipo, m)){ var ts = textoStock(m); return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:ts.texto, extra:'', total:0, recargo:0, unidades:ts.unidades}; }
-          return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0};
+          return {clave:'mov-'+m.id, fecha:m.fecha, tipo:m.tipo, texto:(m.resumen||m.extra||m.tipo), extra:m.extra, total:m.total||0, recargo:m.recargo||0, refId:m.refId||null};
         })
         .sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).slice(0,25);
 
@@ -37287,6 +37287,7 @@ function renderLiquidez() {
 
   el.innerHTML =
     liquidezCard('💵','Efectivo en caja', fmt(liq.efectivoCaja),
+      (liq.efectivoPorCaja ? 'Caja 1: '+fmt(liq.efectivoPorCaja[1])+' · Caja 2: '+fmt(liq.efectivoPorCaja[2])+'<br>' : '')+
       'Fuera del local: '+fmt(liq.efectivoFuera), liq.efectivoCaja>=0?'var(--green)':'var(--red)') +
     liquidezCard('💳','Mercado Pago', fmt(liq.mercadoPago),
       'Transferencias + Posnet neto s/comisión '+(liq.comisionMP)+'%', '#1e90ff') +

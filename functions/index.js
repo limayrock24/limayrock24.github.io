@@ -336,7 +336,9 @@ function avisoTurnoAbierto(L) {
     const hora = s.turnoInicio
       ? new Date(s.turnoInicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' })
       : '—';
-    const cuerpo = `${s.nombre || '—'} · ${s.turno || ''} · ${pesos(s.efectivoInicial)} en caja`;
+    // Con dos cajas en el local, se aclara en cuál abrió.
+    const caja = Number(s.caja) === 2 ? 'Caja 2 · ' : (Number(s.caja) === 1 ? 'Caja 1 · ' : '');
+    const cuerpo = `${caja}${s.nombre || '—'} · ${s.turno || ''} · ${pesos(s.efectivoInicial)} en caja`;
     await notificar('dueno', L.etq + `🟢 Turno abierto — ${hora}`, cuerpo, { tag: L.col + 'turno', url: L.url });
   };
 }
@@ -366,7 +368,8 @@ function avisoTurnoCerrado(L) {
       else estado = `🟡 Sobran ${pesos(dif)}`;
     }
 
-    const lineas = [`${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
+    const cajaC = Number(c.caja) === 2 ? 'Caja 2 · ' : (Number(c.caja) === 1 ? 'Caja 1 · ' : '');
+    const lineas = [`${cajaC}${c.empleado || '—'} · ${c.turno || ''}${duracion(c.durMinutos)}`, estado];
     // Con cuánto quedó la caja (lo que contó el empleado) y con cuánto había abierto.
     const aq = c.arqueo || {};
     if (!c.automatico && aq.contado !== undefined && aq.contado !== null) {
