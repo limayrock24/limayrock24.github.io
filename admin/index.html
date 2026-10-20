@@ -13005,11 +13005,11 @@ function pintarMpEspera(estado){
   } else if(estado === 'error'){
     box.innerHTML = '<div style="'+st+'background:rgba(244,180,0,.1);border:1px solid var(--gold);color:var(--gold)">'+
       '⚠ No se puede consultar Mercado Pago ahora (sigo intentando).'+
-      '<div style="color:var(--light)">Si ya viste el pago en el celular, confirmá igual.</div></div>';
+      '<div style="color:var(--light)">Si ya viste el comprobante, confirmá igual.</div></div>';
   } else {
     box.innerHTML = '<div style="'+st+'background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.5);color:#38bdf8">'+
       '⏳ Esperando la transferencia de <b>'+fmt(e.monto)+'</b>…'+
-      '<div style="color:var(--gray);font-size:.72rem">Cuando llegue a Mercado Pago se confirma sola. Si ya la viste en el celular, podés confirmar igual.</div></div>';
+      '<div style="color:var(--gray);font-size:.72rem">Cuando llegue a Mercado Pago se confirma sola. Si ya viste el comprobante, podés confirmar igual.</div></div>';
   }
 }
 
