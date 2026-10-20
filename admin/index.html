@@ -12115,7 +12115,7 @@ function renderCierres() {
           '<div class="cierre-card-emp">'+c.empleado+' <span style="color:var(--gray);font-size:.72rem">· '+c.turno+'</span>'+etiquetaCajaHtml(c)+'</div>'+
           '<div class="cierre-card-fecha">'+fechaStr+' · '+horaIni+' → '+horaFin+' ('+dur+')</div>'+
         '</div>'+
-        '<div>'+badgeHtml+'</div>'+
+        '<div style="text-align:right">'+badgeHtml+'<br>'+badgeMPCierre(c, ventasPorMedio)+'</div>'+
       '</div>'+
       '<div class="cierre-card-kpis">'+
         '<div class="cierre-card-kpi"><span class="ck-l">Ventas</span><span class="ck-v">'+c.cantVentas+'</span></div>'+
@@ -12127,6 +12127,9 @@ function renderCierres() {
         detalleArqueo+
         correccionesHtml+
         botonCorregir+
+        (badgeMPCierre(c, ventasPorMedio) ? '<div style="text-align:center;margin-top:8px">'+
+          '<button onclick="event.stopPropagation();abrirCierreMP('+idx+')" style="background:none;border:1px solid rgba(56,189,248,.6);color:#38bdf8;border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">📲 Revisar Mercado Pago</button>'+
+        '</div>' : '')+
         '<div style="text-align:center;margin-top:10px">'+
           '<button onclick="event.stopPropagation();toggleVentasDetalleCierre('+idx+')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
             '<span id="cierreVentasBtnTxt'+idx+'">▼ Ver ventas de este cierre</span>'+
@@ -12801,6 +12804,172 @@ function toggleVentasDetalleCierre(idx) {
   }
   div.style.display = 'block';
   if(btnTxt) btnTxt.textContent = '▲ Ocultar ventas';
+}
+
+// ── CIERRE DE MERCADO PAGO ─────────────────────────────────────────────────
+// El arqueo de cada turno controla el efectivo; esto controla lo que se cobró
+// por transferencia (al alias de Mercado Pago): ¿llegó de verdad, y completo?
+// Hoy se revisa a mano, cobro por cobro, contra la app de Mercado Pago. Más
+// adelante el sistema lo va a confirmar solo contra la cuenta, guardando lo
+// mismo en el mismo lugar (cierre.mp), así lo revisado a mano sigue sirviendo.
+// Un faltante se descuenta al empleado igual que el de efectivo.
+//
+// Cobros que tendrían que estar en Mercado Pago: ventas por transferencia y la
+// parte por transferencia de los pagos mixtos, con el mismo rango horario y la
+// misma caja que el cierre de efectivo (ver construirVentasDetalleCierreHtml).
+function cobrosMPDeCierre(c){
+  if(!c || !c.horaInicio || !c.horaFin) return [];
+  var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
+  return VENTAS.filter(function(v){
+    if(v.anulada || v.fiadoCarga) return false;
+    var fv = new Date(v.fecha).getTime();
+    return fv >= ini && fv <= fin && cajaDe(v) === cajaDe(c);
+  }).map(function(v){
+    var monto = v.medio === 'Transferencia' ? (Number(v.total)||0)
+      : (v.medio === 'Mixto' && v.mixto ? (Number(v.mixto.transferencia)||0) : 0);
+    if(!(monto > 0)) return null;
+    return {
+      id: String(v.id), fecha: v.fecha, monto: monto, mixto: v.medio === 'Mixto', delivery: !!v.pedidoWebId,
+      resumen: (v.items||[]).map(function(i){ return i.name+' ×'+i.qty; }).join(', ') || '—'
+    };
+  }).filter(Boolean).sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+}
+// Faltantes de un cierre todavía sin descontar: efectivo y Mercado Pago.
+function faltanteCajaCierre(c){ return (c && c.arqueo && c.arqueo.diferencia < 0 && !c.arqueo.faltanteSaldado) ? Math.abs(c.arqueo.diferencia) : 0; }
+function faltanteMPCierre(c){ return (c && c.mp && c.mp.diferencia < 0 && !c.mp.faltanteSaldado) ? Math.abs(c.mp.diferencia) : 0; }
+function faltantePendienteCierre(c){ return faltanteCajaCierre(c) + faltanteMPCierre(c); }
+
+// Etiqueta del estado de Mercado Pago en la tarjeta del cierre.
+function badgeMPCierre(c, ventasPorMedio){
+  var hayMP = (ventasPorMedio && (ventasPorMedio.Transferencia > 0 || ventasPorMedio.Mixto > 0)) || (c.mp && c.mp.esperado > 0);
+  if(!hayMP) return '';
+  var est = 'display:inline-block;margin-top:4px;font-size:.62rem;font-family:Oswald,sans-serif;letter-spacing:.5px;border-radius:10px;padding:2px 8px;';
+  if(!c.mp) return '<span style="'+est+'color:#38bdf8;border:1px solid rgba(56,189,248,.5)">📲 MP sin revisar</span>';
+  if(c.mp.pendientes > 0) return '<span style="'+est+'color:var(--gold);border:1px solid rgba(244,180,0,.5)">📲 MP: faltan revisar '+c.mp.pendientes+'</span>';
+  var d = c.mp.diferencia || 0;
+  if(d === 0) return '<span style="'+est+'color:var(--green);border:1px solid rgba(46,204,113,.5)">📲 MP ✓ llegó todo</span>';
+  if(d < 0) return '<span style="'+est+'color:var(--red);border:1px solid rgba(204,0,0,.5)">📲 MP: falta '+fmt(Math.abs(d))+(c.mp.faltanteSaldado?' · ✓ descontado':' · pendiente de descontar')+'</span>';
+  return '<span style="'+est+'color:var(--gold);border:1px solid rgba(244,180,0,.5)">📲 MP: sobra '+fmt(d)+'</span>';
+}
+
+var _mpRev = null;   // revisión abierta: { cierreFecha, empleado, items:[...] }
+function abrirCierreMP(idx){
+  var c = (window.__lrCierresRenderCache||[])[idx];
+  if(!c){ showToast('No se encontró ese cierre', true); return; }
+  if(!c.horaInicio || !c.horaFin){ showToast('Este cierre es muy viejo: no tiene el horario para armar la lista', true); return; }
+  var cobros = cobrosMPDeCierre(c);
+  if(!cobros.length){ showToast('En este turno no hubo cobros por transferencia', true); return; }
+  var previos = {};
+  ((c.mp && c.mp.items) || []).forEach(function(it){ previos[it.id] = it; });
+  _mpRev = { cierreFecha: c.fecha, empleado: c.empleado, titulo: c.empleado+' · '+c.turno+' · '+new Date(c.fecha).toLocaleDateString('es-AR',{weekday:'short', day:'numeric', month:'short'}),
+    items: cobros.map(function(x){
+      var p = previos[x.id];
+      return { id: x.id, fecha: x.fecha, monto: x.monto, resumen: x.resumen, mixto: x.mixto, delivery: x.delivery,
+        estado: p ? p.estado : 'pend', recibido: p ? p.recibido : null, origen: p ? (p.origen || 'manual') : null };
+    }) };
+  var ov = document.getElementById('cierreMPOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'cierreMPOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.85);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  pintarCierreMP();
+}
+function cerrarCierreMP(){ var ov = document.getElementById('cierreMPOverlay'); if(ov) ov.style.display = 'none'; _mpRev = null; }
+function totalesCierreMP(){
+  var t = { esperado:0, recibido:0, revisados:0, pendientes:0 };
+  _mpRev.items.forEach(function(it){
+    t.esperado += it.monto;
+    if(it.estado === 'pend'){ t.pendientes++; return; }
+    t.revisados++;
+    t.recibido += (it.estado === 'ok') ? it.monto : (Number(it.recibido)||0);
+  });
+  // La diferencia es solo sobre lo revisado: lo que falta revisar no cuenta como faltante.
+  t.esperadoRevisado = _mpRev.items.reduce(function(s, it){ return s + (it.estado === 'pend' ? 0 : it.monto); }, 0);
+  t.diferencia = t.recibido - t.esperadoRevisado;
+  return t;
+}
+function pintarCierreMP(){
+  var ov = document.getElementById('cierreMPOverlay'); if(!ov || !_mpRev) return;
+  var t = totalesCierreMP();
+  var btn = function(i, est, txt, col){
+    var on = _mpRev.items[i].estado === est;
+    return '<button onclick="marcarCobroMP('+i+',\''+est+'\')" style="background:'+(on?col:'none')+';color:'+(on?'#000':col)+';border:1px solid '+col+';border-radius:4px;padding:5px 9px;font-size:.72rem;cursor:pointer;font-family:Oswald,sans-serif">'+txt+'</button>';
+  };
+  ov.innerHTML = '<div style="background:#161616;border:1px solid #38bdf8;border-radius:10px;max-width:640px;width:100%;padding:16px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1.5px;color:#38bdf8">📲 CIERRE DE MERCADO PAGO</div>'+
+      '<button onclick="cerrarCierreMP()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button>'+
+    '</div>'+
+    '<div style="font-size:.78rem;color:var(--light);margin-bottom:4px">'+escBaja(_mpRev.titulo)+'</div>'+
+    '<div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Abrí la app de Mercado Pago, mirá lo que entró en ese horario y marcá cada cobro. Si llegó otro monto, cargá lo que llegó de verdad.</div>'+
+    _mpRev.items.map(function(it, i){
+      var hora = new Date(it.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      return '<div style="background:var(--card);border:1px solid '+(it.estado==='no'||it.estado==='distinto'?'rgba(204,0,0,.5)':it.estado==='ok'?'rgba(46,204,113,.4)':'var(--border)')+';border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">'+
+          '<div style="font-size:.8rem;color:var(--white)">'+hora+(it.mixto?' · <span style="color:var(--gray)">parte de un pago mixto</span>':'')+(it.delivery?' · 🛵 delivery':'')+(it.origen==='auto'?' · <span style="color:#38bdf8">confirmado por el sistema</span>':'')+'</div>'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--gold)">'+fmt(it.monto)+'</div>'+
+        '</div>'+
+        '<div style="font-size:.68rem;color:var(--gray);margin:2px 0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escBaja(it.resumen)+'</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+          btn(i,'ok','✓ Llegó','#2ecc71')+btn(i,'distinto','≠ Llegó otro monto','#f4b400')+btn(i,'no','✗ No llegó','#ff5c5c')+
+          (it.estado==='distinto' ? '<input type="text" inputmode="numeric" placeholder="¿Cuánto llegó?" value="'+(it.recibido!=null?Number(it.recibido).toLocaleString('es-AR'):'')+'" oninput="formatMontoInput(this);cambiarRecibidoMP('+i+',this)" style="width:130px;background:#0d0d0d;border:1px solid var(--gold);color:var(--white);border-radius:4px;padding:5px 8px;font-size:.8rem">' : '')+
+        '</div>'+
+      '</div>';
+    }).join('')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">'+
+      '<button onclick="marcarTodoCierreMP()" style="flex:1;background:none;border:1px solid #2ecc71;color:#2ecc71;border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.75rem;cursor:pointer">✓ Llegó todo bien</button>'+
+    '</div>'+
+    '<div style="background:var(--dark);border-radius:6px;padding:10px 12px;font-size:.82rem;color:var(--light)">'+
+      '<div style="display:flex;justify-content:space-between"><span>Cobrado por transferencia</span><b>'+fmt(t.esperado)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between"><span>Llegó a Mercado Pago (revisado)</span><b>'+fmt(t.recibido)+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.95rem"><span>Diferencia</span><b style="color:'+(t.diferencia<0?'var(--red)':t.diferencia>0?'var(--gold)':'var(--green)')+'">'+(t.diferencia>0?'+':'')+fmt(t.diferencia)+'</b></div>'+
+      (t.pendientes ? '<div style="font-size:.7rem;color:var(--gold);margin-top:4px">Faltan revisar '+t.pendientes+' cobro'+(t.pendientes===1?'':'s')+' (no cuentan en la diferencia).</div>' : '')+
+    '</div>'+
+    '<button onclick="guardarCierreMP()" style="width:100%;margin-top:10px;background:#38bdf8;color:#04121c;border:none;border-radius:6px;padding:12px;font-family:Oswald,sans-serif;font-size:.9rem;letter-spacing:1px;font-weight:700;cursor:pointer">💾 Guardar cierre de Mercado Pago</button>'+
+  '</div>';
+}
+function marcarCobroMP(i, est){
+  var it = _mpRev && _mpRev.items[i]; if(!it) return;
+  it.estado = (it.estado === est) ? 'pend' : est;
+  it.recibido = it.estado === 'ok' ? it.monto : (it.estado === 'no' ? 0 : (it.estado === 'distinto' ? (it.recibido != null && it.recibido !== it.monto ? it.recibido : null) : null));
+  it.origen = 'manual';
+  pintarCierreMP();
+}
+function cambiarRecibidoMP(i, inp){
+  var it = _mpRev && _mpRev.items[i]; if(!it) return;
+  it.recibido = parseFloat(String(inp.value).replace(/\./g,'').replace(',','.')) || 0;
+  // Solo se actualizan los totales (redibujar todo le sacaría el foco al campo).
+  var t = totalesCierreMP();
+  var bs = document.querySelectorAll('#cierreMPOverlay b');
+  if(bs.length >= 3){ bs[1].textContent = fmt(t.recibido); bs[2].textContent = (t.diferencia>0?'+':'')+fmt(t.diferencia); bs[2].style.color = t.diferencia<0?'var(--red)':t.diferencia>0?'var(--gold)':'var(--green)'; }
+}
+function marcarTodoCierreMP(){
+  if(!_mpRev) return;
+  _mpRev.items.forEach(function(it){ if(it.estado === 'pend'){ it.estado = 'ok'; it.recibido = it.monto; it.origen = 'manual'; } });
+  pintarCierreMP();
+}
+function guardarCierreMP(){
+  if(!_mpRev) return;
+  var faltaMonto = _mpRev.items.filter(function(it){ return it.estado === 'distinto' && !(Number(it.recibido) >= 0 && it.recibido !== null); });
+  if(faltaMonto.length){ showToast('Cargá cuánto llegó en los cobros marcados "Llegó otro monto"', true); return; }
+  var t = totalesCierreMP();
+  var cierres = getCierres();
+  var c = cierres.find(function(x){ return x.fecha === _mpRev.cierreFecha && x.empleado === _mpRev.empleado; });
+  if(!c){ showToast('No se encontró el cierre para guardar', true); return; }
+  var anterior = c.mp || {};
+  c.mp = {
+    esperado: t.esperado, recibido: t.recibido, diferencia: t.diferencia, pendientes: t.pendientes,
+    items: _mpRev.items.map(function(it){ return { id: it.id, monto: it.monto, estado: it.estado, recibido: it.estado === 'pend' ? null : (it.estado === 'ok' ? it.monto : Number(it.recibido)||0), origen: it.origen || 'manual' }; }),
+    revisadoPor: currentEmp ? currentEmp.nombre : 'Admin', revisadoEn: new Date().toISOString(),
+    // Si ya se había descontado y el faltante no cambió, sigue descontado.
+    faltanteSaldado: !!(anterior.faltanteSaldado && anterior.diferencia === t.diferencia)
+  };
+  saveCierres(cierres);
+  cerrarCierreMP();
+  showToast(t.diferencia < 0 ? '📲 Guardado — faltan '+fmt(Math.abs(t.diferencia))+' en Mercado Pago (queda para descontar)' : '📲 Cierre de Mercado Pago guardado');
+  if(typeof renderCierres === 'function') try{ renderCierres(); }catch(e){}
 }
 
 // Reconstruye la lista de ventas individuales de un cierre a partir de Ventas (fuente
@@ -16629,9 +16798,10 @@ function renderLiquidacion() {
   var faltEmp={};
   cierres.filter(function(c){
     var d = new Date(c.fecha);
-    return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado && d >= rangoLiq.desde && d <= rangoLiq.hasta;
+    return faltantePendienteCierre(c) > 0 && d >= rangoLiq.desde && d <= rangoLiq.hasta;
   }).forEach(function(c){
-    faltEmp[c.empleado] = (faltEmp[c.empleado]||0) + Math.abs(c.arqueo.diferencia);
+    // Efectivo + Mercado Pago (cierre de MP): los dos se descuentan igual.
+    faltEmp[c.empleado] = (faltEmp[c.empleado]||0) + faltantePendienteCierre(c);
   });
 
   var empleados = getEmpleados();
@@ -16879,9 +17049,14 @@ function marcarFaltantesSaldados(nombreEmp) {
     }
     cierres.forEach(function(c){
       var d = new Date(c.fecha);
-      if(c.empleado===nombreEmp && c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado && d>=rangoLiq.desde && d<=rangoLiq.hasta){
+      if(c.empleado!==nombreEmp || d<rangoLiq.desde || d>rangoLiq.hasta) return;
+      if(faltanteCajaCierre(c) > 0){
         c.arqueo.faltanteSaldado = true;
         c.arqueo.fechaFaltanteSaldado = new Date().toISOString();
+      }
+      if(faltanteMPCierre(c) > 0){
+        c.mp.faltanteSaldado = true;
+        c.mp.fechaFaltanteSaldado = new Date().toISOString();
       }
     });
     saveCierres(cierres);
@@ -16909,15 +17084,15 @@ function exportarLiquidacionPDF(nombre) {
   var minAdel    = misCierres.reduce(function(s,c){return s+(c.pagado?minutosPagados(c):0);},0);
   var sueldo     = Math.round((minPagos/60)*valorHora);
   var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
-  var faltante   = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
-    .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
+  var faltante   = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
   var neto       = sueldo-consumo-faltante;
 
   var turnosRows = misCierres.map(function(c){
     var fi=c.horaInicio?new Date(c.horaInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var ff=c.horaFin?new Date(c.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
     var dur=c.durMinutos?Math.floor(c.durMinutos/60)+'h '+(c.durMinutos%60>0?c.durMinutos%60+'m':''):'—';
-    var difTxt = (c.arqueo && c.arqueo.diferencia<0) ? ' · <span style="color:#CC0000">faltante $'+Number(Math.abs(c.arqueo.diferencia)).toLocaleString('es-AR')+(c.arqueo.faltanteSaldado?' (ya descontado)':'')+'</span>' : '';
+    var difTxt = ((c.arqueo && c.arqueo.diferencia<0) ? ' · <span style="color:#CC0000">faltante $'+Number(Math.abs(c.arqueo.diferencia)).toLocaleString('es-AR')+(c.arqueo.faltanteSaldado?' (ya descontado)':'')+'</span>' : '')+
+      ((c.mp && c.mp.diferencia<0) ? ' · <span style="color:#CC0000">faltante Mercado Pago $'+Number(Math.abs(c.mp.diferencia)).toLocaleString('es-AR')+(c.mp.faltanteSaldado?' (ya descontado)':'')+'</span>' : '');
     var mP = multTurno(c);
     return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>'+c.turno+'</td><td>'+fi+' → '+ff+'</td><td>'+dur+'</td><td'+(mP>1?' style="color:#b8860b;font-weight:bold"':'')+'>'+textoMult(mP)+(c.pagado?' <span style="color:#27ae60">(ya pagado)</span>':'')+'</td><td>'+c.cantVentas+' · $'+Number(c.total||0).toLocaleString('es-AR')+difTxt+'</td></tr>';
   }).join('');
@@ -16972,8 +17147,7 @@ function exportarPDFEmpleado(nombre) {
   // (horas a cobrar × valor hora, menos consumos y faltantes sin descontar).
   var sueldo = Math.round((minACobrar/60)*valorHora);
   var consumoADescontar = misConsumos.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
-  var faltanteADescontar = misCierres.filter(function(c){ return c.arqueo && c.arqueo.diferencia<0 && !c.arqueo.faltanteSaldado; })
-    .reduce(function(s,c){ return s+Math.abs(c.arqueo.diferencia); },0);
+  var faltanteADescontar = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
   var totalACobrar = sueldo - consumoADescontar - faltanteADescontar;
   var $f = function(n){ return '$'+Number(n).toLocaleString('es-AR'); };
   var hora = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—'; };
