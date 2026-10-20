@@ -12870,13 +12870,14 @@ function probarConexionMP(){
         '<td style="padding:5px">'+escBaja(m.tipo||'')+' · '+escBaja(m.medio||'')+'</td>'+
         '<td style="padding:5px">'+escBaja(m.operacion||'')+(m.origen?' · '+escBaja(m.origen):'')+'</td>'+
         '<td style="padding:5px">'+escBaja(m.estado||'')+'</td>'+
-        '<td style="padding:5px;color:'+(m.sentido==='entra'?'var(--green)':m.sentido==='sale'?'var(--red)':'var(--gray)')+'">'+(m.sentido==='entra'?'⬇ entra':m.sentido==='sale'?'⬆ sale':'?')+'</td></tr>';
+        '<td style="padding:5px;color:'+(m.sentido==='entra'?'var(--green)':m.sentido==='sale'?'var(--red)':'var(--gray)')+'">'+(m.sentido==='entra'?'⬇ entra':m.sentido==='sale'?'⬆ sale':'?')+'</td>'+
+        '<td style="padding:5px;color:var(--gray);white-space:nowrap">'+escBaja(m.cobra||'')+' / '+escBaja(m.paga||'')+'</td></tr>';
     }).join('');
     ov.innerHTML = marco(
       '<div style="font-size:.8rem;color:var(--light);margin-bottom:8px">✅ La conexión funciona. Mercado Pago informó <b>'+(d.total||0)+'</b> cobro'+((d.total||0)===1?'':'s')+' en los últimos 2 días (se muestran hasta 100).</div>'+
       (d.cuentaIdentificada === false ? '<div style="font-size:.78rem;color:var(--red);margin-bottom:8px">⚠ No se pudo identificar la cuenta: el sistema no va a confirmar cobros hasta resolverlo.</div>' : '')+
       '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Fijate si aparecen las <b>transferencias al alias</b> que recibiste (buscá montos que reconozcas). Sacale una captura a esta pantalla y mandámela: no tiene datos de los clientes.</div>'+
-      (filas ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.74rem;color:var(--light)"><tr style="color:var(--gray);text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px;text-align:right">Monto</th><th style="padding:5px">Tipo · medio</th><th style="padding:5px">Operación</th><th style="padding:5px">Estado</th><th style="padding:5px">Sentido</th></tr>'+filas+'</table></div>'
+      (filas ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.74rem;color:var(--light)"><tr style="color:var(--gray);text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px;text-align:right">Monto</th><th style="padding:5px">Tipo · medio</th><th style="padding:5px">Operación</th><th style="padding:5px">Estado</th><th style="padding:5px">Sentido</th><th style="padding:5px">Cobra / paga</th></tr>'+filas+'</table></div>'
         : '<div style="color:var(--gray);padding:10px">No hubo cobros en ese período.</div>'));
   }).catch(function(e){
     var m = (e && e.message) || String(e);

@@ -661,6 +661,9 @@ exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN
     cuentaIdentificada: !!yo,
     movimientos: (j.results || []).map(p => ({
       sentido: mpSentido(p, yo),
+      // Para revisar el criterio: si cobra / paga la propia cuenta, otra, o no figura.
+      cobra: !mpCobra(p) ? '—' : (mpCobra(p) === yo ? 'cuenta' : 'otro'),
+      paga: !mpPaga(p) ? '—' : (mpPaga(p) === yo ? 'cuenta' : 'otro'),
       fecha: p.date_approved || p.date_created,
       monto: p.transaction_amount,
       neto: p.transaction_details ? p.transaction_details.net_received_amount : null,
@@ -709,15 +712,19 @@ async function mpCuentaPropia() {
   if (!_mpCuentaId) { const m = /-(\d+)$/.exec(mpClave()); if (m) _mpCuentaId = m[1]; }
   return _mpCuentaId;
 }
-// Un pago ENTRA si la cuenta es la que cobra; SALE si la cuenta es la que paga
-// (por ejemplo, un pago con QR en la verdulería).
+// Un pago ENTRA si la cuenta es la que cobra; SALE si cobra otro (por ejemplo,
+// un pago con QR en la verdulería). Ojo: en las transferencias que llegan desde
+// otro banco (account_fund) Mercado Pago pone a la propia cuenta como "pagador",
+// así que lo que manda es quién cobra, no quién paga.
+function mpCobra(p) { return String(p.collector_id || (p.collector && p.collector.id) || ''); }
+function mpPaga(p) { return String((p.payer && p.payer.id) || ''); }
 function mpSentido(p, yo) {
-  const cobra = String(p.collector_id || (p.collector && p.collector.id) || '');
-  const paga = String((p.payer && p.payer.id) || '');
+  const cobra = mpCobra(p), paga = mpPaga(p);
   if (!yo) return '?';
-  if (paga === yo) return 'sale';
-  if (cobra && cobra !== yo) return 'sale';
-  return 'entra';
+  if (cobra === yo) return 'entra';
+  if (cobra) return 'sale';
+  if (p.operation_type === 'account_fund') return 'entra';
+  return paga === yo ? 'sale' : 'entra';
 }
 
 // Las tarjetas (Point, QR pagado con tarjeta) se cobran como Débito en la
