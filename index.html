@@ -12829,6 +12829,24 @@ function toggleVentasDetalleCierre(idx) {
   if(btnTxt) btnTxt.textContent = '▲ Ocultar ventas';
 }
 
+// Mercado Pago informa todo con códigos en inglés: acá se pasan a palabras.
+var MP_ESTADOS = { approved:'Aprobado', pending:'Pendiente', in_process:'En revisión', rejected:'Rechazado',
+  cancelled:'Cancelado', refunded:'Devuelto', charged_back:'Contracargo', authorized:'Autorizado' };
+var MP_MARCAS = { debmaster:'Mastercard débito', debvisa:'Visa débito', maestro:'Maestro', debcabal:'Cabal débito',
+  master:'Mastercard', visa:'Visa', amex:'American Express', naranja:'Naranja', cabal:'Cabal', cencosud:'Cencosud' };
+function mpComoPago(m){
+  var tipo = m.tipo || '', op = m.operacion || '', marca = MP_MARCAS[m.medio] || '';
+  if(op === 'pos_payment' || /POINT/.test(m.origen || '')) return '💳 Posnet Point'+(marca ? ' · '+marca : '');
+  if(tipo === 'debit_card') return '💳 Tarjeta de débito'+(marca ? ' · '+marca : '');
+  if(tipo === 'credit_card') return '💳 Tarjeta de crédito'+(marca ? ' · '+marca : '');
+  if(tipo === 'prepaid_card') return '💳 Tarjeta prepaga'+(marca ? ' · '+marca : '');
+  if(op === 'account_fund' || tipo === 'bank_transfer') return '🏦 Transferencia desde otro banco o billetera';
+  if(op === 'money_transfer') return '📲 Transferencia desde una cuenta de Mercado Pago';
+  if(op === 'regular_payment' && tipo === 'account_money') return '📱 Pago con QR o link (plata de Mercado Pago)';
+  if(tipo === 'ticket') return '🧾 Efectivo en Rapipago / Pago Fácil';
+  return [tipo, op].filter(Boolean).join(' · ') || '—';
+}
+
 // ── MERCADO PAGO: PRUEBA DE CONEXIÓN ──────────────────────────────────────
 // Le pide a la nube (función mpPruebaMovimientos) los cobros de los últimos
 // días de la cuenta de Mercado Pago, para ver si las transferencias al alias
@@ -12862,22 +12880,22 @@ function probarConexionMP(){
     return firebase.app().functions('southamerica-east1').httpsCallable('mpPruebaMovimientos')({ dias: 2 });
   }).then(function(r){
     var d = r.data || {}, lista = d.movimientos || [];
+    var quien = function(x){ return x === 'cuenta' ? 'vos' : x === 'otro' ? 'otro' : '—'; };
     var filas = lista.map(function(m){
       var f = m.fecha ? new Date(m.fecha) : null;
       return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'+
-        '<td style="padding:5px;white-space:nowrap">'+(f ? f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—')+'</td>'+
-        '<td style="padding:5px;text-align:right;color:var(--gold)">'+fmt(m.monto||0)+'</td>'+
-        '<td style="padding:5px">'+escBaja(m.tipo||'')+' · '+escBaja(m.medio||'')+'</td>'+
-        '<td style="padding:5px">'+escBaja(m.operacion||'')+(m.origen?' · '+escBaja(m.origen):'')+'</td>'+
-        '<td style="padding:5px">'+escBaja(m.estado||'')+'</td>'+
-        '<td style="padding:5px;color:'+(m.sentido==='entra'?'var(--green)':m.sentido==='sale'?'var(--red)':'var(--gray)')+'">'+(m.sentido==='entra'?'⬇ entra':m.sentido==='sale'?'⬆ sale':'?')+'</td>'+
-        '<td style="padding:5px;color:var(--gray);white-space:nowrap">'+escBaja(m.cobra||'')+' / '+escBaja(m.paga||'')+'</td></tr>';
+        '<td style="padding:5px;white-space:nowrap">'+(f ? f.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—')+'</td>'+
+        '<td style="padding:5px;text-align:right;color:var(--gold);white-space:nowrap">'+fmt(m.monto||0)+'</td>'+
+        '<td style="padding:5px">'+escBaja(mpComoPago(m))+'</td>'+
+        '<td style="padding:5px">'+escBaja(MP_ESTADOS[m.estado] || m.estado || '')+'</td>'+
+        '<td style="padding:5px;white-space:nowrap;color:'+(m.sentido==='entra'?'var(--green)':m.sentido==='sale'?'var(--red)':'var(--gray)')+'">'+(m.sentido==='entra'?'⬇ Entra':m.sentido==='sale'?'⬆ Sale':'?')+'</td>'+
+        '<td style="padding:5px;color:var(--gray);white-space:nowrap">Cobra: '+quien(m.cobra)+' · Paga: '+quien(m.paga)+'</td></tr>';
     }).join('');
     ov.innerHTML = marco(
       '<div style="font-size:.8rem;color:var(--light);margin-bottom:8px">✅ La conexión funciona. Mercado Pago informó <b>'+(d.total||0)+'</b> cobro'+((d.total||0)===1?'':'s')+' en los últimos 2 días (se muestran hasta 100).</div>'+
       (d.cuentaIdentificada === false ? '<div style="font-size:.78rem;color:var(--red);margin-bottom:8px">⚠ No se pudo identificar la cuenta: el sistema no va a confirmar cobros hasta resolverlo.</div>' : '')+
       '<div style="font-size:.72rem;color:var(--gray);margin-bottom:10px">Fijate si aparecen las <b>transferencias al alias</b> que recibiste (buscá montos que reconozcas). Sacale una captura a esta pantalla y mandámela: no tiene datos de los clientes.</div>'+
-      (filas ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.74rem;color:var(--light)"><tr style="color:var(--gray);text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px;text-align:right">Monto</th><th style="padding:5px">Tipo · medio</th><th style="padding:5px">Operación</th><th style="padding:5px">Estado</th><th style="padding:5px">Sentido</th><th style="padding:5px">Cobra / paga</th></tr>'+filas+'</table></div>'
+      (filas ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.74rem;color:var(--light)"><tr style="color:var(--gray);text-align:left"><th style="padding:5px">Fecha</th><th style="padding:5px;text-align:right">Monto</th><th style="padding:5px">Cómo pagaron</th><th style="padding:5px">Estado</th><th style="padding:5px">Entra / sale</th><th style="padding:5px">Quién cobra y paga</th></tr>'+filas+'</table></div>'
         : '<div style="color:var(--gray);padding:10px">No hubo cobros en ese período.</div>'));
   }).catch(function(e){
     var m = (e && e.message) || String(e);
