@@ -655,9 +655,12 @@ exports.mpPruebaMovimientos = onCall({ region: REGION, secrets: [MP_ACCESS_TOKEN
   catch (e) { throw new HttpsError('unavailable', 'No se pudo conectar con Mercado Pago'); }
   if (!r.ok) throw new HttpsError('unavailable', 'Mercado Pago respondió ' + r.status + (r.status === 401 ? ' (la clave no es válida)' : ''));
   const j = await r.json();
+  const yo = await mpCuentaPropia();
   return {
     total: (j.paging && j.paging.total) || 0,
+    cuentaIdentificada: !!yo,
     movimientos: (j.results || []).map(p => ({
+      sentido: mpSentido(p, yo),
       fecha: p.date_approved || p.date_created,
       monto: p.transaction_amount,
       neto: p.transaction_details ? p.transaction_details.net_received_amount : null,
@@ -697,11 +700,24 @@ async function mpGet(path) {
 
 // Número de cuenta propio, para quedarse solo con lo que ENTRA (si algún día se
 // paga algo desde la cuenta, ese pago no tiene que confundirse con un cobro).
+// Si /users/me no responde, el número de cuenta es el último tramo de la clave
+// de producción (APP_USR-...-<cuenta>).
 let _mpCuentaId = null;
 async function mpCuentaPropia() {
   if (_mpCuentaId) return _mpCuentaId;
   try { const u = await mpGet('/users/me'); _mpCuentaId = u && u.id ? String(u.id) : null; } catch (e) { _mpCuentaId = null; }
+  if (!_mpCuentaId) { const m = /-(\d+)$/.exec(mpClave()); if (m) _mpCuentaId = m[1]; }
   return _mpCuentaId;
+}
+// Un pago ENTRA si la cuenta es la que cobra; SALE si la cuenta es la que paga
+// (por ejemplo, un pago con QR en la verdulería).
+function mpSentido(p, yo) {
+  const cobra = String(p.collector_id || (p.collector && p.collector.id) || '');
+  const paga = String((p.payer && p.payer.id) || '');
+  if (!yo) return '?';
+  if (paga === yo) return 'sale';
+  if (cobra && cobra !== yo) return 'sale';
+  return 'entra';
 }
 
 // Las tarjetas (Point, QR pagado con tarjeta) se cobran como Débito en la
@@ -720,10 +736,12 @@ function mpResumirPago(p) {
   };
 }
 
+// Solo lo que entró y está aprobado. Sin saber la cuenta no se empareja nada:
+// un pago hecho desde la cuenta podría confundirse con un cobro.
 async function mpPagosAprobados(results) {
   const yo = await mpCuentaPropia();
-  return (results || []).filter(p => p.status === 'approved' &&
-    !(yo && p.collector_id && String(p.collector_id) !== yo)).map(mpResumirPago);
+  if (!yo) throw new HttpsError('failed-precondition', 'No se pudo identificar la cuenta de Mercado Pago');
+  return (results || []).filter(p => p.status === 'approved' && mpSentido(p, yo) === 'entra').map(mpResumirPago);
 }
 
 function mpCuentaQuePuede(req, cuentas) {
