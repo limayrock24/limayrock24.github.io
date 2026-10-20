@@ -17,9 +17,11 @@ const DIAS_MAX_ATRASO = 3;      // una venta más vieja que esto no se factura s
 const MAX_INTENTOS = 30;        // reintentos automáticos antes de pedir ayuda
 const LOCK_MS = 60 * 1000;
 
-// Lo que entró a Mercado Pago en una venta (transferencia + Point).
+// Lo que entró a Mercado Pago en una venta (transferencia + Point). Incluye
+// los cobros de fiados y consignaciones; NO la carga de un fiado (ahí no
+// entra plata: se factura recién cuando lo pagan).
 function montoMercadoPago(v) {
-  if (!v || v.fiadoCarga || v.esFiado) return 0;
+  if (!v || v.fiadoCarga) return 0;
   let m = 0;
   if (v.medio === 'Transferencia' || v.medio === 'Débito') m = Number(v.total) || 0;
   else if (v.medio === 'Mixto' && v.mixto) {
@@ -53,7 +55,8 @@ function armarReceptor(pedido) {
     return { docTipo: DOC.CUIT, docNro: doc, condIva: cond, nombre };
   }
   if (doc.length >= 7 && doc.length <= 8) return { docTipo: DOC.DNI, docNro: doc, condIva: COND_IVA.CONSUMIDOR_FINAL, nombre };
-  return { docTipo: DOC.SIN_IDENTIFICAR, docNro: '0', condIva: COND_IVA.CONSUMIDOR_FINAL, nombre: null };
+  // Sin documento: el nombre (si hay, ej. el cliente de un fiado) solo va impreso.
+  return { docTipo: DOC.SIN_IDENTIFICAR, docNro: '0', condIva: COND_IVA.CONSUMIDOR_FINAL, nombre };
 }
 
 // Fecha de hoy en Argentina, como la pide ARCA (aaaammdd).

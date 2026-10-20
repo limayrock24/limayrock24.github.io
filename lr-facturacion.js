@@ -187,14 +187,16 @@
   // ── 2. MARCAR LA VENTA ──────────────────────────────────────────────────
   // Se llama justo antes de guardar la venta. Devuelve el pedido de factura
   // (o null si no corresponde) y deja el formulario limpio para la próxima.
-  function pedidoParaVenta(v){
-    var rec = { doc: '', nombre: '', condIva: 5 };
+  // opc.nombre: a nombre de quién (cobros de fiado o consignación, que no
+  // pasan por la hoja de confirmación).
+  function pedidoParaVenta(v, opc){
+    var rec = { doc: '', nombre: (opc && opc.nombre) || '', condIva: 5 };
     var elDoc = document.getElementById('lrfDoc');
     if(elDoc){
       var d = (elDoc.value||'').replace(/\D/g,'');
       if(d.length === 11 && cuitValido(d)){ rec.doc = d; rec.condIva = Number(document.getElementById('lrfCond').value)||1; }
       else if(d.length >= 7 && d.length <= 8) rec.doc = d;
-      rec.nombre = (document.getElementById('lrfNombre').value||'').trim();
+      rec.nombre = (document.getElementById('lrfNombre').value||'').trim() || rec.nombre;
       var aviso = document.getElementById('lrfAviso'); if(aviso) aviso.remove();
     }
     if(!activa() || !(montoMP(v.medio, v.mixto, v.total, v.recargo) > 0)) return null;

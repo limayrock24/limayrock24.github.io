@@ -22744,8 +22744,11 @@ function confirmarCobroFiado() {
     nota:     (_cobroTipo==='total'?'Cobro total':'Cobro parcial')+' de fiado — '+_cobroCliente,
     anulada:  false
   };
+  // Facturación electrónica: si el fiado se cobra por Mercado Pago, se factura.
+  if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(ventaFiado, { nombre: _cobroCliente }); if(_fPed) ventaFiado.facturaPedido = _fPed; }
   VENTAS.push(ventaFiado);
   saveVentas(VENTAS, [ventaFiado.id]);
+  if(window.__lrFact) window.__lrFact.ventaGuardada(ventaFiado);
   autoSaveNow();
   // Tipo propio: antes se registraba como una venta más y no había forma de
   // filtrar los cobros de fiado en el historial de movimientos.
@@ -23046,8 +23049,11 @@ function confirmarCobroConsignacion() {
     nota: (_consignCobroTipo==='total'?'Cobro total':'Cobro parcial')+' de consignación — '+c.cliente,
     anulada: false
   };
+  // Facturación electrónica: si la consignación se cobra por Mercado Pago, se factura.
+  if(window.__lrFact){ var _fPed = window.__lrFact.pedidoParaVenta(ventaConsig, { nombre: c.cliente }); if(_fPed) ventaConsig.facturaPedido = _fPed; }
   VENTAS.push(ventaConsig);
   saveVentas(VENTAS, [ventaConsig.id]);
+  if(window.__lrFact) window.__lrFact.ventaGuardada(ventaConsig);
   autoSaveNow();
   registrarOperacion('cobro-consignacion', ventaConsig.items, totalCobrado, currentEmp?currentEmp.nombre:'Admin', _consignCobroMedio+' — '+c.cliente);
 

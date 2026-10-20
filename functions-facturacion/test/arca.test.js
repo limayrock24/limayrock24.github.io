@@ -17,10 +17,15 @@ test('monto de Mercado Pago según el medio de pago', () => {
   assert.strictEqual(montoMercadoPago({ medio: 'Débito', total: 7700, recargo: 700 }), 7700);
   assert.strictEqual(montoMercadoPago({ medio: 'Mixto', total: 10100, recargo: 100, mixto: { efectivo: 4000, transferencia: 5000, debito: 1000 } }), 6100);
   assert.strictEqual(montoMercadoPago({ medio: 'Transferencia', total: 5000, fiadoCarga: true }), 0);
+  // Cobro de un fiado o de una consignación por transferencia: se factura.
+  assert.strictEqual(montoMercadoPago({ medio: 'Transferencia', total: 8000, esFiado: true }), 8000);
+  assert.strictEqual(montoMercadoPago({ medio: 'Débito', total: 3300, recargo: 300, esConsignacion: true }), 3300);
+  assert.strictEqual(montoMercadoPago({ medio: 'Cobro fiado', total: 8000, esFiado: true }), 0);
 });
 
 test('receptor: consumidor final, DNI y CUIT', () => {
   assert.deepStrictEqual(armarReceptor(null), { docTipo: 99, docNro: '0', condIva: 5, nombre: null });
+  assert.strictEqual(armarReceptor({ receptor: { nombre: 'Juan' } }).nombre, 'Juan');
   assert.strictEqual(armarReceptor({ receptor: { doc: '30.123.456' } }).docTipo, 96);
   const c = armarReceptor({ receptor: { doc: '20-43339489-6', condIva: 6 } });
   assert.strictEqual(c.docTipo, 80); assert.strictEqual(c.condIva, 6);
