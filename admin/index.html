@@ -9882,7 +9882,7 @@ function renderVentas() {
           '<span style="font-size:.76rem;color:var(--light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+prodResumen+'">'+
             prodResumen.slice(0,50)+(prodResumen.length>50?'…':'')+
           '</span>'+
-          '<span style="font-size:.72rem;'+turnoColor+'">'+v.turno.slice(0,3)+' · '+v.empleado+'</span>'+
+          '<span style="font-size:.72rem;'+turnoColor+'">'+v.turno.slice(0,3)+' · '+v.empleado+etiquetaCajaHtml(v)+'</span>'+
           '<span style="font-size:.72rem;color:#3498DB;white-space:nowrap">'+medioTexto+'</span>'+
           '<span class="monto'+(v.anulada?' anulada':'')+'" style="white-space:nowrap">'+fmt(netoFila)+'</span>'+
           (detHtml?'<button onclick="event.stopPropagation();toggleDetalle(\'det_'+v.id+'\')" style="background:var(--gold);color:var(--black);border:none;border-radius:3px;padding:2px 8px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer;white-space:nowrap">▼ ver</button>':'<span></span>')+
