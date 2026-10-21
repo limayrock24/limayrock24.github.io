@@ -5214,6 +5214,28 @@ body.night-on{background:#080005}
         </div>
         <button class="btn-save" style="width:100%;padding:10px;background:#3498DB;color:white;border:none" onclick="exportarInformeAsesoriaPDF()">📊 Generar informe para asesoría</button>
       </div>
+
+      <!-- BALANCE MENSUAL (por sucursal, para la planilla) -->
+      <hr style="border-color:var(--border);margin:20px 0 14px">
+      <div onclick="toggleBalanceMensualSection()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:10px">
+        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">📒 Balance mensual</div>
+        <span class="drop-arrow" id="balanceMensualArrow">▾</span>
+      </div>
+      <div id="balanceMensualBody" class="consumo-dropdown">
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Ventas, costo y margen de un mes por sucursal. El fiado cuenta en el mes en que se fió; los cobros de fiados y de CEFHAS van aparte y no suman.</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <label style="font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif">Mes:</label>
+          <input type="month" id="balMes" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+          <label style="font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif">Sucursal:</label>
+          <select id="balSuc" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
+            <option value="1">Limay Rock 1</option>
+            <option value="2">Limay Rock 2</option>
+            <option value="ambas">Las dos (columnas separadas)</option>
+          </select>
+        </div>
+        <button class="btn-save" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none" onclick="generarBalanceMensual()">📒 Ver balance del mes</button>
+        <div id="balanceMensualRes" style="margin-top:12px"></div>
+      </div>
     </div>
 
 
@@ -9073,7 +9095,7 @@ function doConfirmarVenta2() {
     recargo: recargo,
     total: totalVenta,
     delivery: delivery > 0 ? delivery : null,
-    items: JSON.parse(JSON.stringify(cart2)),
+    items: conCostos(cart2),
     clienteDni: puntosResult.cliente ? puntosResult.cliente.dni : null,
     puntosGanados: puntosResult.puntos || 0,
     anulada: false
@@ -9691,7 +9713,13 @@ function renderVentas() {
 
   // Margen bruto del mismo período que se está mirando en Ventas — misma
   // cuenta que ya se usa en Rentabilidad, para no duplicar el criterio.
-  var margenPeriodo = calcularMargenBrutoDeVentas(ventasReales);
+  // Mismo criterio que el balance: el fiado cuenta el día en que se fió y los
+  // cobros (de fiados y de CEFHAS) no vuelven a sumar al margen.
+  var mgDesde = null, mgHasta = null;
+  if(_ventasRangoActivo){
+    if(eDesdeStr && eHastaStr){ mgDesde = new Date(eDesdeStr+'T00:00:00'); mgHasta = new Date(eHastaStr+'T23:59:59'); }
+  } else { mgDesde = new Date(eFechaStr+'T00:00:00'); mgHasta = new Date(eFechaStr+'T23:59:59.999'); }
+  var margenPeriodo = calcularMargenBrutoDeVentas(mgDesde ? ventasDevengadas(mgDesde, mgHasta).filter(function(v){ return !_filtroTurno || v.turno === _filtroTurno; }) : []);
   document.getElementById('statGrid').innerHTML=
     // Fila destacada: Total neto real del día
     '<div class="reporte-box" style="grid-column:span 2;cursor:pointer;'+(_filtroMedioVenta===null?'border-color:var(--green);background:rgba(0,204,68,.1)':'border-color:rgba(0,204,68,.3);background:rgba(0,204,68,.05)')+'" onclick="selFiltroMedioVenta(null)">'+
@@ -11082,7 +11110,7 @@ function doConfirmarVenta() {
     recargo: recargo,
     total: totalVenta,
     delivery: delivery > 0 ? delivery : null,
-    items: JSON.parse(JSON.stringify(cart)),
+    items: conCostos(cart),
     clienteDni: puntosResult.cliente ? puntosResult.cliente.dni : null,
     puntosGanados: puntosResult.puntos || 0,
     anulada: false
@@ -13172,7 +13200,7 @@ function cobrarPedidoAutomatico(id, pago){
     recargo: 0,
     total: subtotal,
     delivery: envio > 0 ? envio : null,
-    items: JSON.parse(JSON.stringify(lineas)),
+    items: conCostos(lineas),
     clienteDni: null,
     puntosGanados: 0,
     anulada: false,
@@ -16634,6 +16662,75 @@ function renderRentDetalle() {
   lista.innerHTML = html || '<div style="padding:16px;text-align:center;color:var(--gray);font-size:.78rem">Sin datos para mostrar en este período</div>';
 }
 
+// ── Criterio único de "lo vendido" (balance, margen, productos vendidos) ──
+// Cada venta cuenta UNA sola vez, en la fecha en que salió la mercadería:
+//  • El fiado cuenta el día en que se fió (sale del registro del fiado).
+//  • El cobro de un fiado es plata de una venta ya contada: no vuelve a sumar
+//    ni a ventas ni a margen (antes el margen lo tomaba en el mes del cobro).
+//  • El cobro de CEFHAS es plata de otro negocio: no es venta de Limay.
+function esCobroDeFiado(v){ return !!(v && !v.fiadoCarga && (v.esCobroFiado || v.medio === 'Cobro fiado' || v.esFiado)); }
+function esCobroCefhas(v){ return !!(v && (v.esCefhas || (v.items||[]).some(function(i){ return i && i.name === 'Cobro CEFHAS'; }))); }
+// Lo que quedó debiendo en un pago parcial: los productos ya van en la venta
+// de la parte que pagó, así que esta fila suma solo la plata, sin ítems.
+function esSaldoDeFiadoParcial(f){ return !!(f && (f.saldoParcial || /^Saldo de una compra/.test(f.nota||''))); }
+function filaDeFiado(f){
+  var saldo = esSaldoDeFiadoParcial(f);
+  return { id:'fiado_'+f.id, fecha:f.fecha, empleado:f.empleado||'—', turno:f.turno||'', medio:'Fiado',
+    subtotal:f.total, recargo:0, total:f.total, items: saldo ? [] : (f.items||[]),
+    esFiado:true, fiadoCarga:true, fiadoId:f.id, cliente:f.cliente, anulada:false, _saldoParcial:saldo };
+}
+// Ventas de un período con ese criterio. fuenteVentas/fuenteFiados: para leer
+// otro local o un mes traído de la nube (por defecto, los de esta pantalla).
+function ventasDevengadas(desde, hasta, fuenteVentas, fuenteFiados){
+  var d0 = desde.getTime(), d1 = hasta.getTime();
+  var enRango = function(fe){ var t = new Date(fe).getTime(); return t >= d0 && t <= d1; };
+  var out = (fuenteVentas || VENTAS).filter(function(v){
+    return v && !v.anulada && !v.fiadoCarga && !esCobroDeFiado(v) && !esCobroCefhas(v) && enRango(v.fecha);
+  });
+  (fuenteFiados || getFiados()).forEach(function(f){ if(f && enRango(f.fecha)) out.push(filaDeFiado(f)); });
+  return out;
+}
+// Costo de un ítem manual rápido (pan, fiambre, sueltos) — SOLO el que cargó
+// el dueño: el costo del suelto (precio y costo en su ficha) o el % de costo
+// de su categoría (🎯 Márgenes). Si no hay ninguno, 0: no se inventa.
+function costoManualActual(i){
+  var sub = Number(i && i.subtotal) || 0;
+  if(!(sub > 0)) return 0;
+  var base = String(i.name||'').replace(/\s×\d+$/, '');
+  var sm = (typeof getItemsManuales === 'function') ? (getItemsManuales()||[]).find(function(x){ return x.nombre === base; }) : null;
+  if(sm && sm.costoKg > 0 && sm.precioKg > 0) return Math.round(sub * sm.costoKg / sm.precioKg);
+  var pct = Number(((_margCfg && _margCfg.costoManual) || {})[categoriaDeItem(i)]);
+  return pct > 0 ? Math.round(sub * pct / 100) : 0;
+}
+// Copia de los ítems con el costo del momento: se guarda en la venta, así el
+// margen de un mes no cambia cuando después se actualizan los costos.
+function conCostos(items){
+  var porNombre = {};
+  PRODUCTS.forEach(function(p){ porNombre[p.name] = p; });
+  return JSON.parse(JSON.stringify(items||[])).map(function(i){
+    try{
+      if(i.esCombo && i.comboItems && i.comboItems.length){
+        i.comboItems.forEach(function(ci){
+          if(ci.tipo === 'manual'){
+            var m = itemManualDeCombo(ci);
+            if(m && m.costoKg > 0) ci.costoCombo = m.costoKg * factorItemManualCombo(ci);
+          } else {
+            var pc = porNombre[ci.nombre];
+            if(pc && pc.costo > 0) ci.costo = pc.costo;
+          }
+        });
+      } else if(i.manual){
+        var cm = costoManualActual(i);
+        if(cm > 0) i.costoTotal = cm;
+      } else {
+        var p = porNombre[i.name];
+        if(p && p.costo > 0) i.costo = p.costo;
+      }
+    }catch(e){}
+    return i;
+  });
+}
+
 // Costo de mercadería y margen bruto de una lista de ventas — mismo criterio
 // de desglose de combos/manuales que Ventas por categoría (prorratea combos
 // por precio de venta de cada componente; los ítems sueltos/manuales no
@@ -16641,10 +16738,15 @@ function renderRentDetalle() {
 // opciones.porCategoria: además arma el mismo cálculo separado por categoría
 // (lo usa el informe para asesoría). Es la MISMA cuenta, no una paralela: así
 // el informe y Rentabilidad/Inicio dan siempre los mismos números.
+// Costo: el que quedó guardado en la venta; si no tiene (ventas viejas), el
+// actual del producto — revCostoActual dice cuánto se calculó así.
+// Se le pasa la lista de ventasDevengadas: el fiado entra en su fecha y los
+// cobros (de fiados y de CEFHAS) se saltean acá también, por las dudas.
 function calcularMargenBrutoDeVentas(ventasList, opciones) {
   var prodByName = {};
   PRODUCTS.forEach(function(p){ prodByName[p.name] = p; });
-  var costoTotal = 0, revConCosto = 0, revSinCosto = 0;
+  var costoTotal = 0, revConCosto = 0, revSinCosto = 0, revCostoActual = 0;
+  function costoUnitario(guardado, prod){ return guardado > 0 ? guardado : ((prod && prod.costo) || 0); }
   var conCat = !!(opciones && opciones.porCategoria);
   var porCat = {};
   var presetsCat = conCat ? getManualPresets() : [];
@@ -16664,7 +16766,7 @@ function calcularMargenBrutoDeVentas(ventasList, opciones) {
   // categoría si es un ítem manual rápido; si no, "Sueltos sin categoría asignada").
   function catDeManualCombo(itM){ var cm = itM && itM.categoria; return (cm && presetsCat.indexOf(cm) !== -1) ? cm : 'Sueltos sin categoría asignada'; }
   (ventasList||[]).forEach(function(v){
-    if(v.anulada || v.fiadoCarga) return;
+    if(v.anulada || esCobroDeFiado(v) || esCobroCefhas(v)) return;
     (v.items||[]).forEach(function(i){
       if(!i.name) return;
       if(i.esCombo && i.comboItems && i.comboItems.length){
@@ -16685,8 +16787,10 @@ function calcularMargenBrutoDeVentas(ventasList, opciones) {
           if(ci.tipo === 'manual'){
             var itMan = itemManualDeCombo(ci);
             var qtyMan = (i.qty||1) * (ci.unidadItem === 'unidad' ? (ci.qty||1) : 1);
-            if(itMan && itMan.costoKg){
-              var costoMan = itMan.costoKg * factorItemManualCombo(ci) * (i.qty||1);
+            var costoComboMan = (typeof ci.costoCombo === 'number') ? ci.costoCombo : ((itMan && itMan.costoKg) ? itMan.costoKg * factorItemManualCombo(ci) : 0);
+            if(costoComboMan > 0){
+              if(typeof ci.costoCombo !== 'number') revCostoActual += montoAsignado;
+              var costoMan = costoComboMan * (i.qty||1);
               costoTotal += costoMan;
               revConCosto += montoAsignado;
               anotar(catDeManualCombo(itMan), ci.nombre, qtyMan, montoAsignado, costoMan);
@@ -16697,10 +16801,12 @@ function calcularMargenBrutoDeVentas(ventasList, opciones) {
             return;
           }
           var prod = prodByName[ci.nombre];
-          if(prod && prod.costo){
-            costoTotal += prod.costo * cantidadReal;
+          var cuCi = costoUnitario(ci.costo, prod);
+          if(cuCi){
+            if(!(ci.costo > 0)) revCostoActual += montoAsignado;
+            costoTotal += cuCi * cantidadReal;
             revConCosto += montoAsignado;
-            anotar(catDeProducto(ci.nombre), ci.nombre, cantidadReal, montoAsignado, prod.costo * cantidadReal);
+            anotar(catDeProducto(ci.nombre), ci.nombre, cantidadReal, montoAsignado, cuCi * cantidadReal);
           } else {
             revSinCosto += montoAsignado;
             anotar(catDeProducto(ci.nombre), ci.nombre, cantidadReal, montoAsignado, null);
@@ -16709,15 +16815,27 @@ function calcularMargenBrutoDeVentas(ventasList, opciones) {
         return;
       }
       if(i.manual){
-        revSinCosto += (i.subtotal||0);
-        if(conCat) anotar(categoriaDeItem(i), i.name, (i.qty||0), (i.subtotal||0), null);
+        // El costo guardado en la venta o, si no tiene, el que cargó el dueño
+        // (costoManualActual). Sin ninguno, va como "sin costo".
+        var costoManual = (typeof i.costoTotal === 'number') ? i.costoTotal : costoManualActual(i);
+        if(costoManual > 0){
+          if(typeof i.costoTotal !== 'number') revCostoActual += (i.subtotal||0);
+          costoTotal += costoManual;
+          revConCosto += (i.subtotal||0);
+          if(conCat) anotar(categoriaDeItem(i), i.name, (i.qty||0), (i.subtotal||0), costoManual);
+        } else {
+          revSinCosto += (i.subtotal||0);
+          if(conCat) anotar(categoriaDeItem(i), i.name, (i.qty||0), (i.subtotal||0), null);
+        }
         return;
       }
       var prod = prodByName[i.name];
-      if(prod && prod.costo){
-        costoTotal += prod.costo * (i.qty||0);
+      var cu = costoUnitario(i.costo, prod);
+      if(cu){
+        if(!(i.costo > 0)) revCostoActual += (i.subtotal||0);
+        costoTotal += cu * (i.qty||0);
         revConCosto += (i.subtotal||0);
-        anotar(catDeProducto(i.name), i.name, (i.qty||0), (i.subtotal||0), prod.costo * (i.qty||0));
+        anotar(catDeProducto(i.name), i.name, (i.qty||0), (i.subtotal||0), cu * (i.qty||0));
       } else {
         revSinCosto += (i.subtotal||0);
         anotar(catDeProducto(i.name), i.name, (i.qty||0), (i.subtotal||0), null);
@@ -16731,6 +16849,7 @@ function calcularMargenBrutoDeVentas(ventasList, opciones) {
     revSinCosto: revSinCosto,
     revTotal: revTotal,
     margenBruto: revConCosto - costoTotal,
+    revCostoActual: revCostoActual,
     pctCobertura: revTotal>0 ? (revConCosto/revTotal*100) : 100,
     porCategoria: conCat ? porCat : null
   };
@@ -16818,7 +16937,9 @@ function calcularResumenRentabilidad(rango) {
   // Resultado neto = Ingresos netos − Egresos (el consumo interno NO resta acá, es solo referencia)
   var neto = ingresosNetos - totalEgresos;
 
-  var margen = calcularMargenBrutoDeVentas(ventas);
+  // El margen va por lo vendido (fiado en su fecha, sin cobros de fiados ni
+  // de CEFHAS); los ingresos de arriba van por la plata que entró.
+  var margen = calcularMargenBrutoDeVentas(ventasDevengadas(rango.desde, rango.hasta));
 
   return {
     ventas: ventas, egresos: egresos, consumos: consumos,
@@ -16907,8 +17028,7 @@ function renderRentabilidad() {
   var margenDiaEl = document.getElementById('margenDiaEl');
   if(margenDiaEl){
     var porDia = {};
-    ventas.forEach(function(v){
-      if(v.anulada || v.fiadoCarga) return;
+    ventasDevengadas(rango.desde, rango.hasta).forEach(function(v){
       var dia = (v.fecha||'').slice(0,10);
       if(!dia) return;
       if(!porDia[dia]) porDia[dia] = [];
@@ -17648,7 +17768,7 @@ function pintarLiqModo(){
 // nunca cambia un precio solo) y el recargo de noche (precio nocturno
 // automático, salvo en los productos que tienen uno cargado a mano). Es uno
 // solo para los dos locales: vive en la config de Limay 1.
-var _margCfg = { objetivo: {}, noche: {} };
+var _margCfg = { objetivo: {}, noche: {}, costoManual: {} };
 function _refMargenes(){ return ldCol(1, 'config').doc('margenes'); }
 (function(){
   var t = setInterval(function(){
@@ -17656,7 +17776,7 @@ function _refMargenes(){ return ldCol(1, 'config').doc('margenes'); }
     clearInterval(t);
     _refMargenes().onSnapshot(function(d){
       var x = d.exists ? d.data() : {};
-      _margCfg = { objetivo: x.objetivo || {}, noche: x.noche || {} };
+      _margCfg = { objetivo: x.objetivo || {}, noche: x.noche || {}, costoManual: x.costoManual || {} };
       var pc = document.getElementById('pane-catalogo');
       if(pc && pc.classList.contains('active') && typeof renderCatalogo === 'function') try{ renderCatalogo(); }catch(er){}
     }, function(e){ console.warn('márgenes', e); });
@@ -17708,7 +17828,7 @@ function abrirMargenes(){
     ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.88);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
     document.body.appendChild(ov);
   }
-  _mg = { vista: 'cats', sel: {}, borrador: { objetivo: Object.assign({}, _margCfg.objetivo), noche: Object.assign({}, _margCfg.noche) } };
+  _mg = { vista: 'cats', sel: {}, borrador: { objetivo: Object.assign({}, _margCfg.objetivo), noche: Object.assign({}, _margCfg.noche), costoManual: Object.assign({}, _margCfg.costoManual) } };
   ov.style.display = 'flex';
   pintarMargenes();
 }
@@ -17753,6 +17873,16 @@ function pintarMargenes(){
       '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem;color:var(--light)">'+
         '<tr style="color:var(--gray);font-size:.7rem;text-align:center"><th style="padding:6px;text-align:left">Categoría</th><th style="padding:6px">Margen real hoy<br>(típico)</th><th style="padding:6px">🎯 Margen que<br>quiero ganar</th><th style="padding:6px">Debajo del<br>objetivo</th><th style="padding:6px">🌙 Recargo<br>de noche</th></tr>'+
         filas+'</table></div>'+
+      // Ítems manuales rápidos (pan, fiambre…): no tienen costo por producto.
+      // Si el dueño carga el % de costo de la categoría, el margen los cuenta;
+      // vacío = sin costo (no se inventa nada).
+      '<div style="margin-top:14px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;color:var(--gold)">🧾 ÍTEMS MANUALES: % DE COSTO</div>'+
+      '<div style="font-size:.72rem;color:var(--gray);line-height:1.45;margin:4px 0 6px">Para lo que se cobra a mano con monto libre. Ej.: si el pan te cuesta $60 de cada $100 que cobrás, poné 60. Vacío = sin costo. Los sueltos que tienen costo en su ficha usan ese.</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px 14px">'+getManualPresets().map(function(c){
+        var cc = escBaja(c).replace(/'/g, '&#39;');
+        return '<label style="font-size:.76rem;color:var(--light);display:flex;align-items:center;gap:6px">'+escBaja(c)+
+          ' <input type="number" min="0" max="100" value="'+(_mg.borrador.costoManual[c] || '')+'" placeholder="—" data-cat="'+cc+'" oninput="_mg.borrador.costoManual[this.dataset.cat]=this.value" style="'+inp+'"> %</label>';
+      }).join('')+'</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
         '<button onclick="guardarMargenes()" style="'+btn+';flex:1;background:var(--gold);color:#000;border:none;font-weight:700">💾 Guardar</button>'+
         '<button onclick="_mg.vista=\'debajo\';_mg.sel={};pintarMargenes()" style="'+btn+';flex:1;background:none;border:1px solid var(--gold);color:var(--gold)">📋 Ver productos debajo del objetivo ('+_mgDebajo().length+')</button>'+
@@ -17794,10 +17924,10 @@ function _mgGuardarProductos(nombres){
 }
 function guardarMargenes(){
   var limpio = function(o, max){ var r = {}; Object.keys(o).forEach(function(k){ var v = Math.round(Number(o[k]) * 10) / 10; if(v > 0 && v <= max) r[k] = v; }); return r; };
-  var cfg = { objetivo: limpio(_mg.borrador.objetivo, 85), noche: limpio(_mg.borrador.noche, 100), actualizado: new Date().toISOString() };
+  var cfg = { objetivo: limpio(_mg.borrador.objetivo, 85), noche: limpio(_mg.borrador.noche, 100), costoManual: limpio(_mg.borrador.costoManual || {}, 100), actualizado: new Date().toISOString() };
   // Precios de noche que cambiarían (los cargados a mano no se tocan).
   var cambios = [];
-  var viejo = _margCfg; _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche };
+  var viejo = _margCfg; _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche, costoManual: cfg.costoManual };
   PRODUCTS.forEach(function(p){
     if(p.pnoc && !p.pnocAuto) return;
     var a = precioNocheAuto(p.cat, p.pventa);
@@ -17808,7 +17938,7 @@ function guardarMargenes(){
   seguir.then(function(ok){
     if(!ok) return;
     _refMargenes().set(cfg).then(function(){
-      _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche };
+      _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche, costoManual: cfg.costoManual };
       cambios.forEach(function(x){ x.p.pnoc = x.pnoc; x.p.pnocAuto = x.pnoc ? true : null; });
       return _mgGuardarProductos(cambios.map(function(x){ return x.p.name; }));
     }).then(function(){
@@ -20398,7 +20528,7 @@ function confirmarFiadoParcial(){
   if(!_fpMedio){ showToast('Elegí con qué paga esa parte', true); return; }
   if(!nombre){ showToast('Escribí quién queda debiendo', true); return; }
 
-  var itemsCopia = JSON.parse(JSON.stringify(cart));
+  var itemsCopia = conCostos(cart);
   var ahora = new Date().toISOString();
 
   // 1) La parte que SÍ se cobró entra como venta normal, por el monto pagado
@@ -20433,6 +20563,7 @@ function confirmarFiadoParcial(){
     total:     resto,
     pagado:    false,
     fechaPago: null,
+    saldoParcial: true,
     nota:      'Saldo de una compra de '+fmt(total)+' — pagó '+fmt(paga)+' en '+_fpMedio
   });
   window.__lrFiadosCache = fiados;
@@ -20469,7 +20600,7 @@ function registrarFiado() {
     telefono:  tel,
     empleado: currentEmp ? currentEmp.nombre : '—',
     turno:    turnoActual(),
-    items:    JSON.parse(JSON.stringify(cart)),
+    items:    conCostos(cart),
     total:    subtotal,
     pagado:   false,
     fechaPago: null
@@ -20490,7 +20621,7 @@ function registrarFiado() {
     subtotal:   subtotal,
     recargo:    0,
     total:      subtotal,
-    items:      JSON.parse(JSON.stringify(cart)),
+    items:      conCostos(cart),
     esFiado:    true,
     fiadoCarga: true,
     cliente:    nombre,
@@ -22130,6 +22261,204 @@ function toggleInformeAsesoriaSection() {
   if(arrow) arrow.classList.toggle('open');
 }
 
+// ── 📒 BALANCE MENSUAL ──────────────────────────────────────────────────
+// Ventas, costo y margen de un mes por sucursal, leídos directo de la nube
+// (no depende de cuánto historial cargó la pantalla). Criterio:
+//  • Ventas y margen con ventasDevengadas: el fiado cuenta en el mes en que
+//    se fió; los cobros de fiados y de CEFHAS no suman (van en líneas aparte).
+//  • Margen oficial = comprobado (solo lo que tiene costo); al lado, la
+//    estimación al 100 %, rotulada como estimación.
+var _bal = { filas: null };
+function toggleBalanceMensualSection() {
+  var body = document.getElementById('balanceMensualBody');
+  var arrow = document.getElementById('balanceMensualArrow');
+  if(body) body.classList.toggle('open');
+  if(arrow) arrow.classList.toggle('open');
+  var m = document.getElementById('balMes');
+  if(m && !m.value) m.value = fechaLocalStr(new Date()).slice(0,7);
+}
+function _balRango(mes){
+  var y = +mes.slice(0,4), m = +mes.slice(5,7) - 1;
+  return { d0: new Date(y, m, 1), d1: new Date(y, m+1, 0, 23, 59, 59, 999) };
+}
+function _balLeerLocal(n, r){
+  var leer = function(q){ return q.get().then(function(s){ var a = []; s.forEach(function(x){ a.push(x.data()); }); return a; }); };
+  // El id de la venta es el momento en que se guardó: un día de margen por
+  // las que se guardan con otra fecha (ej. correcciones de un cierre).
+  var t0 = r.d0.getTime() - 86400000, t1 = r.d1.getTime() + 86400000;
+  return Promise.all([
+    leer(ldCol(n, 'ventas').where('id', '>=', t0).where('id', '<=', t1)),
+    leer(ldCol(n, 'fiados')),
+    // Cobros de fiados de toda la historia: hacen falta para saber cuánto
+    // seguía debiendo cada cliente al cierre del mes.
+    leer(ldCol(n, 'ventas').where('esFiado', '==', true)),
+    leer(ldCol(n, 'cargasVirtuales').where('id', '>=', t0).where('id', '<=', t1))
+  ]);
+}
+function _balCalcular(n, mes, datos){
+  var r = _balRango(mes), t0 = r.d0.getTime(), t1 = r.d1.getTime();
+  var ventasRaw = datos[0], fiados = datos[1], cobrosHist = datos[2], cargas = datos[3];
+  var diasMes = r.d1.getDate(), ahora = new Date();
+  var enCurso = ahora.getTime() >= t0 && ahora.getTime() <= t1;
+  var diasTrans = enCurso ? ahora.getDate() : diasMes;
+  var enMes = function(f){ var t = new Date(f).getTime(); return t >= t0 && t <= t1; };
+  var neto = function(v){ return (Number(v.total)||0) - (Number(v.recargo)||0); };
+
+  var filas = ventasDevengadas(r.d0, r.d1, ventasRaw, fiados);
+  var ventasTot = 0, dias = {};
+  filas.forEach(function(v){ ventasTot += neto(v); dias[fechaLocalStr(new Date(v.fecha))] = true; });
+  var mg = calcularMargenBrutoDeVentas(filas);
+  var pctMargen = mg.revConCosto > 0 ? mg.margenBruto / mg.revConCosto * 100 : 0;
+  var pctSinCosto = mg.revTotal > 0 ? mg.revSinCosto / mg.revTotal * 100 : 0;
+  var cefhas = ventasRaw.filter(function(v){ return !v.anulada && esCobroCefhas(v) && enMes(v.fecha); })
+    .reduce(function(s, v){ return s + neto(v); }, 0);
+
+  // Fiados por cliente: lo fiado y lo cobrado antes y durante el mes. Lo que
+  // se cobra paga primero lo más viejo; así se sabe cuánto de lo cobrado en
+  // el mes era de meses anteriores y cuánto quedó sin cobrar al cierre.
+  var cobros = {};
+  ventasRaw.concat(cobrosHist).forEach(function(v){ if(v && !v.anulada && esCobroDeFiado(v)) cobros[v.id] = v; });
+  var cli = {};
+  var deCli = function(k){ return cli[k] || (cli[k] = { fiadoAntes: 0, fiadoMes: 0, cobAntes: 0, cobMes: 0 }); };
+  var fiadosMes = 0;
+  fiados.forEach(function(f){
+    if(!f) return;
+    var t = new Date(f.fecha).getTime(), tot = Number(f.total) || 0;
+    if(t < t0) deCli(f.cliente).fiadoAntes += tot;
+    else if(t <= t1){ deCli(f.cliente).fiadoMes += tot; fiadosMes += tot; }
+  });
+  Object.keys(cobros).forEach(function(id){
+    var v = cobros[id], t = new Date(v.fecha).getTime();
+    var monto = (v.subtotal != null ? Number(v.subtotal) : neto(v)) || 0; // sin el recargo del posnet
+    if(t < t0) deCli(v.cliente).cobAntes += monto;
+    else if(t <= t1) deCli(v.cliente).cobMes += monto;
+  });
+  var cobrosAnteriores = 0, sinCobrar = 0;
+  Object.keys(cli).forEach(function(k){
+    var c = cli[k];
+    cobrosAnteriores += Math.min(c.cobMes, Math.max(0, c.fiadoAntes - c.cobAntes));
+    sinCobrar += Math.max(0, c.fiadoAntes + c.fiadoMes - c.cobAntes - c.cobMes);
+  });
+  var gananciaCargas = cargas.filter(function(c){ return !c.anulada && enMes(c.fecha); })
+    .reduce(function(s, c){ return s + (Number(c.ganancia)||0); }, 0);
+
+  return {
+    n: n, mes: mes, diasMes: diasMes, diasTrans: diasTrans, enCurso: enCurso,
+    diasConVentas: Object.keys(dias).length,
+    ventasTot: ventasTot, ventaDiaria: diasTrans ? ventasTot / diasTrans : 0,
+    proyectadas: enCurso ? (diasTrans ? ventasTot / diasTrans : 0) * diasMes : null,
+    costo: mg.costoTotal, margen: mg.margenBruto, pctMargen: pctMargen,
+    sinCosto: mg.revSinCosto, pctSinCosto: pctSinCosto,
+    estimado100: mg.revTotal * pctMargen / 100,
+    fiadosMes: fiadosMes, cobrosAnteriores: cobrosAnteriores, sinCobrar: sinCobrar,
+    cefhas: cefhas, gananciaCargas: gananciaCargas,
+    pctCostoActual: mg.revConCosto > 0 ? mg.revCostoActual / mg.revConCosto * 100 : 0
+  };
+}
+function _balNombreMes(mes){ var t = _balRango(mes).d0.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); }
+// Filas del balance: [rótulo, valor, tipo ('t' texto, 'i' entero, '$' plata, '%'), estimación]
+function _balConceptos(){
+  return [
+    ['Sucursal', function(r){ return r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1'; }, 't'],
+    ['Mes', function(r){ return _balNombreMes(r.mes); }, 't'],
+    ['Días del mes', function(r){ return r.diasMes; }, 'i'],
+    ['Días transcurridos', function(r){ return r.diasTrans; }, 'i'],
+    ['Días con ventas', function(r){ return r.diasConVentas; }, 'i'],
+    ['Ventas totales', function(r){ return r.ventasTot; }, '$'],
+    ['Venta diaria promedio', function(r){ return r.ventaDiaria; }, '$'],
+    ['Ventas proyectadas del mes (estimación)', function(r){ return r.proyectadas; }, '$', true],
+    ['Costo de mercadería', function(r){ return r.costo; }, '$'],
+    ['Margen bruto $ (comprobado)', function(r){ return r.margen; }, '$'],
+    ['Margen bruto % (sobre lo que tiene costo)', function(r){ return r.pctMargen; }, '%'],
+    ['Ventas sin costo $', function(r){ return r.sinCosto; }, '$'],
+    ['% de ventas sin costo', function(r){ return r.pctSinCosto; }, '%'],
+    ['Margen estimado al 100% (estimación)', function(r){ return r.estimado100; }, '$', true],
+    ['Fiados cargados en el mes', function(r){ return r.fiadosMes; }, '$'],
+    ['Cobros de fiados de meses anteriores', function(r){ return r.cobrosAnteriores; }, '$'],
+    ['Fiado sin cobrar al cierre', function(r){ return r.sinCobrar; }, '$'],
+    ['Cobros CEFHAS, no incluidos', function(r){ return r.cefhas; }, '$'],
+    ['Ganancia de cargas virtuales', function(r){ return r.gananciaCargas; }, '$'],
+    ['% del costo calculado con el costo actual', function(r){ return r.pctCostoActual; }, '%']
+  ];
+}
+function _balFmt(x, tipo){
+  if(x === null || x === undefined) return '—';
+  if(tipo === '$') return fmt(Math.round(x));
+  if(tipo === '%') return (Math.round(x * 10) / 10).toLocaleString('es-AR') + ' %';
+  return String(x);
+}
+function _balAvisos(filas){
+  var av = [];
+  filas.forEach(function(r){
+    var suc = r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1';
+    if(r.pctSinCosto > 10) av.push('<div style="color:#e74c3c;font-weight:700">⚠ '+suc+': el '+_balFmt(r.pctSinCosto, '%')+' de las ventas no tiene costo. El margen es poco confiable: cargá los costos que faltan (o el % de costo de los ítems manuales en 🎯 Márgenes).</div>');
+    if(r.enCurso) av.push('<div>📅 '+suc+': mes en curso, van '+r.diasTrans+' de '+r.diasMes+' días. Las ventas proyectadas son una estimación (venta diaria promedio × días del mes) y el fiado sin cobrar es a hoy.</div>');
+    if(r.pctCostoActual >= 0.5) av.push('<div>ℹ '+suc+': el '+_balFmt(r.pctCostoActual, '%')+' del costo se calculó con el costo actual (ventas guardadas antes de que se empezara a guardar el costo del momento).</div>');
+  });
+  return av.join('');
+}
+function _balTabla(filas, paraPdf){
+  var th = paraPdf ? '' : 'padding:6px;color:var(--gray);font-size:.68rem;border-bottom:1px solid var(--border);';
+  var td = paraPdf ? '' : 'padding:5px 6px;border-bottom:1px solid rgba(255,255,255,.05);';
+  var cab = '<tr><th style="'+th+'text-align:left">Concepto</th>'+filas.map(function(r){ return '<th style="'+th+'text-align:right">'+(r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1')+'</th>'; }).join('')+'</tr>';
+  var cuerpo = _balConceptos().slice(2).map(function(c){
+    var alerta = c[0] === '% de ventas sin costo';
+    var est = c[3] ? 'font-style:italic;color:'+(paraPdf ? '#666' : 'var(--gray)')+';' : '';
+    return '<tr><td style="'+td+est+'">'+c[0]+'</td>'+filas.map(function(r){
+      var v = c[1](r), rojo = alerta && v > 10 ? 'color:#e74c3c;font-weight:700;' : '';
+      return '<td style="'+td+est+rojo+'text-align:right;white-space:nowrap">'+_balFmt(v, c[2])+'</td>';
+    }).join('')+'</tr>';
+  }).join('');
+  return paraPdf
+    ? '<table><thead>'+cab+'</thead><tbody>'+cuerpo+'</tbody></table>'
+    : '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.76rem;color:var(--light)">'+cab+cuerpo+'</table></div>';
+}
+function generarBalanceMensual(){
+  var mes = (document.getElementById('balMes')||{}).value;
+  if(!mes){ showToast('Elegí el mes', true); return; }
+  var suc = (document.getElementById('balSuc')||{}).value || '1';
+  var locales = suc === 'ambas' ? [1, 2] : [Number(suc)];
+  var res = document.getElementById('balanceMensualRes');
+  res.innerHTML = '<div style="color:var(--gray);font-size:.78rem">⏳ Leyendo las ventas de '+_balNombreMes(mes)+'…</div>';
+  var r = _balRango(mes);
+  Promise.all(locales.map(function(n){ return _balLeerLocal(n, r).then(function(d){ return _balCalcular(n, mes, d); }); }))
+    .then(function(filas){
+      _bal.filas = filas;
+      res.innerHTML =
+        '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">'+_balNombreMes(mes)+'</div>'+
+        _balTabla(filas, false)+
+        '<div style="font-size:.7rem;color:var(--light);line-height:1.5;margin-top:8px">'+_balAvisos(filas)+'</div>'+
+        '<div style="font-size:.66rem;color:var(--gray);line-height:1.45;margin-top:6px">Ventas totales: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Margen %: sobre lo que tiene costo. En cursiva: estimaciones.</div>'+
+        '<div class="section-export-bar" style="margin-top:10px">'+
+          '<button class="sec-exp-btn" onclick="exportarBalanceCSV()">⬇ Excel (CSV)</button>'+
+          '<button class="sec-exp-btn pdf" onclick="exportarBalancePDF()">📄 PDF</button>'+
+        '</div>';
+    })
+    .catch(function(e){ res.innerHTML = '<div style="color:var(--red);font-size:.78rem">⚠ No se pudo leer el mes: '+escBaja((e && e.message) || e)+'</div>'; });
+}
+// CSV para Excel en español: separador punto y coma y coma decimal.
+function exportarBalanceCSV(){
+  if(!_bal.filas || !_bal.filas.length){ showToast('Primero tocá "Ver balance del mes"', true); return; }
+  var conc = _balConceptos();
+  var celda = function(x, tipo){
+    if(x === null || x === undefined) return '';
+    if(tipo === 't'){ var s = String(x); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g, '""')+'"' : s; }
+    if(tipo === 'i') return String(Math.round(x));
+    return (Math.round(x * 100) / 100).toFixed(tipo === '%' ? 1 : 2).replace('.', ',');
+  };
+  var filas = [conc.map(function(c){ return c[0]; }).join(';')];
+  _bal.filas.forEach(function(r){ filas.push(conc.map(function(c){ return celda(c[1](r), c[2]); }).join(';')); });
+  descargarCSV('Balance_'+_bal.filas[0].mes, filas);
+}
+function exportarBalancePDF(){
+  if(!_bal.filas || !_bal.filas.length){ showToast('Primero tocá "Ver balance del mes"', true); return; }
+  var mes = _bal.filas[0].mes;
+  abrirVentanaPDF('Balance mensual '+_balNombreMes(mes),
+    _balTabla(_bal.filas, true)+
+    '<div style="font-size:11px;margin-top:10px;line-height:1.5">'+_balAvisos(_bal.filas).replace(/color:#e74c3c/g, 'color:#c0392b').replace(/<div>/g, '<div style="color:#333">')+'</div>'+
+    '<div style="font-size:10px;color:#666;margin-top:6px">Ventas totales: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Margen %: sobre lo que tiene costo. En cursiva: estimaciones.</div>');
+}
+
 // Informe consolidado pensado para llevar a un asesor externo (no para uso
 // operativo diario): resumen financiero, ventas por categoría, top
 // productos, horarios pico, tendencia mensual y productos sin movimiento.
@@ -22160,10 +22489,9 @@ function exportarInformeAsesoriaPDF() {
   // (calcularResumenRentabilidad), así los números del informe coinciden
   // con los del panel: ingresos netos, egresos, cargas virtuales y margen.
   var resumen = calcularResumenRentabilidad({ desde: desde, hasta: hasta });
-  // La carga de un fiado no es una venta cobrada: la mercadería cuenta cuando
-  // se cobra (la venta "Cobro fiado" trae los mismos ítems). Antes el informe
-  // la contaba dos veces (al anotarla y al cobrarla).
-  var ventas = resumen.ventas.filter(function(v){ return !v.fiadoCarga; });
+  // Lo vendido con el criterio del balance: el fiado cuenta el día en que se
+  // fió (una sola vez) y los cobros de fiados y de CEFHAS no son ventas.
+  var ventas = ventasDevengadas(desde, hasta);
 
   if(!ventas.length){
     showToast('No hay ventas registradas en ese período', true);
@@ -24866,7 +25194,7 @@ function renderDashboard() {
   // Margen bruto de lo vendido hoy — mismo cálculo que usa Rentabilidad
   // (costo de mercadería vs. lo facturado), para saber de entrada cuánto de
   // ese neto es ganancia real y no solo reposición de mercadería.
-  var margenHoy = calcularMargenBrutoDeVentas(ventasHoy);
+  var margenHoy = calcularMargenBrutoDeVentas(ventasDevengadas(hoy, fin));
   var pctMargenHoy = margenHoy.revConCosto>0 ? (margenHoy.margenBruto/margenHoy.revConCosto*100) : 0;
 
   // Datos todavía sin confirmar por la nube: al abrir, el equipo muestra la
@@ -34589,7 +34917,8 @@ function ldLeerLocal(n, desde, hasta){
     return { n: n, ventas: ventas.length, ventasNeto: ventasNeto, efectivo: m.Efectivo, transfer: m.Transferencia, debito: debito,
       cobrado: cobrado, egresos: egr, neto: cobrado - egr, ticket: ventas.length ? Math.round(ventasNeto / ventas.length) : 0,
       // Ganancia: misma cuenta que el Inicio (precio de venta − costo de cada producto).
-      margen: (typeof calcularMargenBrutoDeVentas === 'function') ? (calcularMargenBrutoDeVentas(ventas).margenBruto || 0) : 0,
+      // Con la carga del fiado (es lo vendido); los cobros no vuelven a sumar.
+      margen: (typeof calcularMargenBrutoDeVentas === 'function') ? (calcularMargenBrutoDeVentas(r[0].filter(function(v){ return !v.anulada && v.id <= d1; })).margenBruto || 0) : 0,
       turnos: turnos, conteo: conteo };
   });
 }
@@ -36527,7 +36856,9 @@ function exportarConsumosPDF() {
 
 // REPORTE GENERAL COMPLETO
 function exportarReporteGeneral() {
-  var ventas   = VENTAS.filter(function(v){return !v.anulada;});
+  // Plata que entró: sin la carga del fiado (entra cuando se cobra). Antes se
+  // sumaba dos veces, al fiar y al cobrar.
+  var ventas   = VENTAS.filter(function(v){return !v.anulada && !v.fiadoCarga;});
   var consumos = getConsumos();
   var cierres  = getCierres();
   var inv      = getStockInv();
@@ -36538,9 +36869,9 @@ function exportarReporteGeneral() {
   var medios={Efectivo:0,Transferencia:0,'Débito':0};
   ventas.forEach(function(v){medios[v.medio]=(medios[v.medio]||0)+v.total;});
 
-  // Top 10 productos
+  // Top 10 productos (lo vendido: el fiado en su fecha, sin cobros)
   var conteo={};
-  ventas.forEach(function(v){
+  ventasDevengadas(new Date(0), new Date(8.64e15)).forEach(function(v){
     v.items&&v.items.forEach(function(i){
       if(!conteo[i.name]) conteo[i.name]={qty:0};
       conteo[i.name].qty+=i.qty;
@@ -36756,34 +37087,10 @@ function ingresarStock() {
 //   • Los fiados se cuentan en SU fecha, estén pagados o no. Antes solo se
 //     contaban los impagos, así que al cobrar una deuda esos productos
 //     desaparecían también del día original y el historial quedaba mal.
+// Es el mismo criterio del balance (ventasDevengadas). El saldo de un pago
+// parcial no trae productos (ya van en la venta de la parte pagada).
 function getVentasYFiadosDelRango(desde, hasta) {
-  var ventas = VENTAS.filter(function(v){
-    var f = new Date(v.fecha);
-    return !v.anulada && !v.fiadoCarga && !v.esCobroFiado && f>=desde && f<=hasta;
-  });
-  var fiados = getFiados().filter(function(f){
-    var fd = new Date(f.fecha);
-    return fd>=desde && fd<=hasta;
-  });
-  fiados.forEach(function(f){
-    ventas.push({
-      id:         'fiado_'+f.id,
-      fecha:      f.fecha,
-      empleado:   f.empleado || '—',
-      turno:      f.turno || '',
-      medio:      'Fiado',
-      subtotal:   f.total,
-      recargo:    0,
-      total:      f.total,
-      items:      f.items || [],
-      esFiado:    true,
-      fiadoCarga: true,
-      fiadoId:    f.id,
-      cliente:    f.cliente,
-      anulada:    false
-    });
-  });
-  return ventas;
+  return ventasDevengadas(desde, hasta).filter(function(v){ return !v._saldoParcial; });
 }
 
 var _periodoStockVentas = 'hoy';
