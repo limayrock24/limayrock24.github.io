@@ -13784,9 +13784,10 @@ function sugerirClienteFiado() {
   if(!term) { box.style.display='none'; return; }
   var fiados = getFiados();
   var clientes = {};
-  fiados.filter(function(f){ return !f.pagado; }).forEach(function(f){
+  var saldos = saldosDeFiados(fiados);
+  fiados.filter(function(f){ return saldoFiado(f, saldos) > 0; }).forEach(function(f){
     if(!clientes[f.cliente]) clientes[f.cliente] = 0;
-    clientes[f.cliente] += f.total;
+    clientes[f.cliente] += saldoFiado(f, saldos);
   });
   // También incluir clientes al día (sin deuda pendiente)
   fiados.forEach(function(f){ if(!clientes[f.cliente]) clientes[f.cliente] = 0; });
@@ -13838,9 +13839,10 @@ function elegirClienteFiado(nombre) {
 function abrirListaFiadosRecep() {
   var fiados = getFiados();
   var pendientes = {};
-  fiados.filter(function(f){ return !f.pagado; }).forEach(function(f){
+  var saldos = saldosDeFiados(fiados);
+  fiados.filter(function(f){ return saldoFiado(f, saldos) > 0; }).forEach(function(f){
     if(!pendientes[f.cliente]) pendientes[f.cliente] = 0;
-    pendientes[f.cliente] += f.total;
+    pendientes[f.cliente] += saldoFiado(f, saldos);
   });
   var nombres = Object.keys(pendientes).sort();
   if(!nombres.length) { showToast('No hay fiados pendientes de cobro', false); return; }
@@ -19392,6 +19394,59 @@ function cobrarCefhas() {
 var SK_FIADOS = 'lr_fiados';
 
 function getFiados() { return (window.__lrSync && window.__lrSync.fiadosListos && Array.isArray(window.__lrFiadosCache)) ? window.__lrFiadosCache : []; }
+// ── Saldo de los fiados ──
+// Lo que se cobra a cuenta paga primero lo más viejo: cada pago se anota en
+// los fiados que cubre, con la parte que le toca a cada uno (pagoId).
+// Datos viejos: antes un pago a cuenta se anotaba ENTERO en cada fiado
+// pendiente del cliente (si tenía 3 fiados y pagaba $1.000, quedaban $3.000
+// anotados) y la deuda no bajaba. Esos pagos se cuentan una sola vez: mismo
+// monto en el mismo segundo es el mismo pago.
+function cuentaFiadoCliente(cliente, lista){
+  var fs = (lista || getFiados()).filter(function(f){ return f && f.cliente === cliente; });
+  var claveVieja = function(a){ return a.pagoId ? null : (Number(a.monto)||0)+'|'+String(a.fecha||'').slice(0,19); };
+  var abiertas = {};
+  fs.forEach(function(f){ if(!f.pagado) (f.abonos||[]).forEach(function(a){ var k = claveVieja(a); if(k) abiertas[k] = true; }); });
+  // Los pendientes, más los que un pago viejo marcó como pagados junto con ellos.
+  var grupo = fs.filter(function(f){
+    return !f.pagado || (f.abonos||[]).some(function(a){ var k = claveVieja(a); return k && abiertas[k]; });
+  }).sort(function(a, b){ return (new Date(a.fecha) - new Date(b.fecha)) || ((a.id||0) - (b.id||0)); });
+  var total = 0, pagado = 0, vistos = {};
+  grupo.forEach(function(f){
+    total += Number(f.total) || 0;
+    (f.abonos||[]).forEach(function(a){
+      var k = claveVieja(a);
+      if(k){ if(vistos[k]) return; vistos[k] = true; }
+      pagado += Number(a.monto) || 0;
+    });
+  });
+  var resto = pagado;
+  var fiados = grupo.map(function(f){ var t = Number(f.total) || 0, cubre = Math.min(resto, t); resto -= cubre; return { f: f, saldo: t - cubre }; });
+  return { fiados: fiados, total: total, pagado: pagado, deuda: Math.max(0, total - pagado) };
+}
+// Lo que falta cobrar de cada fiado (id → saldo), para las pantallas.
+function saldosDeFiados(lista){
+  var por = {}, out = {};
+  (lista || getFiados()).forEach(function(f){ if(f) (por[f.cliente] = por[f.cliente] || []).push(f); });
+  Object.keys(por).forEach(function(c){ cuentaFiadoCliente(c, por[c]).fiados.forEach(function(x){ out[x.f.id] = x.saldo; }); });
+  return out;
+}
+function saldoFiado(f, saldos){ var s = (saldos || saldosDeFiados())[f.id]; return s == null ? (f.pagado ? 0 : (Number(f.total)||0)) : s; }
+// Anota un cobro (a cuenta o total) en los fiados del cliente, de lo más
+// viejo a lo más nuevo. Cada fiado queda pagado cuando su saldo llega a cero.
+function aplicarCobroFiado(fiados, cliente, monto, medio){
+  var cta = cuentaFiadoCliente(cliente, fiados), ahora = new Date().toISOString(), pagoId = 'p'+Date.now(), resto = monto;
+  cta.fiados.forEach(function(x){
+    var parte = Math.max(0, Math.min(resto, x.saldo));
+    if(parte > 0){
+      x.f.abonos = (x.f.abonos||[]).concat([{ fecha: ahora, monto: parte, medio: medio, pagoId: pagoId }]);
+      x.f.totalAbonado = (x.f.totalAbonado||0) + parte;
+      resto -= parte;
+    }
+    var queda = x.saldo - parte;
+    if(queda <= 0 && !x.f.pagado){ x.f.pagado = true; x.f.fechaPago = ahora; x.f.medioCobro = medio; }
+    else if(queda > 0 && x.f.pagado){ x.f.pagado = false; x.f.fechaPago = null; }
+  });
+}
 function saveFiados(f) { window.__lrFiadosCache = f; if(window.__lrSaveFiados) window.__lrSaveFiados(f); }
 
 function getConsignaciones() { return (window.__lrSync && window.__lrSync.consignacionesListos && Array.isArray(window.__lrConsignacionesCache)) ? window.__lrConsignacionesCache : []; }
@@ -20494,8 +20549,7 @@ function sugerirClienteFiadoParcial(){
   }).slice(0,5);
   if(!coincid.length){ cont.innerHTML=''; return; }
   cont.innerHTML = coincid.map(function(n){
-    var deuda = getFiados().filter(function(f){ return f.cliente===n && !f.pagado; })
-                           .reduce(function(s,f){ return s+(f.total-(f.pagadoParcial||0)); },0);
+    var deuda = cuentaFiadoCliente(n).deuda;
     // Solo el administrador ve cuánto debe. El empleado ve que ya tiene cuenta.
     var esAdmin2 = currentEmp && currentEmp.rol === 'admin';
     var etiqueta = deuda>0
@@ -20662,15 +20716,16 @@ function renderFiados() {
   var totalEl = document.getElementById('ccTotalMonto');
   if(!grid) return;
 
-  // Total pendiente
-  var totalPend = fiados.filter(function(f){return !f.pagado;}).reduce(function(s,f){return s+f.total;},0);
+  // Total pendiente (descontando lo pagado a cuenta)
+  var saldos = saldosDeFiados(fiados);
+  var totalPend = fiados.reduce(function(s,f){ return s+saldoFiado(f, saldos); },0);
   if(totalEl) totalEl.textContent = fmt(totalPend);
 
   // Agrupar por cliente
   var clientes = {};
   fiados.forEach(function(f){
     if(!clientes[f.cliente]) clientes[f.cliente] = {total:0, movs:[]};
-    if(!f.pagado) clientes[f.cliente].total += f.total;
+    clientes[f.cliente].total += saldoFiado(f, saldos);
     clientes[f.cliente].movs.push(f);
   });
 
@@ -20697,7 +20752,7 @@ function renderFiados() {
         '<span class="cc-mov-fecha">'+fecha+' '+hora+'</span>'+
         '<span class="cc-mov-prods" title="'+prods+'">'+prods+(f.telefono?' · <span style=\"color:var(--gold)\">'+f.telefono+'</span>':'')+'</span>'+
         '<span class="cc-mov-monto">'+fmt(f.total)+'</span>'+
-        '<span class="cc-mov-estado '+(f.pagado?'pagado':'pendiente')+'">'+(f.pagado?'✓ Cobrado '+(f.fechaPago?new Date(f.fechaPago).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""):'⏳ Pendiente')+'</span>'+
+        (function(){ var sf = saldoFiado(f, saldos); return '<span class="cc-mov-estado '+(sf<=0?'pagado':'pendiente')+'">'+(sf<=0?'✓ Cobrado '+(f.fechaPago?new Date(f.fechaPago).toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"}):""):(sf<(f.total||0)?'⏳ Debe '+fmt(sf):'⏳ Pendiente'))+'</span>'; })()+
         delBtn+
         '<span style="flex-basis:100%;font-size:.64rem;color:var(--gray);margin-top:2px">'+turnoIcon+' '+(f.turno||'—')+' · 👤 '+(f.empleado||'—')+'</span>'+
       '</div>';
@@ -20768,15 +20823,16 @@ function renderFiados() {
 // fiado, para descargar y mandarle por WhatsApp — mismo mecanismo que ya
 // se usa para exportar las horas trabajadas.
 function exportarFiadoClientePDF(nombre) {
-  var pendientes = getFiados().filter(function(f){ return f.cliente === nombre && !f.pagado; });
-  if(!pendientes.length){ showToast(nombre+' no tiene deuda pendiente', true); return; }
-  var ordenados = pendientes.slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
-  var totalPend = ordenados.reduce(function(s,f){ return s+(f.total||0); }, 0);
+  var cta = cuentaFiadoCliente(nombre);
+  var ordenados = cta.fiados.filter(function(x){ return x.saldo > 0; });
+  if(!ordenados.length){ showToast(nombre+' no tiene deuda pendiente', true); return; }
+  var totalPend = cta.deuda;
 
-  var rows = ordenados.map(function(f){
+  var rows = ordenados.map(function(x){
+    var f = x.f;
     var fecha = new Date(f.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
     var prods = (f.items && f.items.length) ? f.items.map(function(i){ return (i.name||'?')+' ×'+(i.qty||1); }).join(', ') : '—';
-    return '<tr><td>'+fecha+'</td><td>'+prods+'</td><td>'+fmt(f.total||0)+'</td></tr>';
+    return '<tr><td>'+fecha+'</td><td>'+prods+'</td><td>'+fmt(x.saldo)+(x.saldo < (f.total||0) ? ' <span style="color:#666;font-size:10px">(de '+fmt(f.total||0)+')</span>' : '')+'</td></tr>';
   }).join('');
 
   var kpis = '<div class="kpis">'+
@@ -20843,16 +20899,11 @@ function saldarFiado(cliente) {
   askConfirm('¿Marcás todos los fiados de '+cliente+' como pagados?').then(function(ok){
     if(!ok) return;
     var fiados = getFiados();
-    var totalCobrado = 0;
+    var cta = cuentaFiadoCliente(cliente, fiados);
+    var totalCobrado = cta.deuda;
     var itemsCobrados = [];
-    fiados.forEach(function(f){
-      if(f.cliente===cliente && !f.pagado){
-        f.pagado=true;
-        f.fechaPago=new Date().toISOString();
-        totalCobrado += f.total;
-        (f.items||[]).forEach(function(i){ itemsCobrados.push(i); });
-      }
-    });
+    cta.fiados.forEach(function(x){ if(x.saldo > 0) (x.f.items||[]).forEach(function(i){ itemsCobrados.push(i); }); });
+    aplicarCobroFiado(fiados, cliente, totalCobrado, 'Cobro fiado');
     window.__lrFiadosCache = fiados;
     guardarOperacionProtegida('Fiados', getFiados, 'Fiados de '+cliente+' cobrados ('+fmt(totalCobrado)+')');
 
@@ -20902,12 +20953,13 @@ function exportarFiadosCSV() {
 function exportarFiadosPDF() {
   var fiados  = getFiados();
   var clientes= {};
+  var saldos = saldosDeFiados(fiados);
   fiados.forEach(function(f){
     if(!clientes[f.cliente]) clientes[f.cliente]={total:0,movs:[]};
-    if(!f.pagado) clientes[f.cliente].total+=f.total;
+    clientes[f.cliente].total+=saldoFiado(f, saldos);
     clientes[f.cliente].movs.push(f);
   });
-  var totalPend = fiados.filter(function(f){return !f.pagado;}).reduce(function(s,f){return s+f.total;},0);
+  var totalPend = fiados.reduce(function(s,f){ return s+saldoFiado(f, saldos); },0);
   var rows = '';
   Object.keys(clientes).sort().forEach(function(nombre){
     var c = clientes[nombre];
@@ -20917,7 +20969,7 @@ function exportarFiadosPDF() {
       rows += '<tr><td>'+nombre+'</td><td>'+d.toLocaleDateString('es-AR')+'</td>'+
         '<td style="font-size:10px">'+prods+'</td>'+
         '<td style="text-align:right">$'+Number(f.total).toLocaleString('es-AR')+'</td>'+
-        '<td style="color:'+(f.pagado?'green':'red')+'">'+(f.pagado?'✓ Pagado':'Pendiente')+'</td></tr>';
+        (function(){ var sf = saldoFiado(f, saldos); return '<td style="color:'+(sf<=0?'green':'red')+'">'+(sf<=0?'✓ Pagado':(sf<(f.total||0)?'Debe $'+Number(sf).toLocaleString('es-AR'):'Pendiente'))+'</td></tr>'; })();
     });
   });
   abrirVentanaPDF('Cuentas Corrientes — Fiados',
@@ -24058,8 +24110,9 @@ function abrirCobroFiado(cliente) {
 
   // Calcular deuda total del cliente
   var fiados    = getFiados();
-  var pendientes= fiados.filter(function(f){ return f.cliente===cliente && !f.pagado; });
-  var deuda     = pendientes.reduce(function(s,f){ return s+f.total; },0);
+  var cta       = cuentaFiadoCliente(cliente, fiados);
+  var pendientes= cta.fiados.filter(function(x){ return x.saldo > 0; });
+  var deuda     = cta.deuda;
 
   document.getElementById('cobroClienteNombre').textContent = 'Cliente: '+cliente+' — '+pendientes.length+' compras pendientes';
   document.getElementById('cobroDeudaTotal').textContent = fmt(deuda);
@@ -24109,8 +24162,7 @@ function actualizarResumoCobro() {
     deuda = getConsumos().filter(function(c){ return c.tipo==='cefhas'&&!c.cobrado; })
                          .reduce(function(s,c){return s+c.total;},0);
   } else {
-    deuda = getFiados().filter(function(f){ return f.cliente===_cobroCliente&&!f.pagado; })
-                       .reduce(function(s,f){return s+f.total;},0);
+    deuda = cuentaFiadoCliente(_cobroCliente).deuda;
   }
   var monto     = _cobroTipo==='total' ? deuda :
                   getMontoInputValue('cobroMontoParcial');
@@ -24211,32 +24263,18 @@ function confirmarCobroFiado() {
 
   // ── COBRO FIADO (flujo original) ──────────────────────────────
   var fiados    = getFiados();
-  var pendientes= fiados.filter(function(f){ return f.cliente===_cobroCliente&&!f.pagado; });
-  var deuda     = pendientes.reduce(function(s,f){return s+f.total;},0);
+  var cta       = cuentaFiadoCliente(_cobroCliente, fiados);
+  var deuda     = cta.deuda;
   var monto     = _cobroTipo==='total' ? deuda :
                   getMontoInputValue('cobroMontoParcial');
+  if(!(monto > 0) || monto > deuda){ showToast('El monto tiene que ser mayor a 0 y no pasar la deuda ('+fmt(deuda)+')', true); return; }
   var recargo   = _cobroMedio==='Débito' ? Math.round(monto*(getDebitoPct()/100)) : 0;
   var totalCobrado = monto + recargo;
 
   var itemsCobrados=[];
-  pendientes.forEach(function(f){ (f.items||[]).forEach(function(i){ itemsCobrados.push(i); }); });
+  cta.fiados.forEach(function(x){ if(x.saldo > 0) (x.f.items||[]).forEach(function(i){ itemsCobrados.push(i); }); });
 
-  if(_cobroTipo==='total'){
-    fiados.forEach(function(f){
-      if(f.cliente===_cobroCliente&&!f.pagado){
-        f.pagado=true; f.fechaPago=new Date().toISOString(); f.medioCobro=_cobroMedio;
-      }
-    });
-  } else {
-    fiados.forEach(function(f){
-      if(f.cliente===_cobroCliente&&!f.pagado){
-        if(!f.abonos) f.abonos=[];
-        f.abonos.push({fecha:new Date().toISOString(),monto:monto,medio:_cobroMedio});
-        f.totalAbonado=(f.totalAbonado||0)+monto;
-        if(f.totalAbonado>=f.total){ f.pagado=true; f.fechaPago=new Date().toISOString(); f.medioCobro=_cobroMedio; }
-      }
-    });
-  }
+  aplicarCobroFiado(fiados, _cobroCliente, monto, _cobroMedio);
   window.__lrFiadosCache = fiados;
   guardarOperacionProtegida('Fiados', getFiados, (_cobroTipo==='total'?'Cobro total':'Cobro parcial')+' de fiado — '+_cobroCliente+' ('+fmt(totalCobrado)+')');
 
@@ -24921,15 +24959,16 @@ function renderDashboard() {
   var alertasStock = getStockAlerts().filter(function(a){return !a.resuelta;});
   var sinStock     = alertasStock.filter(function(a){return a.tipo==='sin';});
   var pocoStock    = alertasStock.filter(function(a){return a.tipo==='poco';});
-  var fiadosPend   = getFiados().filter(function(f){return !f.pagado;});
-  var totalFiado   = fiadosPend.reduce(function(s,f){return s+(f.total||0);},0);
+  var saldosF      = saldosDeFiados();
+  var fiadosPend   = getFiados().filter(function(f){return saldoFiado(f, saldosF) > 0;});
+  var totalFiado   = fiadosPend.reduce(function(s,f){return s+saldoFiado(f, saldosF);},0);
 
   // Fiados y consignaciones que llevan más de 15 días sin cobrarse — un
   // fiado pendiente de ayer es normal, uno de hace un mes es plata que
   // probablemente no vuelva si no se reclama.
   var HACE_15_DIAS = new Date(); HACE_15_DIAS.setDate(HACE_15_DIAS.getDate()-15);
   var fiadosViejos = fiadosPend.filter(function(f){ return new Date(f.fecha) < HACE_15_DIAS; });
-  var totalFiadoViejo = fiadosViejos.reduce(function(s,f){return s+(f.total||0);},0);
+  var totalFiadoViejo = fiadosViejos.reduce(function(s,f){return s+saldoFiado(f, saldosF);},0);
 
   var consignPend = (typeof getConsignaciones==='function' ? getConsignaciones() : []).filter(function(c){ return saldoConsignacion(c) > 0; });
   var consignViejas = consignPend.filter(function(c){ return new Date(c.fecha) < HACE_15_DIAS; });
