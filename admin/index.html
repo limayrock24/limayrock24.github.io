@@ -5968,6 +5968,7 @@ body.night-on{background:#080005}
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCatModal()">🏷 Categorías</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:rgba(46,204,113,.5);color:var(--green)" onclick="abrirManualPresetsModal()">⚡ Ítems manuales rápidos</button>
         <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="abrirEdMasiva()">💲 Modificación de precios</button>
+        <button class="btn-save" style="padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirMargenes()">🎯 Márgenes</button>
         <button class="btn-save" id="btnCartelitos" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--card);border-color:var(--gold);color:var(--gold)" onclick="abrirCartelitosPreview()" disabled>🏷️ Cartelitos (0)</button>
         <button class="btn-save" id="btnListaPrecios" style="display:none;padding:7px 14px;white-space:nowrap;background:var(--card);border-color:#3498DB;color:#3498DB" onclick="mostrarListaPreciosPreview()" disabled>📋 Lista (0)</button>
       </div>
@@ -6181,7 +6182,7 @@ body.night-on{background:#080005}
               <input type="text" id="editCatNombre" placeholder="Nombre de la categoría">
             </div>
             <div class="field" style="flex:1;min-width:110px;margin:0">
-              <label>Margen (%)</label>
+              <label>Recargo (%)</label>
               <input type="number" id="editCatMargen" placeholder="50" min="0" max="300" step="1">
             </div>
           </div>
@@ -6242,7 +6243,7 @@ body.night-on{background:#080005}
           <div class="field"><label>Costo ($)</label><input type="number" id="pmCosto" placeholder="0" min="0" oninput="recalcPrecioModal()"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Margen (%)</label><input type="number" id="pmMargen" placeholder="50" min="1" max="200" oninput="recalcPrecioModal()"></div>
+          <div class="field"><label>Recargo (%) <span style="color:var(--gray);font-size:.66rem">— se suma al costo</span></label><input type="number" id="pmMargen" placeholder="50" min="1" max="200" oninput="recalcPrecioModal()"></div>
           <div class="field"><label>Precio nocturno ($)</label><input type="number" id="pmNoc" placeholder="Opcional" min="0" oninput="updateNocPreview()"></div>
         </div>
         <div class="precio-preview">
@@ -6255,6 +6256,7 @@ body.night-on{background:#080005}
             <div style="font-family:'Oswald',sans-serif;font-size:1.1rem;color:var(--gold)" id="pmNocPreview">—</div>
           </div>
         </div>
+        <div id="pmMargenInfo" style="font-size:.76rem;color:var(--light);line-height:1.6;margin:-4px 0 12px;padding:6px 10px;background:rgba(255,255,255,.03);border-radius:6px"></div>
         <div class="field">
           <label>Precio manual ($) <span style="color:var(--gray);font-size:.68rem">— o dejá vacío para usar el calculado</span></label>
           <input type="number" id="pmPventa" placeholder="Se calcula automático" min="0" oninput="recalcPrecioModal()">
@@ -17635,6 +17637,212 @@ function pintarLiqModo(){
       : _liqOtro.error ? '<span style="font-size:.7rem;color:var(--red)">⚠ No se pudo traer Limay '+liqLocalOtro()+': '+escBaja(_liqOtro.error)+'</span>' : '') : '');
 }
 
+// ── MÁRGENES Y PRECIOS ──────────────────────────────────────────────────────
+// Dos maneras de medir lo que deja un producto:
+//  · Recargo: lo que se le suma al costo (el campo "Recargo" de la ficha).
+//    50 % → costo × 1,5.
+//  · Margen real: lo que queda de cada peso cobrado, (precio − costo) ÷ precio.
+//    Con 50 % de recargo el margen real es 33 %. Es el que importa para saber
+//    si el negocio gana: con eso se pagan sueldos, alquiler e impuestos.
+// Por categoría se guarda el margen que se quiere ganar (para sugerir precios;
+// nunca cambia un precio solo) y el recargo de noche (precio nocturno
+// automático, salvo en los productos que tienen uno cargado a mano). Es uno
+// solo para los dos locales: vive en la config de Limay 1.
+var _margCfg = { objetivo: {}, noche: {} };
+function _refMargenes(){ return ldCol(1, 'config').doc('margenes'); }
+(function(){
+  var t = setInterval(function(){
+    if(!window.__lrDB || !window.__lrUsuario || window.__lrEsPuesto) return;
+    clearInterval(t);
+    _refMargenes().onSnapshot(function(d){
+      var x = d.exists ? d.data() : {};
+      _margCfg = { objetivo: x.objetivo || {}, noche: x.noche || {} };
+      var pc = document.getElementById('pane-catalogo');
+      if(pc && pc.classList.contains('active') && typeof renderCatalogo === 'function') try{ renderCatalogo(); }catch(er){}
+    }, function(e){ console.warn('márgenes', e); });
+  }, 1000);
+})();
+function margenReal(costo, precio){ costo = Number(costo); precio = Number(precio); return (costo > 0 && precio > 0) ? (precio - costo) / precio : null; }
+function recargoDe(costo, precio){ costo = Number(costo); precio = Number(precio); return (costo > 0 && precio > 0) ? (precio - costo) / costo : null; }
+// Redondeo de precios sugeridos y de noche: para arriba, de a $50 en lo barato
+// (de a $100 un chicle de $600 subía mucho más de lo pedido) y de a $100 desde $5.000.
+function redondearPrecio(x){ return x < 5000 ? Math.ceil(x / 50) * 50 : Math.ceil(x / 100) * 100; }
+// Precio para ganar ese margen (0,40 = 40 %).
+function precioParaMargen(costo, margen){ return redondearPrecio(Number(costo) / (1 - margen)); }
+function objetivoCat(cat){ var v = Number(_margCfg.objetivo[cat]); return (v > 0 && v < 90) ? v / 100 : null; }
+function nocheCat(cat){ var v = Number(_margCfg.noche[cat]); return v > 0 ? v / 100 : 0; }
+function precioNocheAuto(cat, pventa){ var r = nocheCat(cat); return (r > 0 && pventa > 0) ? redondearPrecio(pventa * (1 + r)) : null; }
+// Precio nocturno al guardar: el escrito a mano manda; si no hay y la
+// categoría tiene recargo de noche, se calcula solo (y queda marcado como
+// automático para recalcularse cuando cambie el precio).
+function resolverNoche(cat, pventa, escrito){
+  if(escrito > 0) return { pnoc: escrito, auto: null };
+  var a = precioNocheAuto(cat, pventa);
+  return a ? { pnoc: a, auto: true } : { pnoc: null, auto: null };
+}
+var _pctTxt = function(x){ return Math.round(x * 100) + ' %'; };
+// Línea de la ficha: recargo, margen real, objetivo de la categoría y sugerido.
+function htmlInfoMargen(costo, precio, cat, idBoton){
+  var m = margenReal(costo, precio), r = recargoDe(costo, precio);
+  if(m === null) return '<span style="color:var(--gray)">Cargá costo y precio para ver cuánto deja.</span>';
+  var obj = objetivoCat(cat);
+  var col = m < 0 ? 'var(--red)' : (obj && m < obj - 0.005) ? 'var(--gold)' : 'var(--green)';
+  var sug = obj ? precioParaMargen(costo, obj) : null;
+  return '➕ Recargo <b>'+_pctTxt(r)+'</b> · 💰 Margen real <b style="color:'+col+'">'+_pctTxt(m)+'</b>'+
+    '<span style="color:var(--gray)"> (de cada $100 te quedan $'+Math.round(m*100)+')</span>'+
+    (obj && m >= obj - 0.005 ? '<br>🎯 Objetivo de '+escBaja(cat)+': <b>'+_pctTxt(obj)+'</b> <span style="color:var(--green)">✅ está bien</span>' :
+     obj ? '<br>🎯 Objetivo de '+escBaja(cat)+': <b>'+_pctTxt(obj)+'</b> → sugerido <b>'+fmt(sug)+'</b>'+
+      (sug !== Number(precio) && idBoton ? ' <button type="button" onclick="'+idBoton+'('+sug+')" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:1px 8px;font-size:.7rem;cursor:pointer">Usar</button>' : '') : '');
+}
+function usarSugeridoModal(precio){
+  var el = document.getElementById('pmPventa'); if(!el) return;
+  el.value = precio; recalcPrecioModal();
+}
+
+// ── Pantalla "🎯 Márgenes" (Productos) ──
+var _mg = { vista: 'cats', sel: {} };
+function abrirMargenes(){
+  var ov = document.getElementById('margenesOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'margenesOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.88);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    document.body.appendChild(ov);
+  }
+  _mg = { vista: 'cats', sel: {}, borrador: { objetivo: Object.assign({}, _margCfg.objetivo), noche: Object.assign({}, _margCfg.noche) } };
+  ov.style.display = 'flex';
+  pintarMargenes();
+}
+function cerrarMargenes(){ var ov = document.getElementById('margenesOverlay'); if(ov) ov.style.display = 'none'; }
+function _mgCats(){
+  var por = {};
+  PRODUCTS.forEach(function(p){ if(!(p.pventa > 0)) return; var c = p.cat || 'Sin categoría'; (por[c] = por[c] || []).push(p); });
+  return Object.keys(por).sort().map(function(c){
+    var ms = por[c].map(function(p){ return margenReal(p.costo, p.pventa); }).filter(function(x){ return x !== null; }).sort(function(a, b){ return a - b; });
+    var med = ms.length ? ms[Math.floor(ms.length / 2)] : null;
+    return { cat: c, n: por[c].length, med: med, sinCosto: por[c].length - ms.length };
+  });
+}
+function _mgDebajo(){
+  return PRODUCTS.filter(function(p){
+    var o = Number(_mg.borrador.objetivo[p.cat]) / 100, m = margenReal(p.costo, p.pventa);
+    return o > 0 && m !== null && m < o - 0.005;
+  }).sort(function(a, b){ return margenReal(a.costo, a.pventa) - margenReal(b.costo, b.pventa); });
+}
+function pintarMargenes(){
+  var ov = document.getElementById('margenesOverlay'); if(!ov) return;
+  var cab = function(t){ return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1.5px;color:var(--gold)">'+t+'</div><button onclick="cerrarMargenes()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button></div>'; };
+  var inp = 'width:62px;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:4px 6px;text-align:right;font-family:Oswald,sans-serif';
+  var btn = 'border-radius:6px;padding:9px 14px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer';
+  if(_mg.vista === 'cats'){
+    var filas = _mgCats().map(function(x){
+      var o = _mg.borrador.objetivo[x.cat], nc = _mg.borrador.noche[x.cat];
+      var deb = PRODUCTS.filter(function(p){ var m = margenReal(p.costo, p.pventa); return p.cat === x.cat && Number(o) > 0 && m !== null && m < Number(o) / 100 - 0.005; }).length;
+      var ce = escBaja(x.cat).replace(/'/g, '&#39;');
+      return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'+
+        '<td style="padding:6px">'+escBaja(x.cat)+'<div style="font-size:.66rem;color:var(--gray)">'+x.n+' productos'+(x.sinCosto ? ' · '+x.sinCosto+' sin costo' : '')+'</div></td>'+
+        '<td style="padding:6px;text-align:center">'+(x.med !== null ? _pctTxt(x.med) : '—')+'</td>'+
+        '<td style="padding:6px;text-align:center"><input type="number" min="0" max="85" value="'+(o || '')+'" placeholder="—" data-cat="'+ce+'" oninput="_mg.borrador.objetivo[this.dataset.cat]=this.value" style="'+inp+'"> %</td>'+
+        '<td style="padding:6px;text-align:center;color:'+(deb ? 'var(--gold)' : 'var(--gray)')+'">'+(Number(o) > 0 ? deb : '—')+'</td>'+
+        '<td style="padding:6px;text-align:center"><input type="number" min="0" max="100" value="'+(nc || '')+'" placeholder="—" data-cat="'+ce+'" oninput="_mg.borrador.noche[this.dataset.cat]=this.value" style="'+inp+'"> %</td>'+
+      '</tr>';
+    }).join('');
+    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:760px;width:100%;padding:16px">'+cab('🎯 MÁRGENES Y PRECIOS')+
+      '<div style="font-size:.76rem;color:var(--light);line-height:1.5;margin-bottom:10px">'+
+        '<b>Margen real</b> = lo que te queda de cada $100 que cobrás. Ponele a cada categoría el <b>margen que querés ganar</b> y el sistema te sugiere precios (nunca los cambia solo). '+
+        'El <b>recargo de noche</b> pone el precio nocturno automático en esa categoría; los que cargaste a mano no se tocan.</div>'+
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem;color:var(--light)">'+
+        '<tr style="color:var(--gray);font-size:.7rem;text-align:center"><th style="padding:6px;text-align:left">Categoría</th><th style="padding:6px">Margen real hoy<br>(típico)</th><th style="padding:6px">🎯 Margen que<br>quiero ganar</th><th style="padding:6px">Debajo del<br>objetivo</th><th style="padding:6px">🌙 Recargo<br>de noche</th></tr>'+
+        filas+'</table></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
+        '<button onclick="guardarMargenes()" style="'+btn+';flex:1;background:var(--gold);color:#000;border:none;font-weight:700">💾 Guardar</button>'+
+        '<button onclick="_mg.vista=\'debajo\';_mg.sel={};pintarMargenes()" style="'+btn+';flex:1;background:none;border:1px solid var(--gold);color:var(--gold)">📋 Ver productos debajo del objetivo ('+_mgDebajo().length+')</button>'+
+      '</div></div>';
+    return;
+  }
+  var lista = _mgDebajo();
+  var filas2 = lista.map(function(p, i){
+    var o = Number(_mg.borrador.objetivo[p.cat]) / 100, sug = precioParaMargen(p.costo, o);
+    var k = p.name.replace(/"/g, '&quot;');
+    return '<tr style="border-top:1px solid rgba(255,255,255,.06)">'+
+      '<td style="padding:5px"><input type="checkbox" data-n="'+k+'" '+(_mg.sel[p.name] ? 'checked' : '')+' onchange="_mg.sel[this.dataset.n]=this.checked;_mgContar()"></td>'+
+      '<td style="padding:5px">'+escBaja(p.name)+'<div style="font-size:.64rem;color:var(--gray)">'+escBaja(p.cat)+'</div></td>'+
+      '<td style="padding:5px;text-align:right">'+fmt(p.costo)+'</td>'+
+      '<td style="padding:5px;text-align:right">'+fmt(p.pventa)+'</td>'+
+      '<td style="padding:5px;text-align:center;color:var(--gold)">'+_pctTxt(margenReal(p.costo, p.pventa))+'</td>'+
+      '<td style="padding:5px;text-align:center">'+_pctTxt(o)+'</td>'+
+      '<td style="padding:5px;text-align:right;color:var(--green);font-weight:700">'+fmt(sug)+'</td></tr>';
+  }).join('');
+  ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:820px;width:100%;padding:16px">'+cab('📋 DEBAJO DEL MARGEN QUE QUERÉS')+
+    '<div style="font-size:.74rem;color:var(--gray);margin-bottom:8px">Marcá los que quieras llevar al precio sugerido. Revisá primero los que el cliente compara con la competencia (Coca, cerveza, cigarrillos).</div>'+
+    (lista.length ? '<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:.76rem;color:var(--light)">'+
+      '<tr style="color:var(--gray);font-size:.68rem"><th style="padding:5px"><input type="checkbox" onchange="_mgTodos(this.checked)"></th><th style="padding:5px;text-align:left">Producto</th><th style="padding:5px;text-align:right">Costo</th><th style="padding:5px;text-align:right">Precio</th><th style="padding:5px">Margen</th><th style="padding:5px">Objetivo</th><th style="padding:5px;text-align:right">Sugerido</th></tr>'+
+      filas2+'</table></div>' : '<div style="color:var(--green);padding:12px">✅ Ningún producto está debajo del margen que pusiste (o todavía no cargaste objetivos y guardaste).</div>')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
+      '<button onclick="_mg.vista=\'cats\';pintarMargenes()" style="'+btn+';background:none;border:1px solid var(--border);color:var(--gray)">← Volver</button>'+
+      '<button id="mgAplicarBtn" onclick="aplicarSugeridos()" style="'+btn+';flex:1;background:var(--green);color:#000;border:none;font-weight:700">✓ Poner el precio sugerido a los marcados (0)</button>'+
+    '</div></div>';
+  _mgContar();
+}
+function _mgTodos(on){ _mgDebajo().forEach(function(p){ _mg.sel[p.name] = on; }); pintarMargenes(); }
+function _mgContar(){ var n = Object.keys(_mg.sel).filter(function(k){ return _mg.sel[k]; }).length; var b = document.getElementById('mgAplicarBtn'); if(b) b.textContent = '✓ Poner el precio sugerido a los marcados ('+n+')'; }
+function _mgGuardarProductos(nombres){
+  if(!nombres.length || !window.__lrSaveProductos) return Promise.resolve();
+  // Marca de cambio en bloque: la nube no manda un aviso de "precio modificado" por cada uno.
+  var marca = 'm' + Date.now();
+  nombres.forEach(function(n){ var p = PRODUCTS.find(function(x){ return x.name === n; }); if(p) p.cambioMasivo = marca; });
+  return Promise.resolve(window.__lrSaveProductos(PRODUCTS, [], nombres));
+}
+function guardarMargenes(){
+  var limpio = function(o, max){ var r = {}; Object.keys(o).forEach(function(k){ var v = Math.round(Number(o[k]) * 10) / 10; if(v > 0 && v <= max) r[k] = v; }); return r; };
+  var cfg = { objetivo: limpio(_mg.borrador.objetivo, 85), noche: limpio(_mg.borrador.noche, 100), actualizado: new Date().toISOString() };
+  // Precios de noche que cambiarían (los cargados a mano no se tocan).
+  var cambios = [];
+  var viejo = _margCfg; _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche };
+  PRODUCTS.forEach(function(p){
+    if(p.pnoc && !p.pnocAuto) return;
+    var a = precioNocheAuto(p.cat, p.pventa);
+    if((a || null) !== (p.pnoc || null) || (!!a) !== (!!p.pnocAuto)) cambios.push({ p: p, pnoc: a });
+  });
+  _margCfg = viejo;
+  var seguir = cambios.length ? askConfirm('🌙 Se van a '+(cambios.some(function(x){ return x.pnoc; }) ? 'poner o actualizar' : 'sacar')+' '+cambios.length+' precio'+(cambios.length===1?'':'s')+' de noche automático'+(cambios.length===1?'':'s')+'.\n\nLos precios de noche que cargaste a mano (como los del alcohol) no se tocan.\n\n¿Seguimos?') : Promise.resolve(true);
+  seguir.then(function(ok){
+    if(!ok) return;
+    _refMargenes().set(cfg).then(function(){
+      _margCfg = { objetivo: cfg.objetivo, noche: cfg.noche };
+      cambios.forEach(function(x){ x.p.pnoc = x.pnoc; x.p.pnocAuto = x.pnoc ? true : null; });
+      return _mgGuardarProductos(cambios.map(function(x){ return x.p.name; }));
+    }).then(function(){
+      showToast('🎯 Márgenes guardados'+(cambios.length ? ' · '+cambios.length+' precio'+(cambios.length===1?'':'s')+' de noche' : ''));
+      if(typeof filterAll === 'function') try{ filterAll(); }catch(e){}
+      if(typeof renderCatalogo === 'function') try{ renderCatalogo(); }catch(e){}
+      pintarMargenes();
+    }).catch(function(e){ showToast('No se pudo guardar: '+((e && e.message) || e), true); });
+  });
+}
+function aplicarSugeridos(){
+  var marcados = _mgDebajo().filter(function(p){ return _mg.sel[p.name]; });
+  if(!marcados.length){ showToast('Marcá al menos un producto', true); return; }
+  askConfirm('✓ Se va a poner el precio sugerido a '+marcados.length+' producto'+(marcados.length===1?'':'s')+'.\n\nSi tienen precio de noche automático, también se actualiza. ¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    marcados.forEach(function(p){
+      var o = Number(_mg.borrador.objetivo[p.cat]) / 100;
+      p.pventa = precioParaMargen(p.costo, o);
+      // El recargo de la ficha queda acorde, así una recepción con costo nuevo mantiene el margen.
+      p.margin = Math.round((p.pventa / p.costo - 1) * 100);
+      if(p.pnocAuto){ p.pnoc = precioNocheAuto(p.cat, p.pventa); }
+    });
+    registrarCambioCatalogo('aumento-masivo', 'Precios sugeridos por margen',
+      [{ campo: 'Precio sugerido aplicado', antes: '—', despues: marcados.length+' producto(s)' }], currentEmp ? currentEmp.nombre : 'Admin');
+    _mgGuardarProductos(marcados.map(function(p){ return p.name; })).then(function(){
+      showToast('✓ '+marcados.length+' precio'+(marcados.length===1?'':'s')+' actualizado'+(marcados.length===1?'':'s'));
+      _mg.sel = {};
+      if(typeof filterAll === 'function') try{ filterAll(); }catch(e){}
+      if(typeof renderCatalogo === 'function') try{ renderCatalogo(); }catch(e){}
+      pintarMargenes();
+    });
+  });
+}
+
 function setValorHoraEmpleado(nombre, valor) {
   var empleados = getEmpleados();
   var emp = empleados.find(function(e){ return e.nombre===nombre; });
@@ -24904,7 +25112,11 @@ function renderCatalogo() {
     tr.innerHTML=
       '<td onclick="event.stopPropagation()"><input type="checkbox" class="cart-sel-chk" '+(window._cartelitosSel[p.name]?'checked':'')+' onchange="toggleCartelitoSel(\''+nombreEsc+'\',this.checked)" style="width:16px;height:16px"></td>'+
       '<td class="td-nombre">'+imgHtmlCat+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
-      '<td style="color:var(--gray);font-size:.74rem;text-align:center">'+mrg+'%</td>'+
+      // Margen real (lo que queda de cada $100), en amarillo si está debajo del objetivo de su categoría; abajo, el recargo.
+      (function(){ var mr = margenReal(p.costo, p.pventa), ob = objetivoCat(p.cat);
+        return '<td style="font-size:.74rem;text-align:center;line-height:1.2" title="Margen real · recargo">'+
+          (mr === null ? '<span style="color:var(--gray)">—</span>' : '<b style="color:'+(mr < 0 ? 'var(--red)' : (ob && mr < ob - 0.005) ? 'var(--gold)' : 'var(--green)')+'">'+Math.round(mr*100)+'%</b>')+
+          '<div style="color:var(--gray);font-size:.6rem">rec. '+mrg+'%</div></td>'; })()+
       '<td class="td-precio">'+(p.pventa?fmt(p.pventa):'<span style="color:var(--red);font-size:.7rem">—</span>')+'</td>'+
       '<td class="td-noc">'+(p.pnoc?fmt(p.pnoc):'—')+'</td>'+
       '<td style="text-align:right;color:var(--gold)">›</td>';
@@ -25008,8 +25220,13 @@ function abrirProdModal(idx) {
     document.getElementById('pmCodigo').value=p.codigo||'';
     document.getElementById('pmCosto').value=p.costo||'';
     document.getElementById('pmMargen').value=p.margin||MARGINS[p.cat]||50;
-    document.getElementById('pmPventa').value='';
-    document.getElementById('pmNoc').value=p.pnoc||'';
+    // Si el precio actual no es el que sale de costo × recargo (se cambió a
+    // mano, con un sugerido o en bloque), queda como precio manual: guardar la
+    // ficha no tiene que cambiarlo sin que nadie lo pida.
+    var _calcAbrir = (p.costo > 0) ? Math.ceil(p.costo * (1 + (p.margin||MARGINS[p.cat]||50)/100) / 100) * 100 : 0;
+    document.getElementById('pmPventa').value = (p.pventa > 0 && _calcAbrir !== p.pventa) ? p.pventa : '';
+    // El precio de noche automático no se muestra como escrito: si se deja vacío, se recalcula.
+    document.getElementById('pmNoc').value=p.pnocAuto?'':(p.pnoc||'');
     var invEdit=getStockInv(); var sEdit=invEdit[p.name]||{stock:0,minimo:0};
     document.getElementById('pmStock').value=sEdit.stock||0;
     document.getElementById('pmStockMin').value=sEdit.minimo||0;
@@ -25045,6 +25262,7 @@ function abrirProdModal(idx) {
     renderPmProveedoresLista(null);
   }
   ov.classList.add('open');
+  recalcPrecioModal();   // muestra recargo, margen real y sugerido
   setTimeout(function(){ var n=document.getElementById('pmNombre'); if(n) n.focus(); },200);
 }
 
@@ -25753,7 +25971,8 @@ function confirmarAumentoMasivo() {
     var p = PRODUCTS[x.idx];
     if(p.pventa) p.pventa = Math.round(p.pventa*factor);
     if(p.costo)  p.costo  = Math.round(p.costo*factor);
-    if(p.pnoc)   p.pnoc   = Math.round(p.pnoc*factor);
+    if(p.pnocAuto) p.pnoc = precioNocheAuto(p.cat, p.pventa) || p.pnoc;
+    else if(p.pnoc) p.pnoc = Math.round(p.pnoc*factor);
   });
   registrarCambioCatalogo('aumento-masivo', _amPlan.grupo,
     [{campo:'Aumento aplicado', antes:'—', despues:_amPlan.pct+'% a '+_amPlan.afectados.length+' producto(s)'}],
@@ -26050,7 +26269,9 @@ function onCatModalChange() {
   // Si el margen es el default (50 o vacío), actualizarlo con el de la categoría
   var mrg = parseFloat(document.getElementById('pmMargen').value)||0;
   if(!mrg || mrg===50){
-    var newMrg = MARGINS[cat] || 50;
+    // Con un margen objetivo en la categoría, el recargo que lo da (40 % → 67 %).
+    var objC = objetivoCat(cat);
+    var newMrg = objC ? Math.round(objC / (1 - objC) * 100) : (MARGINS[cat] || 50);
     document.getElementById('pmMargen').value = newMrg;
   }
   recalcPrecioModal();
@@ -26066,11 +26287,17 @@ function recalcPrecioModal() {
   var nocEl  = document.getElementById('pmNoc');
   if(!el) return;
 
+  var info = document.getElementById('pmMargenInfo');
+  var precioFinal = manual > 0 ? manual : ((c > 0 && m > 0) ? Math.ceil(c * (1 + m/100) / 100) * 100 : 0);
+  if(info) info.innerHTML = htmlInfoMargen(c, precioFinal, cat, 'usarSugeridoModal');
+  // Precio de noche: si no se escribe uno y la categoría tiene recargo de noche, va el automático.
+  var nocAuto = precioNocheAuto(cat, precioFinal);
+  if(nocEl) nocEl.placeholder = nocAuto ? 'Automático: '+fmt(nocAuto) : 'Opcional';
   if(manual > 0){
     el.textContent = fmt(manual) + ' (manual)';
     el.style.color = 'var(--gold)';
     var nv = parseFloat((nocEl||{value:0}).value)||0;
-    if(nocPrev) nocPrev.textContent = nv > 0 ? fmt(nv) : '—';
+    if(nocPrev) nocPrev.textContent = nv > 0 ? fmt(nv) : (nocAuto ? fmt(nocAuto)+' (auto)' : '—');
     return;
   }
 
@@ -26079,9 +26306,9 @@ function recalcPrecioModal() {
     var esBebAlc = (cat === 'Bebidas Alcohólicas');
     el.textContent = fmt(precio);
     el.style.color = 'var(--green)';
-    if(esBebAlc && nocEl) nocEl.value = precio + 1000;
+    if(esBebAlc && nocEl && !nocheCat(cat)) nocEl.value = precio + 1000;
     var nocVal = parseFloat((nocEl||{value:0}).value)||0;
-    if(nocPrev) nocPrev.textContent = nocVal > 0 ? fmt(nocVal) : '—';
+    if(nocPrev) nocPrev.textContent = nocVal > 0 ? fmt(nocVal) : (nocAuto ? fmt(nocAuto)+' (auto)' : '—');
   } else {
     el.textContent = '—';
     el.style.color = 'var(--gray)';
@@ -26114,14 +26341,16 @@ function guardarProdModal() {
   } else if(costo > 0 && margen > 0){
     pventa = Math.ceil(costo * (1 + margen/100) / 100) * 100;
     // Para bebidas alcohólicas: nocturno = precio diurno + $1.000 si no está cargado
-    if(esBebAlc && !pnoc) pnoc = pventa + 1000;
+    // (salvo que la categoría tenga recargo de noche: ahí va el automático).
+    if(esBebAlc && !pnoc && !nocheCat(cat)) pnoc = pventa + 1000;
   } else {
     pventa = 0;
   }
   var codigo = (document.getElementById('pmCodigo').value||'').trim();
   var destacado = document.getElementById('pmDestacadoToggle').classList.contains('on');
   var etiquetaDestacado = (document.getElementById('pmEtiquetaDestacado').value||'').trim();
-  var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:pnoc||null,codigo:codigo||null,destacado:destacado,etiquetaDestacado:etiquetaDestacado||null};
+  var _rn = resolverNoche(cat, pventa, pnoc);
+  var prod={name:nombre,cat:cat,costo:costo||null,margin:margen,pventa:pventa,pnoc:_rn.pnoc,pnocAuto:_rn.auto,codigo:codigo||null,destacado:destacado,etiquetaDestacado:etiquetaDestacado||null};
   // Sincronización con el otro local (Limay Rock 1 ↔ 2): ver sincronizarProductoEntreLocales en la nube.
   var _pss2 = document.getElementById('pmSinSync');
   prod.sinSincronizar = (_pss2 && _pss2.checked) ? true : null;
@@ -28323,7 +28552,11 @@ function renderRecepCatalogo() {
     };
     tr.innerHTML=
       '<td class="td-nombre">'+p.name+(ss?'<span class="cat-badge-sin">SIN STOCK</span>':'')+'<div class="td-cat-sub">'+p.cat+'</div></td>'+
-      '<td style="color:var(--gray);font-size:.74rem;text-align:center">'+mrg+'%</td>'+
+      // Margen real (lo que queda de cada $100), en amarillo si está debajo del objetivo de su categoría; abajo, el recargo.
+      (function(){ var mr = margenReal(p.costo, p.pventa), ob = objetivoCat(p.cat);
+        return '<td style="font-size:.74rem;text-align:center;line-height:1.2" title="Margen real · recargo">'+
+          (mr === null ? '<span style="color:var(--gray)">—</span>' : '<b style="color:'+(mr < 0 ? 'var(--red)' : (ob && mr < ob - 0.005) ? 'var(--gold)' : 'var(--green)')+'">'+Math.round(mr*100)+'%</b>')+
+          '<div style="color:var(--gray);font-size:.6rem">rec. '+mrg+'%</div></td>'; })()+
       '<td class="td-precio">'+(p.pventa?fmt(p.pventa):'<span style="color:var(--red);font-size:.7rem">—</span>')+'</td>'+
       '<td class="td-noc">'+(p.pnoc?fmt(p.pnoc):'—')+'</td>'+
       '<td style="text-align:right;color:var(--gold)">›</td>';
@@ -28348,7 +28581,7 @@ function abrirRecepProdModal(idx) {
         '<div class="field"><label>Costo ($)</label><input type="number" id="recepCosto" placeholder="0" min="0" oninput="recalcRecepPrecioNuevo()"></div>'+
       '</div>'+
       '<div class="field-row">'+
-        '<div class="field"><label>Margen (%)</label><input type="number" id="recepMargen" placeholder="50" value="50" min="1" max="200" oninput="this.dataset.editadoAMano=\'1\';recalcRecepPrecioNuevo()"></div>'+
+        '<div class="field"><label>Recargo (%)</label><input type="number" id="recepMargen" placeholder="50" value="50" min="1" max="200" oninput="this.dataset.editadoAMano=\'1\';recalcRecepPrecioNuevo()"></div>'+
         '<div class="field"><label>Precio nocturno ($)</label><input type="number" id="recepNoc" placeholder="Opcional" min="0" oninput="updateRecepNocPreview()"></div>'+
       '</div>'+
       '<div class="precio-preview">'+
@@ -28379,8 +28612,8 @@ function abrirRecepProdModal(idx) {
       '<div class="field"><label>Costo ($)</label><input type="number" id="recepCosto" value="'+(p.costo||'')+'" placeholder="0" min="0" oninput="recalcRecepPrecio('+idx+')"></div>'+
     '</div>'+
     '<div class="field-row">'+
-      '<div class="field"><label>Margen (%)</label><input type="number" id="recepMargen" value="'+(p.margin||MARGINS[p.cat]||50)+'" min="1" max="200" oninput="recalcRecepPrecio('+idx+')"></div>'+
-      '<div class="field"><label>Precio nocturno ($)</label><input type="number" id="recepNoc" value="'+(p.pnoc||'')+'" placeholder="Opcional" min="0" oninput="updateRecepNocPreview()"></div>'+
+      '<div class="field"><label>Recargo (%)</label><input type="number" id="recepMargen" value="'+(p.margin||MARGINS[p.cat]||50)+'" min="1" max="200" oninput="recalcRecepPrecio('+idx+')"></div>'+
+      '<div class="field"><label>Precio nocturno ($)</label><input type="number" id="recepNoc" value="'+(p.pnocAuto?'':(p.pnoc||''))+'" placeholder="'+(p.pnocAuto?'Automático':'Opcional')+'" min="0" oninput="updateRecepNocPreview()"></div>'+
     '</div>'+
     '<div class="precio-preview">'+
       '<div style="flex:1"><div class="pl">💚 Precio diurno</div><div class="pv" id="recepPrecioCalc">'+(p.pventa?fmt(p.pventa):'—')+'</div></div>'+
@@ -28520,7 +28753,9 @@ function guardarRecepEdicion(idx) {
   if(costo>0 && margen>0){
     p.pventa = Math.ceil(costo*(1+margen/100)/100)*100;
   }
-  p.pnoc = pnoc||null;
+  var _rnR = resolverNoche(cat, p.pventa, pnoc);
+  p.pnoc = _rnR.pnoc;
+  p.pnocAuto = _rnR.auto;
 
   // Registrar cambios en el log
   var cambios=[];
@@ -28556,9 +28791,10 @@ function guardarRecepNuevo() {
 
   var esBebAlc = (cat === 'Bebidas Alcohólicas');
   var pventa = (costo>0 && margen>0) ? Math.ceil(costo*(1+margen/100)/100)*100 : 0;
-  if(esBebAlc && !pnoc && pventa>0) pnoc = pventa+1000;
+  if(esBebAlc && !pnoc && pventa>0 && !nocheCat(cat)) pnoc = pventa+1000;
+  var _rnN = resolverNoche(cat, pventa, pnoc);
 
-  PRODUCTS.push({name:nombre, cat:cat, costo:costo||null, margin:margen, pventa:pventa, pnoc:pnoc||null, codigo:codigo||null});
+  PRODUCTS.push({name:nombre, cat:cat, costo:costo||null, margin:margen, pventa:pventa, pnoc:_rnN.pnoc, pnocAuto:_rnN.auto, codigo:codigo||null});
   asegurarFichaStock(nombre);
   registrarCambioCatalogo('nuevo', nombre, [
     {campo:'Categoría',antes:'—',despues:cat},

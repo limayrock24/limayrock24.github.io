@@ -308,6 +308,9 @@ exports.avisoCambioPrecio = onDocumentUpdated(
     const antes = event.data && event.data.before.data();
     const ahora = event.data && event.data.after.data();
     if (!antes || !ahora) return;
+    // Cambios en bloque (precios sugeridos, precios de noche automáticos): no
+    // se manda un aviso por cada producto.
+    if (ahora.cambioMasivo && ahora.cambioMasivo !== antes.cambioMasivo) return;
 
     const cambios = [];
     if (Number(antes.pventa || 0) !== Number(ahora.pventa || 0)) {
