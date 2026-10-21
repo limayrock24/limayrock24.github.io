@@ -8003,7 +8003,11 @@ function pintarCajaEquipo(){
     el.textContent = (hayVariasCajas() ? 'Caja ' + cajaTurnoActual() + ' · ' : '') + currentEmp.nombre + ' · ' + turnoActual();
   }
   var lc = document.getElementById('loginCajaEquipo');
-  if(lc){ lc.textContent = '🖥 Caja ' + cajaEquipo(); lc.style.display = hayVariasCajas() ? '' : 'none'; }
+  // En el link del admin no hay caja: ahí no se vende ni se abren turnos.
+  if(lc){
+    lc.textContent = window.__lrEsPanelAdmin ? '⚙ PANEL ADMIN' : '🖥 Caja ' + cajaEquipo();
+    lc.style.display = (window.__lrEsPanelAdmin || hayVariasCajas()) ? '' : 'none';
+  }
 }
 
 var SK_SESION_ACTIVA = 'lr_sesion_activa';
@@ -8204,6 +8208,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
 
 function chequearSesionInterrumpida() {
   if(window.__lrEsPuesto) return false; // la tablet no retoma ni cierra turnos
+  if(window.__lrEsPanelAdmin) return false; // el link del admin tampoco: los turnos son de las cajas
   var sesion = getSesionActivaGuardada();
   if(!sesion) return false;
 
@@ -8397,6 +8402,13 @@ function lpp(d) {
         return;
       }
       if(window.__lrEsPuesto){ var _pinP = loginBuf; loginBuf=''; updateLoginDots(); entrarPuestoDelivery(_pinP); return; }
+      // El link del admin solo abre el panel admin: un PIN de empleado no
+      // abre turno acá (si no, se abría una "Caja 1" desde la oficina).
+      if(window.__lrEsPanelAdmin){
+        loginBuf=''; updateLoginDots();
+        alert('⚙ Este es el link del PANEL ADMIN: acá se entra solo con el PIN de admin.\n\nPara vender o abrir un turno usá el link de la caja.');
+        return;
+      }
       // Buscar el empleado que tenga ese PIN
       var emp = EMPLEADOS.find(function(e){ return e.pin===loginBuf; });
       if(emp) pinOk();
