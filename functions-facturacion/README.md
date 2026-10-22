@@ -46,3 +46,15 @@ cd functions-facturacion && npm install && npm test
 
 Las pruebas no se conectan a nada: arman y leen los mensajes de ARCA y
 verifican la firma digital con OpenSSL.
+
+## Probar contra el ambiente de pruebas de ARCA
+
+Desde Google Cloud Shell, con los secretos ya cargados:
+
+```
+ARCA_CERT="$(gcloud secrets versions access latest --secret=ARCA_CERT)" \
+ARCA_KEY="$(gcloud secrets versions access latest --secret=ARCA_KEY)" \
+node probar-homologacion.js 2
+```
+
+Hace login, consulta el último número y pide una Factura C de $1 que no vale.

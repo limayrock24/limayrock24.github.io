@@ -15,7 +15,8 @@
         "*.key",
         "*.crt",
         "*.csr",
-        "README.md"
+        "README.md",
+        "probar-homologacion.js"
       ]
     }
   ],
