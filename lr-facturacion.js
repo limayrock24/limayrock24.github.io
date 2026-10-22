@@ -17,7 +17,7 @@
     jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
     qr: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
   };
-  var EMISOR_FIJO = { fantasia: 'LIMAY ROCK MINIMARKET 24HS', cuit: '20-43339489-6', domicilio: 'Pascual Puente 774 - Senillosa, Neuquén', condicion: 'Responsable Monotributo' };
+  var EMISOR_FIJO = { fantasia: 'LIMAY ROCK MINIMARKET 24HS', titular: 'MONSALVE MARTIN EZEQUIEL', cuit: '20-43339489-6', domicilio: 'Pascual Puente 774 - Senillosa, Neuquén', condicion: 'Responsable Monotributo' };
   var COND_IVA_TXT = { 1: 'IVA Responsable Inscripto', 4: 'IVA Sujeto Exento', 5: 'Consumidor Final', 6: 'Responsable Monotributo' };
 
   function db(){ return window.__lrDB; }
@@ -273,7 +273,7 @@
     var recTxt = docTxt(rec);
     return '<div class="lrf-tk">'+marca+
       '<div class="h">'+esc(EMISOR_FIJO.fantasia)+'</div>'+
-      '<div class="c">'+(em.razonSocial ? esc(em.razonSocial)+'<br>' : '')+esc(EMISOR_FIJO.domicilio)+'<br>CUIT '+EMISOR_FIJO.cuit+' · '+EMISOR_FIJO.condicion+
+      '<div class="c">'+esc(em.razonSocial || EMISOR_FIJO.titular)+'<br>'+esc(EMISOR_FIJO.domicilio)+'<br>CUIT '+EMISOR_FIJO.cuit+' · '+EMISOR_FIJO.condicion+
         (em.iibb ? '<br>IIBB: '+esc(em.iibb) : '')+(em.inicio ? ' · Inicio act.: '+esc(em.inicio) : '')+'</div>'+
       '<div class="c"><span class="letra">C</span><br><b>'+(nc ? 'NOTA DE CRÉDITO' : 'FACTURA')+'</b> · Cód. '+(nc ? '013' : '011')+'</div>'+
       '<div class="fila"><span>Pto. Vta: '+String(f.ptoVta).padStart(5,'0')+'</span><span>Nº '+String(f.numero).padStart(8,'0')+'</span></div>'+
@@ -313,7 +313,7 @@
         y += opc.alto || 4; }
       function corte(){ doc.setLineDashPattern([1,1],0); doc.line(5, y-2, 75, y-2); y += 2; }
       linea(EMISOR_FIJO.fantasia, {b:1, s:10, alto:5});
-      if(em.razonSocial) linea(em.razonSocial);
+      linea(em.razonSocial || EMISOR_FIJO.titular);
       linea(EMISOR_FIJO.domicilio);
       linea('CUIT '+EMISOR_FIJO.cuit+' - '+EMISOR_FIJO.condicion);
       if(em.iibb || em.inicio) linea((em.iibb ? 'IIBB: '+em.iibb : '')+(em.iibb && em.inicio ? ' - ' : '')+(em.inicio ? 'Inicio act.: '+em.inicio : ''));
@@ -488,7 +488,7 @@
         (_admin.abiertaCfg ?
           '<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">'+
           '<div class="lrf-mini">Lo que va impreso en cada comprobante. Los datos fijos (CUIT, domicilio, monotributo) ya están.</div>'+
-          '<label class="lrf-mini">Nombre y apellido (titular)</label><input class="lrf-in" id="lrfCfgRazon" value="'+esc(em.razonSocial||'')+'" placeholder="Como figura en ARCA">'+
+          '<label class="lrf-mini">Nombre y apellido (titular)</label><input class="lrf-in" id="lrfCfgRazon" value="'+esc(em.razonSocial||'')+'" placeholder="'+EMISOR_FIJO.titular+'">'+
           '<label class="lrf-mini">Ingresos Brutos Neuquén (número)</label><input class="lrf-in" id="lrfCfgIibb" value="'+esc(em.iibb||'')+'">'+
           '<label class="lrf-mini">Inicio de actividades</label><input class="lrf-in" id="lrfCfgInicio" value="'+esc(em.inicio||'')+'" placeholder="dd/mm/aaaa">'+
           '<label class="lrf-mini">Tope anual de tu categoría del monotributo ($)</label><input class="lrf-in" id="lrfCfgTope" inputmode="numeric" value="'+(CFG.topeAnual||'')+'" placeholder="Te lo pasa la contadora">'+
