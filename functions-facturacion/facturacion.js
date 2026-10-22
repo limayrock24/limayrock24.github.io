@@ -65,6 +65,13 @@ function fechaArgentina(d) {
   return p.replace(/-/g, '');
 }
 
+// "Facturar desde" (config/facturacion.desde, aaaa-mm-dd): una venta anterior
+// a las 00:00 de ese día en Argentina no se factura.
+function antesDelInicio(cfg, fechaVenta) {
+  if (!cfg || !/^\d{4}-\d{2}-\d{2}$/.test(cfg.desde || '')) return false;
+  return new Date(fechaVenta) < new Date(cfg.desde + 'T00:00:00-03:00');
+}
+
 function numeroTxt(ptoVta, numero) {
   return String(ptoVta).padStart(5, '0') + '-' + String(numero).padStart(8, '0');
 }
@@ -285,4 +292,4 @@ function crearFacturacion(ctx) {
   return { crearDesdeVenta, procesar, crearNotaCredito, reintentar, procesarPendientes };
 }
 
-module.exports = { crearFacturacion, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt, ErrorArca };
+module.exports = { crearFacturacion, antesDelInicio, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt, ErrorArca };

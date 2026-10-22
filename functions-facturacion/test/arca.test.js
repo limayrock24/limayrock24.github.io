@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const arca = require('../arca');
-const { montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt } = require('../facturacion');
+const { antesDelInicio, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt } = require('../facturacion');
 
 test('monto de Mercado Pago según el medio de pago', () => {
   assert.strictEqual(montoMercadoPago({ medio: 'Efectivo', total: 5000 }), 0);
@@ -93,4 +93,11 @@ test('link del QR con los datos que pide ARCA', () => {
   assert.ok(u.startsWith('https://www.afip.gob.ar/fe/qr/?p='));
   const d = JSON.parse(Buffer.from(u.split('p=')[1], 'base64').toString());
   assert.strictEqual(d.fecha, '2026-10-20'); assert.strictEqual(d.nroCmp, 123); assert.strictEqual(d.tipoCodAut, 'E');
+});
+
+test('fecha de inicio: no factura antes de las 00:00 (Argentina) de ese día', () => {
+  const cfg = { desde: '2026-11-01' };
+  assert.strictEqual(antesDelInicio(cfg, '2026-11-01T02:59:00Z'), true);   // 31/10 23:59 en Argentina
+  assert.strictEqual(antesDelInicio(cfg, '2026-11-01T03:00:00Z'), false);  // 01/11 00:00 en Argentina
+  assert.strictEqual(antesDelInicio({}, '2026-10-01T12:00:00Z'), false);   // sin fecha: factura siempre
 });

@@ -42,7 +42,10 @@
   }
   // Por ahora la facturación es solo de Limay Rock 1 (Pascual Puente).
   var SUC2 = window.__lrSucursal === 2;
-  function activa(){ return !SUC2 && !!CFG.activa; }
+  // "Facturar desde": fecha (aaaa-mm-dd) en que arranca, a las 00:00 de Argentina.
+  function inicioDesde(){ return CFG.desde ? new Date(CFG.desde + 'T00:00:00-03:00') : null; }
+  function programada(){ var d = inicioDesde(); return !!(CFG.activa && d && Date.now() < d.getTime()); }
+  function activa(){ return !SUC2 && !!CFG.activa && !programada(); }
 
   function cargarScript(url){
     return new Promise(function(ok, mal){
@@ -459,10 +462,16 @@
     var em = CFG.emisor || {};
     var html =
       '<div class="lrf-card">'+
-        '<div class="lrf-sw"><div><div class="lrf-h4" style="margin:0">🧾 Facturación electrónica</div>'+
-          '<div class="lrf-mini">Factura C automática de lo cobrado por Mercado Pago</div></div>'+
-          '<input type="checkbox" '+(CFG.activa?'checked':'')+' onchange="__lrFact.activar(this.checked)" title="Prender / apagar"></div>'+
-        '<div class="lrf-r" style="margin-top:6px"><span>Estado</span><span>'+(CFG.activa?'<b style="color:var(--green)">PRENDIDA</b>':'<b style="color:var(--gray)">APAGADA</b>')+' &nbsp;<span class="lrf-modo '+esc(modo)+'">'+(modo==='produccion'?'ARCA REAL':modo==='homologacion'?'ARCA PRUEBAS':'SIMULADO')+'</span></span></div>'+
+        '<div class="lrf-h4" style="margin:0">🧾 Facturación electrónica</div>'+
+        '<div class="lrf-mini">Factura C automática de lo cobrado por Mercado Pago</div>'+
+        '<div class="lrf-r" style="margin-top:8px"><span>Estado</span><span>'+
+          (!CFG.activa ? '<b style="color:var(--gray)">⚪ APAGADA</b>' : programada() ? '<b style="color:var(--gold)">🕒 PROGRAMADA</b>' : '<b style="color:var(--green)">🟢 FACTURANDO</b>')+
+          ' &nbsp;<span class="lrf-modo '+esc(modo)+'">'+(modo==='produccion'?'ARCA REAL':modo==='homologacion'?'ARCA PRUEBAS':'SIMULADO')+'</span></span></div>'+
+        (programada() ? '<div class="lrf-mini" style="color:var(--gold)">Empieza a facturar sola el '+inicioDesde().toLocaleDateString('es-AR')+' a las 00:00. Hasta entonces no se factura nada.</div>' : '')+
+        '<button class="lrf-btn '+(CFG.activa?'lrf-gr':'lrf-wa')+'" onclick="__lrFact.activar('+(CFG.activa?'false':'true')+')">'+(CFG.activa?'⏸ Apagar la facturación':'▶ Prender la facturación')+'</button>'+
+        '<div class="lrf-r" style="margin-top:8px"><span>Empezar a facturar desde</span>'+
+          '<input type="date" class="lrf-in" style="width:auto;padding:5px 8px" value="'+esc(CFG.desde||'')+'" onchange="__lrFact.desde(this.value)"></div>'+
+        '<div class="lrf-mini">Opcional. Si ponés una fecha, aunque esté prendida no factura nada antes de ese día. Para sacarla, borrá la fecha.</div>'+
         (modo !== 'produccion' ? '<div class="lrf-mini">'+(modo==='homologacion'?'Conectado al ambiente de pruebas de ARCA: los comprobantes no valen.':'Todavía no está conectado a ARCA: los comprobantes son de prueba y no valen.')+'</div>' : '')+
         venceTxt+
       '</div>'+
@@ -500,7 +509,12 @@
     return db().collection('config').doc('facturacion').set(datos, { merge: true });
   }
   function activar(on){
-    var p = on ? (typeof askConfirm === 'function' ? askConfirm('¿Prendés la facturación automática? Desde ahora, cada cobro por Mercado Pago va a generar una Factura C.') : Promise.resolve(true)) : Promise.resolve(true);
+    var d = inicioDesde();
+    var texto = d && Date.now() < d.getTime()
+      ? '¿Prendés la facturación automática? Va a empezar sola el '+d.toLocaleDateString('es-AR')+' a las 00:00: desde ese momento, cada cobro por Mercado Pago genera una Factura C.'
+      : '¿Prendés la facturación automática? Desde ahora, cada cobro por Mercado Pago va a generar una Factura C.';
+    var p = on ? (typeof askConfirm === 'function' ? askConfirm(texto) : Promise.resolve(true))
+               : (typeof askConfirm === 'function' ? askConfirm('¿Apagás la facturación? Los cobros dejan de facturarse hasta que la vuelvas a prender.') : Promise.resolve(true));
     p.then(function(ok){
       if(!ok){ dibujarAdmin(); return; }
       guardarConfig({ activa: !!on, cambiada: new Date().toISOString() }).then(function(){ toast(on ? 'Facturación prendida' : 'Facturación apagada'); })
@@ -546,6 +560,10 @@
     whatsapp: whatsapp,
     renderAdmin: renderAdmin,
     activar: activar,
+    desde: function(v){
+      guardarConfig({ desde: /^\d{4}-\d{2}-\d{2}$/.test(v||'') ? v : null }).then(function(){ toast(v ? 'Fecha de inicio guardada' : 'Fecha de inicio borrada'); })
+        .catch(function(){ toast('No se pudo guardar', true); dibujarAdmin(); });
+    },
     reintentar: reintentar,
     exportar: exportar,
     guardarCfg: guardarCfg,
