@@ -17,8 +17,9 @@
 //   ARCA_CUIT     CUIT del emisor, sin guiones
 //   ARCA_PTO_VTA  número de punto de venta "Web Services"
 // Secretos (se cargan en Google Secret Manager, NUNCA en el repositorio):
-//   ARCA_CERT     certificado (.crt) en formato PEM
-//   ARCA_KEY      clave privada en formato PEM
+//   ARCA_CERT             certificado de PRUEBAS (WSASS), formato PEM
+//   ARCA_CERT_PRODUCCION  certificado REAL (Administración de Certificados Digitales)
+//   ARCA_KEY              clave privada (la misma para los dos)
 // ══════════════════════════════════════════════════════════════════════════
 'use strict';
 
@@ -41,12 +42,13 @@ const ARCA_MODO = defineString('ARCA_MODO', { default: 'simulado' });
 const ARCA_CUIT = defineString('ARCA_CUIT', { default: '20433394896' });
 const ARCA_PTO_VTA = defineString('ARCA_PTO_VTA', { default: '2' });
 const ARCA_CERT = defineSecret('ARCA_CERT');
+const ARCA_CERT_PRODUCCION = defineSecret('ARCA_CERT_PRODUCCION');
 const ARCA_KEY = defineSecret('ARCA_KEY');
 
 // En modo simulado no hacen falta el certificado ni la clave (todavía no
 // existen). Al pasar a homologación o producción se agregan los secretos.
 const modoReal = () => ['homologacion', 'produccion'].indexOf(ARCA_MODO.value()) !== -1;
-const OPCIONES = { secrets: process.env.ARCA_CON_SECRETOS === 'si' ? [ARCA_CERT, ARCA_KEY] : [] };
+const OPCIONES = { secrets: process.env.ARCA_CON_SECRETOS === 'si' ? [ARCA_CERT, ARCA_CERT_PRODUCCION, ARCA_KEY] : [] };
 
 async function leerConfig() {
   const s = await db.collection('config').doc('facturacion').get();
@@ -62,7 +64,8 @@ async function credenciales() {
   if (s.exists && new Date(s.data().vence) - Date.now() > 10 * 60 * 1000) {
     return { token: s.data().token, sign: s.data().sign, cuit: ARCA_CUIT.value() };
   }
-  const cert = ARCA_CERT.value();
+  // Cada ambiente de ARCA tiene su propio certificado (la llave es la misma).
+  const cert = modo === 'produccion' ? ARCA_CERT_PRODUCCION.value() : ARCA_CERT.value();
   const clave = ARCA_KEY.value();
   if (!cert || !clave) throw new arca.ErrorArca('Falta cargar el certificado de ARCA', { reintentable: true });
   const ta = await arca.login(modo, cert, clave);

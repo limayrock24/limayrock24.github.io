@@ -124,8 +124,12 @@ function leerRespuestaLogin(xml) {
   const cuerpo = sobre && sobre.Envelope && sobre.Envelope.Body;
   if (cuerpo && cuerpo.Fault) {
     const msg = String(cuerpo.Fault.faultstring || 'Error de ARCA');
-    // "alreadyAuthenticated": ya hay un token vigente pedido antes.
-    throw new ErrorArca('ARCA rechazó el login: ' + msg, { reintentable: /alreadyAuthenticated/i.test(msg) });
+    // "alreadyAuthenticated": ya hay un token vigente pedido antes (por
+    // ejemplo, desde una prueba a mano). Vence solo en unas horas.
+    if (/alreadyAuthenticated|ya posee un TA/i.test(msg)) {
+      throw new ErrorArca('ARCA todavía tiene abierta una sesión anterior (vence sola en unas horas); se reintenta solo', { reintentable: true });
+    }
+    throw new ErrorArca('ARCA rechazó el login: ' + msg, { reintentable: true });
   }
   const ret = cuerpo && cuerpo.loginCmsResponse && cuerpo.loginCmsResponse.loginCmsReturn;
   if (!ret) throw new ErrorArca('Respuesta de login de ARCA no reconocida', { reintentable: true });
