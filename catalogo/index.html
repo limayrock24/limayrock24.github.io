@@ -5,7 +5,7 @@
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
-window.__LR_BUILD = "1792455640";
+window.__LR_BUILD = "1792615651";
 (function(){
   var miVersion = null;
   function chequear(){
@@ -2701,7 +2701,7 @@ function htmlSeguimiento(d){
       '<div style="margin-top:4px;font-size:.9rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">Alias: <b style="font-size:1.05rem">'+al+'</b>'+
         '<button type="button" onclick="copiarAliasPago(\''+al+'\', this)" style="background:#009ee3;color:#fff;border:none;border-radius:5px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.75rem;letter-spacing:1px;cursor:pointer">📋 COPIAR</button></div>'+
       (d.pago.titular ? '<div style="margin-top:4px;font-size:.78rem;color:var(--gray)">Mercado Pago · '+String(d.pago.titular).replace(/[<>&"]/g,'')+'</div>' : '')+
-      '<div style="margin-top:8px;font-size:.8rem">✅ Después mandanos el comprobante por WhatsApp y sale tu pedido.</div>'+
+      '<div style="margin-top:8px;font-size:.8rem">✅ Mandanos el comprobante por WhatsApp y sale tu pedido.</div>'+
     '</div>';
   } else if(d.pagado){
     pagoHtml = '<div style="margin-top:10px;font-size:.82rem;color:#22c55e">✅ Pago recibido. ¡Gracias!</div>';

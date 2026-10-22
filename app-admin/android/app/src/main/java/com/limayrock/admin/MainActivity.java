@@ -1,7 +1,13 @@
 package com.limayrock.admin;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
+import android.webkit.JavascriptInterface;
+
+import androidx.core.content.FileProvider;
 
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -9,6 +15,8 @@ import androidx.webkit.WebViewFeature;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -31,6 +39,39 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         AvisosService.crearCanales(this);
         conectarEnTodosLosDominios();
+        // La ventana de la app no sabe descargar los archivos que arma la página
+        // (PDF de pedidos, liquidaciones, CSV...): la página se los pasa acá y
+        // se abre el menú Compartir de Android (WhatsApp, Drive, guardar).
+        if (bridge != null) bridge.getWebView().addJavascriptInterface(new Archivos(), "LimayRockArchivos");
+    }
+
+    private class Archivos {
+        @JavascriptInterface
+        public boolean compartir(String base64, String nombre, String tipo) {
+            try {
+                String limpio = (nombre == null || nombre.trim().isEmpty()) ? "archivo" : nombre.trim();
+                limpio = limpio.replaceAll("[\\\\/:*?\"<>|]", "_");
+                File carpeta = new File(getCacheDir(), "compartidos");
+                if (!carpeta.exists()) carpeta.mkdirs();
+                File archivo = new File(carpeta, limpio);
+                byte[] datos = Base64.decode(base64, Base64.DEFAULT);
+                FileOutputStream salida = new FileOutputStream(archivo);
+                try { salida.write(datos); } finally { salida.close(); }
+                Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", archivo);
+                Intent enviar = new Intent(Intent.ACTION_SEND);
+                enviar.setType(tipo == null || tipo.isEmpty() ? "application/octet-stream" : tipo);
+                enviar.putExtra(Intent.EXTRA_STREAM, uri);
+                enviar.putExtra(Intent.EXTRA_SUBJECT, limpio);
+                enviar.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                final Intent elegir = Intent.createChooser(enviar, limpio);
+                elegir.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                runOnUiThread(new Runnable() { public void run() { startActivity(elegir); } });
+                return true;
+            } catch (Exception e) {
+                Log.e("LimayRock", "No se pudo compartir el archivo", e);
+                return false;
+            }
+        }
     }
 
     private void conectarEnTodosLosDominios() {
