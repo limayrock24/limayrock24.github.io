@@ -121,7 +121,7 @@
     'background:var(--surface);border:2px solid var(--gold);border-radius:8px;padding:8px 8px 8px 14px;box-shadow:0 6px 24px rgba(0,0,0,.6);transition:transform .25s ease;font-size:.88rem;color:var(--light)}'+
   '.lrf-toast.show{transform:translate(-50%,0)}'+
   '.lrf-toast.ok{border-color:var(--green)}.lrf-toast.pend{border-color:var(--gold)}.lrf-toast.mal{border-color:var(--red)}'+
-  '.lrf-toast b{color:var(--white)}'+
+  '.lrf-toast b{color:var(--white);white-space:nowrap}'+
   '.lrf-toast button{font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase;background:var(--gold);color:#000;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;font-size:.8rem}'+
   '.lrf-toast button.x{background:transparent;color:var(--gray);padding:6px 8px}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
