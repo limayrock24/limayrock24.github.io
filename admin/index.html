@@ -76,7 +76,7 @@ if(window.__lrSucursal === 2){
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1792712014";
+  window.__LR_BUILD = "1792768001";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1204,6 +1204,7 @@ if(window.__lrSucursal === 2){
     }
     window.__lrSync.ultimoEmpleadosSnapshot = mapa;
     window.__lrSync.empleadosListos = true;
+    if(typeof aplicarPrivEmpleados === 'function') try{ aplicarPrivEmpleados(); migrarValorHoraPrivado(); }catch(e){ console.warn('datos privados de empleados', e); }
 
     // Refrescar el panel de Delivery del admin SIEMPRE que llegue un cambio de
     // empleados, haya o no alguien logueado en este dispositivo.
@@ -1247,6 +1248,9 @@ if(window.__lrSucursal === 2){
     var prev = window.__lrSync.ultimoEmpleadosSnapshot || {};
     var promesas = [];
     var _hist = [];
+    // Valor hora y forma de pago viven en la colección privada del dueño: en
+    // la ficha común (que lee la caja) no se escriben.
+    if(typeof sinDatosPrivadosEmpleado === 'function') lista = lista.map(sinDatosPrivadosEmpleado);
     // El "disponible / no disponible" del repartidor cambia todo el tiempo:
     // no se anota en el historial (no es una edición de la ficha).
     var _sinDisp = function(o){ var c = _histClon(o) || {}; delete c.disponibleDelivery; return stringifyOrdenado(c); };
@@ -1465,7 +1469,7 @@ if(window.__lrSucursal === 2){
       var prevMapaEgr = window.__lrSync.ultimoEgresosSnapshot || {};
       lista.forEach(function(e){
         if(!prevMapaEgr[String(e.id)] && typeof mostrarNotifAdmin==='function'){
-          var nombreProv = e.proveedor || e.prov || 'proveedor';
+          var nombreProv = (typeof conceptoDeEgreso === 'function' ? conceptoDeEgreso(e) : (e.proveedor || e.prov)) || 'proveedor';
           mostrarNotifAdmin('Pago registrado a <b>'+nombreProv+'</b> — '+fmt(e.monto||0), '💸');
         }
       });
@@ -1486,6 +1490,8 @@ if(window.__lrSucursal === 2){
     lista.forEach(function(e){
       try{
         var key = String(e.id);
+        // Pago privado del dueño: va a su colección privada, nunca a la común.
+        if(e._priv){ if(typeof guardarEgresoPrivado === 'function') guardarEgresoPrivado(e); return; }
         vistos[key] = true;
         var antes = prev[key];
         if(!antes || stringifyOrdenado(antes) !== stringifyOrdenado(e)){
@@ -1493,10 +1499,14 @@ if(window.__lrSucursal === 2){
         }
       }catch(err){ console.error('Error preparando egreso', e && e.id, err); }
     });
-    Object.keys(prev).forEach(function(key){
-      if(!vistos[key]){
-        __promesas.push(window.__lrDB.collection(window.__lrCOL.egresos).doc(key).delete());
-      }
+    // Guardar NUNCA borra de forma implícita: antes se borraba todo egreso que
+    // estuviera en la nube y no en la lista de este equipo, y si otro equipo
+    // había cargado uno un instante antes, se perdía. Ahora se borran solo los
+    // marcados a propósito con marcarEgresoBorrado(id).
+    var aBorrar = window.__lrEgresosABorrar || [];
+    window.__lrEgresosABorrar = [];
+    aBorrar.forEach(function(key){
+      if(!vistos[key]) __promesas.push(window.__lrDB.collection(window.__lrCOL.egresos).doc(key).delete());
     });
       return Promise.all(__promesas);
   };
@@ -4811,6 +4821,11 @@ body.night-on{background:#080005}
           <div style="font-size:.68rem;color:var(--gray);margin-top:4px">Con su mismo PIN puede abrir turno en los locales tildados (en uno a la vez).</div>
         </div>
 
+        <div class="field" id="emFormaPagoWrap" style="display:none">
+          <label>💵 Forma de pago del sueldo <span style="color:var(--gray);font-size:.66rem">(solo lo ve el dueño)</span></label>
+          <select id="emFormaPago"><option value="">— Sin definir —</option><option value="momento">Al momento (cobra al terminar la jornada)</option><option value="mensual">Mensual vencido (cobra el mes siguiente)</option></select>
+        </div>
+
         <!-- Acceso a Recepción -->
         <div class="recep-toggle">
           <div>
@@ -4942,12 +4957,14 @@ body.night-on{background:#080005}
 
     <!-- EGRESOS -->
     <div class="tab-pane" id="pane-egresos">
+      <div id="egClasifBar" style="margin-bottom:10px"></div>
       <div class="egreso-form">
         <h4>💸 Registrar pago / egreso</h4>
         <div class="field-row">
           <div class="field">
-            <label>Categoría</label>
-            <select id="eCategoria" onchange="cambiarCatEgreso()" style="background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:8px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;width:100%">
+            <label>Rubro</label>
+            <select id="eRubro" onchange="cambiarRubroEgreso()" style="background:var(--dark);border:1.5px solid var(--border);border-radius:5px;padding:8px 10px;color:var(--white);font-family:Barlow,sans-serif;font-size:.85rem;width:100%"></select>
+            <select id="eCategoria" onchange="cambiarCatEgreso()" style="display:none">
               <option value="proveedor">🚚 Proveedor</option>
               <option value="sueldo">👤 Sueldo</option>
               <option value="servicio">💡 Servicio / Impuesto</option>
@@ -4987,7 +5004,38 @@ body.night-on{background:#080005}
         </div>
         <div class="field">
           <label>Fecha</label>
-          <input type="date" id="eFecha">
+          <input type="date" id="eFecha" onchange="pintarDetEgreso()">
+        </div>
+        <div id="eDetBox" style="display:none;border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin:2px 0 10px">
+          <div style="font-size:.66rem;color:var(--gray);margin-bottom:6px">🔒 Este detalle lo ve solo el dueño. En la caja, el pago figura como "Pago (admin)".</div>
+          <div class="field" id="eEmpRow"><label>👤 Empleado</label><select id="eEmpleado" onchange="elegirEmpleadoEgreso()"></select></div>
+          <div class="field-row">
+            <div class="field"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
+            <div class="field"><label>🏪 Sucursal</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
+          </div>
+          <div class="field-row" id="eRepartoRow" style="display:none">
+            <div class="field"><label>% que absorbe Limay 1</label><input type="number" id="eRep1" min="0" max="100" oninput="repartoEgresoCambio(1)"></div>
+            <div class="field"><label>% que absorbe Limay 2</label><input type="number" id="eRep2" min="0" max="100" oninput="repartoEgresoCambio(2)"></div>
+          </div>
+          <div id="eCredRow" style="display:none">
+            <div class="field"><label>🏦 Acreedor</label><select id="eAcreedor" onchange="if(this.value==='__nuevo__') agregarAcreedor(this)"></select></div>
+            <label style="font-size:.72rem;color:var(--gray)">¿A qué corresponde este pago? (montos)</label>
+            <div class="field-row">
+              <div class="field"><label style="font-size:.68rem">🚚 Mercadería</label><input type="text" inputmode="decimal" id="ePMerc" placeholder="0" oninput="formatMontoDecInput(this)"></div>
+              <div class="field"><label style="font-size:.68rem">📦 Equipamiento</label><input type="text" inputmode="decimal" id="ePEquip" placeholder="0" oninput="formatMontoDecInput(this)"></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label style="font-size:.68rem">🧾 Gastos</label><input type="text" inputmode="decimal" id="ePGastos" placeholder="0" oninput="formatMontoDecInput(this)"></div>
+              <div class="field"><label style="font-size:.68rem">📈 Intereses y cargos</label><input type="text" inputmode="decimal" id="ePInt" placeholder="0" oninput="formatMontoDecInput(this)"></div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+              <button type="button" onclick="partesTodoEn('ePMerc')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">Todo mercadería</button>
+              <button type="button" onclick="partesTodoEn('ePEquip')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">Todo equipamiento</button>
+              <button type="button" onclick="partesTodoEn('ePGastos')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">Todo gastos</button>
+            </div>
+            <div style="font-size:.66rem;color:var(--gray)">Si no lo completás, queda "Sin clasificar" en rojo y el balance avisa.</div>
+          </div>
+          <div class="field" id="eSocioRow" style="display:none"><label>🤝 Socio que retiró</label><select id="eSocio"></select></div>
         </div>
         <div class="field">
           <label>Medio de pago</label>
@@ -4997,6 +5045,7 @@ body.night-on{background:#080005}
             <button class="receg-medio-btn active" id="em-Efectivo" onclick="selEgMedio('Efectivo')" style="flex:1">💵 Efectivo</button>
             <button class="receg-medio-btn" id="em-Mixto" onclick="selEgMedio('Mixto')" style="flex:1">⚡ Mixto</button>
           </div>
+          <button class="receg-medio-btn" id="em-EfectivoFuera" onclick="selEgMedio('EfectivoFuera')" style="width:100%;margin-top:6px">👛 Efectivo que no sale de las cajas (de mi bolsillo o ya retirado)</button>
         </div>
         <div id="eMixtoWrap" style="display:none;margin-top:8px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5081,6 +5130,8 @@ body.night-on{background:#080005}
 
     <!-- RENTABILIDAD -->
     <div class="tab-pane" id="pane-rentabilidad">
+      <div id="rentAvisoDueno" style="display:none;margin-bottom:14px"></div>
+      <div id="rentPrincipal">
       <div class="rent-period">
         <button class="rent-period-btn active" id="rp-hoy" onclick="selPeriodo('hoy')">Hoy</button>
         <button class="rent-period-btn" id="rp-semana" onclick="selPeriodo('semana')">Esta semana</button>
@@ -5114,6 +5165,7 @@ body.night-on{background:#080005}
 
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn pdf" onclick="exportarRentabilidadPDF()">📄 Exportar reporte</button>
+      </div>
       </div>
 
       <!-- ── LIQUIDEZ DEL LOCAL ── -->
@@ -8212,6 +8264,7 @@ function cerrarTurnoInterrumpido(sesion, motivo) {
       efectivoInicial: efectivoInicial,
       ventasEfectivo:  ventasEfec,
       egresosEfectivo: egresosEfecTurno,
+      pagosDuenoEfectivo: pagosDuenoEnTurno(sesion.turnoInicio, ahoraFin2, miCaja),
       retirosCaja:     retirosSoloTurno,
       ingresosCaja:    ingresosSoloTurno,
       esperado: esperado,
@@ -11558,6 +11611,18 @@ function confirmarEfectivoInicial() {
 // ── ARQUEO DE CAJA ──────────────────────────────────────────────────────────
 
 // Extrae el monto en efectivo de un egreso (maneja pago simple y mixto)
+// Parte de los egresos en efectivo del turno que son pagos del dueño (todo lo
+// que no es pago a proveedor). Solo para mostrarla aparte en el desglose: el
+// esperado del arqueo se calcula igual que siempre.
+function pagosDuenoEnTurno(desde, hasta, caja){
+  var d0 = new Date(desde), d1 = new Date(hasta);
+  return getEgresos().filter(function(e){
+    if(!(e.medio==='Efectivo'||e.medio==='Mixto') || !e.ts) return false;
+    if((e.categoria||'proveedor') === 'proveedor') return false;
+    var et = new Date(e.ts);
+    return et>=d0 && et<=d1 && cajaDe(e)===caja;
+  }).reduce(function(s,e){ return s+getEgresoEfectivo(e); },0);
+}
 function getEgresoEfectivo(e) {
   if(e.medio==='Efectivo') return e.monto;
   if(e.medio==='Mixto' && e.mixto) return e.mixto.efectivo||0;
@@ -11785,6 +11850,7 @@ function confirmarArqueoYCerrar() {
       efectivoInicial: efectivoInicial,
       ventasEfectivo:  ventasEfecBruto,
       egresosEfectivo: egresosEfecTurno,
+      pagosDuenoEfectivo: pagosDuenoEnTurno(horaInicio, horaFin, miCaja),
       retirosCaja:     retirosSoloTurno,
       ingresosCaja:    ingresosSoloTurno,
       esperado: esperado,
@@ -12164,7 +12230,10 @@ function renderCierres() {
 
     var detalleArqueo = '';
     if(arqueo){
-      var egresosRow = arqueo.egresosEfectivo>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− Egresos efectivo</span><span class="abv" style="color:var(--red)">'+fmt(arqueo.egresosEfectivo||0)+'</span></div>' : '';
+      // Pagos del dueño en efectivo: una sola línea, sin detalle.
+      var pagDueno = Number(arqueo.pagosDuenoEfectivo)||0, egrProv = (arqueo.egresosEfectivo||0) - pagDueno;
+      var egresosRow = (egrProv>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− '+(pagDueno>0?'Pagos a proveedores en efectivo':'Egresos efectivo')+'</span><span class="abv" style="color:var(--red)">'+fmt(egrProv)+'</span></div>' : '')+
+        (pagDueno>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− Pagos del dueño en efectivo</span><span class="abv" style="color:var(--red)">'+fmt(pagDueno)+'</span></div>' : '');
       var retirosRow = arqueo.retirosCaja>0 ? '<div class="arqueo-breakdown-row"><span class="abl">− Retiros de caja</span><span class="abv" style="color:var(--gold)">'+fmt(arqueo.retirosCaja||0)+'</span></div>' : '';
       var ingresosRow = arqueo.ingresosCaja>0 ? '<div class="arqueo-breakdown-row"><span class="abl">+ Ingreso de efectivo</span><span class="abv" style="color:var(--green)">'+fmt(arqueo.ingresosCaja||0)+'</span></div>' : '';
       var transfRow = arqueo.transferenciasCaja ? '<div class="arqueo-breakdown-row"><span class="abl">'+(arqueo.transferenciasCaja>0?'+ Cambio recibido en caja':'− Cambio enviado desde caja')+'</span><span class="abv" style="color:'+(arqueo.transferenciasCaja>0?'var(--green)':'var(--gold)')+'">'+fmt(Math.abs(arqueo.transferenciasCaja))+'</span></div>' : '';
@@ -12746,6 +12815,7 @@ function anularCorreccionCierre(idx, i) {
       real.arqueo.esperado = (real.arqueo.esperado||0) + cor.monto;
       real.arqueo.diferencia = (real.arqueo.contado||0) - real.arqueo.esperado;
       if(cor.refId){
+        marcarEgresoBorrado(cor.refId);
         saveEgresos(getEgresos().filter(function(e){ return e.id !== cor.refId; }));
         saveMovimientos(getMovimientos().filter(function(m){ return m.id !== cor.refId && m.refId !== cor.refId; }));
         borrarMovimientosEnNube(cor.refId); // el guardado de movimientos no borra de la nube
@@ -15642,8 +15712,372 @@ function registrarDevolucionPrestamo() {
 var SK_EGRESOS = 'lr_egresos';
 var _periodoCurrent = 'hoy';
 
-function getEgresos() { return (window.__lrSync && window.__lrSync.egresosListos && Array.isArray(window.__lrEgresosCache)) ? window.__lrEgresosCache : []; }
+function getEgresos() {
+  var pub = (window.__lrSync && window.__lrSync.egresosListos && Array.isArray(window.__lrEgresosCache)) ? window.__lrEgresosCache : [];
+  // En el equipo del dueño se suman sus pagos privados. En la caja no hay
+  // privados: devuelve la lista de siempre, igual que antes.
+  var priv = window.__lrEgPrivLista;
+  if(!priv || !priv.length) return pub;
+  var ids = {}; priv.forEach(function(e){ ids[String(e.id)] = true; });
+  // Un privado recién cargado que todavía no llegó a la lista privada se
+  // conserva (si no, se perdería antes de guardarse).
+  return pub.filter(function(e){ return !ids[String(e.id)]; }).concat(priv).sort(function(a, b){ return (a.id||0) - (b.id||0); });
+}
 function saveEgresos(e) { window.__lrEgresosCache = e; if(window.__lrSaveEgresos) window.__lrSaveEgresos(e); }
+function marcarEgresoBorrado(id){
+  (window.__lrEgresosABorrar = window.__lrEgresosABorrar || []).push(String(id));
+  // Si era un pago privado del dueño, se borra de ahí también.
+  if(typeof esEquipoDueno === 'function' && esEquipoDueno() && window.__lrEgPrivLista){
+    var key = String(id);
+    if(window.__lrEgPrivLista.some(function(x){ return String(x.id) === key; })){
+      window.__lrEgPrivLista = window.__lrEgPrivLista.filter(function(x){ return String(x.id) !== key; });
+      if(window.__lrEgPrivMapa) delete window.__lrEgPrivMapa[key];
+      colEgPriv().doc(key).delete().catch(function(){});
+    }
+  }
+}
+
+// ── DATOS PRIVADOS DEL DUEÑO ─────────────────────────────────────────────
+// Lo sensible (detalle de cada egreso, valor hora y forma de pago de cada
+// empleado, configuración del balance) vive en colecciones que, con las
+// reglas nuevas, solo puede leer la cuenta del dueño (admin@).
+// Se hace en dos fases:
+//  • Fase A (al publicar): no se toca nada de lo que ya existe. El detalle y
+//    el valor hora se COPIAN a lo privado; los egresos se siguen guardando
+//    como hoy, más su detalle.
+//  • Fase B (la activa el dueño, con respaldo y botón para deshacer): sus
+//    pagos que no salen del efectivo de las cajas pasan a una colección
+//    privada que la caja no descarga; los que salen del cajón quedan en la
+//    caja como un registro mínimo ("Pago del dueño (efectivo)": monto, hora
+//    y caja, lo que el arqueo necesita) y el detalle queda privado.
+function esEquipoDueno(){ return String(window.__lrUsuario||'').toLowerCase() === 'admin@limayrock.app'; }
+function faseB(){ return !!(window.__lrPrivacidad && window.__lrPrivacidad.faseB); }
+var EG_DUENO_EF = 'Pago del dueño (efectivo)';
+function esPagoDelCajon(e){ return !!e && (e.medio === 'Efectivo' || e.medio === 'Mixto'); }
+function medioEgresoTxt(m){ return m === 'EfectivoFuera' ? 'Efectivo (fuera de caja)' : (m || ''); }
+function colEgPriv(n){ return ldCol(n || localActual(), 'egresosPriv'); }
+// Lo que se guarda de un pago del dueño (que no es mercadería). "egreso" es
+// el egreso completo, como se guardaba siempre. En fase A va así a la caja;
+// en fase B, si salió del cajón, a la caja va solo el registro mínimo, y si
+// no, va entero a la colección privada (_priv). El detalle guarda el egreso
+// completo para poder deshacer la fase B.
+function prepararEgresoDueno(egreso, det){
+  if(!faseB()) return egreso;
+  det.publicoOriginal = JSON.parse(JSON.stringify(egreso));
+  if(esPagoDelCajon(egreso)){
+    var m = { id: egreso.id, fecha: egreso.fecha, ts: egreso.ts, monto: egreso.monto, medio: egreso.medio, caja: egreso.caja,
+      categoria: 'dueno', prov: EG_DUENO_EF, proveedor: EG_DUENO_EF, nota: '' };
+    if(egreso.mixto) m.mixto = egreso.mixto;
+    if(egreso.liqClave) m.liqClave = egreso.liqClave;
+    return m;
+  }
+  var p = JSON.parse(JSON.stringify(egreso)); p._priv = true;
+  return p;
+}
+// Guarda un pago privado del dueño. Desde la caja solo se puede crear (no
+// leer): se manda una vez y se saca de la lista de ese equipo.
+function guardarEgresoPrivado(e){
+  var key = String(e.id), limpio = JSON.parse(JSON.stringify(e)); delete limpio._priv;
+  if(!esEquipoDueno()){
+    window.__lrPrivEnviados = window.__lrPrivEnviados || {};
+    if(!window.__lrPrivEnviados[key]){
+      window.__lrPrivEnviados[key] = true;
+      colEgPriv().doc(key).set(limpio).then(function(){ showToast('🔒 Guardado: este pago lo ve solo el dueño'); })
+        .catch(function(err){ showToast('⚠ No se pudo guardar el pago: '+((err && err.message) || err), true); });
+    }
+    window.__lrEgresosCache = (window.__lrEgresosCache || []).filter(function(x){ return String(x.id) !== key; });
+    return;
+  }
+  var ord = window.__lrStringOrd || JSON.stringify;
+  var mapa = window.__lrEgPrivMapa = window.__lrEgPrivMapa || {};
+  if(mapa[key] && ord(mapa[key]) === ord(limpio)) return;
+  mapa[key] = limpio;
+  var lista = (window.__lrEgPrivLista || []).filter(function(x){ return String(x.id) !== key; });
+  lista.push(e); lista.sort(function(a, b){ return (a.id||0) - (b.id||0); });
+  window.__lrEgPrivLista = lista;
+  colEgPriv().doc(key).set(limpio).catch(function(err){ showToast('⚠ No se pudo guardar el pago privado: '+((err && err.message) || err), true); });
+}
+function avisoSoloDueno(que){
+  return '<div style="padding:18px;text-align:center;color:var(--gray);font-size:.82rem;line-height:1.5;border:1px dashed var(--border);border-radius:8px">🔒 '+que+' se ve solo desde el equipo del dueño (entrando con la cuenta admin).</div>';
+}
+var RUBROS_EGRESO = [
+  {k:'mercaderia',      t:'Compra de mercadería',                       cat:'proveedor', g:'🚚 Mercadería'},
+  {k:'sueldos',         t:'Sueldos',                                    cat:'sueldo',    g:'👤 Personal'},
+  {k:'personal_extra',  t:'Personal extra y limpieza',                  cat:'sueldo',    g:'👤 Personal'},
+  {k:'cargas_sociales', t:'Cargas sociales',                            cat:'sueldo',    g:'👤 Personal'},
+  {k:'alquiler',        t:'Alquiler',                                   cat:'otro',      g:'🏠 Local'},
+  {k:'luz',             t:'Luz',                                        cat:'servicio',  g:'💡 Servicios'},
+  {k:'gas',             t:'Gas',                                        cat:'servicio',  g:'💡 Servicios'},
+  {k:'agua',            t:'Agua',                                       cat:'servicio',  g:'💡 Servicios'},
+  {k:'internet',        t:'Internet y teléfono',                        cat:'servicio',  g:'💡 Servicios'},
+  {k:'otros_servicios', t:'Otros servicios',                            cat:'servicio',  g:'💡 Servicios'},
+  {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y administración'},
+  {k:'comercio',        t:'Impuesto de comercio',                       cat:'servicio',  g:'🧾 Impuestos y administración'},
+  {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y administración'},
+  {k:'otros_costos',    t:'Otros costos (mantenimiento, bolsas, seguro…)', cat:'otro',   g:'🧾 Impuestos y administración'},
+  {k:'comisiones',      t:'Comisiones (Mercado Pago, banco)',           cat:'otro',      g:'🧾 Impuestos y administración'},
+  {k:'credito',         t:'Cuota de crédito / pago de tarjeta',         cat:'otro',      g:'💳 Créditos'},
+  {k:'inversion',       t:'Inversión (equipamiento)',                   cat:'otro',      g:'📦 Fuera del resultado'},
+  {k:'retiro_socio',    t:'Retiro de socios',                           cat:'otro',      g:'📦 Fuera del resultado'},
+  {k:'sin_clasificar',  t:'Sin clasificar',                             cat:'otro',      g:'❓ Sin clasificar'}
+];
+var ACREEDORES_BASE = ['Tarjeta mía', 'Tarjeta de mi viejo', 'Mercado Crédito', 'IADEP'];
+var SOCIOS_BASE = ['Dueño', 'Jonathan'];
+function rubroDef(k){ for(var i = 0; i < RUBROS_EGRESO.length; i++) if(RUBROS_EGRESO[i].k === k) return RUBROS_EGRESO[i]; return RUBROS_EGRESO[RUBROS_EGRESO.length-1]; }
+function localActual(){ return window.__lrSucursal === 2 ? 2 : 1; }
+// Detalle de los egresos de cada local (egresosDet / l2_egresosDet); valor
+// hora y configuración privada, uno solo para los dos locales.
+function colEgDet(n){ return ldCol(n || localActual(), 'egresosDet'); }
+function colPriv(nombre){ return ldCol(1, nombre); }
+window.__lrEgDet = window.__lrEgDet || {};
+window.__lrEmpPriv = window.__lrEmpPriv || {};
+window.__lrCfgPriv = window.__lrCfgPriv || {};
+function detDeEgreso(e){ return e ? (window.__lrEgDet[String(e.id)] || null) : null; }
+// Rubro de un egreso: el del detalle; sin detalle, lo pagado a un proveedor es
+// mercadería y lo demás queda "sin clasificar".
+function rubroDeEgreso(e){ var d = detDeEgreso(e); if(d && d.rubro) return d.rubro; return (e.categoria||'proveedor') === 'proveedor' ? 'mercaderia' : 'sin_clasificar'; }
+function conceptoDeEgreso(e){ var d = detDeEgreso(e); return (d && d.concepto) || e.proveedor || e.prov || '—'; }
+function catVisibleEgreso(e){ var d = detDeEgreso(e); if(d && d.rubro) return rubroDef(d.rubro).cat; var c = e.categoria||'proveedor'; return c === 'privado' ? 'otro' : c; }
+// Falta clasificar: sin rubro, o una cuota de crédito sin decir a qué corresponde.
+function egresoSinClasificar(e){ var r = rubroDeEgreso(e); if(r === 'sin_clasificar') return true; var d = detDeEgreso(e); return r === 'credito' && !(d && d.partes); }
+function acreedoresLista(){ var c = window.__lrCfgPriv.acreedores; return (c && Array.isArray(c.lista) && c.lista.length) ? c.lista : ACREEDORES_BASE.slice(); }
+function sociosLista(){ var c = window.__lrCfgPriv.socios; return (c && Array.isArray(c.lista) && c.lista.length) ? c.lista.map(function(s){ return s.nombre || s; }) : SOCIOS_BASE.slice(); }
+// Reparto de los gastos compartidos de un mes: el que se eligió para ese mes;
+// si no, el del último mes elegido antes; si no hay ninguno, 50/50.
+function repartoDelMes(mes){
+  var meses = ((window.__lrCfgPriv.repartoCompartidos || {}).meses) || {};
+  var claves = Object.keys(meses).filter(function(k){ return k <= mes; }).sort();
+  var r = claves.length ? meses[claves[claves.length-1]] : null;
+  var a = r ? Number(r['1']) : 50;
+  return (a >= 0 && a <= 100) ? { 1: a, 2: 100 - a, desde: claves.length ? claves[claves.length-1] : null } : { 1: 50, 2: 50, desde: null };
+}
+function guardarRepartoDelMes(mes, pct1){
+  if(!esEquipoDueno()) return Promise.reject(new Error('solo el dueño'));
+  var cambio = {}; cambio[mes] = { 1: pct1, 2: 100 - pct1 };
+  return colPriv('configPriv').doc('repartoCompartidos').set({ meses: cambio }, { merge: true });
+}
+function guardarDetEgreso(det, local){
+  det = JSON.parse(JSON.stringify(det));   // sin campos undefined
+  if(esEquipoDueno() && (local || localActual()) === localActual()) window.__lrEgDet[String(det.id)] = det;
+  // Desde la caja solo se puede CREAR el detalle (no leerlo ni cambiarlo).
+  return colEgDet(local).doc(String(det.id)).set(det).catch(function(e){
+    showToast('⚠ No se pudo guardar el detalle del egreso: '+((e && e.message) || e), true);
+  });
+}
+function borrarDetEgreso(id){
+  if(!esEquipoDueno()) return;
+  delete window.__lrEgDet[String(id)];
+  colEgDet().doc(String(id)).delete().catch(function(){});
+}
+function hashTexto(s){ var h = 5381; s = String(s); for(var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+
+// Valor hora y forma de pago: se leen de la colección privada y se agregan
+// en memoria a cada empleado (solo en el equipo del dueño).
+function aplicarPrivEmpleados(){
+  if(!esEquipoDueno() || !Array.isArray(window.EMPLEADOS)) return;
+  window.EMPLEADOS.forEach(function(e){
+    var p = window.__lrEmpPriv[e.nombre];
+    if(!p) return;
+    if(p.valorHora != null) e.valorHora = p.valorHora;
+    e.formaPago = p.formaPago || null;
+  });
+}
+function sinDatosPrivadosEmpleado(e){
+  if(!e) return e;
+  var p = window.__lrEmpPriv[e.nombre];
+  var tieneValorPriv = esEquipoDueno() && faseB() && p && p.valorHora != null;
+  if(e.formaPago === undefined && !tieneValorPriv) return e;
+  var c = Object.assign({}, e);
+  delete c.formaPago;
+  // El valor hora se saca de la ficha común solo en fase B y cuando ya está a salvo en la privada.
+  if(tieneValorPriv) delete c.valorHora;
+  return c;
+}
+// Copia el valor hora de la ficha común a la privada (si todavía no está).
+// En fase A queda también en la común; en fase B se saca de la común (solo
+// después de confirmar que está en la privada).
+var _migrandoValorHora = {};
+function migrarValorHoraPrivado(){
+  if(!esEquipoDueno() || !window.__lrEmpPrivListo || !window.__lrSync || !window.__lrSync.empleadosListos) return;
+  var pub = window.__lrSync.ultimoEmpleadosSnapshot || {};
+  Object.keys(pub).forEach(function(nombre){
+    var v = pub[nombre] && pub[nombre].valorHora;
+    if(v === undefined || v === null || _migrandoValorHora[nombre]) return;
+    _migrandoValorHora[nombre] = true;
+    var p = window.__lrEmpPriv[nombre];
+    if(p && p.valorHora != null && !faseB()){ _migrandoValorHora[nombre] = false; return; }
+    var paso = (p && p.valorHora != null) ? Promise.resolve() : colPriv('empleadosPriv').doc(nombre).set({ valorHora: Number(v) || 0 }, { merge: true });
+    paso.then(function(){
+      if(!faseB()) return;
+      return window.__lrDB.collection(window.__lrCOL.empleados).doc(nombre).update({ valorHora: firebase.firestore.FieldValue.delete() });
+    }).catch(function(e){ console.warn('No se pudo pasar el valor hora de '+nombre+' a privado', e); })
+      .then(function(){ _migrandoValorHora[nombre] = false; });
+  });
+}
+function refrescarEgresosPrivados(){
+  var pe = document.getElementById('pane-egresos');
+  if(pe && pe.classList.contains('active') && typeof renderEgresos === 'function') try{ renderEgresos(); }catch(e){}
+  var ov = document.getElementById('clfOverlay');
+  if(ov && ov.style.display !== 'none') try{ pintarClasificar(); }catch(e){}
+}
+// Escuchas privadas: solo en el equipo del dueño. En la caja no se abre nada nuevo.
+(function(){
+  var t = setInterval(function(){
+    if(!window.__lrDB || !window.__lrUsuario || window.__lrEsPuesto) return;
+    clearInterval(t);
+    // En qué fase está este local (lo leen todos los equipos: define cómo se
+    // guarda un pago del dueño cargado desde cualquier lado).
+    try{
+      window.__lrDB.collection(window.__lrCOL.config).doc('privacidad').onSnapshot(function(d){
+        window.__lrPrivacidad = d.exists ? d.data() : {};
+        refrescarEgresosPrivados();
+      }, function(e){ console.warn('privacidad', e); });
+    }catch(e){ console.warn('privacidad', e); }
+    if(!esEquipoDueno()) return;
+    try{
+      colEgDet().onSnapshot(function(snap){
+        var m = {}; snap.forEach(function(d){ m[d.id] = d.data(); });
+        window.__lrEgDet = m; window.__lrEgDetListo = true;
+        refrescarEgresosPrivados();
+      }, function(e){ console.warn('detalle de egresos', e); });
+      colPriv('empleadosPriv').onSnapshot(function(snap){
+        var m = {}; snap.forEach(function(d){ m[d.id] = d.data(); });
+        window.__lrEmpPriv = m; window.__lrEmpPrivListo = true;
+        aplicarPrivEmpleados(); migrarValorHoraPrivado();
+        var pl = document.getElementById('liquidacionGrid');
+        if(pl && pl.offsetParent && typeof renderLiquidacion === 'function') try{ renderLiquidacion(); }catch(e){}
+      }, function(e){ console.warn('empleados privados', e); });
+      colEgPriv().onSnapshot(function(snap){
+        var lista = [], mapa = {};
+        snap.forEach(function(d){ var x = d.data(); mapa[d.id] = JSON.parse(JSON.stringify(x)); x._priv = true; lista.push(x); });
+        lista.sort(function(a, b){ return (a.id||0) - (b.id||0); });
+        window.__lrEgPrivLista = lista; window.__lrEgPrivMapa = mapa;
+        refrescarEgresosPrivados();
+      }, function(e){ console.warn('pagos privados', e); });
+      colPriv('configPriv').onSnapshot(function(snap){
+        var c = {}; snap.forEach(function(d){ c[d.id] = d.data(); });
+        window.__lrCfgPriv = c;
+      }, function(e){ console.warn('configuración privada', e); });
+    }catch(e){ console.warn('datos privados', e); }
+  }, 1000);
+})();
+
+// ── Formulario de egresos: rubro y detalle ──
+function poblarRubrosEgreso(){
+  var sel = document.getElementById('eRubro');
+  if(!sel || sel.options.length) return;
+  var grupos = [];
+  RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
+  sel.innerHTML = grupos.map(function(g){
+    return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g; }).map(function(r){ return '<option value="'+r.k+'">'+r.t+'</option>'; }).join('')+'</optgroup>';
+  }).join('');
+  sel.value = 'mercaderia';
+}
+function _opciones(lista, actual, vacio){
+  return (vacio ? '<option value="">'+vacio+'</option>' : '')+lista.map(function(x){ return '<option value="'+escBaja(x)+'"'+(x === actual ? ' selected' : '')+'>'+escBaja(x)+'</option>'; }).join('');
+}
+function cambiarRubroEgreso(){
+  var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var cat = document.getElementById('eCategoria');
+  var nueva = rubroDef(r).cat;
+  if(cat && cat.value !== nueva){ cat.value = nueva; cambiarCatEgreso(); }
+  pintarDetEgreso();
+}
+function pintarDetEgreso(){
+  var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var box = document.getElementById('eDetBox');
+  if(!box) return;
+  box.style.display = r === 'mercaderia' ? 'none' : 'block';
+  if(r === 'mercaderia') return;
+  var ver = function(id, si){ var el = document.getElementById(id); if(el) el.style.display = si ? '' : 'none'; };
+  ver('eEmpRow', r === 'sueldos' || r === 'personal_extra');
+  ver('eCredRow', r === 'credito');
+  ver('eSocioRow', r === 'retiro_socio');
+  var emp = document.getElementById('eEmpleado');
+  if(emp && !emp.options.length) emp.innerHTML = _opciones((getEmpleados()||[]).map(function(e){ return e.nombre; }).sort(), '', '— Elegí —');
+  var ac = document.getElementById('eAcreedor');
+  if(ac){ var va = ac.value; ac.innerHTML = _opciones(acreedoresLista(), va, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; }
+  var so = document.getElementById('eSocio');
+  if(so && !so.options.length) so.innerHTML = _opciones(sociosLista(), '', '— Elegí —');
+  var fe = document.getElementById('eFecha'), me = document.getElementById('eMes');
+  if(me && !me.dataset.tocado) me.value = ((fe && fe.value) || fechaLocalStr(new Date())).slice(0,7);
+  var su = document.getElementById('eSuc');
+  if(su && !su.dataset.tocado) su.value = String(localActual());
+  var comp = su && su.value === 'compartido';
+  ver('eRepartoRow', comp);
+  var r1 = document.getElementById('eRep1'), r2 = document.getElementById('eRep2');
+  if(comp && r1 && !r1.dataset.tocado){ var d = repartoDelMes(me ? me.value : ''); r1.value = d[1]; if(r2) r2.value = d[2]; }
+}
+function elegirEmpleadoEgreso(){
+  var v = (document.getElementById('eEmpleado')||{}).value || '';
+  var c = document.getElementById('eConcepto');
+  if(v && c && (!c.value || c.dataset.auto === '1')){ c.value = v; c.dataset.auto = '1'; }
+}
+function repartoEgresoCambio(cual){
+  var r1 = document.getElementById('eRep1'), r2 = document.getElementById('eRep2');
+  if(!r1 || !r2) return;
+  r1.dataset.tocado = '1';
+  if(cual === 1) r2.value = Math.max(0, Math.min(100, 100 - (Number(r1.value)||0)));
+  else r1.value = Math.max(0, Math.min(100, 100 - (Number(r2.value)||0)));
+}
+function partesTodoEn(campo){
+  var monto = document.getElementById('eMedio').value === 'Mixto'
+    ? getMontoInputValue('eMixtoEfec') + getMontoInputValue('eMixtoTransf') : getMontoInputValue('eMonto');
+  ['ePMerc','ePEquip','ePGastos','ePInt'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  var el = document.getElementById(campo);
+  if(el && monto > 0){ el.value = String(monto).replace('.', ','); formatMontoDecInput(el); }
+}
+function agregarAcreedor(sel){
+  var n = (prompt('Nombre del acreedor (ej.: Tarjeta Naranja):') || '').trim();
+  sel = sel || document.getElementById('eAcreedor');
+  if(!n){ if(sel) sel.value = ''; return; }
+  var lista = acreedoresLista();
+  if(lista.indexOf(n) === -1) lista.push(n);
+  window.__lrCfgPriv.acreedores = { lista: lista };
+  if(esEquipoDueno()) colPriv('configPriv').doc('acreedores').set({ lista: lista }).catch(function(){});
+  if(sel){ sel.innerHTML = _opciones(lista, n, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; sel.value = n; }
+}
+// Lee el detalle del formulario. Devuelve {error} si falta algo.
+function leerDetEgresoForm(rubro, monto, concepto, fecha){
+  var val = function(id){ var el = document.getElementById(id); return el ? String(el.value||'').trim() : ''; };
+  var suc = val('eSuc') || String(localActual());
+  var det = { rubro: rubro, concepto: concepto, mes: val('eMes') || String(fecha||'').slice(0,7),
+    suc: suc === 'compartido' ? 'compartido' : Number(suc), creado: new Date().toISOString(), por: currentEmp ? currentEmp.nombre : 'Admin' };
+  if(rubro === 'sueldos' || rubro === 'personal_extra'){
+    var emp = val('eEmpleado');
+    if(emp) det.empleado = emp;
+    else if(rubro === 'sueldos') return { error: 'Elegí a qué empleado le pagaste' };
+  }
+  if(det.suc === 'compartido'){
+    var a = Number(val('eRep1')), b = Number(val('eRep2'));
+    if(!(a >= 0 && b >= 0) || Math.round(a + b) !== 100) return { error: 'El reparto entre los locales tiene que sumar 100 %' };
+    var def = repartoDelMes(det.mes);
+    if(a !== def[1]) det.reparto = { 1: a, 2: b };   // si no, usa el del mes
+  }
+  if(rubro === 'credito'){
+    det.acreedor = val('eAcreedor');
+    if(!det.acreedor || det.acreedor === '__nuevo__') return { error: 'Elegí el acreedor (tarjeta o crédito)' };
+    var p = { mercaderia: getMontoInputValue('ePMerc'), equipamiento: getMontoInputValue('ePEquip'), gastos: getMontoInputValue('ePGastos'), intereses: getMontoInputValue('ePInt') };
+    var tot = p.mercaderia + p.equipamiento + p.gastos + p.intereses;
+    if(tot > 0){
+      if(Math.abs(tot - monto) > 0.5) return { error: 'Las partes suman '+fmt(tot)+' y el pago es de '+fmt(monto)+': tienen que dar igual' };
+      det.partes = p;
+    } else det.partes = null;   // queda "Sin clasificar"
+  }
+  if(rubro === 'retiro_socio'){
+    det.socio = val('eSocio');
+    if(!det.socio) return { error: 'Elegí qué socio retiró' };
+  }
+  return det;
+}
+function resetDetEgreso(){
+  var r = document.getElementById('eRubro'); if(r) r.value = 'mercaderia';
+  ['eMes','eSuc','eRep1'].forEach(function(id){ var el = document.getElementById(id); if(el) delete el.dataset.tocado; });
+  ['ePMerc','ePEquip','ePGastos','ePInt'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  ['eEmpleado','eAcreedor','eSocio'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  var c = document.getElementById('eConcepto'); if(c) delete c.dataset.auto;
+  pintarDetEgreso();
+}
 
 function toggleEProvNuevo() {
   var sel = document.getElementById('eProvSel');
@@ -15698,7 +16132,11 @@ function getConceptosPrevios(cat) {
   var egresos = getEgresos();
   var conceptos = {};
   egresos.filter(function(e){ return (e.categoria||'proveedor') === cat; })
-    .forEach(function(e){ if(e.prov) conceptos[e.prov] = true; });
+    .forEach(function(e){ if(e.prov && e.prov !== EG_DUENO_EF) conceptos[e.prov] = true; });
+  Object.keys(window.__lrEgDet || {}).forEach(function(id){
+    var d = window.__lrEgDet[id];
+    if(d && d.concepto && d.rubro && rubroDef(d.rubro).cat === cat) conceptos[d.concepto] = true;
+  });
   var ocultos = window.__lrConceptosOcultosCache || [];
   return Object.keys(conceptos).filter(function(c){ return ocultos.indexOf(claveConceptoOculto(cat, c)) === -1; }).sort();
 }
@@ -15741,6 +16179,10 @@ function guardarEdicionConcepto(viejo) {
       if((e.categoria||'proveedor') !== cat || e.prov !== viejo) return;
       e.prov = nuevo;
       if(e.proveedor === viejo) e.proveedor = nuevo;
+    });
+    Object.keys(window.__lrEgDet || {}).forEach(function(id){
+      var d = window.__lrEgDet[id];
+      if(d && d.concepto === viejo && d.rubro && rubroDef(d.rubro).cat === cat){ d.concepto = nuevo; colEgDet().doc(id).update({ concepto: nuevo }).catch(function(){}); }
     });
     window.__lrEgresosCache = egresos;
     guardarOperacionProtegida('Egresos', getEgresos, 'Concepto "'+viejo+'" → "'+nuevo+'"');
@@ -15934,22 +16376,39 @@ function registrarEgreso() {
   if(!prov)  { showToast('Elegí un proveedor o concepto',true); return; }
   if(!fecha) { showToast('Seleccioná la fecha',true); return; }
 
+  // Rubro y detalle: lo que no es mercadería guarda su detalle aparte (solo lo
+  // lee el dueño). En fase B, además, el pago no queda a la vista de la caja.
+  var rubroEg = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var detEg = rubroEg === 'mercaderia' ? null : leerDetEgresoForm(rubroEg, monto, prov, fecha);
+  if(detEg && detEg.error){ showToast(detEg.error, true); return; }
+
   var egreso = {id:Date.now(), prov:prov, proveedor:prov, categoria:cat||'proveedor', monto:monto, fecha:fecha, ts:new Date().toISOString(), medio:medio, nota:nota};
   if(mixtoData) egreso.mixto = mixtoData;
   egreso.caja = cajaElegida('egreso');   // con dos cajas, de qué cajón sale el efectivo
+  if(detEg){
+    detEg.id = egreso.id;
+    if(nota) detEg.nota = nota;
+    egreso = prepararEgresoDueno(egreso, detEg);
+    guardarDetEgreso(detEg);
+  }
+  var ocultoEnCaja = !!(detEg && faseB());
 
   var egresos = getEgresos();
   egresos.push(egreso);
   window.__lrEgresosCache = egresos;
-  guardarOperacionProtegida('Egresos', getEgresos, 'Egreso a '+prov+' ($'+Number(monto).toLocaleString('es-AR')+')');
+  guardarOperacionProtegida('Egresos', getEgresos, 'Egreso a '+(ocultoEnCaja ? 'Pago del dueño' : prov)+' ($'+Number(monto).toLocaleString('es-AR')+')');
 
   // Registrar en movimientos (igual que hace Recepción, para que el pago
   // aparezca una sola vez y en el mismo lugar sin importar desde dónde se cargó).
   var resumenMedioAdmin = medio==='Mixto' ? ('Mixto (ef:'+fmt(mixtoData.efectivo)+' / tr:'+fmt(mixtoData.transferencia)+')') : medio;
-  var movsEg = getMovimientos();
-  movsEg.push({id:egreso.id, fecha:egreso.ts, tipo:'egreso', resumen:prov+(nota?' — '+nota:''), total:monto, responsable:currentEmp?currentEmp.nombre:'Admin', extra:resumenMedioAdmin, items:[{nombre:prov,qty:1,precio:monto,subtotal:monto,stock:null}]});
-  if(movsEg.length>2000) movsEg=movsEg.slice(-2000);
-  saveMovimientos(movsEg);
+  // En fase B: un pago privado no deja movimiento (la caja los lee); uno del cajón, sin detalle.
+  if(!(ocultoEnCaja && egreso._priv)){
+    var movsEg = getMovimientos();
+    var provMov = ocultoEnCaja ? EG_DUENO_EF : prov, notaMov = ocultoEnCaja ? '' : nota;
+    movsEg.push({id:egreso.id, fecha:egreso.ts, tipo:'egreso', resumen:provMov+(notaMov?' — '+notaMov:''), total:monto, responsable:currentEmp?currentEmp.nombre:'Admin', extra:ocultoEnCaja?'Efectivo':resumenMedioAdmin, items:[{nombre:provMov,qty:1,precio:monto,subtotal:monto,stock:null}]});
+    if(movsEg.length>2000) movsEg=movsEg.slice(-2000);
+    saveMovimientos(movsEg);
+  }
 
   // Limpiar form
   poblarSelectProveedoresEgreso();
@@ -15966,6 +16425,7 @@ function registrarEgreso() {
   _conceptoDropOpen = false;
   var ecat = document.getElementById('eCategoria'); if(ecat) ecat.value='proveedor';
   cambiarCatEgreso();
+  resetDetEgreso();
   selEgMedio('Efectivo');
   renderEgresos();
   mpConfirmarEgreso(egreso.id);
@@ -15978,12 +16438,20 @@ function renderEgresos() {
 
   var filtrados = getEgFiltrados();
   mpReintentarEgresos(getEgresos());
+  poblarRubrosEgreso();
+  var barClf = document.getElementById('egClasifBar');
+  if(barClf){
+    if(esEquipoDueno()){
+      var nSin = getEgresos().filter(function(e){ return e.fecha >= CLF_DESDE_BASE && egresoSinClasificar(e); }).length;
+      barClf.innerHTML = '<button onclick="abrirClasificarEgresos()" style="width:100%;background:'+(nSin?'rgba(231,76,60,.12)':'var(--card)')+';border:1px solid '+(nSin?'#e74c3c':'var(--border)')+';color:'+(nSin?'#e74c3c':'var(--light)')+';border-radius:6px;padding:9px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">🏷 CLASIFICAR EGRESOS'+(nSin?' — '+nSin+' sin clasificar':' ✓')+'</button>';
+    } else barClf.innerHTML = '';
+  }
 
   // KPIs por categoría
   if(kpisEl) {
     var cats = {proveedor:0, sueldo:0, servicio:0, otro:0};
     filtrados.forEach(function(e){
-      var c = e.categoria||'proveedor';
+      var c = catVisibleEgreso(e);
       if(cats[c]!==undefined) cats[c]+=e.monto; else cats.otro+=e.monto;
     });
     var total = filtrados.reduce(function(s,e){ return s+e.monto; },0);
@@ -16016,20 +16484,32 @@ function renderEgresos() {
   filtrados.slice().reverse().forEach(function(e){
     var row = document.createElement('div');
     row.className = 'egreso-row';
-    var prov = e.proveedor || e.prov || '—';
+    var prov = conceptoDeEgreso(e);
     var catIconos = {proveedor:'🚚',sueldo:'👤',servicio:'💡',otro:'📋'};
-    var catIcon = catIconos[e.categoria||'proveedor'] || '📋';
+    var catIcon = catIconos[catVisibleEgreso(e)] || '📋';
+    var detE = esEquipoDueno() ? detDeEgreso(e) : null;
+    var rubroTxt = '';
+    if(esEquipoDueno() && (detE || (e.categoria||'proveedor') !== 'proveedor')){
+      var sinClf = egresoSinClasificar(e);
+      rubroTxt = '<div style="font-size:.64rem;margin-top:1px;color:'+(sinClf?'#e74c3c;font-weight:700':'var(--gold)')+'">'+
+        (sinClf ? '⚠ Sin clasificar' : rubroDef(detE.rubro).t)+
+        (detE && detE.empleado ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor ? ' · '+escBaja(detE.acreedor) : '')+
+        (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+detE.mes : '')+
+        (detE && detE.suc === 'compartido' ? ' · compartido' : (detE && detE.suc && detE.suc !== localActual() ? ' · Limay '+detE.suc : ''))+'</div>';
+    }
+    var notaE = (detE && detE.nota) || e.nota;
     row.innerHTML =
       '<span class="egreso-fecha">'+e.fecha+'</span>'+
       '<span class="egreso-prov">'+
         '<div style="display:flex;align-items:center;gap:5px">'+
           '<span style="font-size:.7rem">'+catIcon+'</span>'+
-          '<span>'+prov+'</span>'+
+          '<span>'+escBaja(prov)+'</span>'+
         '</div>'+
-        (e.nota?'<div style="color:var(--gray);font-size:.7rem;margin-top:1px">'+e.nota+'</div>':'')+
+        rubroTxt+
+        (notaE?'<div style="color:var(--gray);font-size:.7rem;margin-top:1px">'+escBaja(notaE)+'</div>':'')+
         (e.responsable?'<div style="font-size:.65rem;color:var(--gray);margin-top:1px">Registró: '+e.responsable+'</div>':'')+
       '</span>'+
-      '<span class="egreso-medio">'+e.medio+(e.mpPago?' <span style="color:var(--green)" title="El pago figura en Mercado Pago">✅ en MP</span>':'')+'</span>'+
+      '<span class="egreso-medio">'+medioEgresoTxt(e.medio)+(e.mpPago?' <span style="color:var(--green)" title="El pago figura en Mercado Pago">✅ en MP</span>':'')+'</span>'+
       '<span class="egreso-monto">−'+fmt(e.monto)+'</span>'+
       '<button class="egreso-del" onclick="eliminarEgreso('+e.id+')">🗑</button>';
     list.appendChild(row);
@@ -16393,6 +16873,8 @@ function eliminarEgreso(id) {
     if(!ok) return;
     var egresos = getEgresos().filter(function(e){ return e.id!==id; });
     window.__lrEgresosCache = egresos;
+    marcarEgresoBorrado(id);
+    borrarDetEgreso(id);
     guardarOperacionProtegida('Egresos', getEgresos, 'Egreso eliminado');
     // Borrar también el movimiento asociado (mismo id), si existe
     var movs = getMovimientos();
@@ -16987,6 +17469,12 @@ function calcularResumenRentabilidad(rango) {
 }
 
 function renderRentabilidad() {
+  // En el admin abierto en la caja no están los pagos privados del dueño: se
+  // bloquea en vez de mostrar números incompletos.
+  var rPri = document.getElementById('rentPrincipal'), rAv = document.getElementById('rentAvisoDueno');
+  if(rPri) rPri.style.display = esEquipoDueno() ? '' : 'none';
+  if(rAv){ rAv.style.display = esEquipoDueno() ? 'none' : ''; if(!esEquipoDueno()) rAv.innerHTML = avisoSoloDueno('La rentabilidad completa'); }
+  if(!esEquipoDueno()) return;
   var rango = getFechasRango(_periodoCurrent);
   var r = calcularResumenRentabilidad(rango);
   var ventas = r.ventas, egresos = r.egresos, consumos = r.consumos;
@@ -17171,6 +17659,7 @@ function exportarEgresosPDF() {
 }
 
 function exportarRentabilidadPDF() {
+  if(!esEquipoDueno()){ showToast('🔒 La rentabilidad se ve solo desde el equipo del dueño', true); return; }
   var rango = getFechasRango(_periodoCurrent);
   var periodoNombre = etiquetaPeriodo(_periodoCurrent);
 
@@ -17598,6 +18087,7 @@ function toggleLiqEmp(nombre) {
 function renderLiquidacion() {
   var grid     = document.getElementById('liquidacionGrid');
   if(!grid) return;
+  if(!esEquipoDueno()){ grid.innerHTML = avisoSoloDueno('La liquidación de sueldos'); return; }
 
   var rangoLiq;
   if(_liqDesde && _liqHasta) {
@@ -18011,6 +18501,16 @@ function aplicarSugeridos(){
 function setValorHoraEmpleado(nombre, valor) {
   var empleados = getEmpleados();
   var emp = empleados.find(function(e){ return e.nombre===nombre; });
+  // El valor hora se guarda en la colección privada del dueño.
+  if(emp && esEquipoDueno()){
+    var v = parseFloat(valor)||0;
+    emp.valorHora = v;
+    window.__lrEmpPriv[nombre] = Object.assign({}, window.__lrEmpPriv[nombre], { valorHora: v });
+    colPriv('empleadosPriv').doc(nombre).set({ valorHora: v }, { merge: true })
+      .catch(function(e){ showToast('⚠ No se pudo guardar el valor hora: '+((e && e.message) || e), true); });
+    // En fase A se guarda también en la ficha común, como siempre.
+    if(faseB()){ renderLiquidacion(); return; }
+  }
   if(emp){
     emp.valorHora = parseFloat(valor)||0;
     saveEmpleados(empleados);
@@ -18113,6 +18613,8 @@ function aplicarDescuentoConsumos(nombreEmp, monto, mesKey) {
 // de caja del período — exactamente lo que se ve en su tarjeta. No mueve
 // plata de la caja: solo deja registrado que la liquidación ya se pagó.
 function registrarPagoLiquidacion(nombreEmp) {
+  if(!esEquipoDueno()){ showToast('🔒 La liquidación se registra solo desde el equipo del dueño', true); return; }
+  if(window._liqRegistrando){ showToast('Ya se está registrando una liquidación, esperá un momento', true); return; }
   var rango = getRangoLiquidacion();
   var enRango = function(f){ var d = new Date(f); return d>=rango.desde && d<=rango.hasta; };
   var emp = getEmpleados().find(function(e){ return e.nombre===nombreEmp; });
@@ -18129,6 +18631,8 @@ function registrarPagoLiquidacion(nombreEmp) {
   var totCons = cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var totFalt = falt.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
   var neto = sueldo - totCons - totFalt;
+  // Sueldo bruto, consumos y faltantes por local y por mes (para los egresos).
+  var gruposEg = gruposLiquidacion(turnos, cons, falt);
   // Cuánto paga cada local
   var porL = {};
   [1, 2].forEach(function(L){
@@ -18145,8 +18649,10 @@ function registrarPagoLiquidacion(nombreEmp) {
     '\nTOTAL PAGADO: '+fmt(neto)+'\n'+
     (dosLoc ? Object.keys(porL).map(function(L){ return '   · Paga Limay '+L+': '+fmt(porL[L]); }).join('\n')+'\n' : '')+
     '\nLos turnos quedan como pagados y los consumos/faltantes como descontados'+(dosLoc?' en los dos locales':'')+'. ¿Confirmás?';
-  askConfirm(txt).then(function(ok){
-    if(!ok) return;
+  window._liqRegistrando = true;
+  askConfirm(txt).then(function(ok){ return ok ? elegirMedioPagoSueldo(nombreEmp, neto) : null; }).then(function(medioSel){
+    window._liqRegistrando = false;
+    if(!medioSel) return;
     var ahoraISO = new Date().toISOString();
     var aca = function(c){ return !c._local; };
     var idsT = {}; turnos.filter(aca).forEach(function(c){ idsT[c.fecha] = true; });
@@ -18181,10 +18687,86 @@ function registrarPagoLiquidacion(nombreEmp) {
     });
     if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); })
       .catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+liqLocalOtro()+': '+((e && e.message) || e), true); });
+    crearEgresosDeLiquidacion(nombreEmp, valorHora, gruposEg, medioSel, ahoraISO);
     showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')');
     renderLiquidacion();
     if(typeof renderHoras === 'function') renderHoras();
   });
+}
+
+// Agrupa lo que se liquida por local y por mes de los turnos: cada grupo es un
+// egreso de sueldo con su "mes al que corresponde" y su sucursal.
+function gruposLiquidacion(turnos, cons, falt){
+  var grupos = {};
+  var mesDe = function(f){ return fechaLocalStr(new Date(f)).slice(0,7); };
+  var g = function(L, mes){ var k = L+'|'+mes; return grupos[k] || (grupos[k] = { L: L, mes: mes, min: 0, turnos: [], consumos: 0, faltantes: 0 }); };
+  turnos.forEach(function(c){ var x = g(localDe(c), mesDe(c.fecha)); x.min += minutosPagados(c); x.turnos.push(String(c.fecha)); });
+  cons.forEach(function(c){ g(localDe(c), mesDe(c.fecha)).consumos += pendienteConsumo(c); });
+  falt.forEach(function(c){ g(localDe(c), mesDe(c.fecha)).faltantes += faltantePendienteCierre(c); });
+  return Object.keys(grupos).map(function(k){ return grupos[k]; });
+}
+// Pregunta cómo se pagó el sueldo. Resuelve {medio, caja}, 'ninguno' o null (cancelar).
+function elegirMedioPagoSueldo(nombreEmp, neto){
+  return new Promise(function(resolver){
+    var ov = document.getElementById('medioSueldoOverlay');
+    if(!ov){
+      ov = document.createElement('div'); ov.id = 'medioSueldoOverlay';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px';
+      document.body.appendChild(ov);
+    }
+    var b = 'display:block;width:100%;margin-top:8px;border-radius:7px;padding:12px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;cursor:pointer;text-align:left;';
+    // Si hay un turno abierto en esa caja, el pago se descuenta de lo que
+    // tiene que haber en el cajón al cerrarlo: se avisa de quién es.
+    var turnoEn = function(c){ var s = (window.__lrSesionesVigentes || []).find(function(x){ return x && x.turnoInicio && cajaDe(x) === c; }); return s ? s.nombre : ''; };
+    var notaCaja = function(c){ var q = turnoEn(c); return '<div style="font-family:Barlow,sans-serif;font-size:.68rem;letter-spacing:0;color:'+(q?'#e67e22':'var(--gray)')+';margin-top:3px">'+(q ? '⚠ Turno abierto de '+escBaja(q)+': se descuenta de lo que tiene que haber al cerrar.' : 'No hay turno abierto en esta caja.')+'</div>'; };
+    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:400px;width:100%;padding:16px;color:var(--light)">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">💵 ¿CÓMO LE PAGASTE A '+escBaja(nombreEmp).toUpperCase()+'?</div>'+
+      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 4px">Se registra el egreso del sueldo ('+fmt(neto)+').</div>'+
+      '<button data-m="mp" style="'+b+'background:var(--gold);color:#000;border:none">📲 Mercado Pago / transferencia</button>'+
+      '<button data-m="c1" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 1'+notaCaja(1)+'</button>'+
+      '<button data-m="c2" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 2'+notaCaja(2)+'</button>'+
+      '<button data-m="fu" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">👛 Efectivo que no sale de las cajas<div style="font-family:Barlow,sans-serif;font-size:.68rem;letter-spacing:0;color:var(--gray);margin-top:3px">De tu bolsillo o de plata ya retirada: no toca el arqueo.</div></button>'+
+      '<button data-m="no" style="'+b+'background:none;border:1px solid var(--border);color:var(--gray)">Ya cargué el egreso a mano (no crear otro)</button>'+
+      '<button data-m="x" style="'+b+'background:none;border:none;color:var(--gray);text-decoration:underline">Cancelar</button></div>';
+    ov.style.display = 'flex';
+    ov.querySelectorAll('button').forEach(function(btn){
+      btn.onclick = function(){
+        ov.style.display = 'none';
+        var m = btn.getAttribute('data-m');
+        resolver(m === 'mp' ? { medio: 'MercadoPago' } : m === 'c1' ? { medio: 'Efectivo', caja: 1 } : m === 'c2' ? { medio: 'Efectivo', caja: 2 } : m === 'fu' ? { medio: 'EfectivoFuera' } : m === 'no' ? 'ninguno' : null);
+      };
+    });
+  });
+}
+// Un egreso de sueldo por cada local y mes liquidado. Se guardan en el local
+// donde se hizo el pago (de ahí salió la plata); el detalle dice a qué
+// sucursal y mes corresponde. Cada uno lleva una clave (empleado + local + mes
+// + turnos): si se vuelve a registrar lo mismo, no se crea otro.
+function crearEgresosDeLiquidacion(nombreEmp, valorHora, grupos, medioSel, ahoraISO){
+  if(!medioSel || medioSel === 'ninguno') return;
+  var nuevos = [];
+  grupos.forEach(function(x, i){
+    var bruto = Math.round((x.min/60) * valorHora);
+    if(!bruto && !x.consumos && !x.faltantes) return;
+    var neto = bruto - x.consumos - x.faltantes;
+    var clave = hashTexto('liq|'+nombreEmp+'|'+x.L+'|'+x.mes+'|'+x.turnos.slice().sort().join(','));
+    if(getEgresos().some(function(e){ return e.liqClave === clave; })) return;
+    var id = Date.now() + i;
+    var eg = { id: id, prov: nombreEmp, proveedor: nombreEmp, categoria: 'sueldo', monto: Math.max(0, neto),
+      fecha: fechaLocalStr(new Date()), ts: ahoraISO, medio: medioSel.medio, nota: 'Liquidación', liqClave: clave,
+      caja: medioSel.caja || cajaTurnoActual() };
+    var det = { id: id, rubro: 'sueldos', concepto: nombreEmp, empleado: nombreEmp, mes: x.mes, suc: x.L,
+      liq: { bruto: bruto, consumos: x.consumos, faltantes: x.faltantes, neto: neto, minutos: x.min, turnos: x.turnos.length, valorHora: valorHora },
+      creado: ahoraISO, por: currentEmp ? currentEmp.nombre : 'Admin' };
+    nuevos.push(prepararEgresoDueno(eg, det));
+    guardarDetEgreso(det);
+  });
+  if(!nuevos.length) return;
+  var lista = getEgresos();
+  nuevos.forEach(function(e){ lista.push(e); });
+  window.__lrEgresosCache = lista;
+  guardarOperacionProtegida('Egresos', getEgresos, 'Sueldo de '+nombreEmp, true);
+  nuevos.forEach(function(e){ if(e.medio === 'MercadoPago') mpConfirmarEgreso(e.id); });
 }
 
 function marcarFaltantesSaldados(nombreEmp) {
@@ -18275,6 +18857,7 @@ function exportarLiquidacionPDF(nombre) {
 // PDF para el empleado — pensado para leerlo en el celu: arriba lo que
 // tiene que cobrar y cómo se calcula, después sus turnos y consumos en lista.
 function exportarPDFEmpleado(nombre) {
+  if(!esEquipoDueno()){ showToast('🔒 Los sueldos se ven solo desde el equipo del dueño', true); return; }
   var empObj    = getEmpleados().find(function(e){ return e.nombre===nombre; });
   var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
   var cierres   = _liqCierres();
@@ -22355,6 +22938,395 @@ function toggleInformeAsesoriaSection() {
   if(arrow) arrow.classList.toggle('open');
 }
 
+// ── 🏷 CLASIFICAR EGRESOS ───────────────────────────────────────────────
+// Para el historial (desde septiembre): el sistema sugiere el rubro, el
+// empleado y el mes al que corresponde, y el dueño confirma o corrige. Al
+// guardar, el concepto pasa al detalle privado y en la caja queda "Pago (admin)".
+var CLF_DESDE_BASE = '2026-09-01';
+var _clf = { desde: CLF_DESDE_BASE, todos: false, borr: {} };
+function abrirClasificarEgresos(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var ov = document.getElementById('clfOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'clfOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.9);overflow-y:auto;padding:16px';
+    document.body.appendChild(ov);
+  }
+  _clf.borr = {};
+  ov.style.display = 'block';
+  pintarClasificar();
+}
+function cerrarClasificar(){ var ov = document.getElementById('clfOverlay'); if(ov) ov.style.display = 'none'; if(typeof renderEgresos === 'function') renderEgresos(); }
+function _clfEmpleadoDe(texto){
+  var t = String(texto||'').toLowerCase();
+  var emps = (getEmpleados()||[]).map(function(e){ return e.nombre; });
+  for(var i = 0; i < emps.length; i++){
+    var n = String(emps[i]).toLowerCase(), primero = n.split(' ')[0];
+    if(t.indexOf(n) !== -1 || (primero.length >= 3 && new RegExp('(^|[^a-záéíóúñ])'+primero.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')+'([^a-záéíóúñ]|$)').test(t))) return emps[i];
+  }
+  return '';
+}
+// Mes del sueldo: el de los turnos que se marcaron pagados cerca de la fecha del pago.
+function _clfMesSueldo(emp, fecha){
+  var t = new Date(fecha+'T12:00:00').getTime(), meses = {};
+  getCierres().forEach(function(c){
+    if(c.empleado !== emp || !c.pagado || !c.fechaPagado) return;
+    if(Math.abs(new Date(c.fechaPagado).getTime() - t) > 3*86400000) return;
+    var m = fechaLocalStr(new Date(c.fecha)).slice(0,7); meses[m] = (meses[m]||0) + 1;
+  });
+  var ks = Object.keys(meses).sort(function(a, b){ return meses[b] - meses[a]; });
+  return ks[0] || '';
+}
+function sugerirClasificacion(e){
+  var texto = ((e.prov||'')+' '+(e.nota||'')).toLowerCase();
+  var cat = e.categoria || 'proveedor';
+  var s = { rubro: 'sin_clasificar', mes: String(e.fecha).slice(0,7), suc: localActual(), confianza: 'revisar' };
+  var es = function(re){ return re.test(texto); };
+  if(cat === 'proveedor'){
+    if(es(/heladera|freezer|exhibidor|balanza|estanter|equipo|aire acond|computadora|notebook|impresora|c[aá]mara|posnet|cartel|mueble/)){ s.rubro = 'inversion'; }
+    else { s.rubro = 'mercaderia'; s.confianza = 'alta'; }
+    return s;
+  }
+  var emp = _clfEmpleadoDe(texto);
+  if(cat === 'sueldo' || emp){
+    if(es(/limpieza|extra|ayudante|changa/)){ s.rubro = 'personal_extra'; s.confianza = 'alta'; if(emp) s.empleado = emp; return s; }
+    if(emp){
+      s.rubro = 'sueldos'; s.empleado = emp; s.confianza = 'alta';
+      var m = _clfMesSueldo(emp, e.fecha);
+      if(m) s.mes = m;
+      else {
+        var p = window.__lrEmpPriv[emp];
+        if(p && p.formaPago === 'mensual' && Number(String(e.fecha).slice(8,10)) <= 10){
+          var d = new Date(e.fecha+'T12:00:00'); d.setDate(1); d.setMonth(d.getMonth()-1); s.mes = fechaLocalStr(d).slice(0,7); s.confianza = 'revisar';
+        }
+      }
+      return s;
+    }
+    if(cat === 'sueldo'){ s.rubro = 'sueldos'; return s; }
+  }
+  var reglas = [
+    [/alquiler/, 'alquiler'], [/\bluz\b|edenor|epen|calf|energ[ií]a|electric/, 'luz'], [/\bgas\b|camuzzi/, 'gas'],
+    [/\bagua\b|epas|aguas/, 'agua'], [/internet|wifi|fibra|telecentro|movistar|claro|personal|tel[eé]fono|celular|cable/, 'internet'],
+    [/monotributo|afip|arca/, 'monotributo'], [/comercio|municipal|tasa|ingresos brutos|rentas/, 'comercio'],
+    [/contador|contadora|estudio contable/, 'contadora'], [/comisi[oó]n/, 'comisiones'],
+    [/tarjeta|visa|master|naranja|cuota|cr[eé]dito|iadep|pr[eé]stamo/, 'credito'],
+    [/retiro|socio|jonathan/, 'retiro_socio'],
+    [/mantenimiento|arreglo|bolsa|seguro|insumo|limpieza/, 'otros_costos']
+  ];
+  for(var i = 0; i < reglas.length; i++){ if(reglas[i][0].test(texto)){ s.rubro = reglas[i][1]; s.confianza = 'alta'; break; } }
+  if(s.rubro === 'credito'){
+    s.acreedor = /iadep/.test(texto) ? 'IADEP' : /mercado/.test(texto) ? 'Mercado Crédito' : /viejo|pap[aá]/.test(texto) ? 'Tarjeta de mi viejo' : '';
+    s.confianza = 'revisar';   // hay que decir a qué corresponde
+  }
+  if(s.rubro === 'retiro_socio'){ s.socio = /jonathan/.test(texto) ? 'Jonathan' : ''; s.confianza = s.socio ? 'alta' : 'revisar'; }
+  if(s.rubro === 'sin_clasificar' && cat === 'servicio'){ s.rubro = 'otros_servicios'; s.confianza = 'revisar'; }
+  return s;
+}
+function _clfBorrador(e){
+  var id = String(e.id);
+  if(_clf.borr[id]) return _clf.borr[id];
+  var d = detDeEgreso(e);
+  var b = d ? { rubro: d.rubro, empleado: d.empleado||'', mes: d.mes || String(e.fecha).slice(0,7), suc: d.suc || localActual(), reparto: d.reparto || null,
+      acreedor: d.acreedor||'', partes: d.partes || null, socio: d.socio||'', confianza: 'hecho' } : sugerirClasificacion(e);
+  _clf.borr[id] = b;
+  return b;
+}
+function _clfCambio(id, campo, valor){
+  var b = _clf.borr[id]; if(!b) return;
+  if(campo === 'acreedor' && valor === '__nuevo__'){ agregarAcreedor(null); valor = acreedoresLista().slice(-1)[0] || ''; }
+  if(campo === 'suc') valor = valor === 'compartido' ? 'compartido' : Number(valor);
+  if(campo === 'rep1'){ var a = Math.max(0, Math.min(100, Number(valor)||0)); b.reparto = { 1: a, 2: 100 - a }; }
+  else if(campo.indexOf('p_') === 0){ b.partes = b.partes || { mercaderia:0, equipamiento:0, gastos:0, intereses:0 }; b.partes[campo.slice(2)] = Number(String(valor).replace(/\./g,'').replace(',','.')) || 0; }
+  else b[campo] = valor;
+  if(b.confianza !== 'hecho') b.confianza = 'editado';
+  if(campo !== 'rep1' && campo.indexOf('p_') !== 0) pintarClasificar();
+}
+function _clfFila(e){
+  var id = String(e.id), b = _clfBorrador(e), hecho = !!detDeEgreso(e);
+  var sel = function(campo, opts, actual){ return '<select onchange="_clfCambio(\''+id+'\',\''+campo+'\',this.value)" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:4px;font-size:.72rem;max-width:100%">'+opts.map(function(o){ return '<option value="'+escBaja(o[0])+'"'+(String(o[0]) === String(actual) ? ' selected' : '')+'>'+escBaja(o[1])+'</option>'; }).join('')+'</select>'; };
+  var inp = 'background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:4px;font-size:.72rem;width:96px';
+  var extra = '';
+  if(b.rubro === 'sueldos' || b.rubro === 'personal_extra')
+    extra += '<label style="font-size:.66rem;color:var(--gray)">Empleado '+sel('empleado', [['','— Elegí —']].concat((getEmpleados()||[]).map(function(x){ return [x.nombre, x.nombre]; })), b.empleado)+'</label> ';
+  if(b.rubro !== 'mercaderia')
+    extra += '<label style="font-size:.66rem;color:var(--gray)">Mes <input type="month" value="'+escBaja(b.mes||'')+'" onchange="_clfCambio(\''+id+'\',\'mes\',this.value)" style="'+inp+';width:130px"></label> '+
+      '<label style="font-size:.66rem;color:var(--gray)">Sucursal '+sel('suc', [['1','Limay 1'],['2','Limay 2'],['compartido','Compartido']], b.suc)+'</label> ';
+  if(b.rubro !== 'mercaderia' && b.suc === 'compartido'){
+    var rp = b.reparto || repartoDelMes(b.mes);
+    extra += '<label style="font-size:.66rem;color:var(--gray)">% Limay 1 <input type="number" min="0" max="100" value="'+rp[1]+'" oninput="_clfCambio(\''+id+'\',\'rep1\',this.value)" style="'+inp+';width:56px"></label> ';
+  }
+  if(b.rubro === 'credito'){
+    var pp = b.partes || {};
+    extra += '<label style="font-size:.66rem;color:var(--gray)">Acreedor '+sel('acreedor', [['','— Elegí —']].concat(acreedoresLista().map(function(a){ return [a, a]; })).concat([['__nuevo__','＋ Otro…']]), b.acreedor)+'</label>'+
+      '<div style="font-size:.66rem;color:var(--gray);margin-top:4px">¿A qué corresponde? ' +
+      [['mercaderia','Mercadería'],['equipamiento','Equipamiento'],['gastos','Gastos'],['intereses','Intereses']].map(function(p){
+        return p[1]+' <input type="text" inputmode="decimal" value="'+(pp[p[0]] ? String(pp[p[0]]).replace('.', ',') : '')+'" placeholder="0" oninput="_clfCambio(\''+id+'\',\'p_'+p[0]+'\',this.value)" style="'+inp+';width:80px">';
+      }).join(' ')+'</div>';
+  }
+  if(b.rubro === 'retiro_socio')
+    extra += '<label style="font-size:.66rem;color:var(--gray)">Socio '+sel('socio', [['','— Elegí —']].concat(sociosLista().map(function(s){ return [s, s]; })), b.socio)+'</label> ';
+  var chip = hecho ? '<span style="color:var(--green);font-size:.66rem">✓ Clasificado</span>'
+    : b.confianza === 'alta' ? '<span style="color:var(--gold);font-size:.66rem">Sugerido</span>'
+    : b.confianza === 'editado' ? '<span style="color:var(--light);font-size:.66rem">Sin guardar</span>'
+    : '<span style="color:#e74c3c;font-size:.66rem;font-weight:700">Revisar</span>';
+  var grupos = [];
+  RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
+  var rubroSel = '<select onchange="_clfCambio(\''+id+'\',\'rubro\',this.value)" style="background:var(--dark);border:1px solid var(--gold);color:var(--white);border-radius:4px;padding:5px;font-size:.74rem">'+
+    grupos.map(function(g){ return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g; }).map(function(r){ return '<option value="'+r.k+'"'+(r.k === b.rubro ? ' selected' : '')+'>'+r.t+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select>';
+  return '<div style="border:1px solid '+(hecho ? 'rgba(0,204,68,.3)' : 'var(--border)')+';border-radius:7px;padding:9px 10px;margin-bottom:8px;background:var(--card)">'+
+    '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline">'+
+      '<div style="font-size:.8rem;color:var(--white)"><span style="color:var(--gray)">'+escBaja(e.fecha)+'</span> · <b>'+escBaja(conceptoDeEgreso(e))+'</b>'+(e.nota ? ' <span style="color:var(--gray);font-size:.7rem">— '+escBaja(e.nota)+'</span>' : '')+'</div>'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--red)">−'+fmt(e.monto)+' <span style="font-size:.66rem;color:var(--gray)">'+escBaja(e.medio||'')+'</span></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">'+rubroSel+' '+chip+'</div>'+
+    (extra ? '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px">'+extra+'</div>' : '')+
+    '<div style="text-align:right;margin-top:6px"><button onclick="guardarClasificacion(\''+id+'\')" style="background:'+(hecho ? 'none' : 'var(--gold)')+';color:'+(hecho ? 'var(--gold)' : '#000')+';border:1px solid var(--gold);border-radius:5px;padding:5px 12px;font-family:Oswald,sans-serif;font-size:.72rem;cursor:pointer">'+(hecho ? '✓ Guardar cambios' : '✓ Guardar')+'</button></div>'+
+  '</div>';
+}
+function _clfLista(){
+  // Por defecto: los que no tienen detalle, salvo los pagos a proveedores de
+  // mercadería (esos ya están bien), a menos que parezcan equipamiento.
+  return getEgresos().filter(function(e){
+    if(e.fecha < _clf.desde) return false;
+    if(_clf.todos) return true;
+    if(detDeEgreso(e)) return false;
+    return (e.categoria||'proveedor') !== 'proveedor' || _clfBorrador(e).rubro !== 'mercaderia';
+  })
+    .sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)) || (a.id - b.id); });
+}
+function pintarClasificar(){
+  var ov = document.getElementById('clfOverlay'); if(!ov) return;
+  var lista = _clfLista();
+  var sinGuardar = lista.filter(function(e){ return !detDeEgreso(e); });
+  var listos = sinGuardar.filter(function(e){ var b = _clfBorrador(e); return b.confianza === 'alta' || b.confianza === 'editado'; }).length;
+  var mesRep = _clf.mesRep || fechaLocalStr(new Date()).slice(0,7), rep = repartoDelMes(mesRep);
+  var inp = 'background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 6px;font-size:.74rem';
+  ov.innerHTML = '<div style="max-width:860px;margin:0 auto;background:#141414;border:1px solid var(--gold);border-radius:10px;padding:16px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1.5px">🏷 CLASIFICAR EGRESOS — LIMAY '+localActual()+'</div><button onclick="cerrarClasificar()" style="background:none;border:none;color:var(--gray);font-size:1.2rem;cursor:pointer">✕</button></div>'+
+    '<div style="font-size:.74rem;color:var(--light);line-height:1.5;margin:6px 0 10px">El sistema sugiere el rubro de cada egreso. Revisá los que dicen <b style="color:#e74c3c">Revisar</b> y guardá. Lo pagado a proveedores de mercadería ya está bien: no hace falta tocarlo (salvo que haya sido equipamiento). Clasificar solo agrega el detalle (que ves vos): no cambia nada de lo que ve la caja.</div>'+
+    _clfFaseHtml()+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:.74rem;color:var(--gray)">'+
+      'Desde <input type="date" value="'+_clf.desde+'" onchange="_clf.desde=this.value||CLF_DESDE_BASE;pintarClasificar()" style="'+inp+'">'+
+      '<label><input type="checkbox" '+(_clf.todos ? 'checked' : '')+' onchange="_clf.todos=this.checked;pintarClasificar()"> Ver también los ya clasificados y los de mercadería</label>'+
+    '</div>'+
+    '<div style="border:1px dashed var(--border);border-radius:7px;padding:8px 10px;margin-bottom:12px;font-size:.74rem;color:var(--light)">'+
+      '🏪 <b>Gastos compartidos</b> — qué % absorbe cada local en el mes '+
+      '<input type="month" value="'+mesRep+'" onchange="_clf.mesRep=this.value;pintarClasificar()" style="'+inp+'"> '+
+      'Limay 1 <input id="clfRep1" type="number" min="0" max="100" value="'+rep[1]+'" style="'+inp+';width:60px"> % · Limay 2: el resto '+
+      '<button onclick="guardarRepartoClf()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:4px 10px;font-size:.7rem;cursor:pointer">Guardar</button>'+
+      '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">'+(rep.desde === mesRep ? 'Elegido para este mes.' : rep.desde ? 'Propuesto: el de '+rep.desde+'.' : 'Propuesto: 50/50 (todavía no elegiste ninguno).')+' Cada egreso compartido puede tener el suyo.</div>'+
+    '</div>'+
+    (listos ? '<button onclick="guardarClasificacionesSugeridas()" style="width:100%;background:var(--gold);color:#000;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer;margin-bottom:12px">✓ GUARDAR LOS '+listos+' SUGERIDOS (los "Revisar" quedan para que los mires)</button>' : '')+
+    (lista.length ? lista.map(_clfFila).join('') : '<div style="padding:20px;text-align:center;color:var(--green)">✅ No hay egresos para clasificar desde '+_clf.desde+'.</div>')+
+  '</div>';
+}
+function _clfFaseHtml(){
+  var btn = 'border-radius:6px;padding:9px 12px;font-family:Oswald,sans-serif;font-size:.76rem;letter-spacing:1px;cursor:pointer;width:100%';
+  if(faseB()) return '<div style="border:1px solid rgba(0,204,68,.4);border-radius:7px;padding:9px 10px;margin-bottom:12px;font-size:.74rem;color:var(--light)">🔒 <b>Fase B activa</b> en Limay '+localActual()+': tus pagos no están a la vista de la caja.'+
+    '<button onclick="deshacerFaseB()" style="'+btn+';margin-top:8px;background:none;border:1px solid var(--border);color:var(--gray)">↩ Volver a mostrar en la caja (deshacer la fase B)</button></div>';
+  return '<div style="border:1px dashed var(--gold);border-radius:7px;padding:9px 10px;margin-bottom:12px;font-size:.74rem;color:var(--light);line-height:1.5">'+
+    '🔒 <b>Fase B — ocultar tus pagos en la caja</b> (Limay '+localActual()+'). Hacelo cuando ya pegaste las reglas nuevas y recargaste las cajas. Antes de empezar baja un respaldo, y se puede deshacer.'+
+    '<button onclick="ejecutarFaseB()" style="'+btn+';margin-top:8px;background:none;border:1px solid var(--gold);color:var(--gold)">🔒 Activar fase B</button></div>';
+}
+// Respaldo de lo que toca la fase B (egresos comunes, privados y su detalle,
+// movimientos de esos egresos, empleados y su parte privada). Se descarga
+// como archivo antes de cambiar nada.
+function descargarRespaldoPrivacidad(motivo){
+  var L = localActual(), db = window.__lrDB;
+  var leer = function(q){ return q.get({ source: 'server' }).then(function(s){ var a = []; s.forEach(function(d){ a.push(d.data()); }); return a; }); };
+  return Promise.all([
+    leer(ldCol(L, 'egresos')), leer(colEgPriv()), leer(colEgDet()),
+    leer(db.collection(window.__lrCOL.empleados)), leer(colPriv('empleadosPriv'))
+  ]).then(function(r){
+    var idsEg = {}; r[0].concat(r[1]).forEach(function(e){ idsEg[String(e.id)] = true; });
+    var datos = { tipo: 'respaldo-privacidad', motivo: motivo, local: L, fecha: new Date().toISOString(),
+      egresos: r[0], egresosPriv: r[1], egresosDet: r[2], empleados: r[3], empleadosPriv: r[4],
+      movimientosDeEgresos: getMovimientos().filter(function(m){ return idsEg[String(m.id)]; }) };
+    var blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'LimayRock_respaldo_'+motivo+'_L'+L+'_'+fechaLocalStr(new Date())+'.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.__lrUltimoRespaldoPriv = datos;
+    return datos;
+  });
+}
+function _commitEnTandas(ops){
+  var db = window.__lrDB, tandas = [], b = db.batch(), n = 0;
+  ops.forEach(function(op){ op(b); n++; if(n >= 400){ tandas.push(b); b = db.batch(); n = 0; } });
+  if(n) tandas.push(b);
+  return tandas.reduce(function(p, t){ return p.then(function(){ return t.commit(); }); }, Promise.resolve());
+}
+function ejecutarFaseB(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  if(faseB()){ showToast('La fase B ya está activa en este local'); return; }
+  askConfirm('🔒 Activar la fase B en Limay '+localActual()+'.\n\n'+
+    '¿Ya pegaste las reglas nuevas en Firebase y recargaste las cajas?\n\n'+
+    'Se va a:\n• Bajar un respaldo (archivo) antes de tocar nada.\n• Pasar a privado tus pagos que no salieron del efectivo de las cajas.\n'+
+    '• Dejar en la caja tus pagos en efectivo del cajón como "Pago del dueño (efectivo)", sin detalle.\n• Sacar el valor hora de la ficha común de los empleados.\n\n'+
+    'Se puede deshacer con "Volver a mostrar en la caja". ¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    showToast('⏳ Bajando el respaldo…');
+    descargarRespaldoPrivacidad('antes-fase-B').then(function(r){
+      var L = localActual(), db = window.__lrDB, dets = {};
+      r.egresosDet.forEach(function(d){ dets[String(d.id)] = d; });
+      var movs = getMovimientos(), movPorId = {};
+      movs.forEach(function(m){ movPorId[String(m.id)] = m; });
+      var opsDet = [], opsMov = [], movBorrar = [], cambiosMov = false, n = 0;
+      r.egresos.forEach(function(e){
+        var key = String(e.id), det = dets[key], cat = e.categoria || 'proveedor';
+        if(cat === 'dueno') return;
+        var deDueno = (det && det.rubro && det.rubro !== 'mercaderia') || cat !== 'proveedor';
+        if(!deDueno) return;
+        n++;
+        var nd = Object.assign({ id: e.id, rubro: 'sin_clasificar', concepto: e.prov || e.proveedor || '', mes: String(e.fecha||'').slice(0,7), suc: L }, det || {});
+        if(!nd.concepto) nd.concepto = e.prov || e.proveedor || '';
+        if(e.nota && !nd.nota) nd.nota = e.nota;
+        nd.publicoOriginal = e;
+        var mv = movPorId[key];
+        if(mv){ nd.movOriginal = JSON.parse(JSON.stringify(mv)); }
+        opsDet.push(function(b){ b.set(colEgDet().doc(key), JSON.parse(JSON.stringify(nd))); });
+        if(esPagoDelCajon(e)){
+          var m = { id: e.id, fecha: e.fecha, ts: e.ts, monto: e.monto, medio: e.medio, caja: e.caja || 1, categoria: 'dueno', prov: EG_DUENO_EF, proveedor: EG_DUENO_EF, nota: '' };
+          if(e.mixto) m.mixto = e.mixto;
+          if(e.mpPago) m.mpPago = e.mpPago;
+          if(e.liqClave) m.liqClave = e.liqClave;
+          opsMov.push(function(b){ b.set(ldCol(L, 'egresos').doc(key), m); });
+          if(mv){ mv.resumen = EG_DUENO_EF; mv.extra = 'Efectivo'; mv.items = [{ nombre: EG_DUENO_EF, qty: 1, precio: e.monto, subtotal: e.monto, stock: null }]; cambiosMov = true; }
+        } else {
+          opsMov.push(function(b){ b.set(colEgPriv().doc(key), e); b.delete(ldCol(L, 'egresos').doc(key)); });
+          if(mv){ movBorrar.push(key); delete movPorId[key]; }
+        }
+      });
+      // Primero el detalle (con lo necesario para deshacer), después el resto.
+      return _commitEnTandas(opsDet).then(function(){ return _commitEnTandas(opsMov); }).then(function(){
+        // Movimientos: los de pagos en efectivo quedan sin detalle; los de pagos privados se borran.
+        if(movBorrar.length){
+          var fuera = {}; movBorrar.forEach(function(k){ fuera[k] = true; });
+          window.__lrMovimientosCache = getMovimientos().filter(function(m){ return !fuera[String(m.id)]; });
+          movBorrar.forEach(function(k){ borrarMovimientosEnNube(Number(k)); });
+        }
+        if(cambiosMov) saveMovimientos(getMovimientos());
+        // Valor hora: se asegura en lo privado y se saca de la ficha común.
+        var opsEmp = [];
+        r.empleados.forEach(function(emp){
+          if(emp.valorHora === undefined || emp.valorHora === null) return;
+          var p = window.__lrEmpPriv[emp.nombre];
+          if(!(p && p.valorHora != null)) opsEmp.push(function(b){ b.set(colPriv('empleadosPriv').doc(emp.nombre), { valorHora: Number(emp.valorHora) || 0 }, { merge: true }); });
+        });
+        return _commitEnTandas(opsEmp).then(function(){
+          var opsDel = [];
+          r.empleados.forEach(function(emp){
+            if(emp.valorHora === undefined || emp.valorHora === null) return;
+            opsDel.push(function(b){ b.update(db.collection(window.__lrCOL.empleados).doc(emp.nombre), { valorHora: firebase.firestore.FieldValue.delete() }); });
+          });
+          return _commitEnTandas(opsDel);
+        });
+      }).then(function(){
+        window.__lrPrivacidad = { faseB: true };
+        return db.collection(window.__lrCOL.config).doc('privacidad').set({ faseB: true, desde: new Date().toISOString(), por: currentEmp ? currentEmp.nombre : 'Admin' });
+      }).then(function(){
+        showToast('✅ Fase B activa: '+n+' pago'+(n===1?'':'s')+' tuyo'+(n===1?'':'s')+' ya no se ve'+(n===1?'':'n')+' en la caja');
+        pintarClasificar();
+      });
+    }).catch(function(e){ showToast('⚠ No se completó la fase B: '+((e && e.message) || e)+'. Probá de nuevo: lo hecho se puede deshacer.', true); });
+  });
+}
+function deshacerFaseB(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  askConfirm('↩ Volver a mostrar en la caja (Limay '+localActual()+').\n\nTus pagos vuelven a la lista común como estaban antes de la fase B, y el valor hora vuelve a la ficha de cada empleado. Antes se baja un respaldo. ¿Seguimos?').then(function(ok){
+    if(!ok) return;
+    showToast('⏳ Bajando el respaldo…');
+    descargarRespaldoPrivacidad('antes-de-deshacer-fase-B').then(function(r){
+      var L = localActual(), db = window.__lrDB, ops = [], movsVolver = [], n = 0;
+      r.egresosDet.forEach(function(d){
+        if(!d.publicoOriginal) return;
+        n++;
+        var key = String(d.id), orig = d.publicoOriginal;
+        ops.push(function(b){ b.set(ldCol(L, 'egresos').doc(key), orig); b.delete(colEgPriv().doc(key));
+          b.update(colEgDet().doc(key), { publicoOriginal: firebase.firestore.FieldValue.delete(), movOriginal: firebase.firestore.FieldValue.delete() }); });
+        if(d.movOriginal) movsVolver.push(d.movOriginal);
+      });
+      // Pagos privados sin detalle (no debería haber): vuelven tal cual.
+      r.egresosPriv.forEach(function(e){
+        var key = String(e.id);
+        if(r.egresosDet.some(function(d){ return String(d.id) === key && d.publicoOriginal; })) return;
+        n++;
+        ops.push(function(b){ b.set(ldCol(L, 'egresos').doc(key), e); b.delete(colEgPriv().doc(key)); });
+      });
+      Object.keys(window.__lrEmpPriv || {}).forEach(function(nombre){
+        var p = window.__lrEmpPriv[nombre];
+        if(p && p.valorHora != null && r.empleados.some(function(x){ return x.nombre === nombre; }))
+          ops.push(function(b){ b.update(db.collection(window.__lrCOL.empleados).doc(nombre), { valorHora: p.valorHora }); });
+      });
+      // Primero se apaga la fase B (en este equipo y en la nube), así nadie
+      // vuelve a sacar el valor hora de la ficha común mientras se restaura.
+      window.__lrPrivacidad = { faseB: false };
+      return db.collection(window.__lrCOL.config).doc('privacidad').set({ faseB: false, deshecha: new Date().toISOString() }).then(function(){
+        return _commitEnTandas(ops);
+      }).then(function(){
+        if(movsVolver.length){
+          var movs = getMovimientos(), ids = {};
+          movs.forEach(function(m){ ids[String(m.id)] = m; });
+          movsVolver.forEach(function(mo){ var x = ids[String(mo.id)]; if(x) Object.assign(x, mo); else movs.push(mo); });
+          saveMovimientos(movs);
+        }
+        showToast('✅ Listo: '+n+' pago'+(n===1?'':'s')+' volvi'+(n===1?'ó':'eron')+' a la lista común');
+        pintarClasificar();
+      });
+    }).catch(function(e){ showToast('⚠ No se pudo deshacer: '+((e && e.message) || e), true); });
+  });
+}
+function guardarRepartoClf(){
+  var a = Number((document.getElementById('clfRep1')||{}).value);
+  if(!(a >= 0 && a <= 100)){ showToast('Poné un % entre 0 y 100', true); return; }
+  var mes = _clf.mesRep || fechaLocalStr(new Date()).slice(0,7);
+  guardarRepartoDelMes(mes, a).then(function(){ showToast('✅ Reparto de '+mes+': Limay 1 '+a+' % · Limay 2 '+(100-a)+' %'); })
+    .catch(function(e){ showToast('No se pudo guardar: '+((e && e.message) || e), true); });
+}
+// Valida y guarda la clasificación de un egreso. Devuelve true si se guardó.
+function guardarClasificacion(id, silencioso){
+  var e = getEgresos().find(function(x){ return String(x.id) === String(id); });
+  var b = _clf.borr[String(id)];
+  if(!e || !b) return false;
+  var falla = function(m){ if(!silencioso) showToast(m, true); return false; };
+  if(b.rubro === 'sueldos' && !b.empleado) return falla('Elegí el empleado de ese sueldo');
+  if(b.rubro === 'retiro_socio' && !b.socio) return falla('Elegí qué socio retiró');
+  var partes = null;
+  if(b.rubro === 'credito'){
+    if(!b.acreedor) return falla('Elegí el acreedor');
+    var p = b.partes || {}, tot = (p.mercaderia||0) + (p.equipamiento||0) + (p.gastos||0) + (p.intereses||0);
+    if(tot > 0 && Math.abs(tot - e.monto) > 0.5) return falla('Las partes suman '+fmt(tot)+' y el pago es de '+fmt(e.monto));
+    if(tot > 0) partes = { mercaderia: p.mercaderia||0, equipamiento: p.equipamiento||0, gastos: p.gastos||0, intereses: p.intereses||0 };
+  }
+  var previo = detDeEgreso(e) || {};
+  var det = { id: e.id, rubro: b.rubro, concepto: previo.concepto || (e.prov !== EG_DUENO_EF ? e.prov : '') || '', mes: b.rubro === 'mercaderia' ? String(e.fecha).slice(0,7) : (b.mes || String(e.fecha).slice(0,7)),
+    suc: b.rubro === 'mercaderia' ? localActual() : (b.suc || localActual()), clasificado: new Date().toISOString(), por: currentEmp ? currentEmp.nombre : 'Admin' };
+  if(previo.nota || e.nota) det.nota = previo.nota || e.nota;
+  if(previo.liq) det.liq = previo.liq;
+  if(previo.categoriaOriginal || e.categoria) det.categoriaOriginal = previo.categoriaOriginal || e.categoria || 'proveedor';
+  if(b.empleado && (b.rubro === 'sueldos' || b.rubro === 'personal_extra')) det.empleado = b.empleado;
+  if(det.suc === 'compartido' && b.reparto && b.reparto[1] !== repartoDelMes(det.mes)[1]) det.reparto = b.reparto;
+  if(b.rubro === 'credito'){ det.acreedor = b.acreedor; det.partes = partes; }
+  if(b.rubro === 'retiro_socio') det.socio = b.socio;
+  if(previo.publicoOriginal) det.publicoOriginal = previo.publicoOriginal;
+  if(previo.movOriginal) det.movOriginal = previo.movOriginal;
+  // Solo se agrega el detalle: el egreso común no se toca (eso lo hace la fase B).
+  guardarDetEgreso(det);
+  delete _clf.borr[String(id)];
+  if(!silencioso){ showToast('✅ Clasificado: '+rubroDef(b.rubro).t); pintarClasificar(); }
+  return true;
+}
+function guardarClasificacionesSugeridas(){
+  var n = 0;
+  _clfLista().filter(function(e){ return !detDeEgreso(e); }).forEach(function(e){
+    var b = _clfBorrador(e);
+    if((b.confianza === 'alta' || b.confianza === 'editado') && guardarClasificacion(e.id, true)) n++;
+  });
+  showToast('✅ '+n+' egreso'+(n===1?'':'s')+' clasificado'+(n===1?'':'s'));
+  pintarClasificar();
+}
+
 // ── 📒 BALANCE MENSUAL ──────────────────────────────────────────────────
 // Ventas, costo y margen de un mes por sucursal, leídos directo de la nube
 // (no depende de cuánto historial cargó la pantalla). Criterio:
@@ -22508,6 +23480,7 @@ function _balTabla(filas, paraPdf){
     : '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.76rem;color:var(--light)">'+cab+cuerpo+'</table></div>';
 }
 function generarBalanceMensual(){
+  if(!esEquipoDueno()){ var rb = document.getElementById('balanceMensualRes'); if(rb) rb.innerHTML = avisoSoloDueno('El balance mensual'); return; }
   var mes = (document.getElementById('balMes')||{}).value;
   if(!mes){ showToast('Elegí el mes', true); return; }
   var suc = (document.getElementById('balSuc')||{}).value || '1';
@@ -22573,6 +23546,7 @@ function categoriaDeItem(it){
 }
 
 function exportarInformeAsesoriaPDF() {
+  if(!esEquipoDueno()){ showToast('🔒 El informe se arma solo desde el equipo del dueño', true); return; }
   var desdeStr = document.getElementById('infAsesDesde').value;
   var hastaStr = document.getElementById('infAsesHasta').value;
   var hoy = new Date();
@@ -25141,11 +26115,13 @@ function renderDashboard() {
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Mercado Pago</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'+
+          (esEquipoDueno() ? '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'
+            : '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">🔒 Completo solo en el equipo del dueño</div>')+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center;border:1px solid var(--border)">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🏦 Total</div>'+
-          '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalLiqVivo)+'</div>'+
+          (esEquipoDueno() ? '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalLiqVivo)+'</div>'
+            : '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">🔒</div>')+
         '</div>'+
       '</div>';
 
@@ -27416,6 +28392,9 @@ function abrirEmpModal(idx) {
   var _l1 = document.getElementById('emLocal1'), _l2 = document.getElementById('emLocal2');
   if(_l1) _l1.checked = _locs.indexOf(1) >= 0;
   if(_l2) _l2.checked = _locs.indexOf(2) >= 0;
+  var _fpW = document.getElementById('emFormaPagoWrap'), _fp = document.getElementById('emFormaPago');
+  if(_fpW) _fpW.style.display = esEquipoDueno() ? '' : 'none';
+  if(_fp){ var _pp = (idx !== null && EMPLEADOS[idx]) ? window.__lrEmpPriv[EMPLEADOS[idx].nombre] : null; _fp.value = (_pp && _pp.formaPago) || ''; }
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
   var pinInp = document.getElementById('emPin');
   if(pinInp) pinInp.value = _emPinBuf;
@@ -27614,6 +28593,16 @@ function guardarEmpModal() {
   if(_emRol === 'repartidor') _ls = [1];
   if(!_ls.length){ showToast('Tildá en qué local trabaja (Limay Rock 1, 2 o los dos)', true); return; }
   empData.locales = _ls;
+  // Forma de pago: va a la colección privada del dueño (si cambió el nombre, se pasa al nuevo).
+  if(esEquipoDueno() && document.getElementById('emFormaPago')){
+    var _fpv = document.getElementById('emFormaPago').value || null;
+    var _privViejo = nombreViejo && nombreViejo !== nombre ? window.__lrEmpPriv[nombreViejo] : null;
+    var _privNuevo = Object.assign({}, _privViejo || {}, window.__lrEmpPriv[nombre] || {}, { formaPago: _fpv });
+    window.__lrEmpPriv[nombre] = _privNuevo;
+    colPriv('empleadosPriv').doc(nombre).set(JSON.parse(JSON.stringify(_privNuevo)), { merge: true }).then(function(){
+      if(_privViejo) return colPriv('empleadosPriv').doc(nombreViejo).delete();
+    }).catch(function(e){ showToast('⚠ No se pudo guardar la forma de pago: '+((e && e.message) || e), true); });
+  }
   if(idx>=0 && EMPLEADOS[idx]){
     // Se conservan los datos que no están en esta ficha (ej. si el repartidor
     // está disponible o si tiene sacada la vista de pedidos).
@@ -29458,7 +30447,7 @@ function selEgMedio(medio) {
   // Mercado Pago (Lemon Cash quedó dado de baja), así que tener las dos
   // opciones solo confundía. Sigue soportado por si quedó algún egreso
   // viejo guardado con ese medio.
-  ['Efectivo','Mixto','MercadoPago'].forEach(function(m){
+  ['Efectivo','Mixto','MercadoPago','EfectivoFuera'].forEach(function(m){
     var b = document.getElementById('em-'+m);
     if(b) b.classList.toggle('active', m===medio);
   });
@@ -34980,10 +35969,11 @@ function ldLeerLocal(n, desde, hasta){
     // puede ser anterior a cuando se cargó) y se filtran por fecha.
     leer(ldCol(n, 'egresos').where('id', '>=', d0 - 3*86400000)),
     leer(ldCol(n, 'cargasVirtuales').where('id', '>=', d0 - 86400000)),
-    leer(ldCol(n, 'sesionesActivas'))
+    leer(ldCol(n, 'sesionesActivas')),
+    (typeof esEquipoDueno === 'function' && esEquipoDueno()) ? leer(ldCol(n, 'egresosPriv').where('id', '>=', d0 - 3*86400000)).catch(function(){ return []; }) : Promise.resolve([])
   ]).then(function(r){
     var ventas = r[0].filter(function(v){ return !v.anulada && !v.fiadoCarga && v.id <= d1; });
-    var egresos = r[1].filter(function(e){ var f = String(e.fecha||'').slice(0,10); return f >= fDesde && f <= fHasta; });
+    var egresos = r[1].concat(r[4] || []).filter(function(e){ var f = String(e.fecha||'').slice(0,10); return f >= fDesde && f <= fHasta; });
     var cargas = r[2].filter(function(c){ var t = new Date(c.fecha).getTime(); return t >= d0 && t <= d1 && !c.anulada; });
     var turnos = r[3].filter(function(s){ return s.turnoInicio && (Date.now() - new Date(s.turnoInicio).getTime()) < 16*3600000; });
     var m = { Efectivo: 0, Transferencia: 0, 'Débito': 0 };
@@ -38042,10 +39032,12 @@ function renderLiquidez() {
     liquidezCard('💵','Efectivo en caja', fmt(liq.efectivoCaja),
       (liq.efectivoPorCaja ? 'Caja 1: '+fmt(liq.efectivoPorCaja[1])+' · Caja 2: '+fmt(liq.efectivoPorCaja[2])+'<br>' : '')+
       'Fuera del local: '+fmt(liq.efectivoFuera), liq.efectivoCaja>=0?'var(--green)':'var(--red)') +
-    liquidezCard('💳','Mercado Pago', fmt(liq.mercadoPago),
-      'Transferencias + Posnet neto s/comisión '+(liq.comisionMP)+'%', '#1e90ff') +
-    liquidezCard('🏦','Total del local', fmt(total),
-      'Efectivo + Fuera + Mercado Pago', 'var(--white)');
+    (esEquipoDueno()
+      ? liquidezCard('💳','Mercado Pago', fmt(liq.mercadoPago),
+          'Transferencias + Posnet neto s/comisión '+(liq.comisionMP)+'%', '#1e90ff') +
+        liquidezCard('🏦','Total del local', fmt(total),
+          'Efectivo + Fuera + Mercado Pago', 'var(--white)')
+      : liquidezCard('💳','Mercado Pago', '🔒', 'Completo solo en el equipo del dueño', 'var(--gray)'));
 
   var prBox = document.getElementById('prestamosPendientesBox');
   if(prBox){
@@ -38099,6 +39091,7 @@ function toggleLiquidezSection() {
 }
 
 function abrirLiquidezConfig() {
+  if(!esEquipoDueno()){ showToast('🔒 Los saldos se ajustan solo desde el equipo del dueño', true); return; }
   var cfg = getLiquidezCfg();
   var lci = document.getElementById('lcSaldoIni');
   var mpi = document.getElementById('mpSaldoIni');
@@ -38194,6 +39187,7 @@ function recalcularCierrePeriodo() {
 }
 
 function calcularYMostrarCierre(desde, hasta) {
+  if(!esEquipoDueno()){ showToast('🔒 El cierre del mes se hace solo desde el equipo del dueño', true); return; }
   var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };
   var ventas = VENTAS.filter(function(v){
     var f = fechaLocalStr(new Date(v.fecha));
@@ -38273,6 +39267,7 @@ function resumenRow(label, valor, color) {
 }
 
 function descargarResumenMes() {
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
   var d = window._cierreMesDatos;
   if(!d) return;
   var fmt = function(n){ n = Number(n); return '$'+(isFinite(n)?Math.round(n):0).toLocaleString('es-AR'); };

@@ -1,6 +1,8 @@
 // Reglas de seguridad de la base (Firestore) — Limay Rock
 // Se pegan a mano en la consola de Firebase: Firestore Database → Reglas.
 // Este archivo es la copia de referencia de lo que está publicado.
+// Las reglas que había antes de los datos privados del dueño quedaron en
+// firestore.rules.anterior (para volver atrás: pegar ese archivo).
 //
 // ETAPA 3: base cerrada también para el delivery. El celular del repartidor
 // se habilita con la cuenta delivery@ y, al poner el PIN, la nube (función
@@ -11,10 +13,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Equipos del local (caja y admin): acceso a todo.
+    // Equipos del local (caja y admin): acceso a todo, menos lo privado del dueño.
     function local() {
       return request.auth != null
         && request.auth.token.email in ['local@limayrock.app', 'admin@limayrock.app'];
+    }
+    // El dueño: solo la cuenta admin (su celu y su compu).
+    function dueno() {
+      return request.auth != null && request.auth.token.email == 'admin@limayrock.app';
+    }
+    // Colecciones privadas del dueño (sueldos, detalle de egresos, valor hora).
+    function privada(coll) {
+      return coll in ['egresosDet', 'l2_egresosDet', 'egresosPriv', 'l2_egresosPriv', 'empleadosPriv', 'configPriv', 'l2_empleadosPriv', 'l2_configPriv'];
     }
 
     // Un repartidor adentro de un celular habilitado: el permiso lo da la nube
@@ -111,10 +121,26 @@ service cloud.firestore {
     match /facturacionEstado/{id} { allow read: if local(); }
     // arcaPrivado (token de ARCA, numeración): nadie desde afuera.
 
+    // Datos privados del dueño. Detalle de cada egreso (rubro, empleado, mes al
+    // que corresponde, sucursal): lo lee y lo cambia solo el dueño; la caja
+    // solo puede CREARLO al cargar un egreso, sin poder leerlo después.
+    match /egresosDet/{id}    { allow read, update, delete: if dueno(); allow create: if local(); }
+    match /l2_egresosDet/{id} { allow read, update, delete: if dueno(); allow create: if local(); }
+    // Pagos del dueño que no salen del efectivo de las cajas: la caja no los
+    // descarga ni los puede leer. Si se carga uno desde el admin abierto en la
+    // caja, se puede crear pero no leer después.
+    match /egresosPriv/{id}    { allow read, update, delete: if dueno(); allow create: if local(); }
+    match /l2_egresosPriv/{id} { allow read, update, delete: if dueno(); allow create: if local(); }
+    // Valor hora y forma de pago de cada empleado, y la configuración del
+    // balance (reparto de gastos compartidos, acreedores, socios): solo el dueño.
+    match /empleadosPriv/{id} { allow read, write: if dueno(); }
+    match /configPriv/{id}    { allow read, write: if dueno(); }
+
     // Todo lo demás (ventas, caja, cierres, egresos, stock, fiados, etc.):
-    // solo la caja y el admin (el celular de delivery NO).
+    // solo la caja y el admin (el celular de delivery NO), menos lo privado
+    // del dueño y lo de facturación (que escribe solo la nube).
     match /{coleccion}/{resto=**} {
-      allow read, write: if local()
+      allow read, write: if local() && !privada(coleccion)
         && !(coleccion in ['facturas', 'facturacionEstado', 'arcaPrivado']);
     }
   }
