@@ -23008,6 +23008,8 @@ function sugerirClasificacion(e){
   // comprar equipamiento: cuota de crédito, toda equipamiento.
   if(es(/mart[ií]n\s+monsalve/)){ s.rubro = 'retiro_socio'; s.socio = 'Martín'; s.confianza = 'alta'; return s; }
   if(es(/jonathan/)){ s.rubro = 'retiro_socio'; s.socio = 'Jonathan'; s.confianza = 'alta'; return s; }
+  // "Varios - Limay Rock": gastos del local (arreglos, electricista, etc.).
+  if(es(/varios\s*-\s*limay\s*rock/)){ s.rubro = 'otros_costos'; s.confianza = 'alta'; return s; }
   if(es(/david\s+monsalve/)){
     s.rubro = 'credito'; s.acreedor = 'Tarjeta David Monsalve'; s.confianza = 'alta';
     s.partes = { mercaderia: 0, equipamiento: Number(e.monto) || 0, gastos: 0, intereses: 0 };
