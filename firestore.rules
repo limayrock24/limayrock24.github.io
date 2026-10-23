@@ -18,9 +18,14 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email in ['local@limayrock.app', 'admin@limayrock.app'];
     }
-    // El dueño: solo la cuenta admin (su celu y su compu).
+    // El dueño: la cuenta admin (su celu y su compu), o una ventana de la caja
+    // donde puso su clave de dueño: la nube (función claveDueno) le da un
+    // permiso "duenoTemp" que vence a la hora "hasta" (30 minutos).
     function dueno() {
-      return request.auth != null && request.auth.token.email == 'admin@limayrock.app';
+      return request.auth != null
+        && (request.auth.token.get('email', '') == 'admin@limayrock.app'
+            || (request.auth.token.get('duenoTemp', false) == true
+                && request.time.toMillis() < request.auth.token.get('hasta', 0)));
     }
     // Colecciones privadas del dueño (sueldos, detalle de egresos, valor hora).
     function privada(coll) {
@@ -120,17 +125,18 @@ service cloud.firestore {
     match /facturas/{id}          { allow read: if local(); }
     match /facturacionEstado/{id} { allow read: if local(); }
     // arcaPrivado (token de ARCA, numeración): nadie desde afuera.
+    // servidorPrivado (la clave de dueño, cifrada) e intentosClave: solo la nube.
 
     // Datos privados del dueño. Detalle de cada egreso (rubro, empleado, mes al
     // que corresponde, sucursal): lo lee y lo cambia solo el dueño; la caja
     // solo puede CREARLO al cargar un egreso, sin poder leerlo después.
-    match /egresosDet/{id}    { allow read, update, delete: if dueno(); allow create: if local(); }
-    match /l2_egresosDet/{id} { allow read, update, delete: if dueno(); allow create: if local(); }
+    match /egresosDet/{id}    { allow read, update, delete: if dueno(); allow create: if local() || dueno(); }
+    match /l2_egresosDet/{id} { allow read, update, delete: if dueno(); allow create: if local() || dueno(); }
     // Pagos del dueño que no salen del efectivo de las cajas: la caja no los
     // descarga ni los puede leer. Si se carga uno desde el admin abierto en la
     // caja, se puede crear pero no leer después.
-    match /egresosPriv/{id}    { allow read, update, delete: if dueno(); allow create: if local(); }
-    match /l2_egresosPriv/{id} { allow read, update, delete: if dueno(); allow create: if local(); }
+    match /egresosPriv/{id}    { allow read, update, delete: if dueno(); allow create: if local() || dueno(); }
+    match /l2_egresosPriv/{id} { allow read, update, delete: if dueno(); allow create: if local() || dueno(); }
     // Valor hora y forma de pago de cada empleado, y la configuración del
     // balance (reparto de gastos compartidos, acreedores, socios): solo el dueño.
     match /empleadosPriv/{id} { allow read, write: if dueno(); }
@@ -141,7 +147,7 @@ service cloud.firestore {
     // del dueño y lo de facturación (que escribe solo la nube).
     match /{coleccion}/{resto=**} {
       allow read, write: if local() && !privada(coleccion)
-        && !(coleccion in ['facturas', 'facturacionEstado', 'arcaPrivado']);
+        && !(coleccion in ['facturas', 'facturacionEstado', 'arcaPrivado', 'servidorPrivado', 'intentosClave']);
     }
   }
 }

@@ -5301,6 +5301,17 @@ body.night-on{background:#080005}
         <button class="btn-save" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none" onclick="generarBalanceMensual()">📒 Ver balance del mes</button>
         <div id="balanceMensualRes" style="margin-top:12px"></div>
       </div>
+
+      <!-- CLAVE DE DUEÑO (se ve solo con la cuenta del dueño) -->
+      <div id="claveDuenoSeccion" style="display:none">
+        <hr style="border-color:var(--border);margin:20px 0 14px">
+        <div onclick="toggleClaveDueno()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;margin-bottom:10px">
+          <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase">🔑 Clave de dueño para la caja</div>
+          <span class="drop-arrow">▾</span>
+        </div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:8px">Con esta clave ves lo privado desde una caja por 30 minutos. Se revisa en la nube y se guarda solo cifrada.</div>
+        <div id="claveDuenoBody" style="display:none"></div>
+      </div>
     </div>
 
 
@@ -9368,6 +9379,7 @@ function renderPestanaAdmin(tab) {
 }
 function closeAdmin() {
   document.getElementById('adminOverlay').classList.remove('open');
+  if(window.__lrDuenoTemp && typeof terminarModoDueno === 'function') terminarModoDueno('cerrado');
   // Aplicar los cambios que llegaron mientras el panel tapaba la venta
   if(window.__lrVentaNecesitaRefresco && typeof window.__lrRefrescarVenta === 'function'){
     window.__lrRefrescarVenta();
@@ -15753,7 +15765,9 @@ function marcarEgresoBorrado(id){
 //    privada que la caja no descarga; los que salen del cajón quedan en la
 //    caja como un registro mínimo ("Pago del dueño (efectivo)": monto, hora
 //    y caja, lo que el arqueo necesita) y el detalle queda privado.
-function esEquipoDueno(){ return String(window.__lrUsuario||'').toLowerCase() === 'admin@limayrock.app'; }
+function esCuentaDueno(){ return String(window.__lrUsuario||'').toLowerCase() === 'admin@limayrock.app'; }
+// El dueño: su cuenta, o una caja donde puso la clave de dueño (30 minutos).
+function esEquipoDueno(){ return esCuentaDueno() || (typeof duenoTempActivo === 'function' && duenoTempActivo()); }
 function faseB(){ return !!(window.__lrPrivacidad && window.__lrPrivacidad.faseB); }
 var EG_DUENO_EF = 'Pago del dueño (efectivo)';
 function esPagoDelCajon(e){ return !!e && (e.medio === 'Efectivo' || e.medio === 'Mixto'); }
@@ -15801,7 +15815,8 @@ function guardarEgresoPrivado(e){
   colEgPriv().doc(key).set(limpio).catch(function(err){ showToast('⚠ No se pudo guardar el pago privado: '+((err && err.message) || err), true); });
 }
 function avisoSoloDueno(que){
-  return '<div style="padding:18px;text-align:center;color:var(--gray);font-size:.82rem;line-height:1.5;border:1px dashed var(--border);border-radius:8px">🔒 '+que+' se ve solo desde el equipo del dueño (entrando con la cuenta admin).</div>';
+  var boton = window.__lrEsPuesto ? '' : '<div style="margin-top:10px"><button onclick="pedirClaveDueno()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:7px 14px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">🔑 Ver con la clave de dueño</button></div>';
+  return '<div style="padding:18px;text-align:center;color:var(--gray);font-size:.82rem;line-height:1.5;border:1px dashed var(--border);border-radius:8px">🔒 '+que+' se ve solo desde el equipo del dueño (entrando con la cuenta admin) o con la clave de dueño.'+boton+'</div>';
 }
 var RUBROS_EGRESO = [
   {k:'mercaderia',      t:'Compra de mercadería',                       cat:'proveedor', g:'🚚 Mercadería'},
@@ -15885,6 +15900,7 @@ function aplicarPrivEmpleados(){
   window.EMPLEADOS.forEach(function(e){
     var p = window.__lrEmpPriv[e.nombre];
     if(!p) return;
+    if(!esCuentaDueno()){ var vh = window.__lrVhPublico = window.__lrVhPublico || {}; if(!Object.prototype.hasOwnProperty.call(vh, e.nombre)) vh[e.nombre] = e.valorHora; }
     if(p.valorHora != null) e.valorHora = p.valorHora;
     e.formaPago = p.formaPago || null;
   });
@@ -15940,34 +15956,225 @@ function refrescarEgresosPrivados(){
         refrescarEgresosPrivados();
       }, function(e){ console.warn('privacidad', e); });
     }catch(e){ console.warn('privacidad', e); }
-    if(!esEquipoDueno()) return;
+    if(esEquipoDueno()) iniciarEscuchasPrivadas();
+  }, 1000);
+})();
+var _escuchasPriv = [];
+function detenerEscuchasPrivadas(){ _escuchasPriv.forEach(function(u){ try{ u(); }catch(e){} }); _escuchasPriv = []; }
+function iniciarEscuchasPrivadas(){
+    detenerEscuchasPrivadas();
+    var e_ = function(q, fn, que){ _escuchasPriv.push(q.onSnapshot(fn, function(e){ console.warn(que, e); })); };
     try{
-      colEgDet().onSnapshot(function(snap){
+      e_(colEgDet(), function(snap){
         var m = {}; snap.forEach(function(d){ m[d.id] = d.data(); });
         window.__lrEgDet = m; window.__lrEgDetListo = true;
         refrescarEgresosPrivados();
-      }, function(e){ console.warn('detalle de egresos', e); });
-      colPriv('empleadosPriv').onSnapshot(function(snap){
+      }, 'detalle de egresos');
+      e_(colPriv('empleadosPriv'), function(snap){
         var m = {}; snap.forEach(function(d){ m[d.id] = d.data(); });
         window.__lrEmpPriv = m; window.__lrEmpPrivListo = true;
         aplicarPrivEmpleados(); migrarValorHoraPrivado();
         var pl = document.getElementById('liquidacionGrid');
         if(pl && pl.offsetParent && typeof renderLiquidacion === 'function') try{ renderLiquidacion(); }catch(e){}
-      }, function(e){ console.warn('empleados privados', e); });
-      colEgPriv().onSnapshot(function(snap){
+      }, 'empleados privados');
+      e_(colEgPriv(), function(snap){
         var lista = [], mapa = {};
         snap.forEach(function(d){ var x = d.data(); mapa[d.id] = JSON.parse(JSON.stringify(x)); x._priv = true; lista.push(x); });
         lista.sort(function(a, b){ return (a.id||0) - (b.id||0); });
         window.__lrEgPrivLista = lista; window.__lrEgPrivMapa = mapa;
         refrescarEgresosPrivados();
-      }, function(e){ console.warn('pagos privados', e); });
-      colPriv('configPriv').onSnapshot(function(snap){
+      }, 'pagos privados');
+      e_(colPriv('configPriv'), function(snap){
         var c = {}; snap.forEach(function(d){ c[d.id] = d.data(); });
         window.__lrCfgPriv = c;
-      }, function(e){ console.warn('configuración privada', e); });
+      }, 'configuración privada');
     }catch(e){ console.warn('datos privados', e); }
-  }, 1000);
-})();
+}
+// ── Clave de dueño: ver lo privado desde la caja ──
+// En la caja se entra con la cuenta de la caja, que no puede leer lo privado.
+// Con la clave de dueño (la revisa la nube, nunca la PC) la nube da un permiso
+// de dueño por 30 minutos en una conexión aparte, sin guardar nada en el disco:
+// la venta sigue con la cuenta de la caja y lo privado se lee por esa otra
+// conexión. Al cerrar el admin, o a los 30 minutos, se corta y se borra de la
+// memoria. Si la nube no responde, la caja sigue vendiendo igual.
+var CLAVE_COLS_PRIV = ['egresosDet', 'egresosPriv', 'empleadosPriv', 'configPriv'];
+function duenoTempActivo(){ var t = window.__lrDuenoTemp; return !!(t && t.db && Date.now() < t.hasta); }
+function _lrFuncion(nombre){
+  var cargar = firebase.functions ? Promise.resolve() : (window._lrFnScript || (window._lrFnScript = new Promise(function(res, rej){
+    var s = document.createElement('script');
+    s.src = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js';
+    s.onload = res; s.onerror = function(){ window._lrFnScript = null; rej(new Error('sin internet')); };
+    document.head.appendChild(s);
+  })));
+  return cargar.then(function(){
+    var f = firebase.app().functions('southamerica-east1');
+    if(window.__lrEmulador && !window.__lrFnEmulador){ f.useEmulator('127.0.0.1', 5001); window.__lrFnEmulador = true; }
+    return f.httpsCallable(nombre);
+  });
+}
+function pedirClaveDueno(){
+  var ov = document.getElementById('claveDuenoOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'claveDuenoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:360px;width:100%;padding:16px;color:var(--light)">'+
+    '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">🔑 CLAVE DE DUEÑO</div>'+
+    '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 10px;line-height:1.45">Con tu clave ves lo privado en esta caja durante 30 minutos. Se revisa en la nube; no queda guardada en esta PC.</div>'+
+    '<input id="claveDuenoInput" type="password" autocomplete="new-password" maxlength="64" placeholder="Tu clave de dueño" style="width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:10px;font-size:1rem">'+
+    '<div id="claveDuenoMsg" style="min-height:18px;font-size:.74rem;margin-top:8px;line-height:1.4"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:8px">'+
+      '<button id="claveDuenoOk" style="flex:1;background:var(--gold);color:#000;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;cursor:pointer">Entrar</button>'+
+      '<button id="claveDuenoNo" style="flex:1;background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px;font-family:Oswald,sans-serif;cursor:pointer">Cancelar</button>'+
+    '</div></div>';
+  ov.style.display = 'flex';
+  var inp = document.getElementById('claveDuenoInput'), msg = document.getElementById('claveDuenoMsg'), ok = document.getElementById('claveDuenoOk');
+  var cerrar = function(){ inp.value = ''; ov.style.display = 'none'; ov.innerHTML = ''; };
+  var aviso = function(t, rojo){ msg.style.color = rojo ? '#e74c3c' : 'var(--gray)'; msg.textContent = t; };
+  var enviar = function(){
+    var clave = inp.value;
+    if(!clave){ aviso('Escribí la clave.', true); return; }
+    ok.disabled = true; aviso('⏳ Revisando en la nube…');
+    _lrFuncion('claveDueno').then(function(fn){
+      return fn({ accion: 'entrar', clave: clave, caja: typeof cajaEquipo === 'function' ? cajaEquipo() : 1 });
+    }).then(function(r){
+      var d = (r && r.data) || {};
+      if(d.ok && d.token){ inp.value = ''; return activarModoDueno(d.token, d.hasta).then(cerrar); }
+      ok.disabled = false; inp.value = ''; inp.focus();
+      if(d.motivo === 'clave') aviso('Clave incorrecta. '+(d.quedan === 1 ? 'Te queda 1 intento' : 'Te quedan '+d.quedan+' intentos')+' antes de que se bloquee 15 minutos.', true);
+      else if(d.motivo === 'bloqueado') aviso('🔒 Bloqueada por intentos fallidos. Probá de nuevo en '+Math.ceil((d.espera || 0) / 60)+' minuto(s), o cambiala desde tu admin con tu cuenta.', true);
+      else if(d.motivo === 'sinClave') aviso('Todavía no definiste la clave. Hacelo desde tu admin con tu cuenta: Dinero → Rentabilidad → 🔑 Clave de dueño.', true);
+      else aviso('No se pudo entrar.', true);
+    }).catch(function(e){
+      ok.disabled = false; inp.value = '';
+      aviso('No se pudo comprobar la clave (sin conexión con la nube). La caja sigue vendiendo normal; lo privado lo ves desde tu celu.', true);
+      console.warn('claveDueno', e);
+    });
+  };
+  ok.onclick = enviar;
+  document.getElementById('claveDuenoNo').onclick = cerrar;
+  inp.onkeydown = function(ev){ if(ev.key === 'Enter') enviar(); };
+  setTimeout(function(){ inp.focus(); }, 50);
+}
+function activarModoDueno(token, hasta){
+  var nombre = 'duenoTemp';
+  var app = (firebase.apps || []).filter(function(a){ return a.name === nombre; })[0] || firebase.initializeApp(firebase.app().options, nombre);
+  var auth = app.auth(), db = app.firestore();
+  if(window.__lrEmulador && !app._lrEmu){ auth.useEmulator('http://127.0.0.1:9099'); db.useEmulator('127.0.0.1', 8080); app._lrEmu = true; }
+  // Sin guardar la sesión en el navegador: al recargar, se pierde.
+  return auth.setPersistence(firebase.auth.Auth.Persistence.NONE).then(function(){
+    return auth.signInWithCustomToken(token);
+  }).then(function(){
+    window.__lrDuenoTemp = { app: app, db: db, hasta: Number(hasta) };
+    iniciarEscuchasPrivadas();
+    clearTimeout(window.__lrDuenoTimer);
+    window.__lrDuenoTimer = setTimeout(function(){ terminarModoDueno('venció'); }, Math.max(0, Number(hasta) - Date.now()));
+    _lrBarraDueno();
+    showToast('🔓 Modo dueño en esta caja hasta las '+new Date(Number(hasta)).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }));
+    setTimeout(_lrRefrescarPantallaPrivada, 1500);
+  });
+}
+function terminarModoDueno(motivo){
+  var t = window.__lrDuenoTemp;
+  clearTimeout(window.__lrDuenoTimer);
+  if(!t) return;
+  window.__lrDuenoTemp = null;
+  detenerEscuchasPrivadas();
+  // Lo privado sale de la memoria de esta caja.
+  window.__lrEgDet = {}; window.__lrEgDetListo = false;
+  window.__lrEmpPriv = {}; window.__lrEmpPrivListo = false;
+  window.__lrEgPrivLista = null; window.__lrEgPrivMapa = {};
+  window.__lrCfgPriv = {};
+  var vh = window.__lrVhPublico || {};
+  (window.EMPLEADOS || []).forEach(function(e){
+    delete e.formaPago;
+    if(Object.prototype.hasOwnProperty.call(vh, e.nombre)){ if(vh[e.nombre] === undefined) delete e.valorHora; else e.valorHora = vh[e.nombre]; }
+  });
+  window.__lrVhPublico = {};
+  if(typeof _bal !== 'undefined') _bal.b = null;
+  var rb = document.getElementById('balanceMensualRes'); if(rb) rb.innerHTML = '';
+  try{ t.app.auth().signOut().catch(function(){}).then(function(){ return t.app.delete(); }).catch(function(){}); }catch(e){}
+  var barra = document.getElementById('lrBarraDueno'); if(barra) barra.remove();
+  if(motivo === 'venció') showToast('🔒 Pasaron los 30 minutos: se cerró el modo dueño en esta caja');
+  _lrRefrescarPantallaPrivada();
+}
+function _lrBarraDueno(){
+  var b = document.getElementById('lrBarraDueno');
+  if(!b){
+    b = document.createElement('div'); b.id = 'lrBarraDueno';
+    b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:1250;background:#1d6f42;color:#fff;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:.5px;padding:6px 10px;display:flex;justify-content:center;gap:12px;align-items:center';
+    document.body.appendChild(b);
+  }
+  var t = window.__lrDuenoTemp; if(!t) return;
+  b.innerHTML = '🔓 Modo dueño en esta caja hasta las '+new Date(t.hasta).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })+
+    ' <button onclick="terminarModoDueno(\'cerrado\')" style="background:#fff;color:#1d6f42;border:none;border-radius:4px;padding:3px 10px;font-family:Oswald,sans-serif;cursor:pointer">Cerrar ahora</button>';
+}
+function _lrRefrescarPantallaPrivada(){
+  var p = document.querySelector('.tab-pane.active');
+  if(p && p.id && p.id.indexOf('pane-') === 0) try{ switchTab(p.id.slice(5)); }catch(e){}
+}
+// ── Definir o cambiar la clave (solo con la cuenta del dueño) ──
+function toggleClaveDueno(){
+  var b = document.getElementById('claveDuenoBody'); if(!b) return;
+  if(b.style.display === 'block'){ b.style.display = 'none'; b.innerHTML = ''; return; }
+  b.style.display = 'block';
+  b.innerHTML = '<div style="color:var(--gray);font-size:.76rem">⏳ Consultando…</div>';
+  _lrFuncion('claveDueno').then(function(fn){ return fn({ accion: 'estado' }); }).then(function(r){
+    var d = (r && r.data) || {};
+    var inp = 'width:100%;box-sizing:border-box;background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:6px;padding:9px;font-size:.9rem;margin-top:6px';
+    b.innerHTML = '<div style="font-size:.76rem;color:var(--light);line-height:1.5">'+
+        (d.definida ? '✅ Clave definida (cambiada el '+new Date(d.cambiada).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })+').' : '⚠ Todavía no definiste la clave: desde la caja no se puede ver lo privado.')+
+        (d.bloqueadaHasta ? '<br><span style="color:#e74c3c">🔒 Bloqueada por intentos fallidos hasta las '+new Date(d.bloqueadaHasta).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })+'. Si ponés una clave nueva, se desbloquea.</span>' : '')+
+      '</div>'+
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:8px;line-height:1.45">De 8 a 64 caracteres: letras, números y símbolos. Usala solo para esto. Para cambiarla tenés que haber entrado con tu contraseña hace menos de 10 minutos.</div>'+
+      '<input id="claveNueva1" type="password" autocomplete="new-password" maxlength="64" placeholder="Clave nueva" oninput="_claveRevisar()" style="'+inp+'">'+
+      '<input id="claveNueva2" type="password" autocomplete="new-password" maxlength="64" placeholder="Repetila" oninput="_claveRevisar()" style="'+inp+'">'+
+      '<div id="claveNuevaMsg" style="min-height:18px;font-size:.74rem;margin-top:6px;line-height:1.4"></div>'+
+      '<button id="claveNuevaOk" onclick="guardarClaveDueno()" disabled style="margin-top:6px;background:var(--gold);color:#000;border:none;border-radius:6px;padding:9px 14px;font-family:Oswald,sans-serif;cursor:pointer;opacity:.5">✓ Guardar clave</button>';
+  }).catch(function(e){ b.innerHTML = '<div style="color:var(--red);font-size:.76rem">⚠ No se pudo consultar: '+escBaja((e && e.message) || e)+'</div>'; });
+}
+// Muy corta: no deja guardar. Fácil de adivinar: avisa (se puede guardar igual).
+function _claveFacil(c){
+  var l = String(c).toLowerCase();
+  if(/^\d+$/.test(c)) return true;
+  if(/^(.)\1+$/.test(c)) return true;
+  if(['12345678','123456789','1234567890','password','contraseña','qwertyui','abcdefgh','limayrock','limayrock24','limayrock1','senillosa'].indexOf(l) !== -1) return true;
+  return /^(limay|rock|martin|jonathan|admin|clave|dueno|dueño)/.test(l) && c.length < 12;
+}
+function _claveRevisar(){
+  var a = (document.getElementById('claveNueva1') || {}).value || '', b = (document.getElementById('claveNueva2') || {}).value || '';
+  var msg = document.getElementById('claveNuevaMsg'), ok = document.getElementById('claveNuevaOk');
+  if(!msg || !ok) return false;
+  var puede = false, t = '', color = '#e74c3c';
+  if(a.length && a.length < 8) t = '✗ Muy corta: tiene '+a.length+' caracteres; el mínimo es 8.';
+  else if(a.length > 64) t = '✗ Muy larga: el máximo es 64 caracteres.';
+  else if(a.length && b.length && a !== b) t = '✗ Las dos no coinciden.';
+  else if(a.length >= 8 && a === b){
+    puede = true;
+    if(_claveFacil(a)){ t = '⚠ Es fácil de adivinar: mejor mezclá letras, números y algún símbolo. Si querés, la podés guardar igual.'; color = '#e67e22'; }
+    else { t = '✓ Bien.'; color = 'var(--green)'; }
+  }
+  msg.textContent = t; msg.style.color = color;
+  ok.disabled = !puede; ok.style.opacity = puede ? '1' : '.5';
+  return puede;
+}
+function guardarClaveDueno(){
+  if(!esCuentaDueno()){ showToast('🔒 Solo con tu cuenta de dueño', true); return; }
+  if(!_claveRevisar()) return;
+  var a = document.getElementById('claveNueva1'), b = document.getElementById('claveNueva2'), msg = document.getElementById('claveNuevaMsg');
+  var clave = a.value;
+  if(_claveFacil(clave) && !confirm('La clave es fácil de adivinar. ¿La guardás igual?')) return;
+  msg.style.color = 'var(--gray)'; msg.textContent = '⏳ Guardando…';
+  _lrFuncion('claveDueno').then(function(fn){ return fn({ accion: 'definir', clave: clave }); }).then(function(r){
+    var d = (r && r.data) || {};
+    a.value = ''; b.value = '';
+    if(d.ok){ showToast('✅ Clave de dueño guardada'); toggleClaveDueno(); toggleClaveDueno(); return; }
+    msg.style.color = '#e74c3c';
+    msg.textContent = d.motivo === 'reingresar' ? '✗ Por seguridad, salí y volvé a entrar con tu cuenta y probá de nuevo (entraste hace más de 10 minutos).' : d.motivo === 'largo' ? '✗ La clave tiene que tener entre 8 y 64 caracteres.' : '✗ No se pudo guardar.';
+  }).catch(function(e){ msg.style.color = '#e74c3c'; msg.textContent = '✗ No se pudo guardar (sin conexión con la nube): '+((e && e.message) || e); });
+}
+
 
 // ── Formulario de egresos: rubro y detalle ──
 function poblarRubrosEgreso(){
@@ -17480,6 +17687,7 @@ function calcularResumenRentabilidad(rango) {
 }
 
 function renderRentabilidad() {
+  var cds = document.getElementById('claveDuenoSeccion'); if(cds) cds.style.display = esCuentaDueno() ? '' : 'none';
   // En el admin abierto en la caja no están los pagos privados del dueño: se
   // bloquea en vez de mostrar números incompletos.
   var rPri = document.getElementById('rentPrincipal'), rAv = document.getElementById('rentAvisoDueno');
@@ -23191,7 +23399,7 @@ function _commitEnTandas(ops){
   return tandas.reduce(function(p, t){ return p.then(function(){ return t.commit(); }); }, Promise.resolve());
 }
 function ejecutarFaseB(){
-  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  if(!esCuentaDueno()){ showToast('🔒 La fase B se hace solo con tu cuenta de dueño (no con la clave)', true); return; }
   if(faseB()){ showToast('La fase B ya está activa en este local'); return; }
   askConfirm('🔒 Activar la fase B en Limay '+localActual()+'.\n\n'+
     '¿Ya pegaste las reglas nuevas en Firebase y recargaste las cajas?\n\n'+
@@ -23266,7 +23474,7 @@ function ejecutarFaseB(){
   });
 }
 function deshacerFaseB(){
-  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  if(!esCuentaDueno()){ showToast('🔒 La fase B se deshace solo con tu cuenta de dueño (no con la clave)', true); return; }
   askConfirm('↩ Volver a mostrar en la caja (Limay '+localActual()+').\n\nTus pagos vuelven a la lista común como estaban antes de la fase B, y el valor hora vuelve a la ficha de cada empleado. Antes se baja un respaldo. ¿Seguimos?').then(function(ok){
     if(!ok) return;
     showToast('⏳ Bajando el respaldo…');
@@ -36685,6 +36893,9 @@ function reiniciarLimay2(){
 // cuenta que el Inicio de cada local, así los números coinciden.
 var _ld = { per: 'hoy', datos: null, cargando: false, timer: null, desde: '', hasta: '' };
 function ldCol(n, nombre){
+  // En modo dueño (clave en la caja), lo privado va por su propia conexión.
+  var t = window.__lrDuenoTemp;
+  if(t && t.db && !esCuentaDueno() && CLAVE_COLS_PRIV.indexOf(nombre) !== -1) return t.db.collection(n === 2 ? 'l2_' + nombre : nombre);
   var db = window.__lrDB;
   if(window.__lrSucursal !== 2) return db.collection(n === 1 ? nombre : 'l2_' + nombre);
   return n === 2 ? db.collection(nombre) : window.__lrColOriginal(db, nombre);

@@ -4,6 +4,11 @@ Copia de referencia del código de las funciones que mandan las notificaciones
 (proyecto `limay-rock-852cb`, región `southamerica-east1`). Cada función se
 publica por separado desde esta misma carpeta, en Google Cloud Shell.
 
+## Clave de dueño (`claveDueno`)
+
+Función para ver lo privado desde la caja con la clave del dueño. Cómo se usa,
+cómo se cambia, emergencias y cómo publicarla: ver [CLAVE_DUENO.md](CLAVE_DUENO.md).
+
 ## Publicar / actualizar TODAS las funciones (método recomendado)
 
 Así se instalaron las 8 el 14/10/2026 (Node.js 22). Usa la herramienta de

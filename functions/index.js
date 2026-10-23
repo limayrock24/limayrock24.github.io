@@ -586,6 +586,81 @@ exports.accesoRepartidor = onCall({ region: REGION }, async (req) => {
   return { ok: true, token, emp: datosPublicosRepartidor(emp) };
 });
 
+// ── CLAVE DE DUEÑO (ver lo privado desde la caja) ─────────────────────────
+// La cuenta de la caja (local@) no puede leer lo privado del dueño. Con su
+// clave, que se revisa acá y nunca en la PC, esta función le da a esa ventana
+// un permiso de dueño por 30 minutos (duenoTemp, hasta) que revisan las reglas.
+// La clave se guarda como huella (scrypt con sal) en servidorPrivado/claveDueno,
+// que las reglas no dejan leer a ninguna cuenta. Los intentos fallidos se
+// cuentan acá, por cuenta (todas las cajas juntas): 5 seguidos → 15 minutos
+// de espera y aviso al celular del dueño. Definirla o cambiarla: solo con la
+// cuenta del dueño y habiendo entrado hace menos de 10 minutos.
+const crypto = require('crypto');
+const DUENO_EMAIL = 'admin@limayrock.app';
+const CLAVE_LARGO_MIN = 8, CLAVE_LARGO_MAX = 64, CLAVE_MINUTOS = 30;
+const CLAVE_INTENTOS = 5, CLAVE_ESPERA_MS = 15 * 60 * 1000, CLAVE_RECIENTE_S = 10 * 60;
+function huellaClave(clave, sal) { return crypto.scryptSync(String(clave), sal, 32).toString('hex'); }
+function horaAR(ms) {
+  return new Date(ms).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+exports.claveDueno = onCall({ region: REGION }, async (req) => {
+  const tk = (req.auth && req.auth.token) || {};
+  const email = String(tk.email || '').toLowerCase();
+  const accion = String((req.data && req.data.accion) || 'entrar');
+  const clave = String((req.data && req.data.clave) || '');
+  const refClave = db.collection('servidorPrivado').doc('claveDueno');
+  const refInt = db.collection('intentosClave').doc('caja');
+
+  if (accion === 'estado' || accion === 'definir') {
+    if (email !== DUENO_EMAIL) throw new HttpsError('permission-denied', 'Solo con la cuenta del dueño');
+    if (accion === 'estado') {
+      const d = await refClave.get(), i = (await refInt.get()).data() || {};
+      return { definida: d.exists, cambiada: d.exists ? d.data().cambiada : null, bloqueadaHasta: i.bloqueadoHasta > Date.now() ? i.bloqueadoHasta : 0 };
+    }
+    const hace = Math.floor(Date.now() / 1000) - Number(tk.auth_time || 0);
+    if (!(hace >= 0 && hace <= CLAVE_RECIENTE_S)) return { ok: false, motivo: 'reingresar' };
+    if (clave.length < CLAVE_LARGO_MIN || clave.length > CLAVE_LARGO_MAX) return { ok: false, motivo: 'largo' };
+    const sal = crypto.randomBytes(16).toString('hex');
+    await refClave.set({ huella: huellaClave(clave, sal), sal, cambiada: new Date().toISOString() });
+    await refInt.set({ fallos: 0, bloqueadoHasta: 0, ultimo: new Date().toISOString() });   // clave nueva: se desbloquea
+    return { ok: true };
+  }
+  if (accion !== 'entrar') throw new HttpsError('invalid-argument', 'Acción desconocida');
+  if (email !== 'local@limayrock.app' && email !== DUENO_EMAIL) throw new HttpsError('permission-denied', 'Este equipo no está habilitado');
+  const caja = Number(req.data && req.data.caja) === 2 ? 'Caja 2' : 'Caja 1';
+  const ahora = Date.now();
+  // En una transacción, así dos intentos a la vez no se saltean el contador.
+  const r = await db.runTransaction(async (t) => {
+    const int = (await t.get(refInt)).data() || {};
+    if (int.bloqueadoHasta && int.bloqueadoHasta > ahora) return { ok: false, motivo: 'bloqueado', espera: Math.ceil((int.bloqueadoHasta - ahora) / 1000) };
+    const d = await t.get(refClave);
+    if (!d.exists) return { ok: false, motivo: 'sinClave' };
+    const { huella, sal } = d.data();
+    const bien = clave.length > 0 && clave.length <= CLAVE_LARGO_MAX &&
+      crypto.timingSafeEqual(Buffer.from(huellaClave(clave, sal), 'hex'), Buffer.from(huella, 'hex'));
+    const cuando = new Date().toISOString();
+    if (bien) { t.set(refInt, { fallos: 0, bloqueadoHasta: 0, ultimo: cuando }); return { ok: true }; }
+    const fallos = (int.fallos || 0) + 1;
+    if (fallos >= CLAVE_INTENTOS) {
+      t.set(refInt, { fallos: 0, bloqueadoHasta: ahora + CLAVE_ESPERA_MS, ultimo: cuando });
+      return { ok: false, motivo: 'bloqueado', espera: CLAVE_ESPERA_MS / 1000, recien: true };
+    }
+    t.set(refInt, { fallos, bloqueadoHasta: 0, ultimo: cuando });
+    return { ok: false, motivo: 'clave', quedan: CLAVE_INTENTOS - fallos };
+  });
+  if (r.recien) {
+    try { await notificar('dueno', '🔑 Clave de dueño bloqueada', `Pusieron ${CLAVE_INTENTOS} veces mal la clave de dueño en una caja (${caja}, ${horaAR(ahora)}). Queda bloqueada 15 minutos. Si no fuiste vos, cambiala desde tu admin.`); }
+    catch (e) { console.warn('aviso de clave bloqueada', e.message); }
+    delete r.recien;
+  }
+  if (!r.ok) return r;
+  const hasta = ahora + CLAVE_MINUTOS * 60 * 1000;
+  const token = await getAuth().createCustomToken('duenoTemp_' + (email === DUENO_EMAIL ? 'dueno' : 'caja'), { duenoTemp: true, hasta });
+  try { await notificar('dueno', '🔓 Se abrió lo privado en una caja con tu clave', `${caja}, ${horaAR(ahora)}, hasta las ${horaAR(hasta).slice(-5)}. Si no fuiste vos, cambiá la clave desde tu admin.`); }
+  catch (e) { console.warn('aviso de clave usada', e.message); }
+  return { ok: true, token, hasta };
+});
+
 // Cada cambio en empleados actualiza la copia sin PIN. Si se borra un
 // repartidor, sus celulares quedan dados de baja.
 exports.espejoRepartidores = onDocumentWritten(
