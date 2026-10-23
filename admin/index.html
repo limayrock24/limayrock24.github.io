@@ -5284,16 +5284,10 @@ body.night-on{background:#080005}
         <span class="drop-arrow" id="balanceMensualArrow">▾</span>
       </div>
       <div id="balanceMensualBody" class="consumo-dropdown">
-        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Ventas, costo y margen de un mes por sucursal. El fiado cuenta en el mes en que se fió; los cobros de fiados y de CEFHAS van aparte y no suman.</div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Ventas, costos, resultado, reparto y control de caja de un mes: Sucursal 1, Sucursal 2 y Total. Los costos cuentan en el mes al que corresponden; el fiado, en el mes en que se fió; los cobros de fiados y de CEFHAS no suman.</div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
           <label style="font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif">Mes:</label>
           <input type="month" id="balMes" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
-          <label style="font-size:.72rem;color:var(--gray);font-family:Oswald,sans-serif">Sucursal:</label>
-          <select id="balSuc" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
-            <option value="1">Limay Rock 1</option>
-            <option value="2">Limay Rock 2</option>
-            <option value="ambas">Las dos (columnas separadas)</option>
-          </select>
         </div>
         <button class="btn-save" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none" onclick="generarBalanceMensual()">📒 Ver balance del mes</button>
         <div id="balanceMensualRes" style="margin-top:12px"></div>
@@ -15821,8 +15815,12 @@ var RUBROS_EGRESO = [
   {k:'retiro_socio',    t:'Retiro de socios',                           cat:'otro',      g:'📦 Fuera del resultado'},
   {k:'sin_clasificar',  t:'Sin clasificar',                             cat:'otro',      g:'❓ Sin clasificar'}
 ];
-var ACREEDORES_BASE = ['Tarjeta mía', 'Tarjeta de mi viejo', 'Mercado Crédito', 'IADEP'];
-var SOCIOS_BASE = ['Dueño', 'Jonathan'];
+var ACREEDORES_BASE = ['Tarjeta Martín Monsalve', 'Tarjeta David Monsalve', 'Mercado Crédito', 'IADEP'];
+var SOCIOS_BASE = ['Martín', 'Jonathan'];
+// Nombres de antes del 24/10, por si quedó algo guardado con ellos.
+var NOMBRES_VIEJOS = { 'Dueño': 'Martín', 'Tarjeta mía': 'Tarjeta Martín Monsalve', 'Tarjeta de mi viejo': 'Tarjeta David Monsalve' };
+function nombreActual(s){ return NOMBRES_VIEJOS[s] || s; }
+function _sinRepetir(l){ return l.filter(function(x, i){ return l.indexOf(x) === i; }); }
 function rubroDef(k){ for(var i = 0; i < RUBROS_EGRESO.length; i++) if(RUBROS_EGRESO[i].k === k) return RUBROS_EGRESO[i]; return RUBROS_EGRESO[RUBROS_EGRESO.length-1]; }
 function localActual(){ return window.__lrSucursal === 2 ? 2 : 1; }
 // Detalle de los egresos de cada local (egresosDet / l2_egresosDet); valor
@@ -15840,8 +15838,8 @@ function conceptoDeEgreso(e){ var d = detDeEgreso(e); return (d && d.concepto) |
 function catVisibleEgreso(e){ var d = detDeEgreso(e); if(d && d.rubro) return rubroDef(d.rubro).cat; var c = e.categoria||'proveedor'; return c === 'privado' ? 'otro' : c; }
 // Falta clasificar: sin rubro, o una cuota de crédito sin decir a qué corresponde.
 function egresoSinClasificar(e){ var r = rubroDeEgreso(e); if(r === 'sin_clasificar') return true; var d = detDeEgreso(e); return r === 'credito' && !(d && d.partes); }
-function acreedoresLista(){ var c = window.__lrCfgPriv.acreedores; return (c && Array.isArray(c.lista) && c.lista.length) ? c.lista : ACREEDORES_BASE.slice(); }
-function sociosLista(){ var c = window.__lrCfgPriv.socios; return (c && Array.isArray(c.lista) && c.lista.length) ? c.lista.map(function(s){ return s.nombre || s; }) : SOCIOS_BASE.slice(); }
+function acreedoresLista(){ var c = window.__lrCfgPriv.acreedores; return (c && Array.isArray(c.lista) && c.lista.length) ? _sinRepetir(c.lista.map(nombreActual)) : ACREEDORES_BASE.slice(); }
+function sociosLista(){ var c = window.__lrCfgPriv.socios; return (c && Array.isArray(c.lista) && c.lista.length) ? _sinRepetir(c.lista.map(function(s){ return nombreActual(s.nombre || s); })) : SOCIOS_BASE.slice(); }
 // Reparto de los gastos compartidos de un mes: el que se eligió para ese mes;
 // si no, el del último mes elegido antes; si no hay ninguno, 50/50.
 function repartoDelMes(mes){
@@ -16574,8 +16572,7 @@ function toggleResumenProvBox() {
   if(!open) renderResumenProveedores();
 }
 
-function getEgFiltrados() {
-  var egresos = getEgresos();
+function _egRango() {
   var desde, hasta;
   if(_egFechaPuntual) {
     desde = new Date(_egFechaPuntual+'T00:00:00');
@@ -16587,6 +16584,11 @@ function getEgFiltrados() {
     var rango = getFechasRango(_egPeriodo==='hoy'?'hoy':_egPeriodo||'hoy');
     desde = rango.desde; hasta = rango.hasta;
   }
+  return { desde: desde, hasta: hasta };
+}
+function getEgFiltrados() {
+  var egresos = getEgresos();
+  var rg = _egRango(), desde = rg.desde, hasta = rg.hasta;
   return egresos.filter(function(e){
     var f = new Date((e.ts||e.fecha+'T12:00:00'));
     if(f < desde || f > hasta) return false;
@@ -17634,12 +17636,22 @@ function renderRentabilidad() {
 }
 
 // ── EXPORTAR EGRESOS ────────────────────────────────────────────────────────
+// Texto y número para un CSV de Excel en español (punto y coma, coma decimal).
+function csvTxt(s){ s = String(s == null ? '' : s); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g, '""')+'"' : s; }
+function csvNum(x){ return (x === null || x === undefined || x === '') ? '' : (Math.round((Number(x)||0) * 100) / 100).toFixed(2).replace('.', ','); }
+// Lo que se está viendo (período y categoría elegidos). Con la cuenta del
+// dueño, también el rubro, el mes al que corresponde y la sucursal.
 function exportarEgresosCSV() {
-  var rows=['Fecha,Proveedor/Concepto,Monto,Medio de pago,Nota'];
-  getEgresos().forEach(function(e){
-    rows.push(e.fecha+',"'+e.prov+'",'+e.monto+','+e.medio+',"'+(e.nota||'')+'"');
+  var dueno = esEquipoDueno();
+  var rows = ['Fecha;Proveedor/Concepto;'+(dueno ? 'Rubro;Mes al que corresponde;Sucursal;' : '')+'Monto;Medio de pago;Nota'];
+  getEgFiltrados().slice().sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)) || (a.id||0) - (b.id||0); }).forEach(function(e){
+    var d = dueno ? detDeEgreso(e) : null;
+    var extra = dueno ? [csvTxt(rubroDef(rubroDeEgreso(e)).t), csvTxt((d && d.mes) || String(e.fecha||'').slice(0,7)),
+      csvTxt(d && d.suc === 'compartido' ? 'Compartido' : 'Sucursal '+((d && d.suc) || localActual()))] : [];
+    rows.push([csvTxt(e.fecha), csvTxt(conceptoDeEgreso(e))].concat(extra, [csvNum(e.monto), csvTxt(medioEgresoTxt(e.medio)), csvTxt(e.nota||'')]).join(';'));
   });
-  descargarCSV('Egresos', rows);
+  var rg = _egRango();
+  descargarCSV('Egresos_'+fechaLocalStr(rg.desde)+'_a_'+fechaLocalStr(rg.hasta), rows);
 }
 
 function exportarEgresosPDF() {
@@ -22982,6 +22994,16 @@ function sugerirClasificacion(e){
   var cat = e.categoria || 'proveedor';
   var s = { rubro: 'sin_clasificar', mes: String(e.fecha).slice(0,7), suc: localActual(), confianza: 'revisar' };
   var es = function(re){ return re.test(texto); };
+  // Pedido del dueño (24/10): lo pagado a Martín Monsalve o a Jonathan es
+  // retiro de socio; lo de David Monsalve son las tarjetas que prestó para
+  // comprar equipamiento: cuota de crédito, toda equipamiento.
+  if(es(/mart[ií]n\s+monsalve/)){ s.rubro = 'retiro_socio'; s.socio = 'Martín'; s.confianza = 'alta'; return s; }
+  if(es(/jonathan/)){ s.rubro = 'retiro_socio'; s.socio = 'Jonathan'; s.confianza = 'alta'; return s; }
+  if(es(/david\s+monsalve/)){
+    s.rubro = 'credito'; s.acreedor = 'Tarjeta David Monsalve'; s.confianza = 'alta';
+    s.partes = { mercaderia: 0, equipamiento: Number(e.monto) || 0, gastos: 0, intereses: 0 };
+    return s;
+  }
   if(cat === 'proveedor'){
     if(es(/heladera|freezer|exhibidor|balanza|estanter|equipo|aire acond|computadora|notebook|impresora|c[aá]mara|posnet|cartel|mueble/)){ s.rubro = 'inversion'; }
     else { s.rubro = 'mercaderia'; s.confianza = 'alta'; }
@@ -23015,7 +23037,7 @@ function sugerirClasificacion(e){
   ];
   for(var i = 0; i < reglas.length; i++){ if(reglas[i][0].test(texto)){ s.rubro = reglas[i][1]; s.confianza = 'alta'; break; } }
   if(s.rubro === 'credito'){
-    s.acreedor = /iadep/.test(texto) ? 'IADEP' : /mercado/.test(texto) ? 'Mercado Crédito' : /viejo|pap[aá]/.test(texto) ? 'Tarjeta de mi viejo' : '';
+    s.acreedor = /iadep/.test(texto) ? 'IADEP' : /mercado/.test(texto) ? 'Mercado Crédito' : /viejo|pap[aá]|david/.test(texto) ? 'Tarjeta David Monsalve' : '';
     s.confianza = 'revisar';   // hay que decir a qué corresponde
   }
   if(s.rubro === 'retiro_socio'){ s.socio = /jonathan/.test(texto) ? 'Jonathan' : ''; s.confianza = s.socio ? 'alta' : 'revisar'; }
@@ -23027,7 +23049,7 @@ function _clfBorrador(e){
   if(_clf.borr[id]) return _clf.borr[id];
   var d = detDeEgreso(e);
   var b = d ? { rubro: d.rubro, empleado: d.empleado||'', mes: d.mes || String(e.fecha).slice(0,7), suc: d.suc || localActual(), reparto: d.reparto || null,
-      acreedor: d.acreedor||'', partes: d.partes || null, socio: d.socio||'', confianza: 'hecho' } : sugerirClasificacion(e);
+      acreedor: nombreActual(d.acreedor||''), partes: d.partes || null, socio: nombreActual(d.socio||''), confianza: 'hecho' } : sugerirClasificacion(e);
   _clf.borr[id] = b;
   return b;
 }
@@ -23414,7 +23436,7 @@ function _balCalcular(n, mes, datos){
     ventasTot: ventasTot, ventaDiaria: diasTrans ? ventasTot / diasTrans : 0,
     proyectadas: enCurso ? (diasTrans ? ventasTot / diasTrans : 0) * diasMes : null,
     costo: mg.costoTotal, margen: mg.margenBruto, pctMargen: pctMargen,
-    sinCosto: mg.revSinCosto, pctSinCosto: pctSinCosto,
+    sinCosto: mg.revSinCosto, pctSinCosto: pctSinCosto, revTotal: mg.revTotal, revConCosto: mg.revConCosto,
     estimado100: mg.revTotal * pctMargen / 100,
     fiadosMes: fiadosMes, cobrosAnteriores: cobrosAnteriores, sinCobrar: sinCobrar,
     cefhas: cefhas, gananciaCargas: gananciaCargas,
@@ -23422,108 +23444,537 @@ function _balCalcular(n, mes, datos){
   };
 }
 function _balNombreMes(mes){ var t = _balRango(mes).d0.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); }
-// Filas del balance: [rótulo, valor, tipo ('t' texto, 'i' entero, '$' plata, '%'), estimación]
-function _balConceptos(){
-  return [
-    ['Sucursal', function(r){ return r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1'; }, 't'],
-    ['Mes', function(r){ return _balNombreMes(r.mes); }, 't'],
-    ['Días del mes', function(r){ return r.diasMes; }, 'i'],
-    ['Días transcurridos', function(r){ return r.diasTrans; }, 'i'],
-    ['Días con ventas', function(r){ return r.diasConVentas; }, 'i'],
-    ['Ventas totales', function(r){ return r.ventasTot; }, '$'],
-    ['Venta diaria promedio', function(r){ return r.ventaDiaria; }, '$'],
-    ['Ventas proyectadas del mes (estimación)', function(r){ return r.proyectadas; }, '$', true],
-    ['Costo de mercadería', function(r){ return r.costo; }, '$'],
-    ['Margen bruto $ (comprobado)', function(r){ return r.margen; }, '$'],
-    ['Margen bruto % (sobre lo que tiene costo)', function(r){ return r.pctMargen; }, '%'],
-    ['Ventas sin costo $', function(r){ return r.sinCosto; }, '$'],
-    ['% de ventas sin costo', function(r){ return r.pctSinCosto; }, '%'],
-    ['Margen estimado al 100% (estimación)', function(r){ return r.estimado100; }, '$', true],
-    ['Fiados cargados en el mes', function(r){ return r.fiadosMes; }, '$'],
-    ['Cobros de fiados de meses anteriores', function(r){ return r.cobrosAnteriores; }, '$'],
-    ['Fiado sin cobrar al cierre', function(r){ return r.sinCobrar; }, '$'],
-    ['Cobros CEFHAS, no incluidos', function(r){ return r.cefhas; }, '$'],
-    ['Ganancia de cargas virtuales', function(r){ return r.gananciaCargas; }, '$'],
-    ['% del costo calculado con el costo actual', function(r){ return r.pctCostoActual; }, '%']
+// ── Balance real: costos por rubro, resultado, reparto y control de caja ──
+// Columnas fijas: Sucursal 1 | Sucursal 2 | Total, con las filas en el orden
+// de la planilla del dueño. Cada egreso cuenta en el mes al que corresponde
+// (el de su detalle; sin detalle, el de la fecha de pago) y en la sucursal
+// del detalle (compartido: según el % del mes). El control de caja va por
+// fecha de pago. La mercadería pagada a proveedores no se resta: ya está en
+// el costo de lo vendido. Solo lee; lo único que guarda es la configuración
+// (reparto, cargas sociales) y los saldos del mes, en lo privado del dueño.
+var BAL_SERVICIOS = ['luz','gas','agua','internet','otros_servicios'];
+var BAL_IMPUESTOS = ['monotributo','comercio','contadora','otros_costos','comisiones'];
+var BAL_OPERATIVOS = ['sueldos','cargas_sociales','personal_extra','alquiler'].concat(BAL_SERVICIOS, BAL_IMPUESTOS);
+var BAL_SALDOS = [['efec','Efectivo en cajones'],['fuera','Efectivo fuera de caja'],['mp','Mercado Pago'],['banco','Banco']];
+function balConfig(){ return window.__lrCfgPriv.balance || {}; }
+function balCargasPct(){ var p = Number(balConfig().cargasPct); return p > 0 ? p : 0; }
+// % de cada socio en un local: el configurado; si no, 60 el dueño y 40 Jonathan.
+function balRepartoLocal(L){
+  var r = (balConfig().reparto || {})[L], out = {};
+  sociosLista().forEach(function(s){ out[s] = (r && r[s] != null) ? (Number(r[s]) || 0) : (s === 'Martín' ? 60 : s === 'Jonathan' ? 40 : 0); });
+  return out;
+}
+function balSaldosMes(mes){ return (((window.__lrCfgPriv.saldosMes || {}).meses) || {})[mes] || {}; }
+function _balMesVecino(mes, d){ var y = +mes.slice(0,4), m = +mes.slice(5,7) - 1 + d; var f = new Date(y, m, 1); return f.getFullYear()+'-'+String(f.getMonth()+1).padStart(2,'0'); }
+
+// Egresos de un local: los pagados cerca del mes (±3 meses), los privados
+// del dueño y su detalle. Si un detalle dice que corresponde a este mes y su
+// egreso se pagó más lejos, se lo trae por separado.
+function _balLeerEgresos(L, mes){
+  var leer = function(q){ return q.get().then(function(s){ var a = []; s.forEach(function(x){ a.push(x.data()); }); return a; }); };
+  var r = _balRango(mes);
+  var desde = fechaLocalStr(new Date(r.d0.getTime() - 92*86400000)), hasta = fechaLocalStr(new Date(r.d1.getTime() + 92*86400000));
+  return Promise.all([
+    leer(ldCol(L, 'egresos').where('fecha', '>=', desde).where('fecha', '<=', hasta)),
+    leer(ldCol(L, 'egresosPriv')),
+    leer(ldCol(L, 'egresosDet'))
+  ]).then(function(x){
+    var eg = {}, det = {};
+    x[0].forEach(function(e){ if(e && e.id != null) eg[String(e.id)] = e; });
+    x[1].forEach(function(e){ if(e && e.id != null) eg[String(e.id)] = e; });   // el privado manda
+    x[2].forEach(function(d){ if(d && d.id != null) det[String(d.id)] = d; });
+    var faltan = Object.keys(det).filter(function(id){ return det[id].mes === mes && !eg[id]; });
+    return Promise.all(faltan.map(function(id){
+      return ldCol(L, 'egresos').doc(id).get().then(function(s){ if(s.exists) eg[id] = s.data(); }).catch(function(){});
+    })).then(function(){ return Object.keys(eg).map(function(id){ return { e: eg[id], det: det[id] || null, L: L }; }); });
+  });
+}
+function _balLeerCierres(L, r){
+  var t0 = new Date(r.d0.getTime() - 86400000).toISOString(), t1 = new Date(r.d1.getTime() + 86400000).toISOString();
+  return ldCol(L, 'cierres').where('fecha', '>=', t0).where('fecha', '<=', t1).get().then(function(s){
+    var a = []; s.forEach(function(x){ var c = x.data(), t = new Date(c.fecha).getTime(); if(t >= r.d0.getTime() && t <= r.d1.getTime()) a.push(c); }); return a;
+  });
+}
+// Qué parte de un egreso va a cada sucursal.
+function _balPartes(det, Lguardado, mes){
+  var suc = det ? det.suc : null;
+  if(suc === 'compartido'){
+    var rp = det.reparto || repartoDelMes(det.mes || mes);
+    return { 1: (Number(rp[1]) || 0) / 100, 2: (Number(rp[2]) || 0) / 100 };
+  }
+  var n = Number(suc) === 2 ? 2 : Number(suc) === 1 ? 1 : Lguardado;
+  var p = { 1: 0, 2: 0 }; p[n] = 1; return p;
+}
+function _balSumar(o, k, v){ o[k] = (o[k] || 0) + v; }
+function _balColVacia(L){ return { L: L, rub: {}, comp: {}, emp: {}, pend: {}, horasSocio: {}, recup: 0, acre: {}, credMerc: 0, credEquip: 0, credSinPartes: 0,
+  inversion: 0, mercaderia: 0, sinClasif: 0, nSinClasif: 0, retiros: {}, retirosCaja: {} }; }
+function _balSinTilde(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+// Si un empleado es uno de los socios (por el primer nombre): sus horas no
+// se pagan, solo se cuentan.
+function balSocioDeEmpleado(nombre){
+  var n = _balSinTilde(nombre).split(/\s+/)[0], hit = '';
+  if(n.length < 3) return '';
+  sociosLista().forEach(function(s){ var p = _balSinTilde(s).split(/\s+/)[0]; if(p.length >= 3 && (n.indexOf(p) === 0 || p.indexOf(n) === 0)) hit = s; });
+  return hit;
+}
+// Reparte los egresos de los dos locales en las columnas.
+function _balCostos(mes, pool, cierres){
+  var cols = { 1: _balColVacia(1), 2: _balColVacia(2) };
+  pool.forEach(function(it){
+    var e = it.e, det = it.det, monto = Number(e.monto) || 0;
+    var rubro = (det && det.rubro) ? det.rubro : ((e.categoria || 'proveedor') === 'proveedor' ? 'mercaderia' : 'sin_clasificar');
+    var mesItem = (det && det.mes) ? det.mes : String(e.fecha || '').slice(0,7);
+    var pagadoEnMes = String(e.fecha || '').slice(0,7) === mes;
+    var partes = _balPartes(det, it.L, mesItem), comp = !!(det && det.suc === 'compartido');
+    [1, 2].forEach(function(L){
+      var f = partes[L], c = cols[L];
+      if(!f) return;
+      var m = monto * f;
+      // Un sueldo a un socio no es sueldo: es retiro de ese socio.
+      var socioSueldo = rubro === 'sueldos' ? balSocioDeEmpleado((det && (det.empleado || det.concepto)) || e.prov) : '';
+      if(socioSueldo){ rubro = 'retiro_socio'; det = Object.assign({}, det, { socio: socioSueldo }); }
+      var socio = nombreActual((det && det.socio) || 'Sin socio');
+      if(rubro === 'retiro_socio' && pagadoEnMes) _balSumar(c.retirosCaja, socio, m);
+      if(mesItem !== mes) return;
+      if(rubro === 'mercaderia'){ c.mercaderia += m; return; }
+      if(rubro === 'sin_clasificar'){ c.sinClasif += m; c.nSinClasif++; return; }
+      if(rubro === 'retiro_socio'){ _balSumar(c.retiros, socio, m); return; }
+      if(rubro === 'inversion'){ c.inversion += m; return; }
+      if(rubro === 'credito'){
+        var acr = nombreActual((det && det.acreedor) || 'Sin acreedor'), p = det && det.partes;
+        if(p){
+          _balSumar(c.acre, acr, ((Number(p.gastos) || 0) + (Number(p.intereses) || 0)) * f);
+          c.credMerc += (Number(p.mercaderia) || 0) * f;
+          c.credEquip += (Number(p.equipamiento) || 0) * f;
+          c.inversion += (Number(p.equipamiento) || 0) * f;
+        } else { _balSumar(c.acre, acr, m); c.credSinPartes++; }
+        return;
+      }
+      if(rubro === 'sueldos'){
+        // Si vino de una liquidación: bruto y lo descontado (recuperos).
+        var liq = det && det.liq, bruto = liq ? (Number(liq.bruto) || 0) : monto;
+        var rec = liq ? (Number(liq.consumos) || 0) + (Number(liq.faltantes) || 0) : 0;
+        _balSumar(c.emp, (det && (det.empleado || det.concepto)) || e.prov || 'Sin nombre', bruto * f);
+        c.recup += rec * f;
+        _balSumar(c.rub, 'sueldos', (bruto - rec) * f);
+        if(comp) _balSumar(c.comp, 'sueldos', (bruto - rec) * f);
+        return;
+      }
+      if(BAL_OPERATIVOS.indexOf(rubro) === -1) rubro = 'otros_costos';
+      _balSumar(c.rub, rubro, m);
+      if(comp) _balSumar(c.comp, rubro, m);
+    });
+  });
+  // Sueldos pendientes (estimación): turnos del mes sin pagar de los que
+  // cobran mensual vencido, a su valor hora.
+  var emps = {};
+  (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0 }; });
+  var sinValor = {};
+  [1, 2].forEach(function(L){
+    (cierres[L] || []).forEach(function(c){
+      var soc = balSocioDeEmpleado(c.empleado);
+      if(soc){ _balSumar(cols[L].horasSocio, soc, c.durMinutos || 0); return; }
+      var x = emps[c.empleado];
+      if(!x || x.forma !== 'mensual' || c.pagado) return;
+      if(!(x.vh > 0)){ sinValor[c.empleado] = true; return; }
+      _balSumar(cols[L].pend, c.empleado, Math.round(minutosPagados(c) / 60 * x.vh));
+    });
+  });
+  cols.sinValorHora = Object.keys(sinValor);
+  return cols;
+}
+function _balSumaMapa(o){ return Object.keys(o).reduce(function(s, k){ return s + (o[k] || 0); }, 0); }
+function _balSaldoTotal(o){
+  if(!o) return null;
+  var hay = false, t = 0;
+  BAL_SALDOS.forEach(function(s){ if(o[s[0]] != null && o[s[0]] !== ''){ hay = true; t += Number(o[s[0]]) || 0; } });
+  return hay ? t : null;
+}
+// Números derivados de una columna (o del total, que suma las dos).
+function _balDerivar(c, v, mes, extra){
+  var r = c.res = {};
+  r.ventas = v.ventasTot; r.diasMes = v.diasMes;
+  r.ventaDiaria = v.diasTrans ? v.ventasTot / v.diasTrans : 0;
+  r.pctSinCosto = v.revTotal > 0 ? v.sinCosto / v.revTotal * 100 : 0;
+  r.margen = v.margen;
+  r.margenPctV = v.ventasTot > 0 ? v.margen / v.ventasTot * 100 : null;
+  r.pctSobreCosto = v.revConCosto > 0 ? v.margen / v.revConCosto * 100 : null;
+  r.est100 = v.estimado100;
+  r.conf = r.pctSinCosto < 5 ? 'Alta' : r.pctSinCosto <= 10 ? 'Media' : 'Baja';
+  r.pendTotal = _balSumaMapa(c.pend);
+  r.sueldos = (c.rub.sueldos || 0) + r.pendTotal;
+  r.cargas = c.rub.cargas_sociales || 0;
+  r.servicios = BAL_SERVICIOS.reduce(function(s, k){ return s + (c.rub[k] || 0); }, 0);
+  r.impuestos = BAL_IMPUESTOS.reduce(function(s, k){ return s + (c.rub[k] || 0); }, 0);
+  r.totalOp = r.sueldos + r.cargas + (c.rub.personal_extra || 0) + (c.rub.alquiler || 0) + r.servicios + r.impuestos;
+  r.compOp = _balSumaMapa(c.comp);
+  r.creditos = _balSumaMapa(c.acre);
+  r.totalCostos = r.totalOp + r.creditos;
+  r.resOp = r.margen - r.totalOp;
+  r.resOpAntes = r.resOp + r.compOp;
+  r.neto = r.resOp - r.creditos;
+  r.netoEst = r.est100 - r.totalCostos;
+  r.margenNeto = r.ventas > 0 ? r.neto / r.ventas * 100 : null;
+  r.credPct = r.resOp > 0 ? r.creditos / r.resOp * 100 : null;
+  r.eq = (r.margen > 0 && r.ventas > 0) ? r.totalCostos / (r.margen / r.ventas) / r.diasMes : null;
+  r.eqEst = (r.est100 > 0 && r.ventas > 0) ? r.totalCostos / (r.est100 / r.ventas) / r.diasMes : null;
+  r.difEq = r.eq != null ? r.ventaDiaria - r.eq : null;
+  r.retirosCajaTot = _balSumaMapa(c.retirosCaja);
+  if(extra) extra(r);
+  return r;
+}
+function _balCalcularTodo(mes, ventas, pool, cierres){
+  var cols = _balCostos(mes, pool, cierres);
+  // Cargas sociales: lo pagado de verdad; si en el mes no hay ningún pago,
+  // el % configurado sobre los sueldos brutos.
+  var pagadas = (cols[1].rub.cargas_sociales || 0) + (cols[2].rub.cargas_sociales || 0), pct = balCargasPct();
+  var modoCargas = pagadas > 0 ? 'pagado' : (pct > 0 ? 'estimado' : 'ninguno');
+  if(modoCargas === 'estimado') [1, 2].forEach(function(L){
+    var c = cols[L]; c.rub.cargas_sociales = Math.round((_balSumaMapa(c.emp) + _balSumaMapa(c.pend)) * pct / 100);
+  });
+  var saldos = balSaldosMes(mes);
+  [1, 2].forEach(function(L){
+    var c = cols[L], rep = balRepartoLocal(L), sal = saldos[L] || {};
+    _balDerivar(c, ventas[L], mes, function(r){
+      r.pctSocio = rep; r.corr = {};
+      Object.keys(rep).forEach(function(s){ r.corr[s] = r.neto * rep[s] / 100; });
+      r.saldoIni = sal.ini || null; r.saldoFin = sal.fin || null;
+      r.cajaIni = _balSaldoTotal(sal.ini); r.cajaFin = _balSaldoTotal(sal.fin);
+    });
+  });
+  // Total: se suman las dos sucursales y se recalcula lo derivado.
+  var T = _balColVacia('T'), vT = {};
+  [1, 2].forEach(function(L){
+    var c = cols[L];
+    ['rub','comp','emp','pend','horasSocio','acre','retiros','retirosCaja'].forEach(function(k){ Object.keys(c[k]).forEach(function(x){ _balSumar(T[k], x, c[k][x]); }); });
+    ['recup','credMerc','credEquip','credSinPartes','inversion','mercaderia','sinClasif','nSinClasif'].forEach(function(k){ T[k] += c[k]; });
+    ['ventasTot','costo','margen','sinCosto','revTotal','revConCosto','estimado100','fiadosMes','cobrosAnteriores','sinCobrar','cefhas','gananciaCargas'].forEach(function(k){ vT[k] = (vT[k] || 0) + (Number(ventas[L][k]) || 0); });
+    vT.proyectadas = (ventas[L].proyectadas == null) ? null : (vT.proyectadas || 0) + ventas[L].proyectadas;
+  });
+  vT.diasMes = ventas[1].diasMes; vT.diasTrans = ventas[1].diasTrans; vT.enCurso = ventas[1].enCurso;
+  _balDerivar(T, vT, mes, function(r){
+    r.pctSocio = null; r.corr = {};
+    [1, 2].forEach(function(L){ Object.keys(cols[L].res.corr).forEach(function(s){ _balSumar(r.corr, s, cols[L].res.corr[s]); }); });
+    // Un local con ventas y sin saldos cargados deja el total en blanco.
+    var falta = function(k){ return [1, 2].some(function(L){ return cols[L].res[k] == null && ventas[L].ventasTot > 0; }); };
+    var suma = function(k){ var hay = false, t = 0; [1, 2].forEach(function(L){ if(cols[L].res[k] != null){ hay = true; t += cols[L].res[k]; } }); return hay ? t : null; };
+    r.cajaIni = falta('cajaIni') ? null : suma('cajaIni');
+    r.cajaFin = falta('cajaFin') ? null : suma('cajaFin');
+    var sumaSaldo = function(cual){ var o = {}; [1, 2].forEach(function(L){ var s = cols[L].res[cual]; if(s) BAL_SALDOS.forEach(function(x){ if(s[x[0]] != null) o[x[0]] = (o[x[0]] || 0) + (Number(s[x[0]]) || 0); }); }); return o; };
+    r.saldoIni = r.cajaIni == null ? null : sumaSaldo('saldoIni'); r.saldoFin = r.cajaFin == null ? null : sumaSaldo('saldoFin');
+  });
+  [1, 2, 'T'].forEach(function(k){
+    var r = (k === 'T' ? T : cols[k]).res;
+    r.generada = (r.cajaIni != null && r.cajaFin != null) ? r.cajaFin - r.cajaIni + r.retirosCajaTot : null;
+    r.difRes = r.generada != null ? r.generada - r.neto : null;
+  });
+  return { mes: mes, cols: [cols[1], cols[2], T], ventas: [ventas[1], ventas[2], vT], modoCargas: modoCargas, pctCargas: pct, sinValorHora: cols.sinValorHora };
+}
+
+// Filas del balance, en el orden de la planilla. Cada fila: rótulo, valor
+// por columna (c = columna, v = ventas de esa columna, b = balance), tipo
+// ('h' título, 't' texto, 'i' entero, '$' plata, '%'), y opciones: est
+// (estimación) y det (filas de detalle debajo).
+function _balFilas(b){
+  var unir = function(campo){ var k = {}; b.cols.forEach(function(c){ Object.keys(c[campo]).forEach(function(x){ k[x] = true; }); }); return Object.keys(k).sort(); };
+  var socios = sociosLista();
+  unir('retiros').concat(unir('retirosCaja')).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
+  var rub = function(k){ return function(c){ return c.rub[k] || 0; }; };
+  var compDe = function(ks){ return ['(de los cuales compartido)', function(c){ return ks.reduce(function(s, k){ return s + (c.comp[k] || 0); }, 0); }, '$', { ocultarCero: true }]; };
+  var saldoDet = function(cual){ return BAL_SALDOS.map(function(s){ return [s[1], function(c){ var o = c.res[cual]; return (o && o[s[0]] != null) ? Number(o[s[0]]) || 0 : null; }, '$']; }); };
+  var modoTxt = b.modoCargas === 'pagado' ? 'Lo pagado en el mes' : b.modoCargas === 'estimado' ? 'Estimado: '+String(b.pctCargas).replace('.', ',')+' % de los sueldos brutos (no hay pagos cargados)' : 'Sin pagos cargados y 0 % configurado';
+  var f = [
+    ['Mes', function(){ return _balNombreMes(b.mes); }, 't'],
+    ['Días del mes', function(c){ return c.res.diasMes; }, 'i'],
+    ['INGRESOS', null, 'h'],
+    ['Ventas del mes', function(c){ return c.res.ventas; }, '$', { det: [
+      ['Cobros CEFHAS (no incluidos)', function(c, v){ return v.cefhas; }, '$'],
+      ['Ganancia de cargas virtuales (no incluida)', function(c, v){ return v.gananciaCargas; }, '$'],
+      ['Ventas proyectadas del mes (estimación)', function(c, v){ return v.proyectadas; }, '$', { est: true, ocultarNulo: true }]
+    ] }],
+    ['Venta diaria promedio', function(c){ return c.res.ventaDiaria; }, '$'],
+    ['% de ventas sin costo cargado', function(c){ return c.res.pctSinCosto; }, '%', { det: [['Ventas sin costo cargado $', function(c, v){ return v.sinCosto; }, '$']] }],
+    ['Margen bruto $ (comprobado)', function(c){ return c.res.margen; }, '$'],
+    ['Margen bruto % sobre ventas totales (comprobado)', function(c){ return c.res.margenPctV; }, '%', { det: [['Margen bruto % sobre lo que tiene costo', function(c){ return c.res.pctSobreCosto; }, '%']] }],
+    ['Margen bruto $ estimado al 100% (estimación)', function(c){ return c.res.est100; }, '$', { est: true }],
+    ['Confiabilidad del margen', function(c){ return c.res.conf; }, 't'],
+    ['Fiado sin cobrar al cierre (informativo)', function(c, v){ return v.sinCobrar; }, '$', { det: [
+      ['Fiados cargados en el mes', function(c, v){ return v.fiadosMes; }, '$'],
+      ['Cobros de fiados de meses anteriores', function(c, v){ return v.cobrosAnteriores; }, '$']
+    ] }],
+    ['COSTOS OPERATIVOS', null, 'h'],
+    ['Sueldos', function(c){ return c.res.sueldos; }, '$', { det: unir('emp').concat(unir('pend').filter(function(n){ return unir('emp').indexOf(n) === -1; })).map(function(n){
+        return [n+' (bruto)', function(c){ return c.emp[n] || 0; }, '$']; }).concat([
+      ['Sueldos estimados pendientes (mensual vencido, estimación)', function(c){ return c.res.pendTotal; }, '$', { est: true }],
+      ['Recuperos (consumos y faltantes descontados)', function(c){ return c.recup ? -c.recup : 0; }, '$'],
+      compDe(['sueldos'])
+    ]).concat(unir('horasSocio').map(function(s){
+      return ['Horas trabajadas por '+s+' (socio: no se pagan, solo se cuentan)', function(c){ var m = Math.round(c.horasSocio[s] || 0); return m ? Math.floor(m / 60)+' h '+(m % 60)+' m' : '0 h'; }, 't'];
+    })) }],
+    ['Cargas sociales', function(c){ return c.res.cargas; }, '$', { est: b.modoCargas === 'estimado', det: [['Cómo se calculó: '+modoTxt, function(){ return ''; }, 't']] }],
+    ['Personal extra y limpieza', rub('personal_extra'), '$', { det: [compDe(['personal_extra'])] }],
+    ['Alquiler', rub('alquiler'), '$', { det: [compDe(['alquiler'])] }],
+    ['Servicios (luz, gas, agua, internet y otros)', function(c){ return c.res.servicios; }, '$', { det: BAL_SERVICIOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_SERVICIOS)]) }],
+    ['Impuestos y administración', function(c){ return c.res.impuestos; }, '$', { det: BAL_IMPUESTOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_IMPUESTOS)]) }],
+    ['Total costos operativos (sin créditos)', function(c){ return c.res.totalOp; }, '$', { det: [
+      ['Egresos sin clasificar (NO incluidos: clasificalos)', function(c){ return c.sinClasif; }, '$', { ocultarCero: true, alerta: true }],
+      ['Mercadería pagada a proveedores (no se resta: ya está en el costo)', function(c){ return c.mercaderia; }, '$']
+    ] }],
+    ['CRÉDITOS', null, 'h'],
+    ['Total créditos (cuotas del mes)', function(c){ return c.res.creditos; }, '$', { det: unir('acre').map(function(a){ return [a, function(c){ return c.acre[a] || 0; }, '$']; }).concat([
+      ['Parte de mercadería de las cuotas (no se resta)', function(c){ return c.credMerc; }, '$', { ocultarCero: true }],
+      ['Parte de equipamiento de las cuotas (va a inversiones)', function(c){ return c.credEquip; }, '$', { ocultarCero: true }]
+    ]) }],
+    ['BALANCE', null, 'h'],
+    ['Total costos (operativos + créditos)', function(c){ return c.res.totalCostos; }, '$'],
+    ['Resultado operativo', function(c){ return c.res.resOp; }, '$', { det: [['Resultado operativo antes de gastos compartidos', function(c){ return c.res.resOpAntes; }, '$']] }],
+    ['Resultado neto (después de créditos)', function(c){ return c.res.neto; }, '$', { det: [['Inversiones en equipamiento (fuera del resultado)', function(c){ return c.inversion; }, '$']] }],
+    ['Resultado neto con margen estimado al 100% (estimación)', function(c){ return c.res.netoEst; }, '$', { est: true }],
+    ['Margen neto % sobre ventas', function(c){ return c.res.margenNeto; }, '%'],
+    ['Créditos como % del resultado operativo', function(c){ return c.res.credPct; }, '%'],
+    ['Venta diaria de equilibrio', function(c){ return c.res.eq; }, '$', { det: [['Venta diaria de equilibrio (estimación, margen al 100%)', function(c){ return c.res.eqEst; }, '$', { est: true }]] }],
+    ['Venta diaria actual menos equilibrio', function(c){ return c.res.difEq; }, '$'],
+    ['REPARTO ENTRE SOCIOS', null, 'h']
   ];
+  socios.forEach(function(s){
+    f.push(['Le corresponde a '+s, function(c){ return c.res.corr[s] || 0; }, '$', { det: [['% de '+s, function(c){ return c.res.pctSocio ? c.res.pctSocio[s] || 0 : null; }, '%']] }]);
+    f.push(['Retiros de '+s, function(c){ return c.retiros[s] || 0; }, '$']);
+    f.push(['Saldo de '+s+' (le corresponde − retiró)', function(c){ return (c.res.corr[s] || 0) - (c.retiros[s] || 0); }, '$']);
+  });
+  f.push(['CONTROL DE CAJA', null, 'h']);
+  f.push(['Caja al inicio', function(c){ return c.res.cajaIni; }, '$', { det: saldoDet('saldoIni') }]);
+  f.push(['Caja al cierre', function(c){ return c.res.cajaFin; }, '$', { det: saldoDet('saldoFin') }]);
+  f.push(['Retiros (de socios, por fecha de pago)', function(c){ return c.res.retirosCajaTot; }, '$']);
+  f.push(['Plata generada', function(c){ return c.res.generada; }, '$']);
+  f.push(['Diferencia contra el resultado neto', function(c){ return c.res.difRes; }, '$']);
+  return f;
+}
+function _balValor(fila, b, i){ var fn = fila[1]; return fn ? fn(b.cols[i], b.ventas[i]) : null; }
+function _balAvisos(b){
+  var av = [], T = b.cols[2], nom = function(L){ return 'Sucursal '+L; };
+  if(T.nSinClasif) av.push('<div style="color:#e74c3c;font-weight:700">⚠ Hay '+T.nSinClasif+' egreso'+(T.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+fmt(Math.round(T.sinClasif))+') que NO están en el resultado. Clasificalos en Egresos → 🏷 Clasificar egresos.</div>');
+  if(T.credSinPartes) av.push('<div style="color:#e74c3c;font-weight:700">⚠ '+T.credSinPartes+' cuota'+(T.credSinPartes === 1 ? '' : 's')+' de crédito sin decir a qué corresponde: se restaron enteras.</div>');
+  [0, 1].forEach(function(i){ var v = b.ventas[i]; if(v.ventasTot > 0 && b.cols[i].res.pctSinCosto > 10) av.push('<div style="color:#e74c3c;font-weight:700">⚠ '+nom(i+1)+': el '+_balFmt(b.cols[i].res.pctSinCosto, '%')+' de las ventas no tiene costo. La confiabilidad del margen es baja.</div>'); });
+  if(b.ventas[2].enCurso) av.push('<div>📅 Mes en curso: van '+b.ventas[2].diasTrans+' de '+b.ventas[2].diasMes+' días. Los números son parciales y el fiado sin cobrar es a hoy.</div>');
+  if(T.res.pendTotal > 0) av.push('<div>🕒 Hay sueldos estimados pendientes ('+fmt(Math.round(T.res.pendTotal))+'): turnos del mes sin pagar de empleados mensual vencido, a su valor hora. Si ya les pagaste sin registrar la liquidación, marcá esos turnos como pagados.</div>');
+  if(b.sinValorHora.length) av.push('<div style="color:#e67e22">⚠ Sin valor hora (no se estimó su sueldo pendiente): '+b.sinValorHora.map(escBaja).join(', ')+'.</div>');
+  av.push('<div>💳 Cargas sociales: '+(b.modoCargas === 'pagado' ? 'se usó lo pagado en el mes.' : b.modoCargas === 'estimado' ? 'no hay pagos cargados en el mes; se estimó el '+String(b.pctCargas).replace('.', ',')+' % de los sueldos brutos.' : 'no hay pagos cargados y el % configurado es 0.')+'</div>');
+  av.push('<div>ℹ Las comisiones que Mercado Pago descuenta solo no están incluidas (salvo las cargadas como egreso con rubro Comisiones).</div>');
+  if(T.res.cajaIni == null || T.res.cajaFin == null) av.push('<div>💰 Para el control de caja, cargá los saldos del mes (botón "Saldos del mes", abajo).</div>');
+  return av.join('');
+}
+// Aviso grande arriba del balance mientras haya egresos sin clasificar: el
+// resultado sale más alto de lo real.
+function _balAvisoProvisorio(b, paraPdf){
+  var T = b.cols[2];
+  if(!T.nSinClasif) return '';
+  var porLocal = [0, 1].filter(function(i){ return b.cols[i].nSinClasif; }).map(function(i){ return 'Sucursal '+(i+1)+': '+b.cols[i].nSinClasif+' ('+fmt(Math.round(b.cols[i].sinClasif))+')'; }).join(' · ');
+  return '<div style="border:2px solid '+(paraPdf ? '#c0392b' : '#e74c3c')+';background:'+(paraPdf ? '#fdecea' : 'rgba(231,76,60,.15)')+';border-radius:8px;padding:12px 14px;margin:0 0 12px;color:'+(paraPdf ? '#c0392b' : '#ff6b5b')+'">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:'+(paraPdf ? '15px' : '1rem')+';letter-spacing:1px;font-weight:700">⚠ RESULTADO PROVISORIO: FALTA CLASIFICAR '+T.nSinClasif+' EGRESO'+(T.nSinClasif === 1 ? '' : 'S')+' ('+fmt(Math.round(T.sinClasif))+')</div>'+
+    '<div style="font-size:'+(paraPdf ? '12px' : '.78rem')+';margin-top:4px;line-height:1.45">Esos pagos no están restados, así que el resultado sale <b>más alto de lo real</b>. '+porLocal+'. '+
+    (paraPdf ? '' : 'Clasificalos en Dinero → Egresos → 🏷 Clasificar egresos (en cada sucursal) y volvé a tocar "Ver balance del mes".')+'</div></div>';
 }
 function _balFmt(x, tipo){
-  if(x === null || x === undefined) return '—';
+  if(x === null || x === undefined || (typeof x === 'number' && !isFinite(x))) return '—';
   if(tipo === '$') return fmt(Math.round(x));
   if(tipo === '%') return (Math.round(x * 10) / 10).toLocaleString('es-AR') + ' %';
   return String(x);
 }
-function _balAvisos(filas){
-  var av = [];
-  filas.forEach(function(r){
-    var suc = r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1';
-    if(r.pctSinCosto > 10) av.push('<div style="color:#e74c3c;font-weight:700">⚠ '+suc+': el '+_balFmt(r.pctSinCosto, '%')+' de las ventas no tiene costo. El margen es poco confiable: cargá los costos que faltan (o el % de costo de los ítems manuales en 🎯 Márgenes).</div>');
-    if(r.enCurso) av.push('<div>📅 '+suc+': mes en curso, van '+r.diasTrans+' de '+r.diasMes+' días. Las ventas proyectadas son una estimación (venta diaria promedio × días del mes) y el fiado sin cobrar es a hoy.</div>');
-    if(r.pctCostoActual >= 0.5) av.push('<div>ℹ '+suc+': el '+_balFmt(r.pctCostoActual, '%')+' del costo se calculó con el costo actual (ventas guardadas antes de que se empezara a guardar el costo del momento).</div>');
+// Las filas de detalle se muestran si alguna columna tiene algo (las marcadas).
+function _balDetVisibles(fila, b){
+  return ((fila[3] && fila[3].det) || []).filter(function(d){
+    var o = d[3] || {};
+    if(!o.ocultarCero && !o.ocultarNulo) return true;
+    return [0, 1, 2].some(function(i){ var x = _balValor(d, b, i); return o.ocultarNulo ? x != null : (x != null && Math.abs(x) >= 0.5); });
   });
-  return av.join('');
 }
-function _balTabla(filas, paraPdf){
+function _balTabla(b, paraPdf){
+  var cols = ['Sucursal 1', 'Sucursal 2', 'Total'];
   var th = paraPdf ? '' : 'padding:6px;color:var(--gray);font-size:.68rem;border-bottom:1px solid var(--border);';
   var td = paraPdf ? '' : 'padding:5px 6px;border-bottom:1px solid rgba(255,255,255,.05);';
-  var cab = '<tr><th style="'+th+'text-align:left">Concepto</th>'+filas.map(function(r){ return '<th style="'+th+'text-align:right">'+(r.n === 2 ? 'Limay Rock 2' : 'Limay Rock 1')+'</th>'; }).join('')+'</tr>';
-  var cuerpo = _balConceptos().slice(2).map(function(c){
-    var alerta = c[0] === '% de ventas sin costo';
-    var est = c[3] ? 'font-style:italic;color:'+(paraPdf ? '#666' : 'var(--gray)')+';' : '';
-    return '<tr><td style="'+td+est+'">'+c[0]+'</td>'+filas.map(function(r){
-      var v = c[1](r), rojo = alerta && v > 10 ? 'color:#e74c3c;font-weight:700;' : '';
-      return '<td style="'+td+est+rojo+'text-align:right;white-space:nowrap">'+_balFmt(v, c[2])+'</td>';
-    }).join('')+'</tr>';
+  var gris = paraPdf ? '#666' : 'var(--gray)';
+  var cab = '<tr><th style="'+th+'text-align:left">Concepto</th>'+cols.map(function(t){ return '<th style="'+th+'text-align:right">'+t+'</th>'; }).join('')+'</tr>';
+  var celdas = function(fila, est, extra){
+    return [0, 1, 2].map(function(i){
+      var v = _balValor(fila, b, i), rojo = (fila[0] === '% de ventas sin costo cargado' && v > 10) || ((fila[3] || {}).alerta && v > 0) ? 'color:#e74c3c;font-weight:700;' : '';
+      return '<td style="'+td+est+rojo+(extra || '')+'text-align:right;white-space:nowrap">'+_balFmt(v, fila[2])+'</td>';
+    }).join('');
+  };
+  var cuerpo = _balFilas(b).map(function(fila, n){
+    if(fila[2] === 'h') return '<tr><td colspan="4" style="'+td+'padding-top:12px;font-weight:700;letter-spacing:1px;color:'+(paraPdf ? '#000' : 'var(--gold)')+'">'+fila[0]+'</td></tr>';
+    var o = fila[3] || {}, est = o.est ? 'font-style:italic;color:'+gris+';' : '';
+    var det = _balDetVisibles(fila, b), g = 'balG'+n;
+    var rotulo = det.length && !paraPdf ? '<span onclick="balToggleDet(\''+g+'\')" style="cursor:pointer">▸ '+escBaja(fila[0])+'</span>' : escBaja(fila[0]);
+    var html = '<tr><td style="'+td+est+'">'+rotulo+'</td>'+celdas(fila, est)+'</tr>';
+    det.forEach(function(d){
+      var od = d[3] || {}, estD = od.est ? 'font-style:italic;' : '';
+      html += '<tr class="'+g+'" style="'+(paraPdf ? '' : 'display:none;')+'font-size:'+(paraPdf ? '10px' : '.7rem')+';color:'+gris+'"><td style="'+td+estD+'padding-left:20px">'+escBaja(d[0])+'</td>'+celdas(d, estD)+'</tr>';
+    });
+    return html;
   }).join('');
   return paraPdf
     ? '<table><thead>'+cab+'</thead><tbody>'+cuerpo+'</tbody></table>'
     : '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.76rem;color:var(--light)">'+cab+cuerpo+'</table></div>';
 }
+function balToggleDet(g){ document.querySelectorAll('tr.'+g).forEach(function(tr){ tr.style.display = tr.style.display === 'none' ? '' : 'none'; }); }
 function generarBalanceMensual(){
   if(!esEquipoDueno()){ var rb = document.getElementById('balanceMensualRes'); if(rb) rb.innerHTML = avisoSoloDueno('El balance mensual'); return; }
   var mes = (document.getElementById('balMes')||{}).value;
   if(!mes){ showToast('Elegí el mes', true); return; }
-  var suc = (document.getElementById('balSuc')||{}).value || '1';
-  var locales = suc === 'ambas' ? [1, 2] : [Number(suc)];
   var res = document.getElementById('balanceMensualRes');
-  res.innerHTML = '<div style="color:var(--gray);font-size:.78rem">⏳ Leyendo las ventas de '+_balNombreMes(mes)+'…</div>';
+  res.innerHTML = '<div style="color:var(--gray);font-size:.78rem">⏳ Leyendo ventas y egresos de '+_balNombreMes(mes)+' de las dos sucursales…</div>';
   var r = _balRango(mes);
-  Promise.all(locales.map(function(n){ return _balLeerLocal(n, r).then(function(d){ return _balCalcular(n, mes, d); }); }))
-    .then(function(filas){
-      _bal.filas = filas;
-      res.innerHTML =
-        '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">'+_balNombreMes(mes)+'</div>'+
-        _balTabla(filas, false)+
-        '<div style="font-size:.7rem;color:var(--light);line-height:1.5;margin-top:8px">'+_balAvisos(filas)+'</div>'+
-        '<div style="font-size:.66rem;color:var(--gray);line-height:1.45;margin-top:6px">Ventas totales: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Margen %: sobre lo que tiene costo. En cursiva: estimaciones.</div>'+
-        '<div class="section-export-bar" style="margin-top:10px">'+
-          '<button class="sec-exp-btn" onclick="exportarBalanceCSV()">⬇ Excel (CSV)</button>'+
-          '<button class="sec-exp-btn pdf" onclick="exportarBalancePDF()">📄 PDF</button>'+
-        '</div>';
-    })
-    .catch(function(e){ res.innerHTML = '<div style="color:var(--red);font-size:.78rem">⚠ No se pudo leer el mes: '+escBaja((e && e.message) || e)+'</div>'; });
+  Promise.all([1, 2].map(function(L){
+    return Promise.all([_balLeerLocal(L, r).then(function(d){ return _balCalcular(L, mes, d); }), _balLeerEgresos(L, mes), _balLeerCierres(L, r)]);
+  })).then(function(x){
+    var b = _balCalcularTodo(mes, { 1: x[0][0], 2: x[1][0] }, x[0][1].concat(x[1][1]), { 1: x[0][2], 2: x[1][2] });
+    _bal.b = b;
+    res.innerHTML =
+      '<div style="font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;color:var(--gold);margin-bottom:6px">'+_balNombreMes(mes)+'</div>'+
+      _balAvisoProvisorio(b, false)+
+      '<div style="font-size:.66rem;color:var(--gray);margin-bottom:6px">Tocá ▸ para ver el detalle de cada fila.</div>'+
+      _balTabla(b, false)+
+      '<div style="font-size:.7rem;color:var(--light);line-height:1.5;margin-top:8px">'+_balAvisos(b)+'</div>'+
+      '<div style="font-size:.66rem;color:var(--gray);line-height:1.45;margin-top:6px">Ventas: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Costos: en el mes al que corresponden; la mercadería pagada no se resta porque ya está en el costo. Control de caja: por fecha de pago. En cursiva: estimaciones.</div>'+
+      '<div class="section-export-bar" style="margin-top:10px">'+
+        '<button class="sec-exp-btn" onclick="exportarBalanceCSV()">⬇ Excel (CSV)</button>'+
+        '<button class="sec-exp-btn pdf" onclick="exportarBalancePDF()">📄 PDF</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+
+        '<button class="sec-exp-btn" onclick="balAbrirPanel(\'saldos\')">💰 Saldos del mes</button>'+
+        '<button class="sec-exp-btn" onclick="balAbrirPanel(\'config\')">⚙ Reparto y cargas sociales</button>'+
+      '</div>'+
+      '<div id="balPanel" style="margin-top:10px"></div>';
+  }).catch(function(e){ res.innerHTML = '<div style="color:var(--red);font-size:.78rem">⚠ No se pudo leer el mes: '+escBaja((e && e.message) || e)+'</div>'; });
 }
-// CSV para Excel en español: separador punto y coma y coma decimal.
+// CSV para Excel en español: separador punto y coma y coma decimal. Primero
+// las filas de la planilla (para copiar y pegar), después el detalle y los avisos.
 function exportarBalanceCSV(){
-  if(!_bal.filas || !_bal.filas.length){ showToast('Primero tocá "Ver balance del mes"', true); return; }
-  var conc = _balConceptos();
+  var b = _bal.b;
+  if(!b){ showToast('Primero tocá "Ver balance del mes"', true); return; }
   var celda = function(x, tipo){
-    if(x === null || x === undefined) return '';
-    if(tipo === 't'){ var s = String(x); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g, '""')+'"' : s; }
+    if(x === null || x === undefined || (typeof x === 'number' && !isFinite(x))) return '';
+    if(tipo === 't' || tipo === 'h'){ var s = String(x); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g, '""')+'"' : s; }
     if(tipo === 'i') return String(Math.round(x));
-    return (Math.round(x * 100) / 100).toFixed(tipo === '%' ? 1 : 2).replace('.', ',');
+    // Con el símbolo, así Excel en español lo toma como porcentaje al pegar.
+    if(tipo === '%') return (Math.round(x * 10) / 10).toFixed(1).replace('.', ',')+'%';
+    return (Math.round(x * 100) / 100).toFixed(2).replace('.', ',');
   };
-  var filas = [conc.map(function(c){ return c[0]; }).join(';')];
-  _bal.filas.forEach(function(r){ filas.push(conc.map(function(c){ return celda(c[1](r), c[2]); }).join(';')); });
-  descargarCSV('Balance_'+_bal.filas[0].mes, filas);
+  var linea = function(rotulo, fila){ return [celda(rotulo, 't')].concat([0, 1, 2].map(function(i){ return fila && fila[2] !== 'h' ? celda(_balValor(fila, b, i), fila[2]) : ''; })).join(';'); };
+  var filas = ['Concepto;Sucursal 1;Sucursal 2;Total'], det = [];
+  _balFilas(b).forEach(function(f){
+    filas.push(linea(f[0], f));
+    _balDetVisibles(f, b).forEach(function(d){ det.push(linea(f[0]+' › '+d[0], d)); });
+  });
+  filas.push('', 'DETALLE');
+  filas = filas.concat(det);
+  filas.push('', 'AVISOS');
+  _balAvisos(b).split('</div>').forEach(function(t){ t = t.replace(/<[^>]+>/g, '').trim(); if(t) filas.push(celda(t, 't')); });
+  descargarCSV('Balance_'+b.mes+(b.cols[2].nSinClasif ? '_PROVISORIO' : ''), filas);
 }
 function exportarBalancePDF(){
-  if(!_bal.filas || !_bal.filas.length){ showToast('Primero tocá "Ver balance del mes"', true); return; }
-  var mes = _bal.filas[0].mes;
-  abrirVentanaPDF('Balance mensual '+_balNombreMes(mes),
-    _balTabla(_bal.filas, true)+
-    '<div style="font-size:11px;margin-top:10px;line-height:1.5">'+_balAvisos(_bal.filas).replace(/color:#e74c3c/g, 'color:#c0392b').replace(/<div>/g, '<div style="color:#333">')+'</div>'+
-    '<div style="font-size:10px;color:#666;margin-top:6px">Ventas totales: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Margen %: sobre lo que tiene costo. En cursiva: estimaciones.</div>');
+  var b = _bal.b;
+  if(!b){ showToast('Primero tocá "Ver balance del mes"', true); return; }
+  abrirVentanaPDF('Balance mensual '+_balNombreMes(b.mes)+(b.cols[2].nSinClasif ? ' (PROVISORIO)' : ''),
+    _balAvisoProvisorio(b, true)+
+    _balTabla(b, true)+
+    '<div style="font-size:11px;margin-top:10px;line-height:1.5">'+_balAvisos(b).replace(/color:#e74c3c/g, 'color:#c0392b').replace(/color:#e67e22/g, 'color:#a85d00').replace(/<div>/g, '<div style="color:#333">')+'</div>'+
+    '<div style="font-size:10px;color:#666;margin-top:6px">Ventas: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Costos: en el mes al que corresponden; la mercadería pagada no se resta porque ya está en el costo. Control de caja: por fecha de pago. En cursiva: estimaciones.</div>');
+}
+// ── Paneles del balance: saldos del mes y configuración (solo el dueño) ──
+function balAbrirPanel(cual){
+  var p = document.getElementById('balPanel'), b = _bal.b;
+  if(!p || !b) return;
+  if(p.dataset.abierto === cual){ p.innerHTML = ''; p.dataset.abierto = ''; return; }
+  p.dataset.abierto = cual;
+  var inp = 'background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 6px;font-size:.76rem;width:100%;box-sizing:border-box;text-align:right';
+  var caja = 'border:1px dashed var(--gold);border-radius:7px;padding:10px;font-size:.74rem;color:var(--light)';
+  var btn = 'background:none;border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:6px 12px;font-size:.72rem;cursor:pointer';
+  if(cual === 'saldos'){
+    var s = balSaldosMes(b.mes), celda = function(L, cuando, k){
+      var o = (s[L] || {})[cuando] || {}, v = o[k];
+      return '<td style="padding:3px"><input id="balS_'+L+'_'+cuando+'_'+k+'" type="text" inputmode="numeric" oninput="formatMontoInput(this)" value="'+(v != null ? Number(v).toLocaleString('es-AR') : '')+'" placeholder="—" style="'+inp+'"></td>';
+    };
+    p.innerHTML = '<div style="'+caja+'">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px;margin-bottom:6px">💰 SALDOS DE '+_balNombreMes(b.mes).toUpperCase()+'</div>'+
+      '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px">Al inicio (día 1) y al cierre (último día) del mes. Se guardan en lo privado del dueño. Dejá en blanco lo que no tengas.</div>'+
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem"><tr><th></th><th>S1 inicio</th><th>S1 cierre</th><th>S2 inicio</th><th>S2 cierre</th></tr>'+
+      BAL_SALDOS.map(function(x){ return '<tr><td style="padding:3px;white-space:nowrap">'+x[1]+'</td>'+celda(1,'ini',x[0])+celda(1,'fin',x[0])+celda(2,'ini',x[0])+celda(2,'fin',x[0])+'</tr>'; }).join('')+
+      '</table></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+
+        '<button style="'+btn+'" onclick="balTraerLiquidez()">↓ Traer de Liquidez (Limay '+localActual()+')</button>'+
+        '<button style="'+btn+';background:var(--gold);color:#000" onclick="guardarBalSaldos()">✓ Guardar saldos</button>'+
+      '</div></div>';
+  } else {
+    var socios = sociosLista();
+    p.innerHTML = '<div style="'+caja+'">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px;margin-bottom:6px">⚙ REPARTO Y CARGAS SOCIALES</div>'+
+      [1, 2].map(function(L){ var rep = balRepartoLocal(L); return '<div style="margin-bottom:6px">Sucursal '+L+': '+socios.map(function(so, i){
+        return escBaja(so)+' <input id="balRep_'+L+'_'+i+'" type="number" min="0" max="100" step="1" value="'+rep[so]+'" style="'+inp+';width:64px;display:inline-block"> %'; }).join(' · ')+'</div>'; }).join('')+
+      '<div style="margin:8px 0">Cargas sociales estimadas (solo los meses sin pagos cargados): <input id="balCargasPct" type="number" min="0" max="100" step="0.1" value="'+balCargasPct()+'" style="'+inp+';width:70px;display:inline-block"> % de los sueldos brutos</div>'+
+      '<button style="'+btn+';background:var(--gold);color:#000" onclick="guardarBalConfig()">✓ Guardar</button></div>';
+  }
+}
+function guardarBalConfig(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var socios = sociosLista(), reparto = {}, error = '';
+  [1, 2].forEach(function(L){
+    var r = {}, t = 0;
+    socios.forEach(function(so, i){ var v = Number((document.getElementById('balRep_'+L+'_'+i) || {}).value) || 0; r[so] = v; t += v; });
+    if(Math.round(t) !== 100) error = 'El reparto de la Sucursal '+L+' tiene que sumar 100 % (suma '+t+' %)';
+    reparto[L] = r;
+  });
+  var pct = Number((document.getElementById('balCargasPct') || {}).value) || 0;
+  if(pct < 0 || pct > 100) error = 'El % de cargas sociales tiene que estar entre 0 y 100';
+  if(error){ showToast(error, true); return; }
+  var cfg = { reparto: reparto, cargasPct: pct };
+  window.__lrCfgPriv.balance = cfg;
+  colPriv('configPriv').doc('balance').set(cfg).then(function(){ showToast('✓ Configuración guardada'); generarBalanceMensual(); })
+    .catch(function(e){ showToast('⚠ No se pudo guardar: '+((e && e.message) || e), true); });
+}
+function guardarBalSaldos(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var b = _bal.b; if(!b) return;
+  var datos = {};
+  [1, 2].forEach(function(L){
+    datos[L] = {};
+    ['ini', 'fin'].forEach(function(cuando){
+      var o = {};
+      BAL_SALDOS.forEach(function(x){ var id = 'balS_'+L+'_'+cuando+'_'+x[0], el = document.getElementById(id); o[x[0]] = (el && String(el.value).trim() !== '') ? getMontoInputValue(id) : null; });
+      datos[L][cuando] = o;
+    });
+  });
+  var meses = {}; meses[b.mes] = datos;
+  var c = window.__lrCfgPriv.saldosMes = window.__lrCfgPriv.saldosMes || {};
+  (c.meses = c.meses || {})[b.mes] = datos;
+  colPriv('configPriv').doc('saldosMes').set({ meses: meses }, { merge: true }).then(function(){ showToast('✓ Saldos guardados'); generarBalanceMensual(); })
+    .catch(function(e){ showToast('⚠ No se pudieron guardar: '+((e && e.message) || e), true); });
+}
+// Completa los saldos vacíos del local abierto con lo que ya tiene Liquidez:
+// inicio = cierre guardado del mes anterior, o el cierre de mes de Liquidez,
+// o los saldos iniciales si el período arrancó este mes; cierre = Liquidez de
+// hoy (mes en curso) o el cierre de mes de Liquidez.
+function balTraerLiquidez(){
+  var b = _bal.b; if(!b) return;
+  var L = localActual(), mes = b.mes, ant = _balMesVecino(mes, -1), sig = _balMesVecino(mes, 1);
+  var cerca = function(f, m1, m2){ f = String(f || '').slice(0,10); return (f.slice(0,7) === m1 && +f.slice(8,10) >= 25) || (f.slice(0,7) === m2 && +f.slice(8,10) <= 5); };
+  var cierreMesEn = function(m1, m2){ var l = getCierresMes().filter(function(c){ return (c.modo || 'mes') === 'mes' && cerca(c.hasta, m1, m2); }); return l.length ? l[l.length-1] : null; };
+  var deCierre = function(c){ return c ? { efec: c.efecReal != null ? c.efecReal : c.efecCalculado, mp: c.mpReal != null ? c.mpReal : c.mpCalculado } : null; };
+  var ini = (balSaldosMes(ant)[L] || {}).fin || deCierre(cierreMesEn(ant, mes));
+  if(!ini){ var cfg = getLiquidezCfg(); if(String(cfg.periodoDesde || '').slice(0,7) === mes) ini = { efec: cfg.saldoEfec, fuera: cfg.saldoEfecFuera, mp: cfg.saldoMP }; }
+  var fin = null;
+  if(fechaLocalStr(new Date()).slice(0,7) === mes){ var lq = calcularLiquidez(); fin = { efec: lq.efectivoCaja, fuera: lq.efectivoFuera, mp: lq.mercadoPago }; }
+  else fin = deCierre(cierreMesEn(mes, sig));
+  var n = 0;
+  [['ini', ini], ['fin', fin]].forEach(function(x){
+    if(!x[1]) return;
+    BAL_SALDOS.forEach(function(s){
+      var el = document.getElementById('balS_'+L+'_'+x[0]+'_'+s[0]), v = x[1][s[0]];
+      if(!el || String(el.value).trim() !== '' || v == null || !isFinite(Number(v))) return;
+      el.value = String(Math.max(0, Math.round(Number(v)))); formatMontoInput(el); n++;
+    });
+  });
+  showToast(n ? '✓ Se completaron '+n+' saldo'+(n === 1 ? '' : 's')+' de Limay '+L+'. Revisalos y guardá.' : 'Liquidez no tiene saldos para completar en este mes', !n);
 }
 
 // Informe consolidado pensado para llevar a un asesor externo (no para uso
@@ -37884,11 +38335,13 @@ function exportarStockPDF() {
 function exportarCierresCSV() {
   // Exporta lo que se está viendo (filtros de empleado y fechas aplicados)
   var cierres=(window.__lrCierresFiltrados || getCierres()).slice().reverse();
-  var rows=['Empleado,Turno,Fecha,Hora,Cant.Ventas,Total'];
+  // Para Excel en español (punto y coma, coma decimal), con el arqueo.
+  var rows=['Empleado;Caja;Turno;Fecha;Hora;Cant. ventas;Total;Efectivo inicial;Efectivo esperado;Efectivo contado;Diferencia efectivo;Diferencia Mercado Pago'];
   cierres.forEach(function(c){
-    var d=new Date(c.fecha);
-    rows.push('"'+c.empleado+'","'+c.turno+'","'+d.toLocaleDateString('es-AR')+'","'+
-      d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+'",'+c.cantVentas+','+c.total);
+    var d=new Date(c.fecha), a=c.arqueo||{}, m=c.mp||{};
+    rows.push([csvTxt(c.empleado), csvTxt(c.caja||1), csvTxt(c.turno), csvTxt(d.toLocaleDateString('es-AR')),
+      csvTxt(d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false})), String(c.cantVentas||0), csvNum(c.total),
+      csvNum(a.efectivoInicial), csvNum(a.esperado), csvNum(a.contado), csvNum(a.diferencia), csvNum(m.diferencia)].join(';'));
   });
   descargarCSV('Cierres', rows);
 }
