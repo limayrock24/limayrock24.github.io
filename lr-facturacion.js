@@ -116,7 +116,14 @@
   '.lrf-modo{font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;padding:3px 8px;border-radius:3px}'+
   '.lrf-modo.simulado{background:rgba(52,152,219,.18);color:var(--blue)}.lrf-modo.homologacion{background:rgba(245,194,0,.15);color:var(--gold)}.lrf-modo.produccion{background:rgba(0,204,68,.15);color:var(--green)}'+
   '.lrf-h4{font-family:Oswald,sans-serif;letter-spacing:2px;text-transform:uppercase;color:var(--gold);font-size:.85rem;margin-bottom:6px}'+
-  '.lrf-mini{font-size:.72rem;color:var(--gray)}';
+  '.lrf-mini{font-size:.72rem;color:var(--gray)}'+
+  '.lrf-toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,140%);z-index:2900;display:flex;align-items:center;gap:8px;max-width:92vw;'+
+    'background:var(--surface);border:2px solid var(--gold);border-radius:8px;padding:8px 8px 8px 14px;box-shadow:0 6px 24px rgba(0,0,0,.6);transition:transform .25s ease;font-size:.88rem;color:var(--light)}'+
+  '.lrf-toast.show{transform:translate(-50%,0)}'+
+  '.lrf-toast.ok{border-color:var(--green)}.lrf-toast.pend{border-color:var(--gold)}.lrf-toast.mal{border-color:var(--red)}'+
+  '.lrf-toast b{color:var(--white)}'+
+  '.lrf-toast button{font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase;background:var(--gold);color:#000;border:none;border-radius:4px;padding:6px 12px;cursor:pointer;font-size:.8rem}'+
+  '.lrf-toast button.x{background:transparent;color:var(--gray);padding:6px 8px}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   // ── CONFIGURACIÓN EN VIVO ───────────────────────────────────────────────
@@ -372,11 +379,45 @@
   }
 
   // Después de guardar una venta con pedido de factura.
+  // Después de cobrar: un aviso chico abajo que NO frena la caja. Se va solo;
+  // si el cliente pide la factura, se toca "Ver" y se abre el comprobante.
+  var _aviso = { unsub: null, timer: null };
+  function cerrarAviso(){
+    if(_aviso.unsub){ _aviso.unsub(); _aviso.unsub = null; }
+    if(_aviso.timer){ clearTimeout(_aviso.timer); _aviso.timer = null; }
+    var a = document.getElementById('lrfToast'); if(a) a.classList.remove('show');
+  }
+  function pintarAviso(id, html, clase, segundos){
+    var a = document.getElementById('lrfToast');
+    if(!a){ a = document.createElement('div'); a.id = 'lrfToast'; document.body.appendChild(a); }
+    a.className = 'lrf-toast show ' + (clase || '');
+    a.innerHTML = '<span class="txt">'+html+'</span>'+
+      '<button onclick="__lrFact.cerrarAviso();__lrFact.ver(\''+esc(id)+'\')">Ver</button>'+
+      '<button class="x" onclick="__lrFact.cerrarAviso()" title="Cerrar">✕</button>';
+    if(_aviso.timer) clearTimeout(_aviso.timer);
+    _aviso.timer = segundos ? setTimeout(cerrarAviso, segundos * 1000) : null;
+  }
   function ventaGuardada(v){
     if(!v || !v.facturaPedido) return;
     libs().catch(function(){});
+    cerrarAviso();
+    var id = String(v.id), fin = false;
     // Primero se deja ver el "Venta registrada" de siempre.
-    setTimeout(function(){ verFactura(v.id, true); }, 1200);
+    setTimeout(function(){
+      if(!fin) pintarAviso(id, '🧾 Generando la factura…', '', 0);
+    }, 1500);
+    _aviso.unsub = db().collection('facturas').doc(id).onSnapshot(function(s){
+      if(!s.exists) return;
+      var f = s.data();
+      if(f.estado === 'aprobada'){ fin = true; pintarAviso(id, '🧾 Factura <b>'+esc(f.numeroTxt)+'</b> lista', 'ok', 10); }
+      else if(f.estado === 'rechazada'){ fin = true; pintarAviso(id, '⚠ ARCA no aceptó la factura · avisá al encargado', 'mal', 20); }
+      else if(f.estado === 'pendiente' && f.error){ fin = true; pintarAviso(id, '⏳ Factura pendiente: se emite sola', 'pend', 8); }
+      if(fin && _aviso.unsub){ _aviso.unsub(); _aviso.unsub = null; }
+    }, function(){});
+    // Si en 25 segundos no hubo respuesta, queda pendiente (la nube sigue sola).
+    setTimeout(function(){
+      if(!fin){ fin = true; pintarAviso(id, '⏳ Factura pendiente: se emite sola', 'pend', 8); if(_aviso.unsub){ _aviso.unsub(); _aviso.unsub = null; } }
+    }, 25000);
   }
 
   // ── 4. ADMIN → DINERO → FACTURAS ────────────────────────────────────────
@@ -443,7 +484,7 @@
   function dibujarAdmin(){
     var cont = _admin.cont; if(!cont || !cont.isConnected) return;
     var lista = _admin.lista;
-    var modo = ESTADO.modo || (lista && lista[0] && lista[0].modo) || 'simulado';
+    var modo = ESTADO.modo || (lista && lista[0] && lista[0].modo) || '';
     var aprob = (lista||[]).filter(function(f){ return f.estado === 'aprobada'; });
     var totalMes = aprob.reduce(function(s,f){ return s + (f.tipo === 'NC' ? -1 : 1) * (Number(f.importe)||0); }, 0);
     var cant = aprob.filter(function(f){ return f.tipo !== 'NC'; }).length;
@@ -466,13 +507,13 @@
         '<div class="lrf-mini">Factura C automática de lo cobrado por Mercado Pago</div>'+
         '<div class="lrf-r" style="margin-top:8px"><span>Estado</span><span>'+
           (!CFG.activa ? '<b style="color:var(--gray)">⚪ APAGADA</b>' : programada() ? '<b style="color:var(--gold)">🕒 PROGRAMADA</b>' : '<b style="color:var(--green)">🟢 FACTURANDO</b>')+
-          ' &nbsp;<span class="lrf-modo '+esc(modo)+'">'+(modo==='produccion'?'ARCA REAL':modo==='homologacion'?'ARCA PRUEBAS':'SIMULADO')+'</span></span></div>'+
+          (modo ? ' &nbsp;<span class="lrf-modo '+esc(modo)+'">'+(modo==='produccion'?'ARCA REAL':modo==='homologacion'?'ARCA PRUEBAS':'SIMULADO')+'</span>' : '')+'</span></div>'+
         (programada() ? '<div class="lrf-mini" style="color:var(--gold)">Empieza a facturar sola el '+inicioDesde().toLocaleDateString('es-AR')+' a las 00:00. Hasta entonces no se factura nada.</div>' : '')+
         '<button class="lrf-btn '+(CFG.activa?'lrf-gr':'lrf-wa')+'" onclick="__lrFact.activar('+(CFG.activa?'false':'true')+')">'+(CFG.activa?'⏸ Apagar la facturación':'▶ Prender la facturación')+'</button>'+
         '<div class="lrf-r" style="margin-top:8px"><span>Empezar a facturar desde</span>'+
           '<input type="date" class="lrf-in" style="width:auto;padding:5px 8px" value="'+esc(CFG.desde||'')+'" onchange="__lrFact.desde(this.value)"></div>'+
         '<div class="lrf-mini">Opcional. Si ponés una fecha, aunque esté prendida no factura nada antes de ese día. Para sacarla, borrá la fecha.</div>'+
-        (modo !== 'produccion' ? '<div class="lrf-mini">'+(modo==='homologacion'?'Conectado al ambiente de pruebas de ARCA: los comprobantes no valen.':'Todavía no está conectado a ARCA: los comprobantes son de prueba y no valen.')+'</div>' : '')+
+        (modo && modo !== 'produccion' ? '<div class="lrf-mini">'+(modo==='homologacion'?'Conectado al ambiente de pruebas de ARCA: los comprobantes no valen.':'Todavía no está conectado a ARCA: los comprobantes son de prueba y no valen.')+'</div>' : '')+
         venceTxt+
       '</div>'+
       '<div class="lrf-card">'+
@@ -556,6 +597,7 @@
     ventaGuardada: ventaGuardada,
     ver: function(id){ verFactura(id, false); },
     cerrar: cerrarModal,
+    cerrarAviso: cerrarAviso,
     pdf: pdf,
     whatsapp: whatsapp,
     renderAdmin: renderAdmin,
