@@ -23508,7 +23508,7 @@ function _balPartes(det, Lguardado, mes){
   var p = { 1: 0, 2: 0 }; p[n] = 1; return p;
 }
 function _balSumar(o, k, v){ o[k] = (o[k] || 0) + v; }
-function _balColVacia(L){ return { L: L, rub: {}, comp: {}, emp: {}, pend: {}, horasSocio: {}, recup: 0, acre: {}, credMerc: 0, credEquip: 0, credSinPartes: 0,
+function _balColVacia(L){ return { L: L, rub: {}, comp: {}, emp: {}, pend: {}, horasSocio: {}, minEmp: {}, recup: 0, acre: {}, credMerc: 0, credEquip: 0, credSinPartes: 0,
   inversion: 0, mercaderia: 0, sinClasif: 0, nSinClasif: 0, retiros: {}, retirosCaja: {} }; }
 function _balSinTilde(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
 // Si un empleado es uno de los socios (por el primer nombre): sus horas no
@@ -23576,6 +23576,7 @@ function _balCostos(mes, pool, cierres){
     (cierres[L] || []).forEach(function(c){
       var soc = balSocioDeEmpleado(c.empleado);
       if(soc){ _balSumar(cols[L].horasSocio, soc, c.durMinutos || 0); return; }
+      _balSumar(cols[L].minEmp, c.empleado, c.durMinutos || 0);
       var x = emps[c.empleado];
       if(!x || x.forma !== 'mensual' || c.pagado) return;
       if(!(x.vh > 0)){ sinValor[c.empleado] = true; return; }
@@ -23583,6 +23584,7 @@ function _balCostos(mes, pool, cierres){
     });
   });
   cols.sinValorHora = Object.keys(sinValor);
+  cols.valorHora = {}; Object.keys(emps).forEach(function(n){ if(emps[n].vh > 0) cols.valorHora[n] = emps[n].vh; });
   return cols;
 }
 function _balSumaMapa(o){ return Object.keys(o).reduce(function(s, k){ return s + (o[k] || 0); }, 0); }
@@ -23648,7 +23650,7 @@ function _balCalcularTodo(mes, ventas, pool, cierres){
   var T = _balColVacia('T'), vT = {};
   [1, 2].forEach(function(L){
     var c = cols[L];
-    ['rub','comp','emp','pend','horasSocio','acre','retiros','retirosCaja'].forEach(function(k){ Object.keys(c[k]).forEach(function(x){ _balSumar(T[k], x, c[k][x]); }); });
+    ['rub','comp','emp','pend','horasSocio','minEmp','acre','retiros','retirosCaja'].forEach(function(k){ Object.keys(c[k]).forEach(function(x){ _balSumar(T[k], x, c[k][x]); }); });
     ['recup','credMerc','credEquip','credSinPartes','inversion','mercaderia','sinClasif','nSinClasif'].forEach(function(k){ T[k] += c[k]; });
     ['ventasTot','costo','margen','sinCosto','revTotal','revConCosto','estimado100','fiadosMes','cobrosAnteriores','sinCobrar','cefhas','gananciaCargas'].forEach(function(k){ vT[k] = (vT[k] || 0) + (Number(ventas[L][k]) || 0); });
     vT.proyectadas = (ventas[L].proyectadas == null) ? null : (vT.proyectadas || 0) + ventas[L].proyectadas;
@@ -23670,7 +23672,7 @@ function _balCalcularTodo(mes, ventas, pool, cierres){
     r.generada = (r.cajaIni != null && r.cajaFin != null) ? r.cajaFin - r.cajaIni + r.retirosCajaTot : null;
     r.difRes = r.generada != null ? r.generada - r.neto : null;
   });
-  return { mes: mes, cols: [cols[1], cols[2], T], ventas: [ventas[1], ventas[2], vT], modoCargas: modoCargas, pctCargas: pct, sinValorHora: cols.sinValorHora };
+  return { mes: mes, cols: [cols[1], cols[2], T], ventas: [ventas[1], ventas[2], vT], modoCargas: modoCargas, pctCargas: pct, sinValorHora: cols.sinValorHora, valorHora: cols.valorHora };
 }
 
 // Filas del balance, en el orden de la planilla. Cada fila: rótulo, valor
@@ -23839,7 +23841,8 @@ function generarBalanceMensual(){
       '<div style="font-size:.7rem;color:var(--light);line-height:1.5;margin-top:8px">'+_balAvisos(b)+'</div>'+
       '<div style="font-size:.66rem;color:var(--gray);line-height:1.45;margin-top:6px">Ventas: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Costos: en el mes al que corresponden; la mercadería pagada no se resta porque ya está en el costo. Control de caja: por fecha de pago. En cursiva: estimaciones.</div>'+
       '<div class="section-export-bar" style="margin-top:10px">'+
-        '<button class="sec-exp-btn" onclick="exportarBalanceCSV()">⬇ Excel (CSV)</button>'+
+        '<button class="sec-exp-btn" onclick="exportarBalanceExcel()" style="background:#1d6f42;color:#fff;border-color:#1d6f42">📗 Excel (tu planilla)</button>'+
+        '<button class="sec-exp-btn" onclick="exportarBalanceCSV()">⬇ CSV simple</button>'+
         '<button class="sec-exp-btn pdf" onclick="exportarBalancePDF()">📄 PDF</button>'+
       '</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'+
@@ -23882,6 +23885,292 @@ function exportarBalancePDF(){
     _balTabla(b, true)+
     '<div style="font-size:11px;margin-top:10px;line-height:1.5">'+_balAvisos(b).replace(/color:#e74c3c/g, 'color:#c0392b').replace(/color:#e67e22/g, 'color:#a85d00').replace(/<div>/g, '<div style="color:#333">')+'</div>'+
     '<div style="font-size:10px;color:#666;margin-top:6px">Ventas: sin el recargo del posnet, con los fiados del mes (una sola vez) y sin los cobros de fiados ni de CEFHAS. Costos: en el mes al que corresponden; la mercadería pagada no se resta porque ya está en el costo. Control de caja: por fecha de pago. En cursiva: estimaciones.</div>');
+}
+// ── Excel con el formato de la planilla del dueño ──
+// Las mismas 5 hojas que "Limay Rock Balance Mensual" (Sucursal 1, Balance
+// S1, Sucursal 2, Balance S2, Balance Total), con sus colores, notas y
+// fórmulas, ya llenas con los datos del mes. Las celdas amarillas con letra
+// azul se pueden pisar a mano; el resto se calcula solo en el Excel.
+var XL_LIB = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+var XL_SRI = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
+var XL_MON = '\\$#,##0;"($"#,##0\\);\\-';
+var XL_NOMBRES = { 1: 'Limay Rock - Pascual Puente', 2: 'Limay Rock - Urquiza' };
+function _xlCargar(){
+  if(window.ExcelJS) return Promise.resolve();
+  return window._xlPromesa || (window._xlPromesa = new Promise(function(res, rej){
+    var s = document.createElement('script');
+    s.src = XL_LIB; s.integrity = XL_SRI; s.crossOrigin = 'anonymous';
+    s.onload = res; s.onerror = function(){ window._xlPromesa = null; rej(new Error('No se pudo bajar el generador de Excel (¿sin internet?)')); };
+    document.head.appendChild(s);
+  }));
+}
+// Estilos de la planilla: entrada (amarillo, letra azul), vínculo (letra
+// verde), cabecera (negro), sección (gris), total (gris claro), resultado (celeste).
+function _xlEstilo(c, tipo, formato){
+  var fino = { style: 'thin', color: { argb: 'FFBFBFBF' } };
+  var relleno = function(argb){ c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: argb } }; };
+  c.font = { name: 'Calibri', size: 10, color: { argb: 'FF000000' } };
+  if(tipo === 'titulo') c.font = { name: 'Calibri', size: 13, bold: true };
+  else if(tipo === 'sub' || tipo === 'nota') c.font = { name: 'Calibri', size: 10, italic: true };
+  else if(tipo === 'etq') c.font.bold = true;
+  else if(tipo === 'entrada'){ relleno('FFFFF2CC'); c.font.color = { argb: 'FF0000FF' }; }
+  else if(tipo === 'vinculo') c.font.color = { argb: 'FF008000' };
+  else if(tipo === 'cab'){ relleno('FF333333'); c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; }
+  else if(tipo === 'seccion'){ relleno('FFD9D9D9'); c.font.bold = true; }
+  else if(tipo === 'total'){ relleno('FFEDEDED'); c.font.bold = true; }
+  else if(tipo === 'result'){ relleno('FFDDEBF7'); c.font.bold = true; }
+  if(tipo === 'nota' || tipo === 'notaT' || tipo === 'notaR'){
+    c.font = { name: 'Calibri', size: 10, italic: true }; c.alignment = { wrapText: true, vertical: 'top' };
+    if(tipo === 'notaT') relleno('FFEDEDED'); if(tipo === 'notaR') relleno('FFDDEBF7');
+  }
+  if(tipo !== 'titulo' && tipo !== 'sub' && tipo !== 'seccion') c.border = { top: fino, left: fino, bottom: fino, right: fino };
+  if(formato) c.numFmt = formato;
+}
+function _xlPoner(ws, ref, valor, tipo, formato){
+  var c = ws.getCell(ref);
+  if(typeof valor === 'string' && valor.charAt(0) === '=') c.value = { formula: valor.slice(1) };
+  else c.value = (valor === undefined) ? null : valor;
+  _xlEstilo(c, tipo, formato);
+  return c;
+}
+function _xlSeccion(ws, fila, texto, hasta){
+  'ABCDEFGHI'.slice(0, hasta || 9).split('').forEach(function(col){ _xlEstilo(ws.getCell(col+fila), 'seccion'); });
+  ws.getCell('A'+fila).value = texto;
+}
+function _xlHoras(min){ min = Math.round(min || 0); return Math.floor(min / 60)+' h '+(min % 60)+' m'; }
+function _xlMesTexto(mes){ var t = _balNombreMes(mes); return t.replace(' de ', ' '); }
+// Hoja "Sucursal N": personal por horas y costos por rubro del POS.
+function _xlHojaSucursal(wb, b, N){
+  var c = b.cols[N-1], ws = wb.addWorksheet('Sucursal '+N, { views: [{ state: 'frozen', ySplit: 5 }] });
+  ws.columns = [{ width: 44 }, { width: 34 }, { width: 13 }, { width: 14 }, { width: 11 }, { width: 17 }, { width: 17 }, { width: 17 }, { width: 70 }];
+  _xlPoner(ws, 'A1', 'Sucursal '+N+': '+XL_NOMBRES[N], 'titulo');
+  _xlPoner(ws, 'A2', 'Bajado del sistema el '+new Date().toLocaleDateString('es-AR')+' con los datos del mes. Las celdas amarillas con letra azul se pueden cambiar a mano; todo lo demás se calcula y pasa solo a la hoja Balance S'+N+'.', 'sub');
+  _xlPoner(ws, 'A3', 'Mes', 'etq'); _xlPoner(ws, 'A4', 'Días del mes', 'etq');
+  if(N === 1){
+    _xlPoner(ws, 'B3', _xlMesTexto(b.mes), 'entrada'); _xlPoner(ws, 'B4', b.ventas[2].diasMes, 'entrada', '0');
+    ws.getCell('B3').alignment = ws.getCell('B4').alignment = { horizontal: 'center' };
+    _xlPoner(ws, 'I3', 'Es el mes que estás analizando.', 'sub');
+  } else {
+    _xlPoner(ws, 'B3', "='Sucursal 1'!B3", 'vinculo'); _xlPoner(ws, 'B4', "='Sucursal 1'!B4", 'vinculo', '0');
+    _xlPoner(ws, 'I3', 'Viene de la hoja Sucursal 1.', 'sub');
+  }
+  _xlPoner(ws, 'I4', 'Se usa para pasar las horas por semana a horas del mes (días ÷ 7) y para la venta diaria.', 'sub');
+  // 1. Personal fijo
+  var f = 6;
+  _xlSeccion(ws, f, '1. PERSONAL FIJO (empleados / puestos)');
+  f++;
+  ['Nombre / puesto','Días y horario','Horas por semana','Valor por hora','% que se paga','Costo mensual calculado','Pago real del mes (del sistema)','Costo del mes','Nota'].forEach(function(t, i){ _xlPoner(ws, 'ABCDEFGHI'.charAt(i)+f, t, 'cab'); });
+  ws.getRow(f).height = 30;
+  var vh = b.valorHora || {}, nombres = {};
+  [c.emp, c.pend, c.minEmp].forEach(function(o){ Object.keys(o || {}).forEach(function(n){ nombres[n] = true; }); });
+  var lista = Object.keys(nombres).sort();
+  var desde = f + 1, filas = Math.max(15, lista.length + (c.recup ? 1 : 0) + 1);
+  for(var i = 0; i < filas; i++){
+    var r = desde + i, n = lista[i];
+    var real = n ? (c.emp[n] || 0) + (c.pend[n] || 0) : null, min = n ? (c.minEmp[n] || 0) : 0;
+    var esRecup = !n && c.recup && i === lista.length;
+    _xlPoner(ws, 'A'+r, n || (esRecup ? 'Recuperos (consumos y faltantes descontados)' : null), 'entrada');
+    _xlPoner(ws, 'B'+r, null, 'entrada');
+    _xlPoner(ws, 'C'+r, n && min ? Math.round(min / 60 / (b.ventas[2].diasMes / 7) * 10) / 10 : null, 'entrada', '0.0');
+    _xlPoner(ws, 'D'+r, n && vh[n] ? vh[n] : null, 'entrada', XL_MON);
+    _xlPoner(ws, 'E'+r, 1, 'entrada', '0%');
+    _xlPoner(ws, 'F'+r, '=C'+r+'*($B$4/7)*D'+r+'*E'+r, 'formula', XL_MON);
+    // Lo del sistema, aunque sea 0 (así coincide con la pantalla). Si se borra, usa horas × valor hora.
+    _xlPoner(ws, 'G'+r, esRecup ? -Math.round(c.recup) : (n ? Math.round(real) : null), 'entrada', XL_MON);
+    _xlPoner(ws, 'H'+r, '=IF(G'+r+'="",F'+r+',G'+r+')', 'formula', XL_MON);
+    var nota = '';
+    if(n){
+      nota = 'Del sistema: '+_xlHoras(min)+' trabajadas en el mes.';
+      if(c.emp[n]) nota += ' Pagado (bruto): '+fmt(Math.round(c.emp[n]))+'.';
+      if(c.pend[n]) nota += ' Pendiente estimado (mensual vencido): '+fmt(Math.round(c.pend[n]))+'.';
+      if(!real) nota += ' Sin pagos registrados en el mes. Si le pagaste, cargalo acá; si borrás el 0, usa horas × valor hora.';
+    } else if(esRecup) nota = 'Consumos y faltantes descontados en las liquidaciones del mes (restan).';
+    _xlPoner(ws, 'I'+r, nota || null, nota ? 'nota' : 'entrada');
+  }
+  var hasta = desde + filas - 1, fTot = hasta + 1;
+  _xlPoner(ws, 'A'+fTot, 'Total sueldos (sin cargas)', 'total');
+  ['B','D','E','F','G'].forEach(function(col){ _xlPoner(ws, col+fTot, null, 'total'); });
+  _xlPoner(ws, 'C'+fTot, '=SUM(C'+desde+':C'+hasta+')', 'total', '0.0');
+  _xlPoner(ws, 'H'+fTot, '=SUM(H'+desde+':H'+hasta+')', 'total', XL_MON);
+  var socios = Object.keys(c.horasSocio || {}).filter(function(s){ return c.horasSocio[s]; });
+  _xlPoner(ws, 'I'+fTot, "Costo del mes = 'Pago real' (lo pagado más lo pendiente que estima el sistema). Si lo borrás, usa el cálculo: horas por semana × (días ÷ 7) × valor hora × %."+
+    (socios.length ? ' Horas de los socios (no se pagan, solo se cuentan): '+socios.map(function(s){ return s+' '+_xlHoras(c.horasSocio[s]); }).join(', ')+'.' : ''), 'notaT');
+  var fCar = fTot + 1;
+  _xlPoner(ws, 'A'+fCar, 'Cargas sociales (% sobre sueldos)', 'formula');
+  _xlPoner(ws, 'B'+fCar, b.modoCargas === 'pagado' ? null : (b.pctCargas || 0) / 100, 'entrada', '0.0%');
+  if(b.modoCargas === 'pagado'){
+    _xlPoner(ws, 'H'+fCar, Math.round(c.rub.cargas_sociales || 0), 'entrada', XL_MON);
+    _xlPoner(ws, 'I'+fCar, 'Lo pagado en el mes (del sistema). Si preferís estimarlo, poné el % en B y la fórmula =H'+fTot+'*B'+fCar+' acá.', 'nota');
+  } else {
+    _xlPoner(ws, 'H'+fCar, '=H'+fTot+'*B'+fCar, 'formula', XL_MON);
+    _xlPoner(ws, 'I'+fCar, 'No hay pagos de cargas en el mes: se estima con este %. Dejalo en 0% si no están registrados.', 'nota');
+  }
+  // Secciones de montos: [título, filas [rótulo, monto, nota], filas vacías extra]
+  var comp = function(ks){ var t = ks.reduce(function(s, k){ return s + (c.comp[k] || 0); }, 0); return t >= 0.5 ? 'De los cuales compartido con la otra sucursal: '+fmt(Math.round(t))+'.' : ''; };
+  var rub = function(k){ return Math.round(c.rub[k] || 0); };
+  var refs = {};
+  var seccion = function(clave, titulo, items, extra, totTxt){
+    var r = (refs._ultimo || fCar) + 2;
+    _xlSeccion(ws, r, titulo); r++;
+    _xlPoner(ws, 'A'+r, 'Concepto', 'cab'); _xlPoner(ws, 'H'+r, 'Monto del mes', 'cab'); _xlPoner(ws, 'I'+r, 'Nota', 'cab');
+    if(clave === 'cred') _xlPoner(ws, 'C'+r, 'Cuotas restantes', 'cab');
+    var d0 = r + 1;
+    items.concat(new Array(extra).join('.').split('.').map(function(){ return [null, null, '']; })).forEach(function(it){
+      r++;
+      _xlPoner(ws, 'A'+r, it[0], it[0] ? 'formula' : 'entrada');
+      if(clave === 'cred') _xlPoner(ws, 'C'+r, null, 'entrada', '0');
+      _xlPoner(ws, 'H'+r, it[1], 'entrada', XL_MON);
+      _xlPoner(ws, 'I'+r, it[2] || null, it[2] ? 'nota' : 'entrada');
+    });
+    r++;
+    _xlPoner(ws, 'A'+r, totTxt, 'total');
+    'BCDEFG'.split('').forEach(function(col){ _xlPoner(ws, col+r, null, 'total'); });
+    _xlPoner(ws, 'H'+r, '=SUM(H'+d0+':H'+(r-1)+')', 'total', XL_MON);
+    _xlPoner(ws, 'I'+r, null, 'notaT');
+    refs[clave] = 'H'+r; refs._ultimo = r;
+  };
+  seccion('extra', '2. PERSONAL EXTRA Y LIMPIEZA', [['Personal extra y limpieza (del sistema)', rub('personal_extra'), comp(['personal_extra'])]], 3, 'Total personal extra y limpieza');
+  seccion('alq', '3. ALQUILER', [['Alquiler del mes', rub('alquiler'), comp(['alquiler'])]], 1, 'Total alquiler');
+  seccion('serv', '4. SERVICIOS', [['Luz', rub('luz'), comp(['luz'])], ['Gas', rub('gas'), comp(['gas'])], ['Agua', rub('agua'), comp(['agua'])],
+    ['Internet y teléfono', rub('internet'), comp(['internet'])], ['Otros servicios', rub('otros_servicios'), comp(['otros_servicios'])]], 2, 'Total servicios');
+  seccion('imp', '5. IMPUESTOS Y ADMINISTRACIÓN', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Impuesto de comercio', rub('comercio'), comp(['comercio'])],
+    ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])], ['Otros costos (mantenimiento, bolsas, seguro, etc.)', rub('otros_costos'), comp(['otros_costos'])],
+    ['Comisiones (Mercado Pago, banco)', rub('comisiones'), comp(['comisiones'])]], 1, 'Total impuestos y administración');
+  var acr = acreedoresLista().slice(); Object.keys(c.acre).forEach(function(a){ if(acr.indexOf(a) === -1) acr.push(a); });
+  seccion('cred', '6. CRÉDITOS (cuotas del mes)', acr.map(function(a){ return ['Cuota '+a, Math.round(c.acre[a] || 0), '']; }), Math.max(1, 7 - acr.length), 'Total créditos');
+  var nCred = [];
+  if(c.credMerc >= 0.5) nCred.push('parte de mercadería '+fmt(Math.round(c.credMerc))+' (no se resta: ya está en el costo)');
+  if(c.credEquip >= 0.5) nCred.push('parte de equipamiento '+fmt(Math.round(c.credEquip))+' (va a inversiones)');
+  ws.getCell('I'+refs._ultimo).value = 'Solo gastos e intereses de cada cuota'+(nCred.length ? '; '+nCred.join('; ') : '')+'.'+(c.credSinPartes ? ' Hay '+c.credSinPartes+' cuota(s) sin decir a qué corresponde: van enteras.' : '');
+  var fTotal = refs._ultimo + 2;
+  'ABCDEFGHI'.split('').forEach(function(col){ _xlPoner(ws, col+fTotal, null, 'result'); });
+  ws.getCell('A'+fTotal).value = 'TOTAL COSTOS OPERATIVOS (sin créditos)';
+  ws.getCell('H'+fTotal).value = { formula: 'H'+fTot+'+H'+fCar+'+'+refs.extra+'+'+refs.alq+'+'+refs.serv+'+'+refs.imp };
+  ws.getCell('H'+fTotal).numFmt = XL_MON;
+  ws.getCell('I'+fTotal).value = 'Mercadería pagada a proveedores en el mes: '+fmt(Math.round(c.mercaderia))+' (no se resta: ya está en el costo de lo vendido).'+(c.inversion >= 0.5 ? ' Inversiones en equipamiento: '+fmt(Math.round(c.inversion))+' (fuera del resultado).' : '');
+  _xlEstilo(ws.getCell('I'+fTotal), 'notaR');
+  return { sueldos: 'H'+fTot, cargas: 'H'+fCar, extra: refs.extra, alq: refs.alq, serv: refs.serv, imp: refs.imp, cred: refs.cred };
+}
+// Hoja "Balance SN": lo del sistema (ventas, margen) y los costos de la hoja de la sucursal.
+function _xlHojaBalance(wb, b, N, refs){
+  var c = b.cols[N-1], v = b.ventas[N-1], S = "'Sucursal "+N+"'!";
+  var ws = wb.addWorksheet('Balance S'+N, { views: [{ state: 'frozen', ySplit: 4 }] });
+  ws.columns = [{ width: 48 }, { width: 20 }, { width: 90 }];
+  _xlPoner(ws, 'A1', 'Balance sucursal '+N+': un mes', 'titulo');
+  _xlPoner(ws, 'A2', 'Las celdas amarillas vienen del sistema (ventas y margen) y se pueden cambiar a mano. Los costos vienen solos de la hoja Sucursal '+N+'.', 'sub');
+  ['Concepto','Monto','Nota'].forEach(function(t, i){ _xlPoner(ws, 'ABC'.charAt(i)+'4', t, 'cab'); });
+  var filas = [
+    ['Mes', '='+S+'B3', 'vinculo', '@', 'Viene de la hoja de la sucursal.'],
+    ['Días del mes', '='+S+'B4', 'vinculo', '0', ''],
+    ['INGRESOS (del sistema)'],
+    ['Ventas del mes', Math.round(v.ventasTot), 'entrada', XL_MON, 'Del Balance mensual del sistema: ventas totales, sin los cobros de CEFHAS ni de fiados.'+(v.enCurso ? ' Mes en curso: ventas hasta el día '+v.diasTrans+' de '+v.diasMes+'; si sigue el ritmo, el mes cierra en '+fmt(Math.round(v.proyectadas || 0))+'.' : '')],
+    ['Venta diaria promedio', '=IF(B6=0,0,B8/B6)', 'formula', XL_MON, 'Ventas del mes ÷ días del mes. Es un promedio: no distingue fines de semana de días flojos.'],
+    ['% de ventas sin costo cargado', (c.res.pctSinCosto || 0) / 100, 'entrada', '0.0%', 'Del sistema. Si pasa del 10%, el margen es poco confiable.'],
+    ['Margen bruto $ (comprobado)', Math.round(v.margen), 'entrada', XL_MON, 'Del sistema. Es solo el margen de lo que tiene costo cargado: es el número oficial y el que se usa en el balance.', 'etq'],
+    ['Margen bruto % sobre ventas totales (comprobado)', '=IF(B8=0,0,B11/B8)', 'formula', '0.0%', 'Margen comprobado ÷ ventas totales. Se usa para el equilibrio.'],
+    ['Margen bruto $ estimado al 100% (estimación)', '=IF(B10>=1,0,B11/(1-B10))', 'formula', XL_MON, 'Supone que lo que no tiene costo deja el mismo margen que lo demás. Es una suposición, no un dato.'],
+    ['Confiabilidad del margen', '=IF(B8=0,"Sin datos",IF(B10>0.1,"Poco confiable: cargá costos","OK"))', 'formula', '@', 'Alerta si más del 10% de las ventas no tiene costo cargado.'],
+    ['Fiado sin cobrar al cierre (informativo)', Math.round(v.sinCobrar || 0), 'entrada', XL_MON, 'Del sistema. Es mercadería que ya salió y se cuenta como venta, pero la plata todavía no entró.'],
+    ['COSTOS OPERATIVOS (vienen de la hoja de la sucursal)'],
+    ['Sueldos', '='+S+refs.sueldos, 'vinculo', XL_MON, ''],
+    ['Cargas sociales', '='+S+refs.cargas, 'vinculo', XL_MON, ''],
+    ['Personal extra y limpieza', '='+S+refs.extra, 'vinculo', XL_MON, ''],
+    ['Alquiler', '='+S+refs.alq, 'vinculo', XL_MON, ''],
+    ['Servicios (luz, gas, agua, internet y otros)', '='+S+refs.serv, 'vinculo', XL_MON, ''],
+    ['Impuestos y administración', '='+S+refs.imp, 'vinculo', XL_MON, ''],
+    ['Total costos operativos (sin créditos)', '=SUM(B17:B22)', 'total', XL_MON, '', 'total'],
+    ['CRÉDITOS'],
+    ['Total créditos (cuotas del mes)', '='+S+refs.cred, 'vinculo', XL_MON, 'Lo ideal es cancelarlos: mirá cuánto del resultado operativo se llevan (fila de abajo).'],
+    ['BALANCE'],
+    ['Total costos (operativos + créditos)', '=B23+B25', 'formula', XL_MON, '', 'etq'],
+    ['Resultado operativo', '=B11-B23', 'result', XL_MON, 'Margen bruto menos costos operativos, sin contar la deuda. Si es positivo, la sucursal se paga sola.', 'result'],
+    ['Resultado neto (después de créditos)', '=B28-B25', 'result', XL_MON, 'Lo que queda de verdad, antes de los retiros de los socios.', 'result'],
+    ['Resultado neto con margen estimado al 100% (estimación)', '=B29+B13-B11', 'formula', XL_MON, 'Mismo resultado neto pero usando el margen estimado. Lo real está entre este número y el comprobado.'],
+    ['Margen neto % sobre ventas', '=IF(B8=0,0,B29/B8)', 'formula', '0.0%', 'Resultado neto ÷ ventas. Si es 10%, de cada $100 que vendés te quedan $10.'],
+    ['Créditos como % del resultado operativo', '=IF(B28<=0,0,B25/B28)', 'formula', '0.0%', 'Qué parte de lo que gana la sucursal se va en cuotas. En 0 también si el resultado operativo es negativo.'],
+    ['Venta diaria de equilibrio', '=IF(OR(B12=0,B6=0),0,B27/B12/B6)', 'formula', XL_MON, 'Lo que hay que vender por día para cubrir todos los costos sin ganar ni perder (costos ÷ margen % ÷ días).'],
+    ['Venta diaria actual menos equilibrio', '=B9-B33', 'formula', XL_MON, 'Positivo = gana; negativo = falta vender esa plata por día.']
+  ];
+  filas.forEach(function(x, i){
+    var r = 5 + i;
+    if(x.length === 1){ _xlSeccion(ws, r, x[0], 3); return; }
+    var est = x[5] || (x[2] === 'total' ? 'total' : 'formula');
+    _xlPoner(ws, 'A'+r, x[0], est === 'result' || est === 'total' || est === 'etq' ? est : 'formula');
+    _xlPoner(ws, 'B'+r, x[1], x[2], x[3]);
+    _xlPoner(ws, 'C'+r, x[4] || null, est === 'total' ? 'notaT' : est === 'result' ? 'notaR' : 'nota');
+  });
+}
+function _xlHojaTotal(wb, b){
+  var ws = wb.addWorksheet('Balance Total');
+  ws.columns = [{ width: 44 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 90 }];
+  var T = b.cols[2];
+  _xlPoner(ws, 'A1', 'Balance total de las dos sucursales: un mes', 'titulo');
+  _xlPoner(ws, 'A2', 'Suma automática de Balance S1 y Balance S2, con el reparto entre socios y un control contra la plata real.', 'sub');
+  ['Concepto','Sucursal 1','Sucursal 2','Total','Nota'].forEach(function(t, i){ _xlPoner(ws, 'ABCDE'.charAt(i)+'4', t, 'cab'); });
+  _xlPoner(ws, 'A5', 'Mes', 'etq'); ws.getCell('A5').border = {}; _xlPoner(ws, 'B5', "='Balance S1'!B5", 'vinculo', '@'); ws.getCell('B5').border = {};
+  var lin = [
+    [6, 'Ventas del mes', 'B8', 'formula', ''], [7, 'Margen bruto $ (comprobado)', 'B11', 'formula', ''], [8, 'Total costos operativos', 'B23', 'formula', ''],
+    [9, 'Total créditos', 'B25', 'formula', ''], [10, 'Resultado operativo', 'B28', 'result', 'Si la sucursal se paga sola, sin contar la deuda.'],
+    [11, 'Resultado neto', 'B29', 'result', 'Lo que queda de verdad antes de los retiros de los socios.'],
+    [12, 'Resultado neto con margen estimado al 100% (estimación)', 'B30', 'formula', 'Lo real está entre este número y el resultado neto comprobado.'],
+    [13, 'Fiado sin cobrar al cierre (informativo)', 'B15', 'formula', 'Se cuenta como venta, pero la plata no entró: explica parte de la diferencia contra la caja real.']
+  ];
+  lin.forEach(function(x){
+    var r = x[0], res = x[3] === 'result';
+    _xlPoner(ws, 'A'+r, x[1], res ? 'result' : 'etq');
+    _xlPoner(ws, 'B'+r, "='Balance S1'!"+x[2], 'vinculo', XL_MON); _xlPoner(ws, 'C'+r, "='Balance S2'!"+x[2], 'vinculo', XL_MON);
+    if(res){ ws.getCell('B'+r).fill = ws.getCell('C'+r).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }; }
+    _xlPoner(ws, 'D'+r, '=B'+r+'+C'+r, res ? 'result' : 'etq', XL_MON);
+    _xlPoner(ws, 'E'+r, x[4] || null, res ? 'notaR' : 'nota');
+  });
+  _xlPoner(ws, 'A14', 'Margen neto % sobre ventas', 'etq');
+  ['B','C','D'].forEach(function(col){ _xlPoner(ws, col+'14', '=IF('+col+'6=0,0,'+col+'11/'+col+'6)', 'etq', '0.0%'); });
+  _xlPoner(ws, 'E14', 'Resultado neto ÷ ventas.', 'nota');
+  _xlSeccion(ws, 16, 'REPARTO ENTRE SOCIOS (sobre el resultado neto total)', 5);
+  var rep = balRepartoLocal(1), socios = sociosLista(), s1 = socios[0] || 'Martín', s2 = socios[1] || 'Jonathan';
+  _xlPoner(ws, 'A17', '% '+s1, 'formula'); _xlPoner(ws, 'B17', (rep[s1] || 0) / 100, 'entrada', '0%');
+  var rep2 = balRepartoLocal(2), distinto = rep2[s1] !== rep[s1];
+  _xlPoner(ws, 'E17', 'Del sistema ('+s1+' '+(rep[s1] || 0)+'% / '+s2+' '+(rep[s2] || 0)+'%).'+(distinto ? ' Ojo: en la Sucursal 2 el sistema usa '+(rep2[s1] || 0)+'%.' : '')+' Si se reparte distinto, cambialo.', 'nota');
+  _xlPoner(ws, 'A18', '% '+s2, 'formula'); _xlPoner(ws, 'B18', '=1-B17', 'formula', '0%');
+  _xlPoner(ws, 'A19', 'Resultado neto para '+s1, 'etq'); _xlPoner(ws, 'B19', '=D11*B17', 'formula', XL_MON);
+  _xlPoner(ws, 'A20', 'Resultado neto para '+s2, 'etq'); _xlPoner(ws, 'B20', '=D11*B18', 'formula', XL_MON);
+  var ret = function(s){ return Math.round(T.retiros[s] || 0); };
+  _xlPoner(ws, 'E19', 'Retiró en el mes (del sistema): '+fmt(ret(s1))+'.', 'nota');
+  _xlPoner(ws, 'E20', 'Retiró en el mes (del sistema): '+fmt(ret(s2))+'.', 'nota');
+  _xlSeccion(ws, 22, 'CONTROL CONTRA LA PLATA REAL', 5);
+  var ini = T.res.cajaIni, fin = T.res.cajaFin;
+  _xlPoner(ws, 'A23', 'Plata en caja y banco al inicio del mes', 'formula'); _xlPoner(ws, 'B23', ini != null ? Math.round(ini) : 0, 'entrada', XL_MON);
+  _xlPoner(ws, 'E23', ini != null ? 'De los "Saldos del mes" del sistema (cajones, fuera de caja, Mercado Pago y banco).' : 'Sumá caja, billeteras y cuentas del negocio (o cargalo en "Saldos del mes" del sistema).', 'nota');
+  _xlPoner(ws, 'A24', 'Plata en caja y banco al cierre del mes', 'formula'); _xlPoner(ws, 'B24', fin != null ? Math.round(fin) : 0, 'entrada', XL_MON);
+  _xlPoner(ws, 'E24', 'Lo mismo, al último día del mes.', 'nota');
+  _xlPoner(ws, 'A25', 'Retiros de socios en el mes', 'formula'); _xlPoner(ws, 'B25', Math.round(T.res.retirosCajaTot || 0), 'entrada', XL_MON);
+  _xlPoner(ws, 'E25', 'Del sistema, por fecha de pago: '+Object.keys(T.retirosCaja).map(function(s){ return s+' '+fmt(Math.round(T.retirosCaja[s])); }).join(' · ')+'.', 'nota');
+  _xlPoner(ws, 'A26', 'Plata que generó el negocio en el mes', 'etq'); _xlPoner(ws, 'B26', '=B24-B23+B25', 'formula', XL_MON);
+  _xlPoner(ws, 'E26', 'Cierre menos inicio, más lo que se retiró.', 'nota');
+  _xlPoner(ws, 'A27', 'Diferencia contra el resultado neto', 'etq'); _xlPoner(ws, 'B27', '=B26-D11', 'formula', XL_MON);
+  _xlPoner(ws, 'E27', 'Si es muy negativa, probablemente estás poniendo plata en stock o hay ventas que no se cobraron (fiados). Si es positiva, compraste menos mercadería de la que vendiste.', 'nota');
+}
+function exportarBalanceExcel(){
+  var b = _bal.b;
+  if(!b){ showToast('Primero tocá "Ver balance del mes"', true); return; }
+  showToast('⏳ Armando el Excel…');
+  _xlCargar().then(function(){
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Limay Rock'; wb.created = new Date();
+    wb.calcProperties.fullCalcOnLoad = true;
+    var r1 = _xlHojaSucursal(wb, b, 1); _xlHojaBalance(wb, b, 1, r1);
+    var r2 = _xlHojaSucursal(wb, b, 2); _xlHojaBalance(wb, b, 2, r2);
+    _xlHojaTotal(wb, b);
+    return wb.xlsx.writeBuffer();
+  }).then(function(buf){
+    var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Limay_Rock_Balance_Mensual_'+b.mes+(b.cols[2].nSinClasif ? '_PROVISORIO' : '')+'.xlsx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+    showToast('✅ Excel descargado');
+  }).catch(function(e){ showToast('⚠ No se pudo armar el Excel: '+((e && e.message) || e), true); });
 }
 // ── Paneles del balance: saldos del mes y configuración (solo el dueño) ──
 function balAbrirPanel(cual){
