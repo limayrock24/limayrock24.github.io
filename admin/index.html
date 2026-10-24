@@ -24064,7 +24064,10 @@ function _xlHojaBalance(wb, b, N, refs){
     ['Días del mes', '='+S+'B4', 'vinculo', '0', ''],
     ['INGRESOS (del sistema)'],
     ['Ventas del mes', Math.round(v.ventasTot), 'entrada', XL_MON, 'Del Balance mensual del sistema: ventas totales, sin los cobros de CEFHAS ni de fiados.'+(v.enCurso ? ' Mes en curso: ventas hasta el día '+v.diasTrans+' de '+v.diasMes+'; si sigue el ritmo, el mes cierra en '+fmt(Math.round(v.proyectadas || 0))+'.' : '')],
-    ['Venta diaria promedio', '=IF(B6=0,0,B8/B6)', 'formula', XL_MON, 'Ventas del mes ÷ días del mes. Es un promedio: no distingue fines de semana de días flojos.'],
+    // La del sistema (ventas ÷ días transcurridos; con el mes cerrado, ÷ días del mes).
+    // Si no viniera, la misma cuenta con los días transcurridos.
+    ['Venta diaria promedio', isFinite(c.res.ventaDiaria) ? Math.round(c.res.ventaDiaria) : '=IF(B8=0,0,B8/'+(v.diasTrans || v.diasMes)+')', 'entrada', XL_MON,
+      'Del sistema: ventas ÷ días transcurridos'+(v.enCurso ? ' ('+v.diasTrans+' de '+v.diasMes+')' : '')+'. Con el mes cerrado es ventas ÷ días del mes. Es un promedio: no distingue fines de semana de días flojos.'],
     ['% de ventas sin costo cargado', (c.res.pctSinCosto || 0) / 100, 'entrada', '0.0%', 'Del sistema. Si pasa del 10%, el margen es poco confiable.'],
     ['Margen bruto $ (comprobado)', Math.round(v.margen), 'entrada', XL_MON, 'Del sistema. Es solo el margen de lo que tiene costo cargado: es el número oficial y el que se usa en el balance.', 'etq'],
     ['Margen bruto % sobre ventas totales (comprobado)', '=IF(B8=0,0,B11/B8)', 'formula', '0.0%', 'Margen comprobado ÷ ventas totales. Se usa para el equilibrio.'],
@@ -24127,16 +24130,32 @@ function _xlHojaTotal(wb, b){
   ['B','C','D'].forEach(function(col){ _xlPoner(ws, col+'14', '=IF('+col+'6=0,0,'+col+'11/'+col+'6)', 'etq', '0.0%'); });
   _xlPoner(ws, 'E14', 'Resultado neto ÷ ventas.', 'nota');
   _xlSeccion(ws, 16, 'REPARTO ENTRE SOCIOS (sobre el resultado neto total)', 5);
-  var rep = balRepartoLocal(1), socios = sociosLista(), s1 = socios[0] || 'Martín', s2 = socios[1] || 'Jonathan';
-  _xlPoner(ws, 'A17', '% '+s1, 'formula'); _xlPoner(ws, 'B17', (rep[s1] || 0) / 100, 'entrada', '0%');
+  ws.getCell('B16').value = 'Le corresponde'; ws.getCell('C16').value = 'Retiros'; ws.getCell('D16').value = 'Saldo (le corresponde − retiró)';
+  // Los socios, en el mismo orden que las filas "Le corresponde a X" del reporte.
+  var socios = sociosLista().slice();
+  Object.keys(T.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
+  var rep = balRepartoLocal(1), s1 = socios[0] || 'Martín', s2 = socios[1] || 'Jonathan';
   var rep2 = balRepartoLocal(2), distinto = rep2[s1] !== rep[s1];
+  _xlPoner(ws, 'A17', '% '+s1, 'formula'); _xlPoner(ws, 'B17', (rep[s1] || 0) / 100, 'entrada', '0%');
   _xlPoner(ws, 'E17', 'Del sistema ('+s1+' '+(rep[s1] || 0)+'% / '+s2+' '+(rep[s2] || 0)+'%).'+(distinto ? ' Ojo: en la Sucursal 2 el sistema usa '+(rep2[s1] || 0)+'%.' : '')+' Si se reparte distinto, cambialo.', 'nota');
   _xlPoner(ws, 'A18', '% '+s2, 'formula'); _xlPoner(ws, 'B18', '=1-B17', 'formula', '0%');
-  _xlPoner(ws, 'A19', 'Resultado neto para '+s1, 'etq'); _xlPoner(ws, 'B19', '=D11*B17', 'formula', XL_MON);
-  _xlPoner(ws, 'A20', 'Resultado neto para '+s2, 'etq'); _xlPoner(ws, 'B20', '=D11*B18', 'formula', XL_MON);
-  var ret = function(s){ return Math.round(T.retiros[s] || 0); };
-  _xlPoner(ws, 'E19', 'Retiró en el mes (del sistema): '+fmt(ret(s1))+'.', 'nota');
-  _xlPoner(ws, 'E20', 'Retiró en el mes (del sistema): '+fmt(ret(s2))+'.', 'nota');
+  // Por socio: le corresponde (B), retiros (C) y saldo (D), como las filas
+  // "Le corresponde a X", "Retiros de X" y "Saldo de X" del reporte. Si los dos
+  // locales usan el mismo %, "le corresponde" queda como fórmula del % de
+  // arriba (da lo mismo que el reporte y sigue el % si lo cambiás); si no, va
+  // el valor del reporte.
+  var corr = function(s){ return Math.round(T.res.corr[s] || 0); }, ret = function(s){ return Math.round(T.retiros[s] || 0); };
+  [[19, s1, 'B17'], [20, s2, 'B18']].forEach(function(x){
+    var r = x[0], s = x[1];
+    _xlPoner(ws, 'A'+r, 'Resultado neto para '+s, 'etq');
+    if(distinto) _xlPoner(ws, 'B'+r, corr(s), 'entrada', XL_MON);
+    else _xlPoner(ws, 'B'+r, '=D11*'+x[2], 'formula', XL_MON);
+    _xlPoner(ws, 'C'+r, ret(s), 'entrada', XL_MON);
+    _xlPoner(ws, 'D'+r, '=B'+r+'-C'+r, 'etq', XL_MON);
+    _xlPoner(ws, 'E'+r, 'Del sistema: le corresponde '+fmt(corr(s))+' · retiró '+fmt(ret(s))+' · saldo '+fmt(corr(s) - ret(s))+'.'+
+      (distinto ? ' Las sucursales usan distinto %: "le corresponde" es el valor del sistema (el % de arriba no lo cambia).' : ''), 'nota');
+  });
+  if(socios.length > 2) ws.getCell('E20').value = ws.getCell('E20').value+' Otros socios con retiros: '+socios.slice(2).map(function(s){ return s+' '+fmt(ret(s)); }).join(', ')+'.';
   _xlSeccion(ws, 22, 'CONTROL CONTRA LA PLATA REAL', 5);
   var ini = T.res.cajaIni, fin = T.res.cajaFin;
   _xlPoner(ws, 'A23', 'Plata en caja y banco al inicio del mes', 'formula'); _xlPoner(ws, 'B23', ini != null ? Math.round(ini) : 0, 'entrada', XL_MON);
