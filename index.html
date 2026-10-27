@@ -5038,11 +5038,14 @@ body.night-on{background:#080005}
           <div class="field" id="eEmpRow"><label>👤 Empleado</label><select id="eEmpleado" onchange="elegirEmpleadoEgreso()"></select></div>
           <div class="field-row">
             <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
-            <div class="field" id="eSucRow" style="display:none"><label>🏪 Sucursal</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
+            <div class="field" id="eSucRow"><label>🏪 ¿Qué local lo paga?</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
           </div>
-          <div class="field-row" id="eRepartoRow" style="display:none">
-            <div class="field"><label>% que absorbe Limay 1</label><input type="number" id="eRep1" min="0" max="100" oninput="repartoEgresoCambio(1)"></div>
-            <div class="field"><label>% que absorbe Limay 2</label><input type="number" id="eRep2" min="0" max="100" oninput="repartoEgresoCambio(2)"></div>
+          <div id="eRepartoRow" style="display:none">
+            <div class="field-row">
+              <div class="field"><label>💵 Pone Limay 1 $</label><input type="text" inputmode="decimal" id="eComp1" placeholder="0" oninput="formatMontoDecInput(this);compartidoCambio()"></div>
+              <div class="field"><label>💵 Pone Limay 2 $</label><input type="text" inputmode="decimal" id="eComp2" placeholder="0" oninput="formatMontoDecInput(this);compartidoCambio()"></div>
+            </div>
+            <div id="eCompResumen" style="font-size:.75rem;color:var(--light);margin:-4px 0 6px"></div>
           </div>
           <div id="eCredRow" style="display:none">
             <div class="field"><label>🏦 Acreedor</label><select id="eAcreedor" onchange="if(this.value==='__nuevo__') agregarAcreedor(this)"></select></div>
@@ -13249,21 +13252,14 @@ function montoTransferenciaConfirm(carrito){
 // Limay 2 cobra con su propia cuenta (otra billetera), no conectada: si en Limay 2
 // se consultara la de Limay 1, una venta podría quedar emparejada con un pago
 // de un cliente de Limay 1 del mismo monto. Hasta conectarla, en Limay 2 las
-// transferencias se confirman a mano mirando el celular de esa cuenta.
+// transferencias se confirman a mano, como antes de Mercado Pago.
 function mpCuentaConectada(){ return (window.__lrSucursal || 1) === 1; }
-var MP_MSG_L2 = 'Confirmá la transferencia en el celular de la cuenta de Limay 2';
 function mpEsperaIniciar(carrito){
   mpEsperaSoltar();
   var box = document.getElementById('mpEsperaBox'); if(!box) return;
   var monto = montoTransferenciaConfirm(carrito);
   if(!(monto > 0) || !window.firebase || !firebase.auth || !firebase.auth().currentUser){ box.style.display = 'none'; return; }
-  if(!mpCuentaConectada()){
-    box.style.display = 'block';
-    box.innerHTML = '<div style="border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-size:.8rem;line-height:1.4;background:rgba(244,180,0,.12);border:1px solid var(--gold);color:var(--gold)">'+
-      '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px">📱 '+MP_MSG_L2+'</div>'+
-      '<div style="color:var(--light)">Fijate que haya entrado '+fmt(monto)+' y recién ahí tocá <b>✓ Confirmar</b>.</div></div>';
-    return;
-  }
+  if(!mpCuentaConectada()){ box.style.display = 'none'; return; }
   var suc = window.__lrSucursal || 1;
   _mpEspera = { ref: 'L'+suc+'-C'+cajaTurnoActual()+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
     monto: monto, carrito: carrito, desde: Date.now() - 10*60000, inicio: Date.now(), pago: null, timer: null, cuenta: 0, frenado: false, errores: 0 };
@@ -16353,7 +16349,8 @@ function pintarDetEgreso(){
   var catEl = document.getElementById('eCategoria');
   if(personal) ver('eConceptoWrap', false);
   else if(catEl && catEl.value !== 'proveedor') ver('eConceptoWrap', true);   // ej. de Personal extra a Cargas sociales (mismo grupo)
-  box.style.display = (personal || r === 'credito' || r === 'retiro_socio') ? 'block' : 'none';
+  // Todo menos la mercadería: el local que lo paga (o compartido, con el % de cada uno).
+  box.style.display = r === 'mercaderia' ? 'none' : 'block';
   if(r === 'mercaderia') return;
   ver('eMesRow', personal);
   ver('eCredRow', r === 'credito');
@@ -16370,8 +16367,6 @@ function pintarDetEgreso(){
   if(su && !su.dataset.tocado) su.value = String(localActual());
   var comp = su && su.value === 'compartido';
   ver('eRepartoRow', comp);
-  var r1 = document.getElementById('eRep1'), r2 = document.getElementById('eRep2');
-  if(comp && r1 && !r1.dataset.tocado){ var d = repartoDelMes(me ? me.value : ''); r1.value = d[1]; if(r2) r2.value = d[2]; }
 }
 function toggleCredPartes(){
   var p = document.getElementById('eCredPartes'), b = document.getElementById('eCredPartesBtn'); if(!p) return;
@@ -16384,12 +16379,16 @@ function elegirEmpleadoEgreso(){
   var c = document.getElementById('eConcepto');
   if(v && c && (!c.value || c.dataset.auto === '1')){ c.value = v; c.dataset.auto = '1'; }
 }
-function repartoEgresoCambio(cual){
-  var r1 = document.getElementById('eRep1'), r2 = document.getElementById('eRep2');
-  if(!r1 || !r2) return;
-  r1.dataset.tocado = '1';
-  if(cual === 1) r2.value = Math.max(0, Math.min(100, 100 - (Number(r1.value)||0)));
-  else r1.value = Math.max(0, Math.min(100, 100 - (Number(r2.value)||0)));
+// Compartido: se pone la plata que pone cada local; el total va al monto del
+// pago (salvo pago mixto) y se muestra qué % es cada parte.
+function _compPct(p){ return (Math.round(p * 10) / 10).toLocaleString('es-AR')+' %'; }
+function compartidoCambio(){
+  var a = getMontoInputValue('eComp1'), b = getMontoInputValue('eComp2'), t = a + b;
+  var res = document.getElementById('eCompResumen');
+  if(t > 0 && document.getElementById('eMedio').value !== 'Mixto'){
+    var m = document.getElementById('eMonto'); m.value = String(Math.round(t * 100) / 100).replace('.', ','); formatMontoDecInput(m);
+  }
+  if(res) res.innerHTML = t > 0 ? 'Total <b>'+fmt(t)+'</b> · Limay 1: <b>'+_compPct(a / t * 100)+'</b> · Limay 2: <b>'+_compPct(b / t * 100)+'</b>' : '';
 }
 function partesTodoEn(campo){
   var monto = document.getElementById('eMedio').value === 'Mixto'
@@ -16420,10 +16419,11 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
     else if(rubro === 'sueldos') return { error: 'Elegí a qué empleado le pagaste' };
   }
   if(det.suc === 'compartido'){
-    var a = Number(val('eRep1')), b = Number(val('eRep2'));
-    if(!(a >= 0 && b >= 0) || Math.round(a + b) !== 100) return { error: 'El reparto entre los locales tiene que sumar 100 %' };
-    var def = repartoDelMes(det.mes);
-    if(a !== def[1]) det.reparto = { 1: a, 2: b };   // si no, usa el del mes
+    var a = getMontoInputValue('eComp1'), b = getMontoInputValue('eComp2');
+    if(!(a + b > 0)) return { error: 'Poné cuánto pone cada local' };
+    if(Math.abs(a + b - monto) > 0.5) return { error: 'Lo que pone cada local suma '+fmt(a + b)+' y el pago es de '+fmt(monto)+': tienen que dar igual' };
+    det.montos = { 1: a, 2: b };
+    det.reparto = { 1: a / (a + b) * 100, 2: b / (a + b) * 100 };
   }
   if(rubro === 'credito'){
     det.acreedor = val('eAcreedor');
@@ -16443,8 +16443,9 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
 }
 function resetDetEgreso(){
   var r = document.getElementById('eRubro'); if(r) r.value = 'mercaderia';
-  ['eMes','eSuc','eRep1'].forEach(function(id){ var el = document.getElementById(id); if(el) delete el.dataset.tocado; });
-  ['ePMerc','ePEquip','ePGastos','ePInt'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  ['eMes','eSuc'].forEach(function(id){ var el = document.getElementById(id); if(el) delete el.dataset.tocado; });
+  var cr = document.getElementById('eCompResumen'); if(cr) cr.innerHTML = '';
+  ['ePMerc','ePEquip','ePGastos','ePInt','eComp1','eComp2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   ['eEmpleado','eAcreedor','eSocio'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   var c = document.getElementById('eConcepto'); if(c) delete c.dataset.auto;
   var cp = document.getElementById('eCredPartes'); if(cp && cp.style.display !== 'none') toggleCredPartes();
