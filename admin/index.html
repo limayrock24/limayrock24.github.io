@@ -2397,9 +2397,28 @@ if(window.__lrSucursal === 2){
 
   window.__lrBorrarSesionActiva = function(nombre){
     var quien = nombre || (typeof currentEmp!=='undefined' && currentEmp ? currentEmp.nombre : null);
-    if(!quien) return;
-    window.__lrDB.collection('sesionesActivas').doc(idSeguro(quien)).delete().catch(function(e){
+    if(!quien) return null;
+    var borrado = window.__lrDB.collection('sesionesActivas').doc(idSeguro(quien)).delete();
+    borrado.catch(function(e){
       console.error('Error borrando sesión activa', e);
+    });
+    return borrado;   // el cierre de turno espera esta confirmación
+  };
+
+  // Reenvío de un cierre de turno que quedó guardado en esta PC sin confirmar
+  // (ver "cierres de turno pendientes"). Guardarlo de nuevo no duplica nada
+  // (es el mismo documento). La sesión abierta se borra solo si sigue siendo
+  // la de ESE turno: si la persona ya abrió otro, no se toca.
+  window.__lrEnviarCierrePendiente = function(p){
+    var db = window.__lrDB;
+    return db.collection(window.__lrCOL.cierres).doc(String(p.cierre.fecha)).set(limpiarUndefined(p.cierre)).then(function(){
+      if(!p.sesion || !p.sesion.nombre) return;
+      var refS = db.collection('sesionesActivas').doc(idSeguro(p.sesion.nombre));
+      return db.runTransaction(function(t){
+        return t.get(refS).then(function(d){
+          if(d.exists && d.data().turnoInicio === p.sesion.turnoInicio) t.delete(refS);
+        });
+      });
     });
   };
 
@@ -7645,7 +7664,7 @@ function getCierres() {
 }
 function saveCierres(c) {
   window.__lrCierresCache = c;
-  if(window.__lrSaveCierres) window.__lrSaveCierres(c);
+  if(window.__lrSaveCierres) return window.__lrSaveCierres(c);   // promesa: confirma la nube
 }
 
 var EMPLEADOS = getEmpleados();
@@ -7875,6 +7894,16 @@ function fechaLocalStr(d) {
   var m = String(d.getMonth()+1).padStart(2,'0');
   var day = String(d.getDate()).padStart(2,'0');
   return y+'-'+m+'-'+day;
+}
+// Día (YYYY-MM-DD) en la hora de esta PC a partir de una fecha guardada.
+// Las fechas con hora se guardan en UTC (toISOString): cortarlas con
+// slice(0,10) daba el día siguiente después de las 21:00 (y el mes siguiente
+// el último día del mes). Las que ya son un día solo (los egresos) quedan igual.
+function fechaLocalDe(f) {
+  var s = String(f || '');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? s.slice(0,10) : fechaLocalStr(d);
 }
 function calcPrice(cost,pct) { return Math.ceil(cost*(1+pct/100)/100)*100; }
 function hl(text,term) {
@@ -8145,7 +8174,7 @@ function limpiarSesionActiva(nombre) {
     window.__lrSesionActivaCache = restantes.length ? restantes[0] : null;
     window.__lrSesionesVigentes = restantes;
   }
-  if(window.__lrBorrarSesionActiva) window.__lrBorrarSesionActiva(nombre);
+  if(window.__lrBorrarSesionActiva) return window.__lrBorrarSesionActiva(nombre);
 }
 // Reloj en vivo del turno abierto, visible en el panel admin (local o
 // remoto). Corre siempre en segundo plano; no hace nada si el panel admin
@@ -10411,7 +10440,7 @@ function exportarCSV() {
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   var fechaEl=document.getElementById('fechaFiltro');
-  a.download='LimayRock_Ventas_'+(fechaEl?fechaEl.value:new Date().toISOString().slice(0,10))+'.csv';
+  a.download='LimayRock_Ventas_'+(fechaEl?fechaEl.value:fechaLocalStr(new Date()))+'.csv';
   a.click();
   showToast('CSV EXPORTADO');
 }
@@ -11789,6 +11818,92 @@ function calcArqueoDif() {
   btn.disabled = (n === 0);
 }
 
+// ── CIERRES DE TURNO PENDIENTES DE CONFIRMAR EN LA NUBE ─────────────────────
+// El cierre se manda a la nube en segundo plano. Si se cerraba la pestaña
+// apenas terminaba el arqueo, o no había internet, se podía perder sin aviso
+// (pasó el 26/10). Ahora queda una copia en esta PC hasta que la nube lo
+// confirma, y se reintenta sola: al volver internet, al abrir de nuevo la
+// página y cada 30 segundos. Nunca traba la caja: el login aparece igual.
+var SK_CIERRES_PEND = 'lr_cierres_pendientes';
+var CIERRE_ESPERA_MS = 10000;   // cuánto se espera la confirmación antes de avisar
+var _cpEnCurso = {};
+function _cpSuc(){ return window.__lrSucursal === 2 ? 2 : 1; }
+function _cpLeerTodos(){ try{ var l = JSON.parse(localStorage.getItem(SK_CIERRES_PEND) || '[]'); return Array.isArray(l) ? l : []; }catch(e){ return []; } }
+function _cpGuardarTodos(l){ try{ if(l.length) localStorage.setItem(SK_CIERRES_PEND, JSON.stringify(l)); else localStorage.removeItem(SK_CIERRES_PEND); }catch(e){} }
+// Los de este local (Limay 1 y Limay 2 comparten el guardado del navegador).
+function cierresPendientes(){ var s = _cpSuc(); return _cpLeerTodos().filter(function(p){ return p && p.cierre && (p.suc || 1) === s; }); }
+function _cpEsEste(p, fecha){ return p && p.cierre && (p.suc || 1) === _cpSuc() && p.cierre.fecha === fecha; }
+function cierrePendienteAgregar(cierre, sesion){
+  var l = _cpLeerTodos().filter(function(p){ return !_cpEsEste(p, cierre.fecha); });
+  l.push({ suc: _cpSuc(), cierre: JSON.parse(JSON.stringify(cierre)), sesion: sesion, guardado: Date.now() });
+  _cpGuardarTodos(l);
+}
+function _cpQuitar(fecha){ _cpGuardarTodos(_cpLeerTodos().filter(function(p){ return !_cpEsEste(p, fecha); })); }
+function _cpHora(c){ return new Date(c.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+// Cartel arriba de todo (también sobre el login).
+function _cpCartel(tipo, texto){
+  var b = document.getElementById('lrCierrePendBanner');
+  if(!b){ b = document.createElement('div'); b.id = 'lrCierrePendBanner'; document.body.appendChild(b); }
+  var color = { enviando: '#1e90ff', ok: '#16a34a', pendiente: '#d97706' }[tipo] || '#d97706';
+  b.setAttribute('data-tipo', tipo);
+  b.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:99998;width:max-content;max-width:min(560px,calc(100vw - 24px));box-sizing:border-box;background:'+color+';color:#fff;font-family:system-ui,sans-serif;font-size:.85rem;font-weight:600;line-height:1.4;padding:11px 16px;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.45);text-align:center';
+  b.textContent = texto;
+  clearTimeout(b._t);
+  if(tipo === 'ok') b._t = setTimeout(_cpActualizarCartel, 6000);
+}
+function _cpActualizarCartel(){
+  var l = cierresPendientes(), b = document.getElementById('lrCierrePendBanner');
+  if(!l.length){ if(b && b.getAttribute('data-tipo') !== 'ok') b.remove(); return; }
+  if(l.every(function(p){ return _cpEnCurso[p.cierre.fecha] === 'recien'; }) && b && b.getAttribute('data-tipo') === 'enviando') return;
+  var c = l[0].cierre;
+  _cpCartel('pendiente', '⚠️ '+(l.length === 1 ? 'El cierre de turno de '+c.empleado+' ('+_cpHora(c)+') todavía no llegó' : l.length+' cierres de turno todavía no llegaron')+
+    ' a la nube. Quedó guardado en esta PC y se envía solo apenas haya internet. No borres los datos del navegador.');
+}
+// Espera la confirmación del cierre recién hecho. No traba: el login ya está en pantalla.
+function cierrePendienteSeguir(cierre, promesas){
+  var fecha = cierre.fecha, listo = false;
+  _cpEnCurso[fecha] = 'recien';
+  _cpCartel('enviando', '⏳ Turno cerrado. Enviando el cierre a la nube…');
+  Promise.all(promesas.map(function(p){ return p || null; })).then(function(){
+    listo = true; delete _cpEnCurso[fecha]; _cpQuitar(fecha);
+    if(cierresPendientes().length) _cpActualizarCartel();
+    else _cpCartel('ok', '✅ Turno cerrado y guardado en la nube. ¡Hasta pronto!');
+  }, function(e){
+    listo = true; delete _cpEnCurso[fecha];
+    console.error('El cierre no se pudo confirmar en la nube: queda guardado en esta PC', e);
+    _cpActualizarCartel();
+  });
+  setTimeout(function(){ if(!listo){ _cpEnCurso[fecha] = true; _cpActualizarCartel(); } }, CIERRE_ESPERA_MS);
+}
+function reintentarCierresPendientes(){
+  if(window.__lrEsPuesto) return;
+  var l = cierresPendientes();
+  if(!l.length) return;
+  var listaParaEnviar = window.__lrDB && window.__lrEnviarCierrePendiente && navigator.onLine !== false && window.__lrAuth && window.__lrAuth.currentUser;
+  if(!listaParaEnviar){ _cpActualizarCartel(); return; }
+  l.forEach(function(p){
+    var fecha = p.cierre.fecha;
+    if(_cpEnCurso[fecha]) return;
+    _cpEnCurso[fecha] = true;
+    window.__lrEnviarCierrePendiente(p).then(function(){
+      delete _cpEnCurso[fecha]; _cpQuitar(fecha);
+      if(cierresPendientes().length) _cpActualizarCartel();
+      else _cpCartel('ok', '✅ Se envió a la nube el cierre de turno de '+p.cierre.empleado+' ('+_cpHora(p.cierre)+').');
+    }, function(e){
+      delete _cpEnCurso[fecha];
+      console.warn('Cierre de turno pendiente: todavía no se pudo enviar', e);
+      _cpActualizarCartel();
+    });
+  });
+}
+setTimeout(reintentarCierresPendientes, 6000);
+setInterval(reintentarCierresPendientes, 30000);
+window.addEventListener('online', function(){ setTimeout(reintentarCierresPendientes, 1500); });
+// Si queda un cierre sin confirmar, el navegador pregunta antes de cerrar la pestaña.
+window.addEventListener('beforeunload', function(e){
+  if(cierresPendientes().length){ e.preventDefault(); e.returnValue = ''; return ''; }
+});
+
 function confirmarArqueoYCerrar() {
   var esperado = parseFloat(document.getElementById('abTotal').textContent)||0;
   var contado = getMontoInputValue('arqueoContado');
@@ -11872,9 +11987,9 @@ function confirmarArqueoYCerrar() {
       return {medio:v.medio, total:v.total};
     })
   });
-  var cierreGuardadoOk = true;
+  var cierreGuardadoOk = true, envioCierre = null;
   try {
-    saveCierres(cierres);
+    envioCierre = saveCierres(cierres);
   } catch(e) {
     cierreGuardadoOk = false;
   }
@@ -11882,11 +11997,14 @@ function confirmarArqueoYCerrar() {
     showToast('⚠️ No se pudo guardar el cierre — puede faltar espacio de almacenamiento en el navegador. Hacé un backup desde Admin y probá de nuevo.', true);
     return;
   }
+  // Copia en esta PC hasta que la nube confirme (ver "cierres de turno pendientes").
+  var cierreNuevo = cierres[cierres.length-1];
+  cierrePendienteAgregar(cierreNuevo, { nombre: currentEmp.nombre, turnoInicio: horaInicio });
   document.getElementById('arqueoModal').classList.remove('open');
   autoSaveNow();
 
   // Resetear sesión
-  limpiarSesionActiva();
+  var borradoSesion = limpiarSesionActiva();
   var rBtn2=document.getElementById('btnRetiroCaja'); if(rBtn2) rBtn2.style.display='none';
   currentEmp=null; cart=[]; pagoSel=null; nightMode=false;
   var nightBtn=document.getElementById('nightBtn');
@@ -11903,7 +12021,7 @@ function confirmarArqueoYCerrar() {
   document.getElementById('confirmOverlay').classList.remove('open');
   document.getElementById('empActual').textContent='—';
   initLogin();
-  showToast('Turno cerrado. ¡Hasta pronto!');
+  cierrePendienteSeguir(cierreNuevo, [envioCierre, borradoSesion]);
 }
 
 // ── DESCARTAR UN TURNO DE PRUEBA ────────────────────────────────────────────
@@ -12482,7 +12600,7 @@ function guardarCorreccionCierre() {
   // fin del turno. Así cuentan dentro de ese turno y no se vuelven a restar o
   // sumar al efectivo que quedó en el cajón después del cierre.
   var fechaDentroTurno = new Date(new Date(real.horaFin || fechaCierre).getTime() - 1000).toISOString();
-  var fechaSoloFecha = fechaCierre.slice(0,10); // YYYY-MM-DD, formato que usan los egresos
+  var fechaSoloFecha = fechaLocalDe(fechaCierre); // YYYY-MM-DD, formato que usan los egresos
 
   if(tipo === 'contado') {
     // Corrección pura de un error de carga: no es un movimiento de plata real,
@@ -16118,7 +16236,7 @@ function toggleClaveDueno(){
         (d.definida ? '✅ Clave definida (cambiada el '+new Date(d.cambiada).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })+').' : '⚠ Todavía no definiste la clave: desde la caja no se puede ver lo privado.')+
         (d.bloqueadaHasta ? '<br><span style="color:#e74c3c">🔒 Bloqueada por intentos fallidos hasta las '+new Date(d.bloqueadaHasta).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })+'. Si ponés una clave nueva, se desbloquea.</span>' : '')+
       '</div>'+
-      '<div style="font-size:.7rem;color:var(--gray);margin-top:8px;line-height:1.45">De 8 a 64 caracteres: letras, números y símbolos. Usala solo para esto. Para cambiarla tenés que haber entrado con tu contraseña hace menos de 10 minutos.</div>'+
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:8px;line-height:1.45">De 8 a 64 caracteres: letras, números y símbolos. Usala solo para esto. Para cambiarla tenés que haber entrado con tu contraseña hace menos de 10 minutos: abrí el admin en una ventana de incógnito (Ctrl + Shift + N), entrá con tu cuenta y tu contraseña, y cambiala ahí.</div>'+
       '<input id="claveNueva1" type="password" autocomplete="new-password" maxlength="64" placeholder="Clave nueva" oninput="_claveRevisar()" style="'+inp+'">'+
       '<input id="claveNueva2" type="password" autocomplete="new-password" maxlength="64" placeholder="Repetila" oninput="_claveRevisar()" style="'+inp+'">'+
       '<div id="claveNuevaMsg" style="min-height:18px;font-size:.74rem;margin-top:6px;line-height:1.4"></div>'+
@@ -16162,7 +16280,7 @@ function guardarClaveDueno(){
     a.value = ''; b.value = '';
     if(d.ok){ showToast('✅ Clave de dueño guardada'); toggleClaveDueno(); toggleClaveDueno(); return; }
     msg.style.color = '#e74c3c';
-    msg.textContent = d.motivo === 'reingresar' ? '✗ Por seguridad, salí y volvé a entrar con tu cuenta y probá de nuevo (entraste hace más de 10 minutos).' : d.motivo === 'largo' ? '✗ La clave tiene que tener entre 8 y 64 caracteres.' : '✗ No se pudo guardar.';
+    msg.textContent = d.motivo === 'reingresar' ? '✗ Por seguridad, la clave se cambia habiendo entrado con tu contraseña hace menos de 10 minutos. Abrí el admin en una ventana de incógnito (Ctrl + Shift + N), entrá con tu cuenta y tu contraseña, y cambiala ahí.' : d.motivo === 'largo' ? '✗ La clave tiene que tener entre 8 y 64 caracteres.' : '✗ No se pudo guardar.';
   }).catch(function(e){ msg.style.color = '#e74c3c'; msg.textContent = '✗ No se pudo guardar (sin conexión con la nube): '+((e && e.message) || e); });
 }
 
@@ -17762,7 +17880,7 @@ function renderRentabilidad() {
   if(margenDiaEl){
     var porDia = {};
     ventasDevengadas(rango.desde, rango.hasta).forEach(function(v){
-      var dia = (v.fecha||'').slice(0,10);
+      var dia = fechaLocalDe(v.fecha);
       if(!dia) return;
       if(!porDia[dia]) porDia[dia] = [];
       porDia[dia].push(v);
@@ -19444,8 +19562,8 @@ function initAuditoria() {
   var inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   var fDesde = document.getElementById('auditFechaDesde');
   var fHasta = document.getElementById('auditFechaHasta');
-  if(fDesde && !fDesde.value) fDesde.value = inicio.toISOString().slice(0,10);
-  if(fHasta && !fHasta.value) fHasta.value = hoy.toISOString().slice(0,10);
+  if(fDesde && !fDesde.value) fDesde.value = fechaLocalStr(inicio);
+  if(fHasta && !fHasta.value) fHasta.value = fechaLocalStr(hoy);
   renderAuditoria();
 }
 
@@ -21901,7 +22019,7 @@ function initMovimientos() {
   if(fd && !fd.value){
     var hoy = new Date();
     var mes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    fd.value = mes.toISOString().slice(0,10);
+    fd.value = fechaLocalStr(mes);
   }
   renderMovimientos();
 }
@@ -24475,11 +24593,11 @@ function guardarBalSaldos(){
 function balTraerLiquidez(){
   var b = _bal.b; if(!b) return;
   var L = localActual(), mes = b.mes, ant = _balMesVecino(mes, -1), sig = _balMesVecino(mes, 1);
-  var cerca = function(f, m1, m2){ f = String(f || '').slice(0,10); return (f.slice(0,7) === m1 && +f.slice(8,10) >= 25) || (f.slice(0,7) === m2 && +f.slice(8,10) <= 5); };
+  var cerca = function(f, m1, m2){ f = fechaLocalDe(f); return (f.slice(0,7) === m1 && +f.slice(8,10) >= 25) || (f.slice(0,7) === m2 && +f.slice(8,10) <= 5); };
   var cierreMesEn = function(m1, m2){ var l = getCierresMes().filter(function(c){ return (c.modo || 'mes') === 'mes' && cerca(c.hasta, m1, m2); }); return l.length ? l[l.length-1] : null; };
   var deCierre = function(c){ return c ? { efec: c.efecReal != null ? c.efecReal : c.efecCalculado, mp: c.mpReal != null ? c.mpReal : c.mpCalculado } : null; };
   var ini = (balSaldosMes(ant)[L] || {}).fin || deCierre(cierreMesEn(ant, mes));
-  if(!ini){ var cfg = getLiquidezCfg(); if(String(cfg.periodoDesde || '').slice(0,7) === mes) ini = { efec: cfg.saldoEfec, fuera: cfg.saldoEfecFuera, mp: cfg.saldoMP }; }
+  if(!ini){ var cfg = getLiquidezCfg(); if(fechaLocalDe(cfg.periodoDesde).slice(0,7) === mes) ini = { efec: cfg.saldoEfec, fuera: cfg.saldoEfecFuera, mp: cfg.saldoMP }; }
   var fin = null;
   if(fechaLocalStr(new Date()).slice(0,7) === mes){ var lq = calcularLiquidez(); fin = { efec: lq.efectivoCaja, fuera: lq.efectivoFuera, mp: lq.mercadoPago }; }
   else fin = deCierre(cierreMesEn(mes, sig));
@@ -38795,7 +38913,7 @@ function descargarCSV(nombre, filas) {
   var blob = new Blob([bom+filas.join('\n')],{type:'text/csv;charset=utf-8'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'LimayRock_'+nombre+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download = 'LimayRock_'+nombre+'_'+fechaLocalStr(new Date())+'.csv';
   a.click();
   showToast('CSV exportado');
 }

@@ -23,9 +23,11 @@ durante **30 minutos**.
 4. **La venta no depende de esto.** Si la nube no responde, la caja sigue vendiendo normal; lo único que no se puede es ver lo privado.
 
 ## Cómo definirla o cambiarla
-1. Entrá al admin **con tu cuenta de dueño** (`admin@`), en tu celu o tu compu. No desde la caja.
-2. Andá a **Dinero → Rentabilidad → 🔑 Clave de dueño para la caja**.
-3. Escribí la clave nueva dos veces y tocá **"Guardar clave"**.
+1. En tu compu o tu celu (no en la caja), abrí una **ventana de incógnito** (en Chrome: Ctrl + Shift + N).
+2. Entrá a **limayrock24.github.io/admin/** y identificate **con tu cuenta de dueño** (`admin@`) y tu contraseña.
+3. Andá a **Dinero → Rentabilidad → 🔑 Clave de dueño para la caja**.
+4. Escribí la clave nueva dos veces y tocá **"Guardar clave"**.
+5. Cerrá la ventana de incógnito.
 
 **Requisitos de la clave:**
 - Entre 8 y 64 caracteres: letras, números y símbolos.
@@ -33,7 +35,7 @@ durante **30 minutos**.
 
 **Otras cosas a tener en cuenta:**
 - No hace falta saber la clave anterior.
-- Por seguridad, tenés que **haber entrado con tu contraseña hace menos de 10 minutos**. Si no, salí, volvé a entrar y probá de nuevo.
+- Por seguridad, tenés que **haber entrado con tu contraseña hace menos de 10 minutos**. Por eso se hace en una ventana de incógnito: ahí siempre entrás de cero con tu contraseña. (La página no tiene botón para cerrar la sesión de la cuenta.)
 - Poner una clave nueva **desbloquea** la clave si estaba bloqueada por intentos.
 
 ## Intentos fallidos
@@ -47,10 +49,10 @@ durante **30 minutos**.
 ## Emergencias (sin depender de nadie)
 
 **Me olvidé la clave**
-- Entrá con tu cuenta de dueño y poné una nueva (ver arriba).
+- Poné una nueva desde una ventana de incógnito, con tu cuenta de dueño (ver arriba).
 
 **Se bloqueó y no puedo esperar los 15 minutos**
-- Opción 1: entrá con tu cuenta de dueño y poné una clave nueva. Se desbloquea al instante.
+- Opción 1: poné una clave nueva desde una ventana de incógnito, con tu cuenta de dueño (ver arriba). Se desbloquea al instante.
 - Opción 2:
   1. En la consola de Firebase (console.firebase.google.com, proyecto `limay-rock-852cb`), andá a **Firestore Database → Datos → `intentosClave` → `caja`**.
   2. Tocá los tres puntos → **Borrar documento**.
