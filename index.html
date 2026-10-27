@@ -16416,28 +16416,28 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
   if(rubro === 'sueldos' || rubro === 'personal_extra'){
     var emp = val('eEmpleado');
     if(emp) det.empleado = emp;
-    else if(rubro === 'sueldos') return { error: 'Elegí a qué empleado le pagaste' };
+    else if(rubro === 'sueldos') return { error: 'Elegí a qué empleado le pagaste', campo: 'eEmpleado' };
   }
   if(det.suc === 'compartido'){
     var a = getMontoInputValue('eComp1'), b = getMontoInputValue('eComp2');
-    if(!(a + b > 0)) return { error: 'Poné cuánto pone cada local' };
-    if(Math.abs(a + b - monto) > 0.5) return { error: 'Lo que pone cada local suma '+fmt(a + b)+' y el pago es de '+fmt(monto)+': tienen que dar igual' };
+    if(!(a + b > 0)) return { error: 'Poné cuánto pone cada local', campo: 'eComp1' };
+    if(Math.abs(a + b - monto) > 0.5) return { error: 'Lo que pone cada local suma '+fmt(a + b)+' y el pago es de '+fmt(monto)+': tienen que dar igual', campo: 'eComp1' };
     det.montos = { 1: a, 2: b };
     det.reparto = { 1: a / (a + b) * 100, 2: b / (a + b) * 100 };
   }
   if(rubro === 'credito'){
     det.acreedor = val('eAcreedor');
-    if(!det.acreedor || det.acreedor === '__nuevo__') return { error: 'Elegí el acreedor (tarjeta o crédito)' };
+    if(!det.acreedor || det.acreedor === '__nuevo__') return { error: 'Elegí el acreedor (tarjeta o crédito)', campo: 'eAcreedor' };
     var p = { mercaderia: getMontoInputValue('ePMerc'), equipamiento: getMontoInputValue('ePEquip'), gastos: getMontoInputValue('ePGastos'), intereses: getMontoInputValue('ePInt') };
     var tot = p.mercaderia + p.equipamiento + p.gastos + p.intereses;
     if(tot > 0){
-      if(Math.abs(tot - monto) > 0.5) return { error: 'Las partes suman '+fmt(tot)+' y el pago es de '+fmt(monto)+': tienen que dar igual' };
+      if(Math.abs(tot - monto) > 0.5) return { error: 'Las partes suman '+fmt(tot)+' y el pago es de '+fmt(monto)+': tienen que dar igual', campo: 'ePMerc' };
       det.partes = p;
     } else det.partes = { mercaderia: 0, equipamiento: 0, gastos: monto, intereses: 0 };   // sin dividir: entera a Créditos
   }
   if(rubro === 'retiro_socio'){
     det.socio = val('eSocio');
-    if(!det.socio) return { error: 'Elegí qué socio retiró' };
+    if(!det.socio) return { error: 'Elegí qué socio retiró', campo: 'eSocio' };
   }
   return det;
 }
@@ -16697,6 +16697,32 @@ function cambiarCatEgreso() {
   }
 }
 
+// Si falta algo al registrar un egreso: cartel que hay que cerrar (no se va
+// solo) y el campo que falta marcado en rojo hasta que se complete.
+function avisoEgreso(msg, campoId){
+  var viejo = document.getElementById('lrAvisoEgreso'); if(viejo) viejo.remove();
+  var ov = document.createElement('div');
+  ov.id = 'lrAvisoEgreso';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = '<div style="background:var(--card,#222);border:2px solid #e74c3c;border-radius:10px;max-width:380px;width:100%;padding:18px 18px 14px;text-align:center;font-family:Barlow,sans-serif">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px;color:#e74c3c;margin-bottom:8px">⚠️ NO SE GUARDÓ EL PAGO</div>'+
+    '<div id="lrAvisoEgresoTxt" style="color:var(--white,#fff);font-size:.95rem;line-height:1.4;margin-bottom:14px"></div>'+
+    '<button type="button" style="width:100%;background:#e74c3c;color:#fff;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer">ENTENDIDO</button></div>';
+  ov.querySelector('#lrAvisoEgresoTxt').textContent = msg;
+  var campo = campoId ? document.getElementById(campoId) : null;
+  var cerrar = function(){
+    ov.remove();
+    if(campo && campo.offsetParent !== null){ try{ campo.scrollIntoView({ block: 'center' }); campo.focus(); }catch(e){} }
+  };
+  ov.querySelector('button').onclick = cerrar;
+  ov.addEventListener('click', function(e){ if(e.target === ov) cerrar(); });
+  document.body.appendChild(ov);
+  if(campo){
+    campo.style.outline = '2px solid #e74c3c'; campo.dataset.avisoRojo = '1';
+    var sacar = function(){ campo.style.outline = ''; delete campo.dataset.avisoRojo; campo.removeEventListener('input', sacar); campo.removeEventListener('change', sacar); };
+    campo.addEventListener('input', sacar); campo.addEventListener('change', sacar);
+  }
+}
 function registrarEgreso() {
   var sel = document.getElementById('eProvSel');
   var prov = sel ? sel.value : '';
@@ -16706,7 +16732,7 @@ function registrarEgreso() {
   if(cat === 'proveedor') {
     if(prov === '__nuevo__'){
       var nombreNuevo = document.getElementById('eProvNuevo').value.trim();
-      if(!nombreNuevo){ showToast('Ingresá el nombre del proveedor nuevo',true); return; }
+      if(!nombreNuevo){ avisoEgreso('Ingresá el nombre del proveedor nuevo', 'eProvNuevo'); return; }
       var provsList = getProveedores();
       var yaExiste = provsList.some(function(p){ return p.nombre.toLowerCase()===nombreNuevo.toLowerCase(); });
       if(!yaExiste){
@@ -16717,13 +16743,13 @@ function registrarEgreso() {
       }
       prov = nombreNuevo;
     }
-    if(!prov){ showToast('Elegí un proveedor',true); return; }
+    if(!prov){ avisoEgreso('Elegí un proveedor', 'eProvSel'); return; }
   } else if(esRubroPersonal((document.getElementById('eRubro')||{}).value)) {
     prov = (document.getElementById('eEmpleado')||{}).value || '';
-    if(!prov){ showToast('Elegí el empleado', true); return; }
+    if(!prov){ avisoEgreso('Elegí el empleado', 'eEmpleado'); return; }
   } else {
     var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
-    if(!concepto){ showToast('Ingresá el concepto',true); return; }
+    if(!concepto){ avisoEgreso('Ingresá el concepto', 'eConcepto'); return; }
     prov = concepto;
     // Si se había sacado de las sugerencias y se vuelve a usar, vuelve a aparecer
     var kOculto = claveConceptoOculto(cat, concepto);
@@ -16742,21 +16768,21 @@ function registrarEgreso() {
     var efec  = getMontoInputValue('eMixtoEfec');
     var transf = getMontoInputValue('eMixtoTransf');
     monto = efec + transf;
-    if(monto <= 0){ showToast('Ingresá los montos del pago mixto',true); return; }
+    if(monto <= 0){ avisoEgreso('Ingresá los montos del pago mixto', 'eMixtoEfec'); return; }
     mixtoData = {efectivo: efec, transferencia: transf};
   } else {
     monto = getMontoInputValue('eMonto');
-    if(monto<=0){ showToast('El monto debe ser mayor a 0',true); return; }
+    if(monto<=0){ avisoEgreso('Poné el monto del pago', 'eMonto'); return; }
   }
 
-  if(!prov)  { showToast('Elegí un proveedor o concepto',true); return; }
-  if(!fecha) { showToast('Seleccioná la fecha',true); return; }
+  if(!prov)  { avisoEgreso('Elegí un proveedor o concepto', 'eConcepto'); return; }
+  if(!fecha) { avisoEgreso('Poné la fecha del pago', 'eFecha'); return; }
 
   // Rubro y detalle: lo que no es mercadería guarda su detalle aparte (solo lo
   // lee el dueño). En fase B, además, el pago no queda a la vista de la caja.
   var rubroEg = (document.getElementById('eRubro')||{}).value || 'mercaderia';
   var detEg = rubroEg === 'mercaderia' ? null : leerDetEgresoForm(rubroEg, monto, prov, fecha);
-  if(detEg && detEg.error){ showToast(detEg.error, true); return; }
+  if(detEg && detEg.error){ avisoEgreso(detEg.error, detEg.campo); return; }
 
   var egreso = {id:Date.now(), prov:prov, proveedor:prov, categoria:cat||'proveedor', monto:monto, fecha:fecha, ts:new Date().toISOString(), medio:medio, nota:nota};
   if(mixtoData) egreso.mixto = mixtoData;
