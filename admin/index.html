@@ -11851,7 +11851,11 @@ function _cpCartel(tipo, texto){
   b.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:99998;width:max-content;max-width:min(560px,calc(100vw - 24px));box-sizing:border-box;background:'+color+';color:#fff;font-family:system-ui,sans-serif;font-size:.85rem;font-weight:600;line-height:1.4;padding:11px 16px;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.45);text-align:center';
   b.textContent = texto;
   clearTimeout(b._t);
-  if(tipo === 'ok') b._t = setTimeout(_cpActualizarCartel, 6000);
+  if(tipo === 'ok') b._t = setTimeout(function(){
+    // Pasados unos segundos se va solo (si no quedó nada pendiente).
+    if(cierresPendientes().length) _cpActualizarCartel();
+    else { var x = document.getElementById('lrCierrePendBanner'); if(x) x.remove(); }
+  }, 6000);
 }
 function _cpActualizarCartel(){
   var l = cierresPendientes(), b = document.getElementById('lrCierrePendBanner');
@@ -15940,11 +15944,11 @@ var RUBROS_EGRESO = [
   {k:'agua',            t:'Agua',                                       cat:'servicio',  g:'💡 Servicios'},
   {k:'internet',        t:'Internet y teléfono',                        cat:'servicio',  g:'💡 Servicios'},
   {k:'otros_servicios', t:'Otros servicios',                            cat:'servicio',  g:'💡 Servicios'},
-  {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y administración'},
-  {k:'comercio',        t:'Impuesto de comercio',                       cat:'servicio',  g:'🧾 Impuestos y administración'},
-  {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y administración'},
-  {k:'otros_costos',    t:'Otros costos (mantenimiento, bolsas, seguro…)', cat:'otro',   g:'🧾 Impuestos y administración'},
-  {k:'comisiones',      t:'Comisiones (Mercado Pago, banco)',           cat:'otro',      g:'🧾 Impuestos y administración'},
+  {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'comercio',        t:'Impuesto de comercio',                       cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'otros_costos',    t:'Otros costos (mantenimiento, bolsas, seguro…)', cat:'otro',   g:'🔧 Otros costos'},
+  {k:'comisiones',      t:'Comisiones (Mercado Pago, banco)',           cat:'otro',      g:'🔧 Otros costos'},
   {k:'credito',         t:'Cuota de crédito / pago de tarjeta',         cat:'otro',      g:'💳 Créditos'},
   {k:'inversion',       t:'Inversión (equipamiento)',                   cat:'otro',      g:'📦 Fuera del resultado'},
   {k:'retiro_socio',    t:'Retiro de socios',                           cat:'otro',      g:'📦 Fuera del resultado'},
@@ -23804,8 +23808,9 @@ function _balNombreMes(mes){ var t = _balRango(mes).d0.toLocaleDateString('es-AR
 // el costo de lo vendido. Solo lee; lo único que guarda es la configuración
 // (reparto, cargas sociales) y los saldos del mes, en lo privado del dueño.
 var BAL_SERVICIOS = ['luz','gas','agua','internet','otros_servicios'];
-var BAL_IMPUESTOS = ['monotributo','comercio','contadora','otros_costos','comisiones'];
-var BAL_OPERATIVOS = ['sueldos','cargas_sociales','personal_extra','alquiler'].concat(BAL_SERVICIOS, BAL_IMPUESTOS);
+var BAL_IMPUESTOS = ['monotributo','comercio','contadora'];
+var BAL_OTROS = ['otros_costos','comisiones'];   // mantenimiento, bolsas, ferretería, comisiones…: aparte de los impuestos
+var BAL_OPERATIVOS = ['sueldos','cargas_sociales','personal_extra','alquiler'].concat(BAL_SERVICIOS, BAL_IMPUESTOS, BAL_OTROS);
 var BAL_SALDOS = [['efec','Efectivo en cajones'],['fuera','Efectivo fuera de caja'],['mp','Mercado Pago'],['banco','Banco']];
 function balConfig(){ return window.__lrCfgPriv.balance || {}; }
 function balCargasPct(){ var p = Number(balConfig().cargasPct); return p > 0 ? p : 0; }
@@ -23959,13 +23964,19 @@ function _balDerivar(c, v, mes, extra){
   r.cargas = c.rub.cargas_sociales || 0;
   r.servicios = BAL_SERVICIOS.reduce(function(s, k){ return s + (c.rub[k] || 0); }, 0);
   r.impuestos = BAL_IMPUESTOS.reduce(function(s, k){ return s + (c.rub[k] || 0); }, 0);
-  r.totalOp = r.sueldos + r.cargas + (c.rub.personal_extra || 0) + (c.rub.alquiler || 0) + r.servicios + r.impuestos;
+  r.otros = BAL_OTROS.reduce(function(s, k){ return s + (c.rub[k] || 0); }, 0);
+  r.totalOp = r.sueldos + r.cargas + (c.rub.personal_extra || 0) + (c.rub.alquiler || 0) + r.servicios + r.impuestos + r.otros;
   r.compOp = _balSumaMapa(c.comp);
   r.creditos = _balSumaMapa(c.acre);
   r.totalCostos = r.totalOp + r.creditos;
   r.resOp = r.margen - r.totalOp;
   r.resOpAntes = r.resOp + r.compOp;
   r.neto = r.resOp - r.creditos;
+  // Lo que se invirtió en el mes (equipamiento y la parte de equipamiento de
+  // las cuotas) no es un costo del mes: no baja la ganancia del negocio, pero
+  // esa plata ya no está para repartir entre los socios.
+  r.inversion = c.inversion || 0;
+  r.disponible = r.neto - r.inversion;
   r.netoEst = r.est100 - r.totalCostos;
   r.margenNeto = r.ventas > 0 ? r.neto / r.ventas * 100 : null;
   r.credPct = r.resOp > 0 ? r.creditos / r.resOp * 100 : null;
@@ -23990,7 +24001,7 @@ function _balCalcularTodo(mes, ventas, pool, cierres){
     var c = cols[L], rep = balRepartoLocal(L), sal = saldos[L] || {};
     _balDerivar(c, ventas[L], mes, function(r){
       r.pctSocio = rep; r.corr = {};
-      Object.keys(rep).forEach(function(s){ r.corr[s] = r.neto * rep[s] / 100; });
+      Object.keys(rep).forEach(function(s){ r.corr[s] = r.disponible * rep[s] / 100; });
       r.saldoIni = sal.ini || null; r.saldoFin = sal.fin || null;
       r.cajaIni = _balSaldoTotal(sal.ini); r.cajaFin = _balSaldoTotal(sal.fin);
     });
@@ -24019,7 +24030,7 @@ function _balCalcularTodo(mes, ventas, pool, cierres){
   [1, 2, 'T'].forEach(function(k){
     var r = (k === 'T' ? T : cols[k]).res;
     r.generada = (r.cajaIni != null && r.cajaFin != null) ? r.cajaFin - r.cajaIni + r.retirosCajaTot : null;
-    r.difRes = r.generada != null ? r.generada - r.neto : null;
+    r.difRes = r.generada != null ? r.generada - r.disponible : null;
   });
   return { mes: mes, cols: [cols[1], cols[2], T], ventas: [ventas[1], ventas[2], vT], modoCargas: modoCargas, pctCargas: pct, sinValorHora: cols.sinValorHora, valorHora: cols.valorHora };
 }
@@ -24068,26 +24079,32 @@ function _balFilas(b){
     ['Personal extra y limpieza', rub('personal_extra'), '$', { det: [compDe(['personal_extra'])] }],
     ['Alquiler', rub('alquiler'), '$', { det: [compDe(['alquiler'])] }],
     ['Servicios (luz, gas, agua, internet y otros)', function(c){ return c.res.servicios; }, '$', { det: BAL_SERVICIOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_SERVICIOS)]) }],
-    ['Impuestos y administración', function(c){ return c.res.impuestos; }, '$', { det: BAL_IMPUESTOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_IMPUESTOS)]) }],
+    ['Impuestos y contadora', function(c){ return c.res.impuestos; }, '$', { det: BAL_IMPUESTOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_IMPUESTOS)]) }],
+    ['Otros costos (mantenimiento, bolsas, comisiones…)', function(c){ return c.res.otros; }, '$', { det: BAL_OTROS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_OTROS)]) }],
     ['Total costos operativos (sin créditos)', function(c){ return c.res.totalOp; }, '$', { det: [
       ['Egresos sin clasificar (NO incluidos: clasificalos)', function(c){ return c.sinClasif; }, '$', { ocultarCero: true, alerta: true }],
       ['Mercadería pagada a proveedores (no se resta: ya está en el costo)', function(c){ return c.mercaderia; }, '$']
     ] }],
     ['CRÉDITOS', null, 'h'],
-    ['Total créditos (cuotas del mes)', function(c){ return c.res.creditos; }, '$', { det: unir('acre').map(function(a){ return [a, function(c){ return c.acre[a] || 0; }, '$']; }).concat([
+    ['Créditos y tarjetas (intereses y gastos de las cuotas)', function(c){ return c.res.creditos; }, '$', { det: unir('acre').map(function(a){ return [a, function(c){ return c.acre[a] || 0; }, '$']; }).concat([
       ['Parte de mercadería de las cuotas (no se resta)', function(c){ return c.credMerc; }, '$', { ocultarCero: true }],
       ['Parte de equipamiento de las cuotas (va a inversiones)', function(c){ return c.credEquip; }, '$', { ocultarCero: true }]
     ]) }],
     ['BALANCE', null, 'h'],
     ['Total costos (operativos + créditos)', function(c){ return c.res.totalCostos; }, '$'],
     ['Resultado operativo', function(c){ return c.res.resOp; }, '$', { det: [['Resultado operativo antes de gastos compartidos', function(c){ return c.res.resOpAntes; }, '$']] }],
-    ['Resultado neto (después de créditos)', function(c){ return c.res.neto; }, '$', { det: [['Inversiones en equipamiento (fuera del resultado)', function(c){ return c.inversion; }, '$']] }],
-    ['Resultado neto con margen estimado al 100% (estimación)', function(c){ return c.res.netoEst; }, '$', { est: true }],
+    ['Ganancia neta del negocio (después de créditos)', function(c){ return c.res.neto; }, '$'],
+    ['Inversiones del mes (equipamiento)', function(c){ return c.res.inversion; }, '$', { det: [
+      ['Compras de equipamiento', function(c){ return c.inversion - c.credEquip; }, '$'],
+      ['Cuotas que fueron a equipamiento', function(c){ return c.credEquip; }, '$']
+    ] }],
+    ['Disponible para repartir (ganancia neta − inversiones)', function(c){ return c.res.disponible; }, '$'],
+    ['Ganancia neta con margen estimado al 100% (estimación)', function(c){ return c.res.netoEst; }, '$', { est: true }],
     ['Margen neto % sobre ventas', function(c){ return c.res.margenNeto; }, '%'],
     ['Créditos como % del resultado operativo', function(c){ return c.res.credPct; }, '%'],
     ['Venta diaria de equilibrio', function(c){ return c.res.eq; }, '$', { det: [['Venta diaria de equilibrio (estimación, margen al 100%)', function(c){ return c.res.eqEst; }, '$', { est: true }]] }],
     ['Venta diaria actual menos equilibrio', function(c){ return c.res.difEq; }, '$'],
-    ['REPARTO ENTRE SOCIOS', null, 'h']
+    ['REPARTO ENTRE SOCIOS (sobre el disponible para repartir)', null, 'h']
   ];
   socios.forEach(function(s){
     f.push(['Le corresponde a '+s, function(c){ return c.res.corr[s] || 0; }, '$', { det: [['% de '+s, function(c){ return c.res.pctSocio ? c.res.pctSocio[s] || 0 : null; }, '%']] }]);
@@ -24099,7 +24116,7 @@ function _balFilas(b){
   f.push(['Caja al cierre', function(c){ return c.res.cajaFin; }, '$', { det: saldoDet('saldoFin') }]);
   f.push(['Retiros (de socios, por fecha de pago)', function(c){ return c.res.retirosCajaTot; }, '$']);
   f.push(['Plata generada', function(c){ return c.res.generada; }, '$']);
-  f.push(['Diferencia contra el resultado neto', function(c){ return c.res.difRes; }, '$']);
+  f.push(['Diferencia contra el disponible para repartir', function(c){ return c.res.difRes; }, '$']);
   return f;
 }
 function _balValor(fila, b, i){ var fn = fila[1]; return fn ? fn(b.cols[i], b.ventas[i]) : null; }
@@ -24382,23 +24399,28 @@ function _xlHojaSucursal(wb, b, N){
   seccion('alq', '3. ALQUILER', [['Alquiler del mes', rub('alquiler'), comp(['alquiler'])]], 1, 'Total alquiler');
   seccion('serv', '4. SERVICIOS', [['Luz', rub('luz'), comp(['luz'])], ['Gas', rub('gas'), comp(['gas'])], ['Agua', rub('agua'), comp(['agua'])],
     ['Internet y teléfono', rub('internet'), comp(['internet'])], ['Otros servicios', rub('otros_servicios'), comp(['otros_servicios'])]], 2, 'Total servicios');
-  seccion('imp', '5. IMPUESTOS Y ADMINISTRACIÓN', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Impuesto de comercio', rub('comercio'), comp(['comercio'])],
-    ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])], ['Otros costos (mantenimiento, bolsas, seguro, etc.)', rub('otros_costos'), comp(['otros_costos'])],
-    ['Comisiones (Mercado Pago, banco)', rub('comisiones'), comp(['comisiones'])]], 1, 'Total impuestos y administración');
+  seccion('imp', '5. IMPUESTOS Y CONTADORA', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Impuesto de comercio', rub('comercio'), comp(['comercio'])],
+    ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])]], 1, 'Total impuestos y contadora');
+  seccion('otros', '6. OTROS COSTOS', [['Otros costos (mantenimiento, bolsas, seguro, etc.)', rub('otros_costos'), comp(['otros_costos'])],
+    ['Comisiones (Mercado Pago, banco)', rub('comisiones'), comp(['comisiones'])]], 2, 'Total otros costos');
   var acr = acreedoresLista().slice(); Object.keys(c.acre).forEach(function(a){ if(acr.indexOf(a) === -1) acr.push(a); });
-  seccion('cred', '6. CRÉDITOS (cuotas del mes)', acr.map(function(a){ return ['Cuota '+a, Math.round(c.acre[a] || 0), '']; }), Math.max(1, 7 - acr.length), 'Total créditos');
+  seccion('cred', '7. CRÉDITOS Y TARJETAS (intereses y gastos de las cuotas del mes)', acr.map(function(a){ return ['Cuota '+a, Math.round(c.acre[a] || 0), '']; }), Math.max(1, 7 - acr.length), 'Total créditos');
   var nCred = [];
   if(c.credMerc >= 0.5) nCred.push('parte de mercadería '+fmt(Math.round(c.credMerc))+' (no se resta: ya está en el costo)');
   if(c.credEquip >= 0.5) nCred.push('parte de equipamiento '+fmt(Math.round(c.credEquip))+' (va a inversiones)');
   ws.getCell('I'+refs._ultimo).value = 'Solo gastos e intereses de cada cuota'+(nCred.length ? '; '+nCred.join('; ') : '')+'.'+(c.credSinPartes ? ' Hay '+c.credSinPartes+' cuota(s) sin decir a qué corresponde: van enteras.' : '');
+  // Inversiones: no son un costo del mes (no bajan la ganancia), pero se restan de lo que se reparte.
+  seccion('inv', '8. INVERSIONES DEL MES (equipamiento)', [['Compras de equipamiento', Math.round(c.inversion - c.credEquip), ''],
+    ['Cuotas que fueron a equipamiento', Math.round(c.credEquip), '']], 1, 'Total inversiones del mes');
+  ws.getCell('I'+refs._ultimo).value = 'No es un costo del mes: no baja la ganancia neta, pero se resta del disponible para repartir entre los socios.';
   var fTotal = refs._ultimo + 2;
   'ABCDEFGHI'.split('').forEach(function(col){ _xlPoner(ws, col+fTotal, null, 'result'); });
   ws.getCell('A'+fTotal).value = 'TOTAL COSTOS OPERATIVOS (sin créditos)';
-  ws.getCell('H'+fTotal).value = { formula: 'H'+fTot+'+H'+fCar+'+'+refs.extra+'+'+refs.alq+'+'+refs.serv+'+'+refs.imp };
+  ws.getCell('H'+fTotal).value = { formula: 'H'+fTot+'+H'+fCar+'+'+refs.extra+'+'+refs.alq+'+'+refs.serv+'+'+refs.imp+'+'+refs.otros };
   ws.getCell('H'+fTotal).numFmt = XL_MON;
   ws.getCell('I'+fTotal).value = 'Mercadería pagada a proveedores en el mes: '+fmt(Math.round(c.mercaderia))+' (no se resta: ya está en el costo de lo vendido).'+(c.inversion >= 0.5 ? ' Inversiones en equipamiento: '+fmt(Math.round(c.inversion))+' (fuera del resultado).' : '');
   _xlEstilo(ws.getCell('I'+fTotal), 'notaR');
-  return { sueldos: 'H'+fTot, cargas: 'H'+fCar, extra: refs.extra, alq: refs.alq, serv: refs.serv, imp: refs.imp, cred: refs.cred };
+  return { sueldos: 'H'+fTot, cargas: 'H'+fCar, extra: refs.extra, alq: refs.alq, serv: refs.serv, imp: refs.imp, otros: refs.otros, cred: refs.cred, inv: refs.inv };
 }
 // Hoja "Balance SN": lo del sistema (ventas, margen) y los costos de la hoja de la sucursal.
 function _xlHojaBalance(wb, b, N, refs){
@@ -24408,115 +24430,125 @@ function _xlHojaBalance(wb, b, N, refs){
   _xlPoner(ws, 'A1', 'Balance sucursal '+N+': un mes', 'titulo');
   _xlPoner(ws, 'A2', 'Las celdas amarillas vienen del sistema (ventas y margen) y se pueden cambiar a mano. Los costos vienen solos de la hoja Sucursal '+N+'.', 'sub');
   ['Concepto','Monto','Nota'].forEach(function(t, i){ _xlPoner(ws, 'ABC'.charAt(i)+'4', t, 'cab'); });
+  // Cada fila: [nombre, rótulo, valor, tipo, formato, nota, estilo]. Las fórmulas
+  // son funciones que piden la celda de otra fila por su nombre (B(...)), así
+  // agregar una fila no corre ninguna referencia.
+  var fila = {}, B = function(k){ return 'B'+fila[k]; };
   var filas = [
-    ['Mes', '='+S+'B3', 'vinculo', '@', 'Viene de la hoja de la sucursal.'],
-    ['Días del mes', '='+S+'B4', 'vinculo', '0', ''],
-    ['INGRESOS (del sistema)'],
-    ['Ventas del mes', Math.round(v.ventasTot), 'entrada', XL_MON, 'Del Balance mensual del sistema: ventas totales, sin los cobros de CEFHAS ni de fiados.'+(v.enCurso ? ' Mes en curso: ventas hasta el día '+v.diasTrans+' de '+v.diasMes+'; si sigue el ritmo, el mes cierra en '+fmt(Math.round(v.proyectadas || 0))+'.' : '')],
+    ['mes', 'Mes', '='+S+'B3', 'vinculo', '@', 'Viene de la hoja de la sucursal.'],
+    ['dias', 'Días del mes', '='+S+'B4', 'vinculo', '0', ''],
+    [null, 'INGRESOS (del sistema)'],
+    ['ventas', 'Ventas del mes', Math.round(v.ventasTot), 'entrada', XL_MON, 'Del Balance mensual del sistema: ventas totales, sin los cobros de CEFHAS ni de fiados.'+(v.enCurso ? ' Mes en curso: ventas hasta el día '+v.diasTrans+' de '+v.diasMes+'; si sigue el ritmo, el mes cierra en '+fmt(Math.round(v.proyectadas || 0))+'.' : '')],
     // La del sistema (ventas ÷ días transcurridos; con el mes cerrado, ÷ días del mes).
-    // Si no viniera, la misma cuenta con los días transcurridos.
-    ['Venta diaria promedio', isFinite(c.res.ventaDiaria) ? Math.round(c.res.ventaDiaria) : '=IF(B8=0,0,B8/'+(v.diasTrans || v.diasMes)+')', 'entrada', XL_MON,
+    ['vdiaria', 'Venta diaria promedio', isFinite(c.res.ventaDiaria) ? Math.round(c.res.ventaDiaria) : function(){ return '=IF('+B('ventas')+'=0,0,'+B('ventas')+'/'+(v.diasTrans || v.diasMes)+')'; }, 'entrada', XL_MON,
       'Del sistema: ventas ÷ días transcurridos'+(v.enCurso ? ' ('+v.diasTrans+' de '+v.diasMes+')' : '')+'. Con el mes cerrado es ventas ÷ días del mes. Es un promedio: no distingue fines de semana de días flojos.'],
-    ['% de ventas sin costo cargado', (c.res.pctSinCosto || 0) / 100, 'entrada', '0.0%', 'Del sistema. Si pasa del 10%, el margen es poco confiable.'],
-    ['Margen bruto $ (comprobado)', Math.round(v.margen), 'entrada', XL_MON, 'Del sistema. Es solo el margen de lo que tiene costo cargado: es el número oficial y el que se usa en el balance.', 'etq'],
-    ['Margen bruto % sobre ventas totales (comprobado)', '=IF(B8=0,0,B11/B8)', 'formula', '0.0%', 'Margen comprobado ÷ ventas totales. Se usa para el equilibrio.'],
-    ['Margen bruto $ estimado al 100% (estimación)', '=IF(B10>=1,0,B11/(1-B10))', 'formula', XL_MON, 'Supone que lo que no tiene costo deja el mismo margen que lo demás. Es una suposición, no un dato.'],
-    ['Confiabilidad del margen', '=IF(B8=0,"Sin datos",IF(B10>0.1,"Poco confiable: cargá costos","OK"))', 'formula', '@', 'Alerta si más del 10% de las ventas no tiene costo cargado.'],
-    ['Fiado sin cobrar al cierre (informativo)', Math.round(v.sinCobrar || 0), 'entrada', XL_MON, 'Del sistema. Es mercadería que ya salió y se cuenta como venta, pero la plata todavía no entró.'],
-    ['COSTOS OPERATIVOS (vienen de la hoja de la sucursal)'],
-    ['Sueldos', '='+S+refs.sueldos, 'vinculo', XL_MON, ''],
-    ['Cargas sociales', '='+S+refs.cargas, 'vinculo', XL_MON, ''],
-    ['Personal extra y limpieza', '='+S+refs.extra, 'vinculo', XL_MON, ''],
-    ['Alquiler', '='+S+refs.alq, 'vinculo', XL_MON, ''],
-    ['Servicios (luz, gas, agua, internet y otros)', '='+S+refs.serv, 'vinculo', XL_MON, ''],
-    ['Impuestos y administración', '='+S+refs.imp, 'vinculo', XL_MON, ''],
-    ['Total costos operativos (sin créditos)', '=SUM(B17:B22)', 'total', XL_MON, '', 'total'],
-    ['CRÉDITOS'],
-    ['Total créditos (cuotas del mes)', '='+S+refs.cred, 'vinculo', XL_MON, 'Lo ideal es cancelarlos: mirá cuánto del resultado operativo se llevan (fila de abajo).'],
-    ['BALANCE'],
-    ['Total costos (operativos + créditos)', '=B23+B25', 'formula', XL_MON, '', 'etq'],
-    ['Resultado operativo', '=B11-B23', 'result', XL_MON, 'Margen bruto menos costos operativos, sin contar la deuda. Si es positivo, la sucursal se paga sola.', 'result'],
-    ['Resultado neto (después de créditos)', '=B28-B25', 'result', XL_MON, 'Lo que queda de verdad, antes de los retiros de los socios.', 'result'],
-    ['Resultado neto con margen estimado al 100% (estimación)', '=B29+B13-B11', 'formula', XL_MON, 'Mismo resultado neto pero usando el margen estimado. Lo real está entre este número y el comprobado.'],
-    ['Margen neto % sobre ventas', '=IF(B8=0,0,B29/B8)', 'formula', '0.0%', 'Resultado neto ÷ ventas. Si es 10%, de cada $100 que vendés te quedan $10.'],
-    ['Créditos como % del resultado operativo', '=IF(B28<=0,0,B25/B28)', 'formula', '0.0%', 'Qué parte de lo que gana la sucursal se va en cuotas. En 0 también si el resultado operativo es negativo.'],
-    ['Venta diaria de equilibrio', '=IF(OR(B12=0,B6=0),0,B27/B12/B6)', 'formula', XL_MON, 'Lo que hay que vender por día para cubrir todos los costos sin ganar ni perder (costos ÷ margen % ÷ días).'],
-    ['Venta diaria actual menos equilibrio', '=B9-B33', 'formula', XL_MON, 'Positivo = gana; negativo = falta vender esa plata por día.']
+    ['sinCosto', '% de ventas sin costo cargado', (c.res.pctSinCosto || 0) / 100, 'entrada', '0.0%', 'Del sistema. Si pasa del 10%, el margen es poco confiable.'],
+    ['margen', 'Margen bruto $ (comprobado)', Math.round(v.margen), 'entrada', XL_MON, 'Lo que deja la venta de cada producto (ventas − costo de lo vendido). Es lo que cubre sueldos, alquiler, servicios e impuestos. Solo de lo que tiene costo cargado.', 'etq'],
+    ['margenPct', 'Margen bruto % sobre ventas totales (comprobado)', function(){ return '=IF('+B('ventas')+'=0,0,'+B('margen')+'/'+B('ventas')+')'; }, 'formula', '0.0%', 'Margen comprobado ÷ ventas totales. Se usa para el equilibrio.'],
+    ['margen100', 'Margen bruto $ estimado al 100% (estimación)', function(){ return '=IF('+B('sinCosto')+'>=1,0,'+B('margen')+'/(1-'+B('sinCosto')+'))'; }, 'formula', XL_MON, 'Supone que lo que no tiene costo deja el mismo margen que lo demás. Es una suposición, no un dato.'],
+    ['conf', 'Confiabilidad del margen', function(){ return '=IF('+B('ventas')+'=0,"Sin datos",IF('+B('sinCosto')+'>0.1,"Poco confiable: cargá costos","OK"))'; }, 'formula', '@', 'Alerta si más del 10% de las ventas no tiene costo cargado.'],
+    ['fiado', 'Fiado sin cobrar al cierre (informativo)', Math.round(v.sinCobrar || 0), 'entrada', XL_MON, 'Del sistema. Es mercadería que ya salió y se cuenta como venta, pero la plata todavía no entró.'],
+    [null, 'COSTOS OPERATIVOS (vienen de la hoja de la sucursal)'],
+    ['sueldos', 'Sueldos', '='+S+refs.sueldos, 'vinculo', XL_MON, ''],
+    ['cargas', 'Cargas sociales', '='+S+refs.cargas, 'vinculo', XL_MON, ''],
+    ['extra', 'Personal extra y limpieza', '='+S+refs.extra, 'vinculo', XL_MON, ''],
+    ['alq', 'Alquiler', '='+S+refs.alq, 'vinculo', XL_MON, ''],
+    ['serv', 'Servicios (luz, gas, agua, internet y otros)', '='+S+refs.serv, 'vinculo', XL_MON, ''],
+    ['imp', 'Impuestos y contadora', '='+S+refs.imp, 'vinculo', XL_MON, 'Monotributo, impuesto de comercio y contadora.'],
+    ['otros', 'Otros costos (mantenimiento, bolsas, comisiones…)', '='+S+refs.otros, 'vinculo', XL_MON, ''],
+    ['totalOp', 'Total costos operativos (sin créditos)', function(){ return '=SUM('+B('sueldos')+':'+B('otros')+')'; }, 'total', XL_MON, '', 'total'],
+    [null, 'CRÉDITOS Y TARJETAS'],
+    ['cred', 'Créditos y tarjetas (intereses y gastos de las cuotas)', '='+S+refs.cred, 'vinculo', XL_MON, 'Solo lo que es costo de las cuotas. La parte de cada cuota que fue a mercadería o equipamiento no va acá.'],
+    [null, 'BALANCE'],
+    ['totalCostos', 'Total costos (operativos + créditos)', function(){ return '='+B('totalOp')+'+'+B('cred'); }, 'formula', XL_MON, '', 'etq'],
+    ['resOp', 'Resultado operativo', function(){ return '='+B('margen')+'-'+B('totalOp'); }, 'result', XL_MON, 'Margen bruto menos costos operativos, sin contar la deuda. Si es positivo, la sucursal se paga sola.', 'result'],
+    ['neto', 'Ganancia neta del negocio (después de créditos)', function(){ return '='+B('resOp')+'-'+B('cred'); }, 'result', XL_MON, 'Lo que gana el negocio en el mes, después de todos los costos. Las inversiones no se restan acá: no son un costo del mes.', 'result'],
+    ['inv', 'Inversiones del mes (equipamiento)', '='+S+refs.inv, 'vinculo', XL_MON, 'Compras de equipamiento y la parte de las cuotas que fue a equipamiento.'],
+    ['disp', 'Disponible para repartir (ganancia neta − inversiones)', function(){ return '='+B('neto')+'-'+B('inv'); }, 'result', XL_MON, 'Es lo que se reparte entre los socios (hoja Balance Total).', 'result'],
+    ['neto100', 'Ganancia neta con margen estimado al 100% (estimación)', function(){ return '='+B('neto')+'+'+B('margen100')+'-'+B('margen'); }, 'formula', XL_MON, 'Misma ganancia neta pero usando el margen estimado. Lo real está entre este número y el comprobado.'],
+    ['margenNeto', 'Margen neto % sobre ventas', function(){ return '=IF('+B('ventas')+'=0,0,'+B('neto')+'/'+B('ventas')+')'; }, 'formula', '0.0%', 'Ganancia neta ÷ ventas. Si es 10%, de cada $100 que vendés te quedan $10.'],
+    ['credPct', 'Créditos como % del resultado operativo', function(){ return '=IF('+B('resOp')+'<=0,0,'+B('cred')+'/'+B('resOp')+')'; }, 'formula', '0.0%', 'Qué parte de lo que gana la sucursal se va en intereses y gastos de cuotas. En 0 también si el resultado operativo es negativo.'],
+    ['eq', 'Venta diaria de equilibrio', function(){ return '=IF(OR('+B('margenPct')+'=0,'+B('dias')+'=0),0,'+B('totalCostos')+'/'+B('margenPct')+'/'+B('dias')+')'; }, 'formula', XL_MON, 'Lo que hay que vender por día para cubrir todos los costos sin ganar ni perder (costos ÷ margen % ÷ días).'],
+    ['difEq', 'Venta diaria actual menos equilibrio', function(){ return '='+B('vdiaria')+'-'+B('eq'); }, 'formula', XL_MON, 'Positivo = gana; negativo = falta vender esa plata por día.']
   ];
+  filas.forEach(function(x, i){ if(x[0]) fila[x[0]] = 5 + i; });
   filas.forEach(function(x, i){
     var r = 5 + i;
-    if(x.length === 1){ _xlSeccion(ws, r, x[0], 3); return; }
-    var est = x[5] || (x[2] === 'total' ? 'total' : 'formula');
-    _xlPoner(ws, 'A'+r, x[0], est === 'result' || est === 'total' || est === 'etq' ? est : 'formula');
-    _xlPoner(ws, 'B'+r, x[1], x[2], x[3]);
-    _xlPoner(ws, 'C'+r, x[4] || null, est === 'total' ? 'notaT' : est === 'result' ? 'notaR' : 'nota');
+    if(x.length === 2){ _xlSeccion(ws, r, x[1], 3); return; }
+    var est = x[6] || (x[3] === 'total' ? 'total' : 'formula');
+    _xlPoner(ws, 'A'+r, x[1], est === 'result' || est === 'total' || est === 'etq' ? est : 'formula');
+    _xlPoner(ws, 'B'+r, typeof x[2] === 'function' ? x[2]() : x[2], x[3], x[4]);
+    _xlPoner(ws, 'C'+r, x[5] || null, est === 'total' ? 'notaT' : est === 'result' ? 'notaR' : 'nota');
   });
+  return fila;
 }
-function _xlHojaTotal(wb, b){
+function _xlHojaTotal(wb, b, F){
   var ws = wb.addWorksheet('Balance Total');
   ws.columns = [{ width: 44 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 90 }];
-  var T = b.cols[2];
+  var T = b.cols[2], cel = function(k){ return 'B'+F[k]; };
   _xlPoner(ws, 'A1', 'Balance total de las dos sucursales: un mes', 'titulo');
-  _xlPoner(ws, 'A2', 'Suma automática de Balance S1 y Balance S2, con el reparto entre socios y un control contra la plata real.', 'sub');
+  _xlPoner(ws, 'A2', 'Suma automática de Balance S1 y Balance S2, con el reparto entre socios (sobre el disponible para repartir) y un control contra la plata real.', 'sub');
   ['Concepto','Sucursal 1','Sucursal 2','Total','Nota'].forEach(function(t, i){ _xlPoner(ws, 'ABCDE'.charAt(i)+'4', t, 'cab'); });
-  _xlPoner(ws, 'A5', 'Mes', 'etq'); ws.getCell('A5').border = {}; _xlPoner(ws, 'B5', "='Balance S1'!B5", 'vinculo', '@'); ws.getCell('B5').border = {};
+  _xlPoner(ws, 'A5', 'Mes', 'etq'); ws.getCell('A5').border = {}; _xlPoner(ws, 'B5', "='Balance S1'!"+cel('mes'), 'vinculo', '@'); ws.getCell('B5').border = {};
   var lin = [
-    [6, 'Ventas del mes', 'B8', 'formula', ''], [7, 'Margen bruto $ (comprobado)', 'B11', 'formula', ''], [8, 'Total costos operativos', 'B23', 'formula', ''],
-    [9, 'Total créditos', 'B25', 'formula', ''], [10, 'Resultado operativo', 'B28', 'result', 'Si la sucursal se paga sola, sin contar la deuda.'],
-    [11, 'Resultado neto', 'B29', 'result', 'Lo que queda de verdad antes de los retiros de los socios.'],
-    [12, 'Resultado neto con margen estimado al 100% (estimación)', 'B30', 'formula', 'Lo real está entre este número y el resultado neto comprobado.'],
-    [13, 'Fiado sin cobrar al cierre (informativo)', 'B15', 'formula', 'Se cuenta como venta, pero la plata no entró: explica parte de la diferencia contra la caja real.']
+    [6, 'Ventas del mes', 'ventas', 'formula', ''], [7, 'Margen bruto $ (comprobado)', 'margen', 'formula', ''], [8, 'Total costos operativos', 'totalOp', 'formula', ''],
+    [9, 'Créditos y tarjetas (intereses y gastos)', 'cred', 'formula', ''], [10, 'Resultado operativo', 'resOp', 'result', 'Si la sucursal se paga sola, sin contar la deuda.'],
+    [11, 'Ganancia neta del negocio', 'neto', 'result', 'Lo que gana el negocio en el mes. Las inversiones no se restan acá.'],
+    [12, 'Inversiones del mes (equipamiento)', 'inv', 'formula', 'Compras de equipamiento y cuotas que fueron a equipamiento.'],
+    [13, 'Disponible para repartir', 'disp', 'result', 'Ganancia neta − inversiones. Es lo que se reparte entre los socios (abajo).'],
+    [14, 'Ganancia neta con margen estimado al 100% (estimación)', 'neto100', 'formula', 'Lo real está entre este número y la ganancia neta comprobada.'],
+    [15, 'Fiado sin cobrar al cierre (informativo)', 'fiado', 'formula', 'Se cuenta como venta, pero la plata no entró: explica parte de la diferencia contra la caja real.']
   ];
   lin.forEach(function(x){
     var r = x[0], res = x[3] === 'result';
     _xlPoner(ws, 'A'+r, x[1], res ? 'result' : 'etq');
-    _xlPoner(ws, 'B'+r, "='Balance S1'!"+x[2], 'vinculo', XL_MON); _xlPoner(ws, 'C'+r, "='Balance S2'!"+x[2], 'vinculo', XL_MON);
+    _xlPoner(ws, 'B'+r, "='Balance S1'!"+cel(x[2]), 'vinculo', XL_MON); _xlPoner(ws, 'C'+r, "='Balance S2'!"+cel(x[2]), 'vinculo', XL_MON);
     if(res){ ws.getCell('B'+r).fill = ws.getCell('C'+r).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } }; }
     _xlPoner(ws, 'D'+r, '=B'+r+'+C'+r, res ? 'result' : 'etq', XL_MON);
     _xlPoner(ws, 'E'+r, x[4] || null, res ? 'notaR' : 'nota');
   });
-  _xlPoner(ws, 'A14', 'Margen neto % sobre ventas', 'etq');
-  ['B','C','D'].forEach(function(col){ _xlPoner(ws, col+'14', '=IF('+col+'6=0,0,'+col+'11/'+col+'6)', 'etq', '0.0%'); });
-  _xlPoner(ws, 'E14', 'Resultado neto ÷ ventas.', 'nota');
-  _xlSeccion(ws, 16, 'REPARTO ENTRE SOCIOS (sobre el resultado neto total)', 5);
-  ws.getCell('B16').value = 'Le corresponde'; ws.getCell('C16').value = 'Retiros'; ws.getCell('D16').value = 'Saldo (le corresponde − retiró)';
+  _xlPoner(ws, 'A16', 'Margen neto % sobre ventas', 'etq');
+  ['B','C','D'].forEach(function(col){ _xlPoner(ws, col+'16', '=IF('+col+'6=0,0,'+col+'11/'+col+'6)', 'etq', '0.0%'); });
+  _xlPoner(ws, 'E16', 'Ganancia neta ÷ ventas.', 'nota');
+  _xlSeccion(ws, 18, 'REPARTO ENTRE SOCIOS (sobre el disponible para repartir)', 5);
+  ws.getCell('B18').value = 'Le corresponde'; ws.getCell('C18').value = 'Retiros'; ws.getCell('D18').value = 'Saldo (le corresponde − retiró)';
   // Los socios, en el mismo orden que las filas "Le corresponde a X" del reporte.
   var socios = sociosLista().slice();
   Object.keys(T.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
   var rep = balRepartoLocal(1), s1 = socios[0] || 'Martín', s2 = socios[1] || 'Jonathan';
   var rep2 = balRepartoLocal(2), distinto = rep2[s1] !== rep[s1];
-  _xlPoner(ws, 'A17', '% '+s1, 'formula'); _xlPoner(ws, 'B17', (rep[s1] || 0) / 100, 'entrada', '0%');
-  _xlPoner(ws, 'E17', 'Del sistema ('+s1+' '+(rep[s1] || 0)+'% / '+s2+' '+(rep[s2] || 0)+'%).'+(distinto ? ' Ojo: en la Sucursal 2 el sistema usa '+(rep2[s1] || 0)+'%.' : '')+' Si se reparte distinto, cambialo.', 'nota');
-  _xlPoner(ws, 'A18', '% '+s2, 'formula'); _xlPoner(ws, 'B18', '=1-B17', 'formula', '0%');
+  _xlPoner(ws, 'A19', '% '+s1, 'formula'); _xlPoner(ws, 'B19', (rep[s1] || 0) / 100, 'entrada', '0%');
+  _xlPoner(ws, 'E19', 'Del sistema ('+s1+' '+(rep[s1] || 0)+'% / '+s2+' '+(rep[s2] || 0)+'%).'+(distinto ? ' Ojo: en la Sucursal 2 el sistema usa '+(rep2[s1] || 0)+'%.' : '')+' Si se reparte distinto, cambialo.', 'nota');
+  _xlPoner(ws, 'A20', '% '+s2, 'formula'); _xlPoner(ws, 'B20', '=1-B19', 'formula', '0%');
   // Por socio: le corresponde (B), retiros (C) y saldo (D), como las filas
   // "Le corresponde a X", "Retiros de X" y "Saldo de X" del reporte. Si los dos
   // locales usan el mismo %, "le corresponde" queda como fórmula del % de
   // arriba (da lo mismo que el reporte y sigue el % si lo cambiás); si no, va
   // el valor del reporte.
   var corr = function(s){ return Math.round(T.res.corr[s] || 0); }, ret = function(s){ return Math.round(T.retiros[s] || 0); };
-  [[19, s1, 'B17'], [20, s2, 'B18']].forEach(function(x){
+  [[21, s1, 'B19'], [22, s2, 'B20']].forEach(function(x){
     var r = x[0], s = x[1];
-    _xlPoner(ws, 'A'+r, 'Resultado neto para '+s, 'etq');
+    _xlPoner(ws, 'A'+r, 'Le corresponde a '+s, 'etq');
     if(distinto) _xlPoner(ws, 'B'+r, corr(s), 'entrada', XL_MON);
-    else _xlPoner(ws, 'B'+r, '=D11*'+x[2], 'formula', XL_MON);
+    else _xlPoner(ws, 'B'+r, '=D13*'+x[2], 'formula', XL_MON);
     _xlPoner(ws, 'C'+r, ret(s), 'entrada', XL_MON);
     _xlPoner(ws, 'D'+r, '=B'+r+'-C'+r, 'etq', XL_MON);
     _xlPoner(ws, 'E'+r, 'Del sistema: le corresponde '+fmt(corr(s))+' · retiró '+fmt(ret(s))+' · saldo '+fmt(corr(s) - ret(s))+'.'+
       (distinto ? ' Las sucursales usan distinto %: "le corresponde" es el valor del sistema (el % de arriba no lo cambia).' : ''), 'nota');
   });
-  if(socios.length > 2) ws.getCell('E20').value = ws.getCell('E20').value+' Otros socios con retiros: '+socios.slice(2).map(function(s){ return s+' '+fmt(ret(s)); }).join(', ')+'.';
-  _xlSeccion(ws, 22, 'CONTROL CONTRA LA PLATA REAL', 5);
+  if(socios.length > 2) ws.getCell('E22').value = ws.getCell('E22').value+' Otros socios con retiros: '+socios.slice(2).map(function(s){ return s+' '+fmt(ret(s)); }).join(', ')+'.';
+  _xlSeccion(ws, 24, 'CONTROL CONTRA LA PLATA REAL', 5);
   var ini = T.res.cajaIni, fin = T.res.cajaFin;
-  _xlPoner(ws, 'A23', 'Plata en caja y banco al inicio del mes', 'formula'); _xlPoner(ws, 'B23', ini != null ? Math.round(ini) : 0, 'entrada', XL_MON);
-  _xlPoner(ws, 'E23', ini != null ? 'De los "Saldos del mes" del sistema (cajones, fuera de caja, Mercado Pago y banco).' : 'Sumá caja, billeteras y cuentas del negocio (o cargalo en "Saldos del mes" del sistema).', 'nota');
-  _xlPoner(ws, 'A24', 'Plata en caja y banco al cierre del mes', 'formula'); _xlPoner(ws, 'B24', fin != null ? Math.round(fin) : 0, 'entrada', XL_MON);
-  _xlPoner(ws, 'E24', 'Lo mismo, al último día del mes.', 'nota');
-  _xlPoner(ws, 'A25', 'Retiros de socios en el mes', 'formula'); _xlPoner(ws, 'B25', Math.round(T.res.retirosCajaTot || 0), 'entrada', XL_MON);
-  _xlPoner(ws, 'E25', 'Del sistema, por fecha de pago: '+Object.keys(T.retirosCaja).map(function(s){ return s+' '+fmt(Math.round(T.retirosCaja[s])); }).join(' · ')+'.', 'nota');
-  _xlPoner(ws, 'A26', 'Plata que generó el negocio en el mes', 'etq'); _xlPoner(ws, 'B26', '=B24-B23+B25', 'formula', XL_MON);
-  _xlPoner(ws, 'E26', 'Cierre menos inicio, más lo que se retiró.', 'nota');
-  _xlPoner(ws, 'A27', 'Diferencia contra el resultado neto', 'etq'); _xlPoner(ws, 'B27', '=B26-D11', 'formula', XL_MON);
-  _xlPoner(ws, 'E27', 'Si es muy negativa, probablemente estás poniendo plata en stock o hay ventas que no se cobraron (fiados). Si es positiva, compraste menos mercadería de la que vendiste.', 'nota');
+  _xlPoner(ws, 'A25', 'Plata en caja y banco al inicio del mes', 'formula'); _xlPoner(ws, 'B25', ini != null ? Math.round(ini) : 0, 'entrada', XL_MON);
+  _xlPoner(ws, 'E25', ini != null ? 'De los "Saldos del mes" del sistema (cajones, fuera de caja, Mercado Pago y banco).' : 'Sumá caja, billeteras y cuentas del negocio (o cargalo en "Saldos del mes" del sistema).', 'nota');
+  _xlPoner(ws, 'A26', 'Plata en caja y banco al cierre del mes', 'formula'); _xlPoner(ws, 'B26', fin != null ? Math.round(fin) : 0, 'entrada', XL_MON);
+  _xlPoner(ws, 'E26', 'Lo mismo, al último día del mes.', 'nota');
+  _xlPoner(ws, 'A27', 'Retiros de socios en el mes', 'formula'); _xlPoner(ws, 'B27', Math.round(T.res.retirosCajaTot || 0), 'entrada', XL_MON);
+  _xlPoner(ws, 'E27', 'Del sistema, por fecha de pago: '+Object.keys(T.retirosCaja).map(function(s){ return s+' '+fmt(Math.round(T.retirosCaja[s])); }).join(' · ')+'.', 'nota');
+  _xlPoner(ws, 'A28', 'Plata que generó el negocio en el mes', 'etq'); _xlPoner(ws, 'B28', '=B26-B25+B27', 'formula', XL_MON);
+  _xlPoner(ws, 'E28', 'Cierre menos inicio, más lo que se retiró.', 'nota');
+  _xlPoner(ws, 'A29', 'Diferencia contra el disponible para repartir', 'etq'); _xlPoner(ws, 'B29', '=B28-D13', 'formula', XL_MON);
+  _xlPoner(ws, 'E29', 'Si es muy negativa, probablemente estás poniendo plata en stock o hay ventas que no se cobraron (fiados). Si es positiva, compraste menos mercadería de la que vendiste.', 'nota');
 }
 function exportarBalanceExcel(){
   var b = _bal.b;
@@ -24526,9 +24558,9 @@ function exportarBalanceExcel(){
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Limay Rock'; wb.created = new Date();
     wb.calcProperties.fullCalcOnLoad = true;
-    var r1 = _xlHojaSucursal(wb, b, 1); _xlHojaBalance(wb, b, 1, r1);
+    var r1 = _xlHojaSucursal(wb, b, 1), F = _xlHojaBalance(wb, b, 1, r1);
     var r2 = _xlHojaSucursal(wb, b, 2); _xlHojaBalance(wb, b, 2, r2);
-    _xlHojaTotal(wb, b);
+    _xlHojaTotal(wb, b, F);
     return wb.xlsx.writeBuffer();
   }).then(function(buf){
     var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
