@@ -5035,11 +5035,10 @@ body.night-on{background:#080005}
           <input type="date" id="eFecha" onchange="pintarDetEgreso()">
         </div>
         <div id="eDetBox" style="display:none;border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin:2px 0 10px">
-          <div style="font-size:.66rem;color:var(--gray);margin-bottom:6px">🔒 Este detalle lo ve solo el dueño. En la caja, el pago figura como "Pago (admin)".</div>
           <div class="field" id="eEmpRow"><label>👤 Empleado</label><select id="eEmpleado" onchange="elegirEmpleadoEgreso()"></select></div>
           <div class="field-row">
-            <div class="field"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
-            <div class="field"><label>🏪 Sucursal</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
+            <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
+            <div class="field" id="eSucRow" style="display:none"><label>🏪 Sucursal</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
           </div>
           <div class="field-row" id="eRepartoRow" style="display:none">
             <div class="field"><label>% que absorbe Limay 1</label><input type="number" id="eRep1" min="0" max="100" oninput="repartoEgresoCambio(1)"></div>
@@ -5047,6 +5046,8 @@ body.night-on{background:#080005}
           </div>
           <div id="eCredRow" style="display:none">
             <div class="field"><label>🏦 Acreedor</label><select id="eAcreedor" onchange="if(this.value==='__nuevo__') agregarAcreedor(this)"></select></div>
+            <button type="button" id="eCredPartesBtn" onclick="toggleCredPartes()" style="background:none;border:none;color:var(--gray);font-size:.72rem;cursor:pointer;padding:2px 0 8px;text-align:left">▸ Dividir la cuota (mercadería, intereses…) — opcional</button>
+            <div id="eCredPartes" style="display:none">
             <label style="font-size:.72rem;color:var(--gray)">¿A qué corresponde este pago? (montos)</label>
             <div class="field-row">
               <div class="field"><label style="font-size:.68rem">🚚 Mercadería</label><input type="text" inputmode="decimal" id="ePMerc" placeholder="0" oninput="formatMontoDecInput(this)"></div>
@@ -5061,7 +5062,8 @@ body.night-on{background:#080005}
               <button type="button" onclick="partesTodoEn('ePEquip')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">Todo equipamiento</button>
               <button type="button" onclick="partesTodoEn('ePGastos')" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:3px 8px;font-size:.68rem;cursor:pointer">Todo gastos</button>
             </div>
-            <div style="font-size:.66rem;color:var(--gray)">Si no lo completás, queda "Sin clasificar" en rojo y el balance avisa.</div>
+            </div>
+            <div style="font-size:.66rem;color:var(--gray)">Si no la dividís, la cuota entera se resta como costo en Créditos.</div>
           </div>
           <div class="field" id="eSocioRow" style="display:none"><label>🤝 Socio que retiró</label><select id="eSocio"></select></div>
         </div>
@@ -5073,7 +5075,7 @@ body.night-on{background:#080005}
             <button class="receg-medio-btn active" id="em-Efectivo" onclick="selEgMedio('Efectivo')" style="flex:1">💵 Efectivo</button>
             <button class="receg-medio-btn" id="em-Mixto" onclick="selEgMedio('Mixto')" style="flex:1">⚡ Mixto</button>
           </div>
-          <button class="receg-medio-btn" id="em-EfectivoFuera" onclick="selEgMedio('EfectivoFuera')" style="width:100%;margin-top:6px">👛 Efectivo que no sale de las cajas (de mi bolsillo o ya retirado)</button>
+          <button class="receg-medio-btn" id="em-EfectivoFuera" onclick="selEgMedio('EfectivoFuera')" style="display:none;width:100%;margin-top:6px">👛 Efectivo que no sale de las cajas (de mi bolsillo o ya retirado)</button>
         </div>
         <div id="eMixtoWrap" style="display:none;margin-top:8px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -16301,6 +16303,7 @@ function poblarRubrosEgreso(){
   var grupos = [];
   RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
   sel.innerHTML = grupos.map(function(g){
+    if(g === '❓ Sin clasificar') return '';   // no se carga a propósito: es lo que queda de los pagos viejos
     return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g; }).map(function(r){ return '<option value="'+r.k+'">'+r.t+'</option>'; }).join('')+'</optgroup>';
   }).join('');
   sel.value = 'mercaderia';
@@ -16315,18 +16318,28 @@ function cambiarRubroEgreso(){
   if(cat && cat.value !== nueva){ cat.value = nueva; cambiarCatEgreso(); }
   pintarDetEgreso();
 }
+// Sueldos y personal extra: el empleado se elige una sola vez, arriba, de la
+// lista de empleados (sin los de delivery). Ese nombre es el concepto del pago.
+function esRubroPersonal(r){ return r === 'sueldos' || r === 'personal_extra'; }
 function pintarDetEgreso(){
   var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
   var box = document.getElementById('eDetBox');
   if(!box) return;
-  box.style.display = r === 'mercaderia' ? 'none' : 'block';
-  if(r === 'mercaderia') return;
   var ver = function(id, si){ var el = document.getElementById(id); if(el) el.style.display = si ? '' : 'none'; };
-  ver('eEmpRow', r === 'sueldos' || r === 'personal_extra');
+  var empRow = document.getElementById('eEmpRow'), cw = document.getElementById('eConceptoWrap');
+  if(empRow && cw && empRow.parentNode !== cw.parentNode) cw.parentNode.insertBefore(empRow, cw.nextSibling);
+  var personal = esRubroPersonal(r);
+  ver('eEmpRow', personal);
+  var catEl = document.getElementById('eCategoria');
+  if(personal) ver('eConceptoWrap', false);
+  else if(catEl && catEl.value !== 'proveedor') ver('eConceptoWrap', true);   // ej. de Personal extra a Cargas sociales (mismo grupo)
+  box.style.display = (personal || r === 'credito' || r === 'retiro_socio') ? 'block' : 'none';
+  if(r === 'mercaderia') return;
+  ver('eMesRow', personal);
   ver('eCredRow', r === 'credito');
   ver('eSocioRow', r === 'retiro_socio');
   var emp = document.getElementById('eEmpleado');
-  if(emp && !emp.options.length) emp.innerHTML = _opciones((getEmpleados()||[]).map(function(e){ return e.nombre; }).sort(), '', '— Elegí —');
+  if(emp && !emp.options.length) emp.innerHTML = _opciones((getEmpleados()||[]).filter(function(e){ return e && e.rol !== 'repartidor'; }).map(function(e){ return e.nombre; }).sort(), '', '— Elegí —');
   var ac = document.getElementById('eAcreedor');
   if(ac){ var va = ac.value; ac.innerHTML = _opciones(acreedoresLista(), va, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; }
   var so = document.getElementById('eSocio');
@@ -16339,6 +16352,12 @@ function pintarDetEgreso(){
   ver('eRepartoRow', comp);
   var r1 = document.getElementById('eRep1'), r2 = document.getElementById('eRep2');
   if(comp && r1 && !r1.dataset.tocado){ var d = repartoDelMes(me ? me.value : ''); r1.value = d[1]; if(r2) r2.value = d[2]; }
+}
+function toggleCredPartes(){
+  var p = document.getElementById('eCredPartes'), b = document.getElementById('eCredPartesBtn'); if(!p) return;
+  var abrir = p.style.display === 'none';
+  p.style.display = abrir ? '' : 'none';
+  if(b) b.textContent = (abrir ? '▾' : '▸')+' Dividir la cuota (mercadería, intereses…) — opcional';
 }
 function elegirEmpleadoEgreso(){
   var v = (document.getElementById('eEmpleado')||{}).value || '';
@@ -16394,7 +16413,7 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
     if(tot > 0){
       if(Math.abs(tot - monto) > 0.5) return { error: 'Las partes suman '+fmt(tot)+' y el pago es de '+fmt(monto)+': tienen que dar igual' };
       det.partes = p;
-    } else det.partes = null;   // queda "Sin clasificar"
+    } else det.partes = { mercaderia: 0, equipamiento: 0, gastos: monto, intereses: 0 };   // sin dividir: entera a Créditos
   }
   if(rubro === 'retiro_socio'){
     det.socio = val('eSocio');
@@ -16408,6 +16427,7 @@ function resetDetEgreso(){
   ['ePMerc','ePEquip','ePGastos','ePInt'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   ['eEmpleado','eAcreedor','eSocio'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   var c = document.getElementById('eConcepto'); if(c) delete c.dataset.auto;
+  var cp = document.getElementById('eCredPartes'); if(cp && cp.style.display !== 'none') toggleCredPartes();
   pintarDetEgreso();
 }
 
@@ -16638,7 +16658,7 @@ function cambiarCatEgreso() {
   } else if(cat === 'sueldo') {
     provWrap.style.display = 'none';
     conceptoWrap.style.display = 'block';
-    conceptoLabel.textContent = '👤 Empleado / Concepto';
+    conceptoLabel.textContent = '📋 Concepto';   // sueldos y personal extra usan el campo Empleado
     if(conceptoInput) conceptoInput.value='';
     var dd=document.getElementById('eConceptoDropdown'); if(dd) dd.style.display='none';
     var arrow=document.getElementById('eConceptoArrow'); if(arrow) arrow.style.transform='';
@@ -16677,6 +16697,9 @@ function registrarEgreso() {
       prov = nombreNuevo;
     }
     if(!prov){ showToast('Elegí un proveedor',true); return; }
+  } else if(esRubroPersonal((document.getElementById('eRubro')||{}).value)) {
+    prov = (document.getElementById('eEmpleado')||{}).value || '';
+    if(!prov){ showToast('Elegí el empleado', true); return; }
   } else {
     var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
     if(!concepto){ showToast('Ingresá el concepto',true); return; }
@@ -16775,7 +16798,7 @@ function renderEgresos() {
   if(barClf){
     if(esEquipoDueno()){
       var nSin = getEgresos().filter(function(e){ return e.fecha >= CLF_DESDE_BASE && egresoSinClasificar(e); }).length;
-      barClf.innerHTML = '<button onclick="abrirClasificarEgresos()" style="width:100%;background:'+(nSin?'rgba(231,76,60,.12)':'var(--card)')+';border:1px solid '+(nSin?'#e74c3c':'var(--border)')+';color:'+(nSin?'#e74c3c':'var(--light)')+';border-radius:6px;padding:9px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">🏷 CLASIFICAR EGRESOS'+(nSin?' — '+nSin+' sin clasificar':' ✓')+'</button>';
+      barClf.innerHTML = !nSin ? '<div style="text-align:right"><button onclick="abrirClasificarEgresos()" style="background:none;border:none;color:var(--gray);font-size:.7rem;text-decoration:underline;cursor:pointer;padding:0">🏷 Clasificar pagos viejos y gastos compartidos</button></div>' : '<button onclick="abrirClasificarEgresos()" style="width:100%;background:'+(nSin?'rgba(231,76,60,.12)':'var(--card)')+';border:1px solid '+(nSin?'#e74c3c':'var(--border)')+';color:'+(nSin?'#e74c3c':'var(--light)')+';border-radius:6px;padding:9px;font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1px;cursor:pointer">🏷 CLASIFICAR EGRESOS'+(nSin?' — '+nSin+' sin clasificar':' ✓')+'</button>';
     } else barClf.innerHTML = '';
   }
 
@@ -19072,7 +19095,7 @@ function elegirMedioPagoSueldo(nombreEmp, neto){
       '<button data-m="mp" style="'+b+'background:var(--gold);color:#000;border:none">📲 Mercado Pago / transferencia</button>'+
       '<button data-m="c1" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 1'+notaCaja(1)+'</button>'+
       '<button data-m="c2" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 2'+notaCaja(2)+'</button>'+
-      '<button data-m="fu" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">👛 Efectivo que no sale de las cajas<div style="font-family:Barlow,sans-serif;font-size:.68rem;letter-spacing:0;color:var(--gray);margin-top:3px">De tu bolsillo o de plata ya retirada: no toca el arqueo.</div></button>'+
+      // (sin la opción "de mi bolsillo": la plata se ingresa a la caja y se paga desde ahí)
       '<button data-m="no" style="'+b+'background:none;border:1px solid var(--border);color:var(--gray)">Ya cargué el egreso a mano (no crear otro)</button>'+
       '<button data-m="x" style="'+b+'background:none;border:none;color:var(--gray);text-decoration:underline">Cancelar</button></div>';
     ov.style.display = 'flex';
