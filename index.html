@@ -13245,11 +13245,25 @@ function montoTransferenciaConfirm(carrito){
   if(medio !== 'Transferencia') return 0;
   return items.reduce(function(s, i){ return s + i.subtotal; }, 0) + (Number(deliv) || 0);
 }
+// Mercado Pago conectado a la nube: por ahora solo la cuenta de Limay 1.
+// Limay 2 cobra con su propia cuenta (otra billetera), no conectada: si en Limay 2
+// se consultara la de Limay 1, una venta podría quedar emparejada con un pago
+// de un cliente de Limay 1 del mismo monto. Hasta conectarla, en Limay 2 las
+// transferencias se confirman a mano mirando el celular de esa cuenta.
+function mpCuentaConectada(){ return (window.__lrSucursal || 1) === 1; }
+var MP_MSG_L2 = 'Confirmá la transferencia en el celular de la cuenta de Limay 2';
 function mpEsperaIniciar(carrito){
   mpEsperaSoltar();
   var box = document.getElementById('mpEsperaBox'); if(!box) return;
   var monto = montoTransferenciaConfirm(carrito);
   if(!(monto > 0) || !window.firebase || !firebase.auth || !firebase.auth().currentUser){ box.style.display = 'none'; return; }
+  if(!mpCuentaConectada()){
+    box.style.display = 'block';
+    box.innerHTML = '<div style="border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-size:.8rem;line-height:1.4;background:rgba(244,180,0,.12);border:1px solid var(--gold);color:var(--gold)">'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1px">📱 '+MP_MSG_L2+'</div>'+
+      '<div style="color:var(--light)">Fijate que haya entrado '+fmt(monto)+' y recién ahí tocá <b>✓ Confirmar</b>.</div></div>';
+    return;
+  }
   var suc = window.__lrSucursal || 1;
   _mpEspera = { ref: 'L'+suc+'-C'+cajaTurnoActual()+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),
     monto: monto, carrito: carrito, desde: Date.now() - 10*60000, inicio: Date.now(), pago: null, timer: null, cuenta: 0, frenado: false, errores: 0 };
@@ -13487,7 +13501,7 @@ function marcaMPVenta(m){
 // reserva recién en el resumen, como siempre.
 var _mpCarritoOcupado = false;
 function mpCarritoRevisar(){
-  if(_mpCarritoOcupado || window.__lrMpCarritoApagado || !navigator.onLine) return;
+  if(_mpCarritoOcupado || window.__lrMpCarritoApagado || !navigator.onLine || !mpCuentaConectada()) return;
   if(!window.firebase || !firebase.auth || !firebase.auth().currentUser) return;
   if(typeof currentEmp === 'undefined' || !currentEmp) return;
   var ov = document.getElementById('confirmOverlay');
@@ -13746,6 +13760,7 @@ function buscarCierreMPAuto(c){
   var u = window.firebase && firebase.auth && firebase.auth().currentUser;
   if(!u || String(u.email||'').toLowerCase() !== 'admin@limayrock.app') return;
   var rev = _mpRev;
+  if(!mpCuentaConectada()){ rev.auto = { estado: 'otraCuenta' }; pintarCierreMP(); return; }
   var ini = new Date(c.horaInicio).getTime(), fin = new Date(c.horaFin).getTime();
   rev.auto = { estado: 'buscando' };
   pintarCierreMP();
@@ -13844,6 +13859,7 @@ function pintarCierreMP(){
     (function(){
       var a = _mpRev.auto, st = 'font-size:.74rem;border-radius:6px;padding:7px 10px;margin-bottom:10px;';
       if(!a) return '<div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Abrí la app de Mercado Pago, mirá lo que entró en ese horario y marcá cada cobro. Si llegó otro monto, cargá lo que llegó de verdad.</div>';
+      if(a.estado === 'otraCuenta') return '<div style="'+st+'color:var(--gold);background:rgba(244,180,0,.08)">📱 Limay 2 cobra las transferencias en su propia cuenta, que no está conectada al sistema. Revisá los cobros de este turno a mano, en la app de esa cuenta.</div>';
       if(a.estado === 'buscando') return '<div style="'+st+'color:#38bdf8;background:rgba(56,189,248,.08)">⏳ Buscando los cobros del turno en Mercado Pago…</div>';
       if(a.estado === 'error') return '<div style="'+st+'color:var(--gold);background:rgba(244,180,0,.08)">⚠ No se pudo consultar Mercado Pago ('+escBaja(a.msg)+'). Revisá a mano con la app.</div>';
       var faltan = a.total - a.encontrados;
