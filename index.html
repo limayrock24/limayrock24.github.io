@@ -5036,6 +5036,7 @@ body.night-on{background:#080005}
         </div>
         <div id="eDetBox" style="display:none;border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin:2px 0 10px">
           <div class="field" id="eEmpRow"><label>👤 Empleado</label><select id="eEmpleado" onchange="elegirEmpleadoEgreso()"></select></div>
+          <div class="field" id="eDetalleRow" style="display:none"><label>🔎 ¿A qué fue?</label><select id="eDetalle" onchange="elegirDetalleEgreso()"></select></div>
           <div class="field-row">
             <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
             <div class="field" id="eSucRow"><label>🏪 ¿Qué local lo paga?</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
@@ -15964,14 +15965,16 @@ var RUBROS_EGRESO = [
   {k:'gas',             t:'Gas',                                        cat:'servicio',  g:'💡 Servicios'},
   {k:'agua',            t:'Agua',                                       cat:'servicio',  g:'💡 Servicios'},
   {k:'internet',        t:'Internet y teléfono',                        cat:'servicio',  g:'💡 Servicios'},
-  {k:'otros_servicios', t:'Otros servicios',                            cat:'servicio',  g:'💡 Servicios'},
+  {k:'otros_servicios', t:'Otros servicios (YouTube, Canva, Spotify…)', cat:'servicio', g:'💡 Servicios'},
   {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y contadora'},
-  {k:'comercio',        t:'Impuesto de comercio',                       cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'comercio',        t:'Comercio municipal',                         cat:'servicio',  g:'🧾 Impuestos y contadora'},
   {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
-  {k:'otros_costos',    t:'Otros costos (mantenimiento, bolsas, seguro…)', cat:'otro',   g:'🔧 Otros costos'},
-  {k:'comisiones',      t:'Comisiones (Mercado Pago, banco)',           cat:'otro',      g:'🔧 Otros costos'},
-  {k:'credito',         t:'Cuota de crédito / pago de tarjeta',         cat:'otro',      g:'💳 Créditos'},
-  {k:'inversion',       t:'Inversión (equipamiento)',                   cat:'otro',      g:'📦 Fuera del resultado'},
+  {k:'otros_impuestos', t:'Otros impuestos (multas…)',                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'otros_costos',    t:'Costos varios de Limay Rock',                cat:'otro',      g:'🔧 Otros costos'},
+  // Ya no se ofrece al cargar: queda para los pagos viejos que lo tienen.
+  {k:'comisiones',      t:'Comisiones (pagos viejos)',                  cat:'otro',      g:'🔧 Otros costos', viejo:true},
+  {k:'credito',         t:'Cuota de crédito o préstamo',                cat:'otro',      g:'💳 Cuotas de créditos y préstamos'},
+  {k:'inversion',       t:'Inversión',                                  cat:'otro',      g:'📦 Fuera del resultado'},
   {k:'retiro_socio',    t:'Retiro de socios',                           cat:'otro',      g:'📦 Fuera del resultado'},
   {k:'sin_clasificar',  t:'Sin clasificar',                             cat:'otro',      g:'❓ Sin clasificar'}
 ];
@@ -15981,6 +15984,31 @@ var SOCIOS_BASE = ['Martín', 'Jonathan'];
 var NOMBRES_VIEJOS = { 'Dueño': 'Martín', 'Tarjeta mía': 'Tarjeta Martín Monsalve', 'Tarjeta de mi viejo': 'Tarjeta David Monsalve' };
 function nombreActual(s){ return NOMBRES_VIEJOS[s] || s; }
 function _sinRepetir(l){ return l.filter(function(x, i){ return l.indexOf(x) === i; }); }
+// "¿A qué fue?": de estos rubros se elige el detalle de una lista que el
+// dueño puede agrandar. Así el balance muestra en qué se fue cada peso.
+var DETALLES_BASE = {
+  otros_servicios: ['YouTube', 'Canva', 'Spotify'],
+  otros_impuestos: ['Multa'],
+  otros_costos: ['Bolsas', 'Ferretería', 'Limpieza', 'Mantenimiento', 'Regalos y obsequios'],
+  inversion: ['Equipamiento', 'Reforma del local']
+};
+function tieneDetalle(r){ return !!DETALLES_BASE[r]; }
+function detallesDe(r){
+  var c = ((window.__lrCfgPriv.detallesRubro || {}).listas || {})[r];
+  return _sinRepetir((Array.isArray(c) && c.length ? c : (DETALLES_BASE[r] || [])).slice());
+}
+function agregarDetalle(r, sel){
+  var n = (prompt('¿A qué fue? Escribí el nombre nuevo (ej.: '+(DETALLES_BASE[r] || ['Otro'])[0]+'):') || '').trim();
+  if(!n) return '';
+  var lista = detallesDe(r);
+  if(lista.indexOf(n) === -1) lista.push(n);
+  var cfg = window.__lrCfgPriv.detallesRubro = window.__lrCfgPriv.detallesRubro || {};
+  cfg.listas = cfg.listas || {}; cfg.listas[r] = lista;
+  if(esEquipoDueno()){ var cambio = {}; cambio[r] = lista; colPriv('configPriv').doc('detallesRubro').set({ listas: cambio }, { merge: true }).catch(function(){}); }
+  if(sel){ sel.innerHTML = _opcionesDetalle(r, n); sel.value = n; }
+  return n;
+}
+function _opcionesDetalle(r, actual){ return _opciones(detallesDe(r), actual, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; }
 function rubroDef(k){ for(var i = 0; i < RUBROS_EGRESO.length; i++) if(RUBROS_EGRESO[i].k === k) return RUBROS_EGRESO[i]; return RUBROS_EGRESO[RUBROS_EGRESO.length-1]; }
 function localActual(){ return window.__lrSucursal === 2 ? 2 : 1; }
 // Detalle de los egresos de cada local (egresosDet / l2_egresosDet); valor
@@ -16320,7 +16348,7 @@ function poblarRubrosEgreso(){
   RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
   sel.innerHTML = grupos.map(function(g){
     if(g === '❓ Sin clasificar') return '';   // no se carga a propósito: es lo que queda de los pagos viejos
-    return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g; }).map(function(r){ return '<option value="'+r.k+'">'+r.t+'</option>'; }).join('')+'</optgroup>';
+    return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g && !r.viejo; }).map(function(r){ return '<option value="'+r.k+'">'+r.t+'</option>'; }).join('')+'</optgroup>';
   }).join('');
   sel.value = 'mercaderia';
 }
@@ -16344,10 +16372,14 @@ function pintarDetEgreso(){
   var ver = function(id, si){ var el = document.getElementById(id); if(el) el.style.display = si ? '' : 'none'; };
   var empRow = document.getElementById('eEmpRow'), cw = document.getElementById('eConceptoWrap');
   if(empRow && cw && empRow.parentNode !== cw.parentNode) cw.parentNode.insertBefore(empRow, cw.nextSibling);
+  // "¿A qué fue?" también va arriba, en lugar del concepto (es lo mismo).
+  var detRow = document.getElementById('eDetalleRow');
+  if(detRow && cw && detRow.parentNode !== cw.parentNode) cw.parentNode.insertBefore(detRow, cw.nextSibling);
   var personal = esRubroPersonal(r);
   ver('eEmpRow', personal);
+  ver('eDetalleRow', tieneDetalle(r));
   var catEl = document.getElementById('eCategoria');
-  if(personal) ver('eConceptoWrap', false);
+  if(personal || tieneDetalle(r)) ver('eConceptoWrap', false);
   else if(catEl && catEl.value !== 'proveedor') ver('eConceptoWrap', true);   // ej. de Personal extra a Cargas sociales (mismo grupo)
   // Todo menos la mercadería: el local que lo paga (o compartido, con el % de cada uno).
   box.style.display = r === 'mercaderia' ? 'none' : 'block';
@@ -16355,6 +16387,9 @@ function pintarDetEgreso(){
   ver('eMesRow', personal);
   ver('eCredRow', r === 'credito');
   ver('eSocioRow', r === 'retiro_socio');
+  ver('eDetalleRow', tieneDetalle(r));
+  var de = document.getElementById('eDetalle');
+  if(de && tieneDetalle(r) && de.dataset.rubro !== r){ de.innerHTML = _opcionesDetalle(r, ''); de.dataset.rubro = r; }
   var emp = document.getElementById('eEmpleado');
   if(emp && !emp.options.length) emp.innerHTML = _opciones((getEmpleados()||[]).filter(function(e){ return e && e.rol !== 'repartidor'; }).map(function(e){ return e.nombre; }).sort(), '', '— Elegí —');
   var ac = document.getElementById('eAcreedor');
@@ -16373,6 +16408,11 @@ function toggleCredPartes(){
   var abrir = p.style.display === 'none';
   p.style.display = abrir ? '' : 'none';
   if(b) b.textContent = (abrir ? '▾' : '▸')+' Dividir la cuota (mercadería, intereses…) — opcional';
+}
+function elegirDetalleEgreso(){
+  var sel = document.getElementById('eDetalle'), r = (document.getElementById('eRubro')||{}).value;
+  if(!sel) return;
+  if(sel.value === '__nuevo__'){ if(!agregarDetalle(r, sel)) sel.value = ''; }
 }
 function elegirEmpleadoEgreso(){
   var v = (document.getElementById('eEmpleado')||{}).value || '';
@@ -16435,6 +16475,10 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
       det.partes = p;
     } else det.partes = { mercaderia: 0, equipamiento: 0, gastos: monto, intereses: 0 };   // sin dividir: entera a Créditos
   }
+  if(tieneDetalle(rubro)){
+    det.detalle = val('eDetalle');
+    if(!det.detalle || det.detalle === '__nuevo__') return { error: 'Elegí a qué fue el pago', campo: 'eDetalle' };
+  }
   if(rubro === 'retiro_socio'){
     det.socio = val('eSocio');
     if(!det.socio) return { error: 'Elegí qué socio retiró', campo: 'eSocio' };
@@ -16446,7 +16490,7 @@ function resetDetEgreso(){
   ['eMes','eSuc'].forEach(function(id){ var el = document.getElementById(id); if(el) delete el.dataset.tocado; });
   var cr = document.getElementById('eCompResumen'); if(cr) cr.innerHTML = '';
   ['ePMerc','ePEquip','ePGastos','ePInt','eComp1','eComp2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
-  ['eEmpleado','eAcreedor','eSocio'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  ['eEmpleado','eAcreedor','eSocio','eDetalle'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   var c = document.getElementById('eConcepto'); if(c) delete c.dataset.auto;
   var cp = document.getElementById('eCredPartes'); if(cp && cp.style.display !== 'none') toggleCredPartes();
   pintarDetEgreso();
@@ -16747,6 +16791,10 @@ function registrarEgreso() {
   } else if(esRubroPersonal((document.getElementById('eRubro')||{}).value)) {
     prov = (document.getElementById('eEmpleado')||{}).value || '';
     if(!prov){ avisoEgreso('Elegí el empleado', 'eEmpleado'); return; }
+  } else if(tieneDetalle((document.getElementById('eRubro')||{}).value)) {
+    // El nombre del pago es lo que se eligió en "¿A qué fue?"; lo demás, en la nota.
+    prov = (document.getElementById('eDetalle')||{}).value || '';
+    if(!prov || prov === '__nuevo__'){ avisoEgreso('Elegí a qué fue el pago', 'eDetalle'); return; }
   } else {
     var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
     if(!concepto){ avisoEgreso('Ingresá el concepto', 'eConcepto'); return; }
@@ -23456,13 +23504,14 @@ function _clfBorrador(e){
   if(_clf.borr[id]) return _clf.borr[id];
   var d = detDeEgreso(e);
   var b = d ? { rubro: d.rubro, empleado: d.empleado||'', mes: d.mes || String(e.fecha).slice(0,7), suc: d.suc || localActual(), reparto: d.reparto || null,
-      acreedor: nombreActual(d.acreedor||''), partes: d.partes || null, socio: nombreActual(d.socio||''), confianza: 'hecho' } : sugerirClasificacion(e);
+      acreedor: nombreActual(d.acreedor||''), partes: d.partes || null, socio: nombreActual(d.socio||''), detalle: d.detalle || '', confianza: 'hecho' } : sugerirClasificacion(e);
   _clf.borr[id] = b;
   return b;
 }
 function _clfCambio(id, campo, valor){
   var b = _clf.borr[id]; if(!b) return;
   if(campo === 'acreedor' && valor === '__nuevo__'){ agregarAcreedor(null); valor = acreedoresLista().slice(-1)[0] || ''; }
+  if(campo === 'detalle' && valor === '__nuevo__') valor = agregarDetalle(b.rubro, null);
   if(campo === 'suc') valor = valor === 'compartido' ? 'compartido' : Number(valor);
   if(campo === 'rep1'){ var a = Math.max(0, Math.min(100, Number(valor)||0)); b.reparto = { 1: a, 2: 100 - a }; }
   else if(campo.indexOf('p_') === 0){ b.partes = b.partes || { mercaderia:0, equipamiento:0, gastos:0, intereses:0 }; b.partes[campo.slice(2)] = Number(String(valor).replace(/\./g,'').replace(',','.')) || 0; }
@@ -23492,6 +23541,8 @@ function _clfFila(e){
         return p[1]+' <input type="text" inputmode="decimal" value="'+(pp[p[0]] ? String(pp[p[0]]).replace('.', ',') : '')+'" placeholder="0" oninput="_clfCambio(\''+id+'\',\'p_'+p[0]+'\',this.value)" style="'+inp+';width:80px">';
       }).join(' ')+'</div>';
   }
+  if(tieneDetalle(b.rubro))
+    extra += '<label style="font-size:.66rem;color:var(--gray)">¿A qué fue? '+sel('detalle', [['','— Elegí —']].concat(detallesDe(b.rubro).concat(b.detalle && detallesDe(b.rubro).indexOf(b.detalle) === -1 ? [b.detalle] : []).map(function(x){ return [x, x]; })).concat([['__nuevo__','＋ Otro…']]), b.detalle)+'</label> ';
   if(b.rubro === 'retiro_socio')
     extra += '<label style="font-size:.66rem;color:var(--gray)">Socio '+sel('socio', [['','— Elegí —']].concat(sociosLista().map(function(s){ return [s, s]; })), b.socio)+'</label> ';
   var chip = hecho ? '<span style="color:var(--green);font-size:.66rem">✓ Clasificado</span>'
@@ -23501,7 +23552,7 @@ function _clfFila(e){
   var grupos = [];
   RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
   var rubroSel = '<select onchange="_clfCambio(\''+id+'\',\'rubro\',this.value)" style="background:var(--dark);border:1px solid var(--gold);color:var(--white);border-radius:4px;padding:5px;font-size:.74rem">'+
-    grupos.map(function(g){ return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g; }).map(function(r){ return '<option value="'+r.k+'"'+(r.k === b.rubro ? ' selected' : '')+'>'+r.t+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select>';
+    grupos.map(function(g){ return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g && (!r.viejo || r.k === b.rubro); }).map(function(r){ return '<option value="'+r.k+'"'+(r.k === b.rubro ? ' selected' : '')+'>'+r.t+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select>';
   return '<div style="border:1px solid '+(hecho ? 'rgba(0,204,68,.3)' : 'var(--border)')+';border-radius:7px;padding:9px 10px;margin-bottom:8px;background:var(--card)">'+
     '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline">'+
       '<div style="font-size:.8rem;color:var(--white)"><span style="color:var(--gray)">'+escBaja(e.fecha)+'</span> · <b>'+escBaja(conceptoDeEgreso(e))+'</b>'+(e.nota ? ' <span style="color:var(--gray);font-size:.7rem">— '+escBaja(e.nota)+'</span>' : '')+'</div>'+
@@ -23738,6 +23789,7 @@ function guardarClasificacion(id, silencioso){
   if(det.suc === 'compartido' && b.reparto && b.reparto[1] !== repartoDelMes(det.mes)[1]) det.reparto = b.reparto;
   if(b.rubro === 'credito'){ det.acreedor = b.acreedor; det.partes = partes; }
   if(b.rubro === 'retiro_socio') det.socio = b.socio;
+  if(tieneDetalle(b.rubro) && b.detalle) det.detalle = b.detalle;
   if(previo.publicoOriginal) det.publicoOriginal = previo.publicoOriginal;
   if(previo.movOriginal) det.movOriginal = previo.movOriginal;
   // Solo se agrega el detalle: el egreso común no se toca (eso lo hace la fase B).
@@ -23860,8 +23912,8 @@ function _balNombreMes(mes){ var t = _balRango(mes).d0.toLocaleDateString('es-AR
 // el costo de lo vendido. Solo lee; lo único que guarda es la configuración
 // (reparto, cargas sociales) y los saldos del mes, en lo privado del dueño.
 var BAL_SERVICIOS = ['luz','gas','agua','internet','otros_servicios'];
-var BAL_IMPUESTOS = ['monotributo','comercio','contadora'];
-var BAL_OTROS = ['otros_costos','comisiones'];   // mantenimiento, bolsas, ferretería, comisiones…: aparte de los impuestos
+var BAL_IMPUESTOS = ['monotributo','comercio','contadora','otros_impuestos'];
+var BAL_OTROS = ['otros_costos','comisiones'];   // costos varios (bolsas, ferretería…) y las comisiones viejas: aparte de los impuestos
 var BAL_OPERATIVOS = ['sueldos','cargas_sociales','personal_extra','alquiler'].concat(BAL_SERVICIOS, BAL_IMPUESTOS, BAL_OTROS);
 var BAL_SALDOS = [['efec','Efectivo en cajones'],['fuera','Efectivo fuera de caja'],['mp','Mercado Pago'],['banco','Banco']];
 function balConfig(){ return window.__lrCfgPriv.balance || {}; }
@@ -23915,7 +23967,16 @@ function _balPartes(det, Lguardado, mes){
 }
 function _balSumar(o, k, v){ o[k] = (o[k] || 0) + v; }
 function _balColVacia(L){ return { L: L, rub: {}, comp: {}, emp: {}, pend: {}, horasSocio: {}, minEmp: {}, recup: 0, acre: {}, credMerc: 0, credEquip: 0, credSinPartes: 0,
-  inversion: 0, mercaderia: 0, sinClasif: 0, nSinClasif: 0, retiros: {}, retirosCaja: {} }; }
+  inversion: 0, mercaderia: 0, sinClasif: 0, nSinClasif: 0, retiros: {}, retirosCaja: {}, detalle: {}, items: [] }; }
+// Sección del balance de cada rubro (para la hoja de detalle del Excel).
+function _balSeccion(r){
+  if(r === 'sueldos') return 'Sueldos'; if(r === 'cargas_sociales') return 'Cargas sociales'; if(r === 'personal_extra') return 'Personal extra y limpieza';
+  if(r === 'alquiler') return 'Alquiler'; if(BAL_SERVICIOS.indexOf(r) !== -1) return 'Servicios'; if(BAL_IMPUESTOS.indexOf(r) !== -1) return 'Impuestos y contadora';
+  if(r === 'credito') return 'Cuotas de créditos y préstamos'; if(r === 'inversion') return 'Inversiones (no es costo)';
+  if(r === 'mercaderia') return 'Mercadería (no se resta: ya está en el costo)'; if(r === 'retiro_socio') return 'Retiros de socios (no es costo)';
+  if(r === 'sin_clasificar') return 'Sin clasificar (NO incluido)';
+  return 'Otros costos';
+}
 function _balSinTilde(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
 // Si un empleado es uno de los socios (por el primer nombre): sus horas no
 // se pagan, solo se cuentan.
@@ -23944,6 +24005,14 @@ function _balCostos(mes, pool, cierres){
       var socio = nombreActual((det && det.socio) || 'Sin socio');
       if(rubro === 'retiro_socio' && pagadoEnMes) _balSumar(c.retirosCaja, socio, m);
       if(mesItem !== mes) return;
+      var item = function(r, monto, detalle){ c.items.push({ L: L, fecha: e.fecha, seccion: _balSeccion(r), rubro: rubroDef(r).t, detalle: detalle || '', concepto: e.prov || '', monto: monto, comp: comp }); };
+      if(rubro === 'credito' && det && det.partes){
+        var pp = det.partes;
+        if(pp.gastos || pp.intereses) item('credito', ((Number(pp.gastos) || 0) + (Number(pp.intereses) || 0)) * f, nombreActual(det.acreedor || ''));
+        if(pp.equipamiento) item('inversion', (Number(pp.equipamiento) || 0) * f, 'Cuota que fue a equipamiento');
+        if(pp.mercaderia) item('mercaderia', (Number(pp.mercaderia) || 0) * f, 'Parte de mercadería de una cuota');
+      } else item(rubro, m, rubro === 'credito' ? nombreActual((det && det.acreedor) || '') : rubro === 'retiro_socio' ? socio : ((det && det.detalle) || ''));
+      if(tieneDetalle(rubro)) _balSumar(c.detalle, rubro+'|'+((det && det.detalle) || 'Sin detalle'), m);
       if(rubro === 'mercaderia'){ c.mercaderia += m; return; }
       if(rubro === 'sin_clasificar'){ c.sinClasif += m; c.nSinClasif++; return; }
       if(rubro === 'retiro_socio'){ _balSumar(c.retiros, socio, m); return; }
@@ -24062,7 +24131,8 @@ function _balCalcularTodo(mes, ventas, pool, cierres){
   var T = _balColVacia('T'), vT = {};
   [1, 2].forEach(function(L){
     var c = cols[L];
-    ['rub','comp','emp','pend','horasSocio','minEmp','acre','retiros','retirosCaja'].forEach(function(k){ Object.keys(c[k]).forEach(function(x){ _balSumar(T[k], x, c[k][x]); }); });
+    T.items = T.items.concat(c.items);
+    ['rub','comp','emp','pend','horasSocio','minEmp','acre','retiros','retirosCaja','detalle'].forEach(function(k){ Object.keys(c[k]).forEach(function(x){ _balSumar(T[k], x, c[k][x]); }); });
     ['recup','credMerc','credEquip','credSinPartes','inversion','mercaderia','sinClasif','nSinClasif'].forEach(function(k){ T[k] += c[k]; });
     ['ventasTot','costo','margen','sinCosto','revTotal','revConCosto','estimado100','fiadosMes','cobrosAnteriores','sinCobrar','cefhas','gananciaCargas'].forEach(function(k){ vT[k] = (vT[k] || 0) + (Number(ventas[L][k]) || 0); });
     vT.proyectadas = (ventas[L].proyectadas == null) ? null : (vT.proyectadas || 0) + ventas[L].proyectadas;
@@ -24096,6 +24166,11 @@ function _balFilas(b){
   var socios = sociosLista();
   unir('retiros').concat(unir('retirosCaja')).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
   var rub = function(k){ return function(c){ return c.rub[k] || 0; }; };
+  // Un rubro con "¿a qué fue?": su total y abajo cada detalle.
+  var rubDet = function(k){ var fila = [rubroDef(k).t, rub(k), '$'];
+    var dets = unir('detalle').filter(function(x){ return x.indexOf(k+'|') === 0; });
+    return [fila].concat(dets.map(function(x){ return ['    · '+x.slice(k.length + 1), function(c){ return c.detalle[x] || 0; }, '$']; })); };
+  var conDet = function(ks){ return ks.reduce(function(a, k){ return a.concat(tieneDetalle(k) ? rubDet(k) : [[rubroDef(k).t, rub(k), '$']]); }, []); };
   var compDe = function(ks){ return ['(de los cuales compartido)', function(c){ return ks.reduce(function(s, k){ return s + (c.comp[k] || 0); }, 0); }, '$', { ocultarCero: true }]; };
   var saldoDet = function(cual){ return BAL_SALDOS.map(function(s){ return [s[1], function(c){ var o = c.res[cual]; return (o && o[s[0]] != null) ? Number(o[s[0]]) || 0 : null; }, '$']; }); };
   var modoTxt = b.modoCargas === 'pagado' ? 'Lo pagado en el mes' : b.modoCargas === 'estimado' ? 'Estimado: '+String(b.pctCargas).replace('.', ',')+' % de los sueldos brutos (no hay pagos cargados)' : 'Sin pagos cargados y 0 % configurado';
@@ -24130,15 +24205,15 @@ function _balFilas(b){
     ['Cargas sociales', function(c){ return c.res.cargas; }, '$', { est: b.modoCargas === 'estimado', det: [['Cómo se calculó: '+modoTxt, function(){ return ''; }, 't']] }],
     ['Personal extra y limpieza', rub('personal_extra'), '$', { det: [compDe(['personal_extra'])] }],
     ['Alquiler', rub('alquiler'), '$', { det: [compDe(['alquiler'])] }],
-    ['Servicios (luz, gas, agua, internet y otros)', function(c){ return c.res.servicios; }, '$', { det: BAL_SERVICIOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_SERVICIOS)]) }],
-    ['Impuestos y contadora', function(c){ return c.res.impuestos; }, '$', { det: BAL_IMPUESTOS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_IMPUESTOS)]) }],
-    ['Otros costos (mantenimiento, bolsas, comisiones…)', function(c){ return c.res.otros; }, '$', { det: BAL_OTROS.map(function(k){ return [rubroDef(k).t, rub(k), '$']; }).concat([compDe(BAL_OTROS)]) }],
+    ['Servicios (luz, gas, agua, internet y otros)', function(c){ return c.res.servicios; }, '$', { det: conDet(BAL_SERVICIOS).concat([compDe(BAL_SERVICIOS)]) }],
+    ['Impuestos y contadora', function(c){ return c.res.impuestos; }, '$', { det: conDet(BAL_IMPUESTOS).concat([compDe(BAL_IMPUESTOS)]) }],
+    ['Otros costos (costos varios de Limay Rock)', function(c){ return c.res.otros; }, '$', { det: conDet(BAL_OTROS).filter(function(x){ return x[0] !== rubroDef('comisiones').t || unir('rub').indexOf('comisiones') !== -1; }).concat([compDe(BAL_OTROS)]) }],
     ['Total costos operativos (sin créditos)', function(c){ return c.res.totalOp; }, '$', { det: [
       ['Egresos sin clasificar (NO incluidos: clasificalos)', function(c){ return c.sinClasif; }, '$', { ocultarCero: true, alerta: true }],
       ['Mercadería pagada a proveedores (no se resta: ya está en el costo)', function(c){ return c.mercaderia; }, '$']
     ] }],
-    ['CRÉDITOS', null, 'h'],
-    ['Créditos y tarjetas (intereses y gastos de las cuotas)', function(c){ return c.res.creditos; }, '$', { det: unir('acre').map(function(a){ return [a, function(c){ return c.acre[a] || 0; }, '$']; }).concat([
+    ['CUOTAS DE CRÉDITOS Y PRÉSTAMOS', null, 'h'],
+    ['Cuotas de créditos y préstamos', function(c){ return c.res.creditos; }, '$', { det: unir('acre').map(function(a){ return [a, function(c){ return c.acre[a] || 0; }, '$']; }).concat([
       ['Parte de mercadería de las cuotas (no se resta)', function(c){ return c.credMerc; }, '$', { ocultarCero: true }],
       ['Parte de equipamiento de las cuotas (va a inversiones)', function(c){ return c.credEquip; }, '$', { ocultarCero: true }]
     ]) }],
@@ -24146,10 +24221,9 @@ function _balFilas(b){
     ['Total costos (operativos + créditos)', function(c){ return c.res.totalCostos; }, '$'],
     ['Resultado operativo', function(c){ return c.res.resOp; }, '$', { det: [['Resultado operativo antes de gastos compartidos', function(c){ return c.res.resOpAntes; }, '$']] }],
     ['Ganancia neta del negocio (después de créditos)', function(c){ return c.res.neto; }, '$'],
-    ['Inversiones del mes (equipamiento)', function(c){ return c.res.inversion; }, '$', { det: [
-      ['Compras de equipamiento', function(c){ return c.inversion - c.credEquip; }, '$'],
-      ['Cuotas que fueron a equipamiento', function(c){ return c.credEquip; }, '$']
-    ] }],
+    ['Inversiones del mes', function(c){ return c.res.inversion; }, '$', { det: rubDet('inversion').slice(1).concat([
+      ['Cuotas que fueron a equipamiento', function(c){ return c.credEquip; }, '$', { ocultarCero: true }]
+    ]) }],
     ['Disponible para repartir (ganancia neta − inversiones)', function(c){ return c.res.disponible; }, '$'],
     ['Ganancia neta con margen estimado al 100% (estimación)', function(c){ return c.res.netoEst; }, '$', { est: true }],
     ['Margen neto % sobre ventas', function(c){ return c.res.margenNeto; }, '%'],
@@ -24451,20 +24525,20 @@ function _xlHojaSucursal(wb, b, N){
   seccion('alq', '3. ALQUILER', [['Alquiler del mes', rub('alquiler'), comp(['alquiler'])]], 1, 'Total alquiler');
   seccion('serv', '4. SERVICIOS', [['Luz', rub('luz'), comp(['luz'])], ['Gas', rub('gas'), comp(['gas'])], ['Agua', rub('agua'), comp(['agua'])],
     ['Internet y teléfono', rub('internet'), comp(['internet'])], ['Otros servicios', rub('otros_servicios'), comp(['otros_servicios'])]], 2, 'Total servicios');
-  seccion('imp', '5. IMPUESTOS Y CONTADORA', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Impuesto de comercio', rub('comercio'), comp(['comercio'])],
-    ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])]], 1, 'Total impuestos y contadora');
-  seccion('otros', '6. OTROS COSTOS', [['Otros costos (mantenimiento, bolsas, seguro, etc.)', rub('otros_costos'), comp(['otros_costos'])],
-    ['Comisiones (Mercado Pago, banco)', rub('comisiones'), comp(['comisiones'])]], 2, 'Total otros costos');
+  seccion('imp', '5. IMPUESTOS Y CONTADORA', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Comercio municipal', rub('comercio'), comp(['comercio'])],
+    ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])], ['Otros impuestos (multas…)', rub('otros_impuestos'), comp(['otros_impuestos'])]], 1, 'Total impuestos y contadora');
+  seccion('otros', '6. OTROS COSTOS', [['Costos varios de Limay Rock', rub('otros_costos'), comp(['otros_costos'])]].concat(c.rub.comisiones ? [['Comisiones (pagos viejos)', rub('comisiones'), comp(['comisiones'])]] : []), 2, 'Total otros costos');
+  ws.getCell('I'+refs._ultimo).value = 'A qué fue cada pago: hoja "Detalle egresos", filtrando la sección "Otros costos".';
   var acr = acreedoresLista().slice(); Object.keys(c.acre).forEach(function(a){ if(acr.indexOf(a) === -1) acr.push(a); });
-  seccion('cred', '7. CRÉDITOS Y TARJETAS (intereses y gastos de las cuotas del mes)', acr.map(function(a){ return ['Cuota '+a, Math.round(c.acre[a] || 0), '']; }), Math.max(1, 7 - acr.length), 'Total créditos');
+  seccion('cred', '7. CUOTAS DE CRÉDITOS Y PRÉSTAMOS', acr.map(function(a){ return ['Cuota '+a, Math.round(c.acre[a] || 0), '']; }), Math.max(1, 7 - acr.length), 'Total créditos');
   var nCred = [];
   if(c.credMerc >= 0.5) nCred.push('parte de mercadería '+fmt(Math.round(c.credMerc))+' (no se resta: ya está en el costo)');
   if(c.credEquip >= 0.5) nCred.push('parte de equipamiento '+fmt(Math.round(c.credEquip))+' (va a inversiones)');
   ws.getCell('I'+refs._ultimo).value = 'Solo gastos e intereses de cada cuota'+(nCred.length ? '; '+nCred.join('; ') : '')+'.'+(c.credSinPartes ? ' Hay '+c.credSinPartes+' cuota(s) sin decir a qué corresponde: van enteras.' : '');
   // Inversiones: no son un costo del mes (no bajan la ganancia), pero se restan de lo que se reparte.
-  seccion('inv', '8. INVERSIONES DEL MES (equipamiento)', [['Compras de equipamiento', Math.round(c.inversion - c.credEquip), ''],
+  seccion('inv', '8. INVERSIONES DEL MES', [['Inversiones del mes', Math.round(c.inversion - c.credEquip), ''],
     ['Cuotas que fueron a equipamiento', Math.round(c.credEquip), '']], 1, 'Total inversiones del mes');
-  ws.getCell('I'+refs._ultimo).value = 'No es un costo del mes: no baja la ganancia neta, pero se resta del disponible para repartir entre los socios.';
+  ws.getCell('I'+refs._ultimo).value = 'No es un costo del mes: no baja la ganancia neta, pero se resta del disponible para repartir entre los socios. A qué fue cada una: hoja "Detalle egresos".';
   var fTotal = refs._ultimo + 2;
   'ABCDEFGHI'.split('').forEach(function(col){ _xlPoner(ws, col+fTotal, null, 'result'); });
   ws.getCell('A'+fTotal).value = 'TOTAL COSTOS OPERATIVOS (sin créditos)';
@@ -24506,16 +24580,16 @@ function _xlHojaBalance(wb, b, N, refs){
     ['extra', 'Personal extra y limpieza', '='+S+refs.extra, 'vinculo', XL_MON, ''],
     ['alq', 'Alquiler', '='+S+refs.alq, 'vinculo', XL_MON, ''],
     ['serv', 'Servicios (luz, gas, agua, internet y otros)', '='+S+refs.serv, 'vinculo', XL_MON, ''],
-    ['imp', 'Impuestos y contadora', '='+S+refs.imp, 'vinculo', XL_MON, 'Monotributo, impuesto de comercio y contadora.'],
-    ['otros', 'Otros costos (mantenimiento, bolsas, comisiones…)', '='+S+refs.otros, 'vinculo', XL_MON, ''],
+    ['imp', 'Impuestos y contadora', '='+S+refs.imp, 'vinculo', XL_MON, 'Monotributo, comercio municipal, contadora y otros impuestos.'],
+    ['otros', 'Otros costos (costos varios de Limay Rock)', '='+S+refs.otros, 'vinculo', XL_MON, 'El detalle de cada pago está en la hoja "Detalle egresos".'],
     ['totalOp', 'Total costos operativos (sin créditos)', function(){ return '=SUM('+B('sueldos')+':'+B('otros')+')'; }, 'total', XL_MON, '', 'total'],
-    [null, 'CRÉDITOS Y TARJETAS'],
-    ['cred', 'Créditos y tarjetas (intereses y gastos de las cuotas)', '='+S+refs.cred, 'vinculo', XL_MON, 'Solo lo que es costo de las cuotas. La parte de cada cuota que fue a mercadería o equipamiento no va acá.'],
+    [null, 'CUOTAS DE CRÉDITOS Y PRÉSTAMOS'],
+    ['cred', 'Cuotas de créditos y préstamos', '='+S+refs.cred, 'vinculo', XL_MON, 'Las cuotas del mes. Si alguna se dividió, la parte que fue a mercadería o equipamiento no va acá.'],
     [null, 'BALANCE'],
     ['totalCostos', 'Total costos (operativos + créditos)', function(){ return '='+B('totalOp')+'+'+B('cred'); }, 'formula', XL_MON, '', 'etq'],
     ['resOp', 'Resultado operativo', function(){ return '='+B('margen')+'-'+B('totalOp'); }, 'result', XL_MON, 'Margen bruto menos costos operativos, sin contar la deuda. Si es positivo, la sucursal se paga sola.', 'result'],
     ['neto', 'Ganancia neta del negocio (después de créditos)', function(){ return '='+B('resOp')+'-'+B('cred'); }, 'result', XL_MON, 'Lo que gana el negocio en el mes, después de todos los costos. Las inversiones no se restan acá: no son un costo del mes.', 'result'],
-    ['inv', 'Inversiones del mes (equipamiento)', '='+S+refs.inv, 'vinculo', XL_MON, 'Compras de equipamiento y la parte de las cuotas que fue a equipamiento.'],
+    ['inv', 'Inversiones del mes', '='+S+refs.inv, 'vinculo', XL_MON, 'Lo invertido en el mes. A qué fue cada una: hoja "Detalle egresos".'],
     ['disp', 'Disponible para repartir (ganancia neta − inversiones)', function(){ return '='+B('neto')+'-'+B('inv'); }, 'result', XL_MON, 'Es lo que se reparte entre los socios (hoja Balance Total).', 'result'],
     ['neto100', 'Ganancia neta con margen estimado al 100% (estimación)', function(){ return '='+B('neto')+'+'+B('margen100')+'-'+B('margen'); }, 'formula', XL_MON, 'Misma ganancia neta pero usando el margen estimado. Lo real está entre este número y el comprobado.'],
     ['margenNeto', 'Margen neto % sobre ventas', function(){ return '=IF('+B('ventas')+'=0,0,'+B('neto')+'/'+B('ventas')+')'; }, 'formula', '0.0%', 'Ganancia neta ÷ ventas. Si es 10%, de cada $100 que vendés te quedan $10.'],
@@ -24544,9 +24618,9 @@ function _xlHojaTotal(wb, b, F){
   _xlPoner(ws, 'A5', 'Mes', 'etq'); ws.getCell('A5').border = {}; _xlPoner(ws, 'B5', "='Balance S1'!"+cel('mes'), 'vinculo', '@'); ws.getCell('B5').border = {};
   var lin = [
     [6, 'Ventas del mes', 'ventas', 'formula', ''], [7, 'Margen bruto $ (comprobado)', 'margen', 'formula', ''], [8, 'Total costos operativos', 'totalOp', 'formula', ''],
-    [9, 'Créditos y tarjetas (intereses y gastos)', 'cred', 'formula', ''], [10, 'Resultado operativo', 'resOp', 'result', 'Si la sucursal se paga sola, sin contar la deuda.'],
+    [9, 'Cuotas de créditos y préstamos', 'cred', 'formula', ''], [10, 'Resultado operativo', 'resOp', 'result', 'Si la sucursal se paga sola, sin contar la deuda.'],
     [11, 'Ganancia neta del negocio', 'neto', 'result', 'Lo que gana el negocio en el mes. Las inversiones no se restan acá.'],
-    [12, 'Inversiones del mes (equipamiento)', 'inv', 'formula', 'Compras de equipamiento y cuotas que fueron a equipamiento.'],
+    [12, 'Inversiones del mes', 'inv', 'formula', 'No es un costo: se resta del disponible para repartir.'],
     [13, 'Disponible para repartir', 'disp', 'result', 'Ganancia neta − inversiones. Es lo que se reparte entre los socios (abajo).'],
     [14, 'Ganancia neta con margen estimado al 100% (estimación)', 'neto100', 'formula', 'Lo real está entre este número y la ganancia neta comprobada.'],
     [15, 'Fiado sin cobrar al cierre (informativo)', 'fiado', 'formula', 'Se cuenta como venta, pero la plata no entró: explica parte de la diferencia contra la caja real.']
@@ -24602,6 +24676,25 @@ function _xlHojaTotal(wb, b, F){
   _xlPoner(ws, 'A29', 'Diferencia contra el disponible para repartir', 'etq'); _xlPoner(ws, 'B29', '=B28-D13', 'formula', XL_MON);
   _xlPoner(ws, 'E29', 'Si es muy negativa, probablemente estás poniendo plata en stock o hay ventas que no se cobraron (fiados). Si es positiva, compraste menos mercadería de la que vendiste.', 'nota');
 }
+// Hoja "Detalle egresos": cada pago del mes, con la sección del balance en la
+// que cae y a qué fue. Con filtro: se elige una sección y se ve su detalle.
+function _xlHojaDetalle(wb, b){
+  var ws = wb.addWorksheet('Detalle egresos', { views: [{ state: 'frozen', ySplit: 3 }] });
+  ws.columns = [{ width: 10 }, { width: 12 }, { width: 40 }, { width: 34 }, { width: 26 }, { width: 34 }, { width: 16 }];
+  _xlPoner(ws, 'A1', 'Detalle de los egresos del mes', 'titulo');
+  _xlPoner(ws, 'A2', 'Tocá la flechita de "Sección del balance" y elegí una (por ejemplo, Otros costos) para ver a qué fue cada pago. Los compartidos aparecen con la parte de cada local.', 'sub');
+  ['Local','Fecha','Sección del balance','Rubro','¿A qué fue?','Concepto','Monto'].forEach(function(t, i){ _xlPoner(ws, 'ABCDEFG'.charAt(i)+'3', t, 'cab'); });
+  var items = b.cols[2].items.slice().sort(function(x, y){ return x.seccion < y.seccion ? -1 : x.seccion > y.seccion ? 1 : String(x.fecha) < String(y.fecha) ? -1 : 1; });
+  items.forEach(function(it, i){
+    var r = 4 + i;
+    _xlPoner(ws, 'A'+r, 'Limay '+it.L+(it.comp ? ' (compartido)' : ''), 'formula');
+    _xlPoner(ws, 'B'+r, String(it.fecha || '').slice(0, 10), 'formula');
+    _xlPoner(ws, 'C'+r, it.seccion, 'formula'); _xlPoner(ws, 'D'+r, it.rubro, 'formula');
+    _xlPoner(ws, 'E'+r, it.detalle || null, 'formula'); _xlPoner(ws, 'F'+r, it.concepto || null, 'formula');
+    _xlPoner(ws, 'G'+r, Math.round(it.monto * 100) / 100, 'formula', XL_MON);
+  });
+  ws.autoFilter = { from: 'A3', to: 'G'+Math.max(3, 3 + items.length) };
+}
 function exportarBalanceExcel(){
   var b = _bal.b;
   if(!b){ showToast('Primero tocá "Ver balance del mes"', true); return; }
@@ -24613,6 +24706,7 @@ function exportarBalanceExcel(){
     var r1 = _xlHojaSucursal(wb, b, 1), F = _xlHojaBalance(wb, b, 1, r1);
     var r2 = _xlHojaSucursal(wb, b, 2); _xlHojaBalance(wb, b, 2, r2);
     _xlHojaTotal(wb, b, F);
+    _xlHojaDetalle(wb, b);
     return wb.xlsx.writeBuffer();
   }).then(function(buf){
     var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
