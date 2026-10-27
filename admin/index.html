@@ -36909,40 +36909,100 @@ var L2_DATOS_PRUEBA = ['ventas', 'cierres', 'cierresMes', 'sesionesActivas', 'co
     return r;
   };
 })();
+// Detalle privado de los egresos y pagos privados del dueño hechos en Limay 2
+// probando: también se borran (antes quedaban y sumaban en el balance de Limay 2).
+var L2_PRIV_PRUEBA = ['egresosDet', 'egresosPriv'];
+var L2_NOMBRES = { ventas: 'Ventas', cierres: 'Cierres de turno', cierresMes: 'Cierres de mes', sesionesActivas: 'Turnos abiertos', consumos: 'Consumos',
+  egresos: 'Egresos', fiados: 'Fiados', consignaciones: 'Consignaciones', delivery: 'Pedidos de delivery', prestamos: 'Préstamos', transferCuentas: 'Transferencias entre cuentas',
+  cargasVirtuales: 'Cargas virtuales', mensajesPunt: 'Mensajes', movimientos: 'Movimientos', retirosCaja: 'Retiros e ingresos de caja', clientes: 'Clientes', sorteos: 'Sorteos',
+  logCatalogo: 'Registro del catálogo', stockAlerts: 'Alertas de stock', stockMovsHistorial: 'Historial de stock', historialCambios: 'Historial de cambios', pedidosProveedor: 'Pedidos a proveedores',
+  egresosDet: '🔒 Detalle privado de egresos', egresosPriv: '🔒 Tus pagos privados', productos: 'Productos', inventario: 'Stock (inventario)' };
+var _l2Rei = null;   // conteo previo: { cuenta: {coleccion: n}, traspasos: n }
+// Solo colecciones de Limay 2 ("l2_..."): nada de Limay 1 ni de lo compartido.
+function _l2Col(n){ return window.__lrColOriginal(window.__lrDB, 'l2_' + n); }
 function abrirReinicioL2(){
-  if(window.__lrSucursal !== 2) return;
+  if(window.__lrSucursal !== 2 || !window.__lrColOriginal) return;
+  if(!esCuentaDueno()){ showToast('🔒 Reiniciar Limay 2 solo con tu cuenta de dueño', true); return; }
   var ov = document.getElementById('l2ReinicioOv');
-  if(!ov){ ov = document.createElement('div'); ov.id = 'l2ReinicioOv'; ov.style.cssText = 'position:fixed;inset:0;z-index:950;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(ov); }
+  if(!ov){ ov = document.createElement('div'); ov.id = 'l2ReinicioOv'; ov.style.cssText = 'position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto'; document.body.appendChild(ov); }
   ov.style.display = 'flex';
-  ov.innerHTML = '<div style="background:#161616;border:1.5px solid var(--red);border-radius:10px;max-width:440px;width:100%;padding:18px">'+
+  _l2Rei = null;
+  ov.innerHTML = '<div style="background:#161616;border:1.5px solid var(--red);border-radius:10px;max-width:460px;width:100%;padding:18px;max-height:calc(100vh - 32px);overflow-y:auto;box-sizing:border-box">'+
     '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;letter-spacing:1.5px;color:var(--red);margin-bottom:8px">🧹 REINICIAR LIMAY ROCK 2</div>'+
-    '<div style="font-size:.8rem;color:var(--light);line-height:1.5">Se <b>borra</b> de Limay 2: ventas, turnos, cierres, egresos, retiros, consumos, fiados, clientes, movimientos, saldos de caja y MP, y los traspasos con Limay 1.<br>'+
-    'Se <b>deja</b>: productos y precios, proveedores, categorías, combos, empleados y configuración.<br>'+
-    '<span style="color:var(--gray)">Limay 1 no se toca. Si hiciste traspasos de prueba, el stock que salió de Limay 1 no vuelve solo.</span></div>'+
-    '<label style="display:flex;gap:8px;align-items:center;margin:12px 0 6px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiStock" checked style="width:16px;height:16px;accent-color:var(--red)"> Poner el stock de todos los productos en 0</label>'+
-    '<label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiProd" style="width:16px;height:16px;margin-top:2px;accent-color:var(--red)"><span>Borrar también <b>todos los productos</b> de Limay 2 (empezar sin ninguno y pasarlos de nuevo desde Limay 1). <span style="color:var(--gray)">En Limay 1 no se borra nada.</span></span></label>'+
+    '<div style="font-size:.8rem;color:var(--light);line-height:1.5">Borra lo que se hizo probando en Limay 2. Se <b>deja</b>: productos y precios, proveedores, categorías, combos, empleados y configuración.<br>'+
+    '<b>Limay 1 y los datos compartidos no se tocan.</b></div>'+
+    '<div style="font-size:.76rem;color:var(--gold);line-height:1.45;margin:8px 0;padding:8px;border:1px dashed rgba(244,180,0,.5);border-radius:6px">💾 Antes del reinicio real, hacé un respaldo nuevo de la base.</div>'+
+    '<div id="l2ReiConteo" style="font-size:.78rem;color:var(--gray);margin:8px 0">⏳ Contando lo que hay en Limay 2…</div>'+
+    '<label style="display:flex;gap:8px;align-items:center;margin:10px 0 6px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiStock" checked onchange="_l2ReiResumen()" style="width:16px;height:16px;accent-color:var(--red)"> Poner el stock de todos los productos en 0</label>'+
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font-size:.82rem;color:var(--white);cursor:pointer"><input type="checkbox" id="l2ReiProd" onchange="_l2ReiResumen()" style="width:16px;height:16px;margin-top:2px;accent-color:var(--red)"><span>Borrar también <b>todos los productos</b> de Limay 2 (empezar sin ninguno y pasarlos de nuevo desde Limay 1). <span style="color:var(--gray)">En Limay 1 no se borra nada.</span></span></label>'+
+    '<div id="l2ReiTotal" style="font-size:.82rem;color:var(--white);margin-bottom:8px"></div>'+
     '<div style="font-size:.75rem;color:var(--gray);margin-bottom:6px">Para confirmar, escribí <b style="color:var(--white)">REINICIAR</b>:</div>'+
     '<input id="l2ReiTxt" autocomplete="off" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1.5px solid var(--border);color:var(--white);border-radius:5px;padding:10px;font-size:.95rem;letter-spacing:2px">'+
-    '<div id="l2ReiEstado" style="font-size:.78rem;color:var(--gold);margin-top:8px;min-height:1em"></div>'+
+    '<div id="l2ReiEstado" style="font-size:.78rem;color:var(--gold);margin-top:8px;min-height:1em;white-space:pre-line"></div>'+
     '<div style="display:flex;gap:8px;margin-top:10px"><button onclick="document.getElementById(\'l2ReinicioOv\').style.display=\'none\'" style="flex:1;background:none;border:1px solid var(--border);color:var(--light);border-radius:5px;padding:11px;cursor:pointer">Cancelar</button>'+
-    '<button id="l2ReiBtn" onclick="reiniciarLimay2()" style="flex:1;background:var(--red);border:none;color:#fff;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer">BORRAR Y REINICIAR</button></div>'+
+    '<button id="l2ReiBtn" disabled onclick="reiniciarLimay2()" style="flex:1;background:var(--red);border:none;color:#fff;border-radius:5px;padding:11px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer;opacity:.5">BORRAR Y REINICIAR</button></div>'+
   '</div>';
+  contarReinicioL2();
 }
+// Paso 1: contar (solo lee). El botón de borrar queda bloqueado hasta tener el conteo.
+function contarReinicioL2(){
+  var lista = L2_DATOS_PRUEBA.concat(L2_PRIV_PRUEBA, ['productos', 'inventario']);
+  var tr = window.__lrColOriginal(window.__lrDB, 'traspasos');
+  Promise.all(lista.map(function(n){ return _l2Col(n).get({ source: 'server' }).then(function(s){ return [n, s.size]; }); })
+    .concat([Promise.all([tr.where('desde', '==', 2).get({ source: 'server' }), tr.where('hacia', '==', 2).get({ source: 'server' })])])
+  ).then(function(r){
+    var trs = r.pop(), cuenta = {};
+    r.forEach(function(p){ cuenta[p[0]] = p[1]; });
+    var ids = {}; trs.forEach(function(s){ s.forEach(function(d){ ids[d.id] = true; }); });
+    _l2Rei = { cuenta: cuenta, traspasos: Object.keys(ids).length };
+    var fila = function(n){ return '<tr><td style="padding:2px 6px 2px 0">'+(L2_NOMBRES[n] || n)+' <span style="color:var(--gray);font-size:.66rem">l2_'+n+'</span></td><td style="text-align:right;font-family:Oswald,sans-serif;color:var(--white)">'+cuenta[n]+'</td></tr>'; };
+    var conDatos = L2_DATOS_PRUEBA.concat(L2_PRIV_PRUEBA).filter(function(n){ return cuenta[n] > 0; });
+    var vacias = L2_DATOS_PRUEBA.length + L2_PRIV_PRUEBA.length - conDatos.length;
+    document.getElementById('l2ReiConteo').innerHTML =
+      '<div style="color:var(--light);margin-bottom:4px">Se borra de Limay 2 (documentos):</div>'+
+      (conDatos.length ? '<table style="width:100%;border-collapse:collapse;font-size:.76rem;color:var(--light)">'+conDatos.map(fila).join('')+'</table>' : '<div>No hay nada de prueba para borrar.</div>')+
+      (vacias ? '<div style="margin-top:4px">'+vacias+' colecciones más ya están vacías.</div>' : '')+
+      '<div style="margin-top:6px">Saldos de caja y Mercado Pago de Limay 2: quedan en $0.</div>'+
+      (_l2Rei.traspasos ? '<div style="margin-top:6px;color:var(--gold)">'+_l2Rei.traspasos+' traspaso'+(_l2Rei.traspasos === 1 ? '' : 's')+' con Limay 1 <b>no se borra'+(_l2Rei.traspasos === 1 ? '' : 'n')+'</b>: están en datos compartidos.</div>' : '');
+    _l2ReiResumen();
+  }).catch(function(e){
+    document.getElementById('l2ReiConteo').innerHTML = '<span style="color:var(--red)">⚠ No se pudo contar lo que hay en Limay 2 ('+escBaja((e && e.message) || e)+'). No se borra nada. Probá de nuevo con internet.</span>';
+  });
+}
+function _l2ReiTotal(){
+  if(!_l2Rei) return 0;
+  var c = _l2Rei.cuenta, t = 0;
+  L2_DATOS_PRUEBA.concat(L2_PRIV_PRUEBA).forEach(function(n){ t += c[n] || 0; });
+  if(document.getElementById('l2ReiProd').checked) t += (c.productos || 0) + (c.inventario || 0);
+  return t;
+}
+function _l2ReiResumen(){
+  if(!_l2Rei) return;
+  var c = _l2Rei.cuenta, prod = document.getElementById('l2ReiProd').checked, stock = document.getElementById('l2ReiStock').checked;
+  var t = _l2ReiTotal();
+  document.getElementById('l2ReiTotal').innerHTML = 'En total se borran <b>'+t+'</b> documentos de Limay 2'+
+    (prod ? ' (incluye '+(c.productos || 0)+' productos y '+(c.inventario || 0)+' de stock)' : (stock ? ', y se pone en 0 el stock de '+(c.inventario || 0)+' productos' : ''))+'.';
+  var btn = document.getElementById('l2ReiBtn');
+  btn.disabled = false; btn.style.opacity = '1';
+  btn.textContent = 'BORRAR '+t+' Y REINICIAR';
+}
+// Paso 2: borrar, con el conteo ya visto y confirmado.
 function reiniciarLimay2(){
-  if(window.__lrSucursal !== 2 || !window.__lrColOriginal) return;
+  if(window.__lrSucursal !== 2 || !window.__lrColOriginal || !_l2Rei) return;
+  if(!esCuentaDueno()){ showToast('🔒 Reiniciar Limay 2 solo con tu cuenta de dueño', true); return; }
   var txt = document.getElementById('l2ReiTxt'), est = document.getElementById('l2ReiEstado'), btn = document.getElementById('l2ReiBtn');
   if(!txt || txt.value.trim().toUpperCase() !== 'REINICIAR'){ est.textContent = 'Escribí REINICIAR para confirmar.'; return; }
   var ponerStock0 = document.getElementById('l2ReiStock').checked;
   var borrarProductos = document.getElementById('l2ReiProd').checked;
-  var db = window.__lrDB, col = function(n){ return window.__lrColOriginal(db, 'l2_' + n); };
+  var db = window.__lrDB, col = _l2Col, hechos = {};
   btn.disabled = true; btn.style.opacity = '.5';
-  var borrarTodo = function(ref){
-    return ref.get().then(function(snap){
+  var borrarTodo = function(n){
+    return col(n).get({ source: 'server' }).then(function(snap){
       var docs = snap.docs, p = Promise.resolve();
       for(var i = 0; i < docs.length; i += 400){
         (function(t){ p = p.then(function(){ var b = db.batch(); t.forEach(function(d){ b.delete(d.ref); }); return b.commit(); }); })(docs.slice(i, i + 400));
       }
-      return p.then(function(){ return docs.length; });
+      return p.then(function(){ hechos[n] = docs.length; return docs.length; });
     });
   };
   est.textContent = 'Revisando que no haya turnos abiertos…';
@@ -36950,15 +37010,11 @@ function reiniciarLimay2(){
     var abiertos = [];
     s.forEach(function(d){ var x = d.data(); if(x.turnoInicio && Date.now() - new Date(x.turnoInicio).getTime() < 16*3600000) abiertos.push(x.nombre || d.id); });
     if(abiertos.length) throw new Error('Hay turnos abiertos en Limay 2 ('+abiertos.join(', ')+'). Cerralos primero.');
-    var total = 0, p = Promise.resolve();
-    L2_DATOS_PRUEBA.forEach(function(n){
-      p = p.then(function(){ est.textContent = 'Borrando '+n+'…'; return borrarTodo(col(n)).then(function(k){ total += k; }); });
+    var p = Promise.resolve();
+    L2_DATOS_PRUEBA.concat(L2_PRIV_PRUEBA).forEach(function(n){
+      p = p.then(function(){ est.textContent = 'Borrando '+(L2_NOMBRES[n] || n)+'…'; return borrarTodo(n); });
     });
     return p.then(function(){
-      est.textContent = 'Borrando traspasos de prueba…';
-      var tr = window.__lrColOriginal(db, 'traspasos');
-      return Promise.all([borrarTodo(tr.where('desde', '==', 2)), borrarTodo(tr.where('hacia', '==', 2))]);
-    }).then(function(){
       est.textContent = 'Poniendo saldos en 0…';
       var hoy = fechaLocalStr();
       return Promise.all([
@@ -36969,7 +37025,7 @@ function reiniciarLimay2(){
     }).then(function(){
       if(!borrarProductos) return;
       est.textContent = 'Borrando los productos de Limay 2…';
-      return borrarTodo(col('productos')).then(function(k){ total += k; return borrarTodo(col('inventario')); }).then(function(k){ total += k; ponerStock0 = false; });
+      return borrarTodo('productos').then(function(){ return borrarTodo('inventario'); }).then(function(){ ponerStock0 = false; });
     }).then(function(){
       if(!ponerStock0) return;
       est.textContent = 'Poniendo el stock en 0…';
@@ -36987,9 +37043,11 @@ function reiniciarLimay2(){
         for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if(k && k.indexOf('l2:') === 0) borrar.push(k); }
         borrar.forEach(function(k){ localStorage.removeItem(k); });
       }catch(e){}
+      var total = 0, detalle = Object.keys(hechos).filter(function(n){ return hechos[n] > 0; }).map(function(n){ total += hechos[n]; return (L2_NOMBRES[n] || n)+': '+hechos[n]; });
+      window.__lrL2Reinicio = hechos;
       est.style.color = 'var(--green)';
-      est.textContent = '✅ Listo: Limay 2 quedó en cero ('+total+' registros de prueba borrados). Recargando…';
-      setTimeout(function(){ location.reload(); }, 2500);
+      est.textContent = '✅ Listo: Limay 2 quedó en cero ('+total+' documentos borrados).\n'+detalle.join(' · ')+'\nRecargando…';
+      setTimeout(function(){ location.reload(); }, 6000);
     });
   }).catch(function(e){
     btn.disabled = false; btn.style.opacity = '1';
@@ -37004,7 +37062,11 @@ var _ld = { per: 'hoy', datos: null, cargando: false, timer: null, desde: '', ha
 function ldCol(n, nombre){
   // En modo dueño (clave en la caja), lo privado va por su propia conexión.
   var t = window.__lrDuenoTemp;
-  if(t && t.db && !esCuentaDueno() && CLAVE_COLS_PRIV.indexOf(nombre) !== -1) return t.db.collection(n === 2 ? 'l2_' + nombre : nombre);
+  if(t && t.db && !esCuentaDueno() && CLAVE_COLS_PRIV.indexOf(nombre) !== -1){
+    var completo = n === 2 ? 'l2_' + nombre : nombre;
+    // En Limay 2 la conexión le agrega "l2_" sola a todo: acá va el nombre tal cual.
+    return window.__lrColOriginal ? window.__lrColOriginal(t.db, completo) : t.db.collection(completo);
+  }
   var db = window.__lrDB;
   if(window.__lrSucursal !== 2) return db.collection(n === 1 ? nombre : 'l2_' + nombre);
   return n === 2 ? db.collection(nombre) : window.__lrColOriginal(db, nombre);
