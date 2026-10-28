@@ -18890,6 +18890,13 @@ function renderLiquidacion() {
   }
 
   grid.innerHTML='';
+  var conDeuda = Object.keys(deudaEmp).filter(function(n){ return deudaEmp[n] > 0; });
+  if(conDeuda.length && esEquipoDueno()){
+    var barraD = document.createElement('div');
+    barraD.style.cssText = 'margin-bottom:10px;text-align:right';
+    barraD.innerHTML = '<button onclick="saldarDeudaAnterior()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✓ Saldar toda la deuda anterior al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+conDeuda.length+' empleado'+(conDeuda.length === 1 ? '' : 's')+')</button>';
+    grid.appendChild(barraD);
+  }
   empsSinAdmin.forEach(function(emp){
     var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0,parcial:0};
     var horas= d.totalMin/60;
@@ -18981,6 +18988,7 @@ function renderLiquidacion() {
         '<span class="liq-neto-lbl">A pagar</span>'+
         '<span class="liq-neto-val">'+(conValor?fmt(neto):'—')+'</span>'+
       '</div>'+
+      (deuda>0 ? '<button class="btn-liq-saldar" onclick="saldarDeudaAnterior(\''+nomEsc+'\')">✓ Marcar como saldada la deuda anterior al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+fmt(deuda)+')</button>' : '')+
       ((conValor && (d.minPagos>0 || consumo>0 || faltante>0 || deuda>0 || (esFijo && sueldo>0))) ?
         '<button class="btn-liq-saldar" style="background:var(--green);color:var(--black);border-color:var(--green);font-weight:700" onclick="registrarPagoLiquidacion(\''+nomEsc+'\')">💵 Registrar pago de la liquidación ('+fmt(neto)+')</button>' : '')+
       // Estos dos botones tocan solo lo de este local: aparecen si acá hay algo.
@@ -18989,7 +18997,7 @@ function renderLiquidacion() {
       '</div>';
     grid.appendChild(card);
   });
-  if(!grid.children.length){
+  if(!grid.querySelector('.liquidacion-card')){
     grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">Nadie trabajó horas en este período</div>';
   }
 }
@@ -19609,6 +19617,52 @@ function _pagosDelPeriodo(nombre, rango){
 function _deudaAnterior(nombre, rango, cierres, consumos){
   return consumos.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombre && pendienteConsumo(c) > 0 && new Date(c.fecha) < rango.desde; }).reduce(function(s,c){ return s+pendienteConsumo(c); },0) +
     cierres.filter(function(c){ return c.empleado===nombre && faltantePendienteCierre(c) > 0 && new Date(c.fecha) < rango.desde; }).reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+}
+// Deja como saldada la deuda de antes del período (consumos y faltantes viejos
+// que ya se arreglaron por fuera). No cuenta como pago de sueldo de ningún mes.
+// Sin nombre: la de todos.
+function saldarDeudaAnterior(nombre){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var rango = getRangoLiquidacion(), desdeTxt = _diaMes(fechaLocalStr(rango.desde));
+  var cons = _liqConsumos().filter(function(c){ return c.tipo==='empleado' && (!nombre || c.empleado===nombre) && pendienteConsumo(c) > 0 && new Date(c.fecha) < rango.desde; });
+  var falt = _liqCierres().filter(function(c){ return !c.manual && (!nombre || c.empleado===nombre) && faltantePendienteCierre(c) > 0 && new Date(c.fecha) < rango.desde; });
+  var porEmp = {};
+  cons.forEach(function(c){ porEmp[c.empleado] = (porEmp[c.empleado]||0) + pendienteConsumo(c); });
+  falt.forEach(function(c){ porEmp[c.empleado] = (porEmp[c.empleado]||0) + faltantePendienteCierre(c); });
+  var nombres = Object.keys(porEmp).sort();
+  if(!nombres.length){ showToast('No hay deuda anterior al '+desdeTxt); return; }
+  askConfirm('Marcar como SALDADA la deuda anterior al '+desdeTxt+' (consumos y faltantes viejos sin descontar):\n\n'+
+    nombres.map(function(n){ return '• '+n+': '+fmt(porEmp[n]); }).join('\n')+
+    '\n\nNo se les descuenta de ningún sueldo: queda como ya arreglada. Si alguno todavía te debe, cancelá y hacelo de a uno. ¿Confirmás?').then(function(ok){
+    if(!ok) return;
+    var ahoraISO = new Date().toISOString(), aca = function(c){ return !c._local; };
+    var idsC = {}; cons.filter(aca).forEach(function(c){ idsC[c.id] = true; });
+    if(Object.keys(idsC).length){
+      var consumos = getConsumos();
+      consumos.forEach(function(c){ if(!idsC[c.id]) return;
+        (c.descuentos = c.descuentos || []).push({ fecha: ahoraISO, monto: pendienteConsumo(c), mes: 'saldado-aparte' });
+        c.montoDescontado = c.total||0; c.saldado = true; c.fechaSaldado = ahoraISO; c.saldadoAparte = true; });
+      saveConsumos(consumos);
+    }
+    var idsF = {}; falt.filter(aca).forEach(function(c){ idsF[c.fecha] = true; });
+    if(Object.keys(idsF).length){
+      var cierres = getCierres();
+      cierres.forEach(function(c){ if(!idsF[c.fecha] || (nombre && c.empleado !== nombre)) return;
+        if(faltanteCajaCierre(c) > 0){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; c.arqueo.mesDescuento = 'saldado-aparte'; }
+        if(faltanteMPCierre(c) > 0){ c.mp.faltanteSaldado = true; c.mp.fechaFaltanteSaldado = ahoraISO; c.mp.mesDescuento = 'saldado-aparte'; } });
+      saveCierres(cierres);
+    }
+    // Lo del otro local, directo en su base.
+    var otros = [];
+    cons.filter(function(c){ return c._local; }).forEach(function(c){ otros.push(ldCol(liqLocalOtro(), 'consumos').doc(c._docId).update({ saldado: true, fechaSaldado: ahoraISO, montoDescontado: c.total||0, saldadoAparte: true })); });
+    falt.filter(function(c){ return c._local; }).forEach(function(c){ var u = {};
+      if(faltanteCajaCierre(c) > 0){ u['arqueo.faltanteSaldado'] = true; u['arqueo.mesDescuento'] = 'saldado-aparte'; }
+      if(faltanteMPCierre(c) > 0){ u['mp.faltanteSaldado'] = true; u['mp.mesDescuento'] = 'saldado-aparte'; }
+      otros.push(ldCol(liqLocalOtro(), 'cierres').doc(c._docId).update(u)); });
+    if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); }).catch(function(e){ showToast('⚠ No se pudo marcar lo del otro local: '+((e && e.message) || e), true); });
+    showToast('✅ Deuda anterior al '+desdeTxt+' saldada'+(nombre ? ' ('+nombre+')' : ' ('+nombres.length+' empleado'+(nombres.length === 1 ? '' : 's')+')'));
+    renderLiquidacion();
+  });
 }
 function exportarLiquidacionPDF(nombre) {
   var empleados = getEmpleados();
@@ -30257,12 +30311,30 @@ function guardarEmpModal() {
     }
     askConfirm('Vas a cambiar el nombre de "'+nombreViejo+'" a "'+nombre+'".\n\n'+(usos.length ? 'Todo su historial pasa al nombre nuevo: '+usos.join(', ')+'.' : 'No tiene historial todavía.')+'\n\n¿Seguimos?').then(function(ok){
       if(!ok) return;
-      showToast('⏳ Pasando el historial de '+nombreViejo+' a '+nombre+'...');
-      migrarNombreEmpleado(nombreViejo, nombre).then(function(){
+      // Mientras se pasa el historial: cartel con el avance y aviso si se intenta recargar.
+      var ovR = document.createElement('div');
+      ovR.id = 'lrRenombreOv';
+      ovR.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px';
+      ovR.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:380px;width:100%;padding:18px;text-align:center;color:var(--light);font-family:Barlow,sans-serif">'+
+        '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px;margin-bottom:8px">⏳ PASANDO EL HISTORIAL</div>'+
+        '<div style="font-size:.9rem;margin-bottom:10px">De <b></b> a <b></b>. Puede tardar un par de minutos.<br><b style="color:#e74c3c">No cierres ni recargues la página.</b></div>'+
+        '<div style="background:#333;border-radius:6px;height:10px;overflow:hidden"><div id="lrRenombreBarra" style="background:var(--gold);height:100%;width:0%"></div></div>'+
+        '<div id="lrRenombreTxt" style="font-size:.75rem;color:var(--gray);margin-top:6px">Empezando…</div></div>';
+      var bs = ovR.querySelectorAll('b'); bs[0].textContent = nombreViejo; bs[1].textContent = nombre;
+      document.body.appendChild(ovR);
+      var noRecargar = function(e){ e.preventDefault(); e.returnValue = ''; return ''; };
+      window.addEventListener('beforeunload', noRecargar);
+      var terminar = function(){ window.removeEventListener('beforeunload', noRecargar); ovR.remove(); };
+      migrarNombreEmpleado(nombreViejo, nombre, function(h, t){
+        var b = document.getElementById('lrRenombreBarra'), x = document.getElementById('lrRenombreTxt');
+        if(b) b.style.width = Math.round(h / t * 100)+'%'; if(x) x.textContent = h+' de '+t+' partes';
+      }).then(function(){
+        terminar();
         window.__lrHistExtra = { renombreEmpleado: { de: nombreViejo, a: nombre } };
         window.__lrRenombreListo = true;
         try{ guardarEmpModal(); } finally { window.__lrRenombreListo = false; }
       }).catch(function(e){
+        terminar();
         console.error('Renombre de empleado', e);
         alert('❌ No se pudo pasar el historial (revisá la conexión). El nombre NO se cambió todavía: volvé a tocar Guardar para reintentar.');
       });
@@ -30344,7 +30416,7 @@ function guardarEmpModal() {
 // Pasa todo lo que está a nombre de una persona al nombre nuevo (renombre).
 // Se puede repetir sin problema: si se corta a mitad, al reintentar sigue con
 // lo que quedó con el nombre viejo.
-function migrarNombreEmpleado(viejo, nuevo){
+function migrarNombreEmpleado(viejo, nuevo, progreso){
   var db = window.__lrDB;
   var col = function(k, def){ return db.collection((window.__lrCOL && window.__lrCOL[k]) || def); };
   // Lo de los dos locales (ventas, cierres y consumos de Limay 1 y de Limay 2).
@@ -30379,7 +30451,9 @@ function migrarNombreEmpleado(viejo, nuevo){
       return Promise.all(snap.docs.map(function(doc){ var l = (doc.data().destinatarios || []).map(function(n){ return n === viejo ? nuevo : n; }); return doc.ref.update({ destinatarios: l }); }));
     });
   });
-  return Promise.all(donde.map(cambiar).concat(mensajesProg)).then(function(r){
+  var partes = donde.map(cambiar).concat(mensajesProg), hechas = 0;
+  if(progreso) partes.forEach(function(p){ p.then(function(){ hechas++; progreso(hechas, partes.length); }, function(){}); });
+  return Promise.all(partes).then(function(r){
     if(!esEquipoDueno()) return r;
     // Lo privado (valor hora, sueldo fijo, horas a mano) pasa a la ficha con el nombre nuevo.
     var priv = colPriv('empleadosPriv');
