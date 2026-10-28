@@ -5032,6 +5032,7 @@ body.night-on{background:#080005}
             <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
             <div class="field" id="eSucRow"><label>🏪 ¿Qué local lo paga?</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
           </div>
+          <div class="field" id="eTurnoRow" style="display:none"><label>🗓 ¿Pagás un turno puntual?</label><select id="eTurno" onchange="elegirTurnoEgreso()"></select></div>
           <div id="eRepartoRow" style="display:none">
             <div class="field-row">
               <div class="field"><label>💵 Pone Limay 1 $</label><input type="text" inputmode="decimal" id="eComp1" placeholder="0" oninput="formatMontoDecInput(this);compartidoCambio()"></div>
@@ -16379,6 +16380,7 @@ function pintarDetEgreso(){
   ver('eCredRow', r === 'credito');
   ver('eSocioRow', r === 'retiro_socio');
   ver('eDetalleRow', tieneDetalle(r));
+  pintarTurnoEgreso();
   var de = document.getElementById('eDetalle');
   if(de && tieneDetalle(r) && de.dataset.rubro !== r){ de.innerHTML = _opcionesDetalle(r, ''); de.dataset.rubro = r; }
   var emp = document.getElementById('eEmpleado');
@@ -16409,6 +16411,38 @@ function elegirEmpleadoEgreso(){
   var v = (document.getElementById('eEmpleado')||{}).value || '';
   var c = document.getElementById('eConcepto');
   if(v && c && (!c.value || c.dataset.auto === '1')){ c.value = v; c.dataset.auto = '1'; }
+  pintarTurnoEgreso();
+}
+// Pago de un turno puntual (ej.: el domingo que se paga al terminar): la
+// lista son los turnos del mes que no están pagados enteros.
+function pintarTurnoEgreso(){
+  var row = document.getElementById('eTurnoRow'), sel = document.getElementById('eTurno'); if(!row || !sel) return;
+  var r = (document.getElementById('eRubro')||{}).value, emp = (document.getElementById('eEmpleado')||{}).value || '', mes = (document.getElementById('eMes')||{}).value || '';
+  var vh = emp ? valorHoraDe(emp) : 0;
+  if(!esRubroPersonal(r) || !emp || !mes || !esEquipoDueno() || tipoSueldoDe(emp) === 'fijo' || !(vh > 0)){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
+  var clave = emp+'|'+mes;
+  if(sel.dataset.clave !== clave){
+    var rep = _repartoSueldo(emp, mes) || { porTurno: {} };
+    var hora = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''; };
+    var opts = cierresConManuales().filter(function(c){ return c.empleado === emp && _mesTurno(c) === mes && !(rep.porTurno[c.fecha] || {}).cubierto; })
+      .sort(function(a, b){ return new Date(b.fecha) - new Date(a.fecha); })
+      .map(function(c){
+        var valor = _valorTurno(c, vh), falta = valor - ((rep.porTurno[c.fecha] || {}).parcial || 0);
+        var dia = new Date(c.fecha).toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+        var m = Math.round(c.durMinutos || 0);
+        return '<option value="'+escBaja(c.fecha)+'" data-falta="'+falta+'">'+dia.charAt(0).toUpperCase()+dia.slice(1)+' '+_diaMes(c.fecha)+
+          (c.manual ? ' · a mano' : ' · '+hora(c.horaInicio)+' a '+hora(c.horaFin))+' · '+Math.floor(m / 60)+' h'+(m % 60 ? ' '+(m % 60)+' m' : '')+' · '+fmt(falta)+(falta < valor ? ' (falta)' : '')+'</option>';
+      });
+    sel.innerHTML = '<option value="">No, a cuenta del mes (de los turnos más viejos)</option>'+opts.join('');
+    sel.dataset.clave = clave;
+  }
+  row.style.display = sel.options.length > 1 ? '' : 'none';
+}
+function elegirTurnoEgreso(){
+  var sel = document.getElementById('eTurno'); if(!sel) return;
+  var o = sel.options[sel.selectedIndex], falta = o ? Number(o.getAttribute('data-falta')) : 0;
+  var m = document.getElementById('eMonto');
+  if(falta > 0 && m){ m.value = String(Math.round(falta)); formatMontoDecInput(m); }
 }
 // Compartido: se pone la plata que pone cada local; el total va al monto del
 // pago (salvo pago mixto) y se muestra qué % es cada parte.
@@ -16448,6 +16482,7 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
     var emp = val('eEmpleado');
     if(emp) det.empleado = emp;
     else if(rubro === 'sueldos') return { error: 'Elegí a qué empleado le pagaste', campo: 'eEmpleado' };
+    if(emp && val('eTurno')) det.turno = val('eTurno');   // pago de un turno puntual
   }
   if(det.suc === 'compartido'){
     var a = getMontoInputValue('eComp1'), b = getMontoInputValue('eComp2');
@@ -16482,6 +16517,7 @@ function resetDetEgreso(){
   var cr = document.getElementById('eCompResumen'); if(cr) cr.innerHTML = '';
   ['ePMerc','ePEquip','ePGastos','ePInt','eComp1','eComp2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
   ['eEmpleado','eAcreedor','eSocio','eDetalle'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
+  var et = document.getElementById('eTurno'); if(et){ et.innerHTML = ''; et.dataset.clave = ''; }
   var c = document.getElementById('eConcepto'); if(c) delete c.dataset.auto;
   var cp = document.getElementById('eCredPartes'); if(cp && cp.style.display !== 'none') toggleCredPartes();
   pintarDetEgreso();
@@ -18399,7 +18435,7 @@ function pagosSueldoLista(nombre, mes){
     if(!d || (d.rubro !== 'sueldos' && d.rubro !== 'personal_extra') || (d.empleado || '') !== nombre) return null;
     if((d.mes || String(e.fecha).slice(0,7)) !== mes) return null;
     // Cuenta lo que cobró; lo descontado (consumos y faltantes) se suma aparte (descontadoSueldoMes).
-    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq };
+    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq, turno: d.turno || '' };
   }).filter(Boolean).sort(function(a, b){ return a.fecha.localeCompare(b.fecha) || String(a.ts).localeCompare(String(b.ts)) || (a.id - b.id); });
 }
 // Lo que se le descontó del sueldo en un mes (consumos y faltantes ya descontados): también le paga horas.
@@ -18440,19 +18476,14 @@ function textoEstadoSueldo(e){
 // Qué turnos cubrió cada pago del mes (en el orden en que se pagaron).
 function coberturaPagosSueldo(nombre, mes){
   var vh = valorHoraDe(nombre), est = estadoSueldoMes(nombre, mes);
-  var turnos = (est.fijo ? [] : cierresConManuales()).filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
-    .sort(function(a, b){ return new Date(a.fecha) - new Date(b.fecha); })
-    .map(function(c){ return { fecha: c.fecha, valor: vh > 0 ? _valorTurno(c, vh) : 0, cubierto: 0 }; });
-  var i = 0, lista = est.pagos.slice();
-  if(est.descontado) lista.push({ fecha: '', monto: est.descontado, neto: est.descontado, liq: false, descuento: true });
+  var asig = est.fijo ? null : _asignarPagosSueldo(nombre, mes);
+  var lista = asig ? asig.pagos : est.pagos.slice().concat(est.descontado ? [{ fecha: '', monto: est.descontado, neto: est.descontado, liq: false, descuento: true }] : []);
   return lista.map(function(p){
-    var resto = p.monto, enteros = [], partes = [];
-    while(resto > 0.5 && i < turnos.length){
-      var t = turnos[i], falta = t.valor - t.cubierto, toma = Math.min(falta, resto);
-      if(toma >= falta - 0.5){ if(t.cubierto > 0) partes.push('lo que faltaba del '+_diaMes(t.fecha)+' ('+fmt(Math.round(toma))+')'); else enteros.push(t.fecha); t.cubierto = t.valor; i++; }
-      else { partes.push('parte del '+_diaMes(t.fecha)+' ('+fmt(Math.round(toma))+' de '+fmt(t.valor)+')'); t.cubierto += toma; }
-      resto -= toma;
-    }
+    var enteros = [], partes = [];
+    (p.tramos || []).forEach(function(x){
+      if(x.entero){ if(x.previo > 0) partes.push('lo que faltaba del '+_diaMes(x.fecha)+' ('+fmt(Math.round(x.toma))+')'); else enteros.push(x.fecha); }
+      else partes.push('parte del '+_diaMes(x.fecha)+' ('+fmt(Math.round(x.toma))+' de '+fmt(x.valor)+')');
+    });
     var txt = [];
     if(enteros.length === 1) txt.push('turno del '+_diaMes(enteros[0]));
     else if(enteros.length > 1) txt.push('turnos del '+_diaMes(enteros[0])+' al '+_diaMes(enteros[enteros.length - 1])+' ('+enteros.length+' turnos)');
@@ -18465,18 +18496,32 @@ function coberturaPagosSueldo(nombre, mes){
 }
 // Cómo se reparte lo pagado entre los turnos del mes (sin guardar nada):
 // por turno, si queda cubierto entero o cuánto se pagó en parte.
-function _repartoSueldo(nombre, mes, cierres){
+// Reparte lo pagado del mes entre los turnos: primero cada pago de un turno
+// puntual cubre ese turno; lo demás (y lo que sobre) va de los más viejos a
+// los más nuevos. Devuelve los turnos con lo cubierto y, por pago, qué cubrió.
+function _asignarPagosSueldo(nombre, mes, cierres){
   var vh = valorHoraDe(nombre); if(!(vh > 0)) return null;
-  var plata = pagosSueldoMes(nombre, mes), porTurno = {};
-  (cierres || cierresConManuales()).filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
+  var turnos = (cierres || cierresConManuales()).filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
     .sort(function(a, b){ return new Date(a.fecha) - new Date(b.fecha); })
-    .forEach(function(c){
-      var valor = _valorTurno(c, vh);
-      if(plata >= valor - 0.5){ plata -= valor; porTurno[c.fecha] = { cubierto: true }; }
-      else if(plata > 0.5){ porTurno[c.fecha] = { parcial: Math.round(plata), valor: valor }; plata = 0; }
-      else porTurno[c.fecha] = {};
-    });
-  return { porTurno: porTurno, aFavor: Math.max(0, Math.round(plata)) };
+    .map(function(c){ return { fecha: c.fecha, valor: _valorTurno(c, vh), cubierto: 0 }; });
+  var pagos = pagosSueldoLista(nombre, mes).map(function(p){ return Object.assign({}, p, { tramos: [], resto: p.monto }); });
+  var desc = descontadoSueldoMes(nombre, mes);
+  if(desc) pagos.push({ fecha: '', monto: desc, neto: desc, liq: false, descuento: true, tramos: [], resto: desc });
+  var tomar = function(p, t){
+    var falta = t.valor - t.cubierto, toma = Math.min(falta, p.resto);
+    if(toma <= 0.5) return;
+    p.tramos.push({ fecha: t.fecha, toma: toma, valor: t.valor, previo: t.cubierto, entero: toma >= falta - 0.5 });
+    t.cubierto += toma; p.resto -= toma;
+  };
+  pagos.forEach(function(p){ if(!p.turno) return; var t = turnos.find(function(x){ return x.fecha === p.turno; }); if(t) tomar(p, t); });
+  pagos.forEach(function(p){ turnos.forEach(function(t){ if(p.resto > 0.5 && t.cubierto < t.valor - 0.5) tomar(p, t); }); });
+  return { turnos: turnos, pagos: pagos, sobra: pagos.reduce(function(s, p){ return s + Math.max(0, p.resto); }, 0) };
+}
+function _repartoSueldo(nombre, mes, cierres){
+  var a = _asignarPagosSueldo(nombre, mes, cierres); if(!a) return null;
+  var porTurno = {};
+  a.turnos.forEach(function(t){ porTurno[t.fecha] = t.cubierto >= t.valor - 0.5 ? { cubierto: true } : t.cubierto > 0.5 ? { parcial: Math.round(t.cubierto), valor: t.valor } : {}; });
+  return { porTurno: porTurno, aFavor: Math.max(0, Math.round(a.sobra)) };
 }
 function aplicarSueldoATurnos(nombre, mes){
   if(!esEquipoDueno()) return null;
