@@ -18480,9 +18480,15 @@ function aplicarSueldoATurnos(nombre, mes){
     if(x.cubierto){
       if(!c.pagado){ c.pagado = true; c.fechaPagado = new Date().toISOString(); c.pagadoPorSueldo = true; cambio = true; marcados++; }
       if(c.pagoParcial){ delete c.pagoParcial; cambio = true; }
-    } else if(x.parcial){
-      if(!c.pagado){ if(c.pagoParcial !== x.parcial){ c.pagoParcial = x.parcial; cambio = true; } parcial = { pagado: x.parcial, valor: x.valor }; }
-    } else if(c.pagoParcial && !c.pagado){ delete c.pagoParcial; cambio = true; }
+    } else {
+      // Un turno que había marcado un sueldo y ya no lo cubre (el pago se borró o
+      // se pasó a otro empleado o mes) vuelve a quedar sin pagar. Los marcados a
+      // mano no se tocan.
+      if(c.pagado && c.pagadoPorSueldo){ c.pagado = false; delete c.pagadoPorSueldo; delete c.fechaPagado; cambio = true; }
+      if(x.parcial){
+        if(!c.pagado){ if(c.pagoParcial !== x.parcial){ c.pagoParcial = x.parcial; cambio = true; } parcial = { pagado: x.parcial, valor: x.valor }; }
+      } else if(c.pagoParcial && !c.pagado){ delete c.pagoParcial; cambio = true; }
+    }
   });
   if(cambio) saveCierres(cierres);
   var claves = Object.keys(r.porTurno);
@@ -23971,6 +23977,8 @@ function guardarClasificacion(id, silencioso){
   // Solo se agrega el detalle: el egreso común no se toca (eso lo hace la fase B).
   guardarDetEgreso(det);
   if(det.empleado && (det.rubro === 'sueldos' || det.rubro === 'personal_extra')) aplicarSueldoATurnos(det.empleado, det.mes);
+  // Si antes era de otro empleado o de otro mes, se revisan también esos turnos.
+  if(previo.empleado && (previo.empleado !== det.empleado || previo.mes !== det.mes)) aplicarSueldoATurnos(previo.empleado, previo.mes || det.mes);
   delete _clf.borr[String(id)];
   if(!silencioso){ showToast('✅ Clasificado: '+rubroDef(b.rubro).t); pintarClasificar(); }
   return true;
