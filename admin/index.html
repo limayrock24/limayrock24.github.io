@@ -18404,11 +18404,18 @@ function pagosSueldoLista(nombre, mes){
 }
 // Lo que se le descontó del sueldo en un mes (consumos y faltantes ya descontados): también le paga horas.
 function descontadoSueldoMes(nombre, mes){
-  var cons = getConsumos().filter(function(c){ return c && c.tipo === 'empleado' && c.empleado === nombre && fechaLocalStr(new Date(c.fecha)).slice(0,7) === mes; })
-    .reduce(function(s, c){ return s + Math.max(0, (Number(c.total) || 0) - pendienteConsumo(c)); }, 0);
-  var falt = getCierres().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; }).reduce(function(s, c){
-    var a = (c.arqueo && c.arqueo.diferencia < 0 && c.arqueo.faltanteSaldado) ? Math.abs(c.arqueo.diferencia) : 0;
-    var m = (c.mp && c.mp.diferencia < 0 && c.mp.faltanteSaldado) ? Math.abs(c.mp.diferencia) : 0;
+  // Lo descontado cuenta para el mes de la liquidación en que se descontó (si
+  // se anotó); si no, para el mes del consumo o del faltante.
+  var cons = getConsumos().filter(function(c){ return c && c.tipo === 'empleado' && c.empleado === nombre; }).reduce(function(s, c){
+    var total = Math.max(0, (Number(c.total) || 0) - pendienteConsumo(c));
+    var conMes = (c.descuentos || []).filter(function(d){ return d && d.mes; });
+    var marcado = conMes.reduce(function(t, d){ return t + (Number(d.monto) || 0); }, 0);
+    var delMes = conMes.filter(function(d){ return d.mes === mes; }).reduce(function(t, d){ return t + (Number(d.monto) || 0); }, 0);
+    return s + delMes + (fechaLocalStr(new Date(c.fecha)).slice(0,7) === mes ? Math.max(0, total - marcado) : 0);
+  }, 0);
+  var falt = getCierres().filter(function(c){ return c.empleado === nombre; }).reduce(function(s, c){
+    var a = (c.arqueo && c.arqueo.diferencia < 0 && c.arqueo.faltanteSaldado && (c.arqueo.mesDescuento || _mesTurno(c)) === mes) ? Math.abs(c.arqueo.diferencia) : 0;
+    var m = (c.mp && c.mp.diferencia < 0 && c.mp.faltanteSaldado && (c.mp.mesDescuento || _mesTurno(c)) === mes) ? Math.abs(c.mp.diferencia) : 0;
     return s + a + m;
   }, 0);
   return Math.round(cons + falt);
@@ -18858,6 +18865,13 @@ function renderLiquidacion() {
     pl(c.empleado, localDe(c)).faltante += faltantePendienteCierre(c);
   });
 
+  // Deuda de meses anteriores: consumos y faltantes que quedaron sin descontar.
+  var deudaEmp = {};
+  consumos.filter(function(c){ return c.tipo==='empleado' && pendienteConsumo(c) > 0 && new Date(c.fecha) < rangoLiq.desde; })
+    .forEach(function(c){ deudaEmp[c.empleado] = (deudaEmp[c.empleado]||0) + pendienteConsumo(c); });
+  cierres.filter(function(c){ return faltantePendienteCierre(c) > 0 && new Date(c.fecha) < rangoLiq.desde; })
+    .forEach(function(c){ deudaEmp[c.empleado] = (deudaEmp[c.empleado]||0) + faltantePendienteCierre(c); });
+
   var empleados = getEmpleados();
   var empsSinAdmin = empleados.filter(function(e){ return e.rol!=='admin' || empData[e.nombre]; });   // un admin con turnos (un socio) también se liquida
 
@@ -18883,13 +18897,14 @@ function renderLiquidacion() {
     var hayAdel = d.turnosAdel > 0;
     var consumo= consEmp[emp.nombre]||0;
     var faltante = faltEmp[emp.nombre]||0;
-    var neto   = sueldo - consumo - faltante;
+    var deuda  = deudaEmp[emp.nombre]||0;
+    var neto   = sueldo - consumo - faltante - deuda;
 
     // Solo quien trabajó horas en el período (repartidores incluidos: si no
     // hicieron turnos de caja, no aparecen). Excepción: si no trabajó pero
     // tiene consumos o faltantes pendientes, se muestra igual para no dejar
     // afuera nada a descontar.
-    if(!d.turnos && !consumo && !faltante && !esFijo) return;
+    if(!d.turnos && !consumo && !faltante && !esFijo && !deuda) return;
     var conValor = valorHora > 0 || esFijo;
 
     // Tarjeta plegada: se ve el encabezado (nombre, turnos, horas y a pagar) y
@@ -18943,6 +18958,7 @@ function renderLiquidacion() {
         (d.parcial > 0 ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado en parte (descontado)</span><span class="liq-val">'+fmt(d.parcial)+'</span></div>' : '')+
         '<div class="liq-row"><span class="liq-lbl">🛒 Consumos a descontar</span><span class="liq-val egr">−'+fmt(consumo)+'</span></div>'+
         (faltante>0?'<div class="liq-row"><span class="liq-lbl">🔴 Faltantes de caja</span><span class="liq-val egr">−'+fmt(faltante)+'</span></div>':'')+
+        (deuda>0?'<div class="liq-row"><span class="liq-lbl">📌 Deuda de meses anteriores</span><span class="liq-val egr">−'+fmt(deuda)+'</span></div>':'')+
         (liqModoDos() && !esFijo ? [1, 2].map(function(L){
           var x = (porLoc[emp.nombre] || {})[L]; if(!x) return '';
           var paga = Math.round((x.minPagos/60) * valorHora) - (x.parcial || 0) - x.consumo - x.faltante;
@@ -18956,7 +18972,7 @@ function renderLiquidacion() {
         '<span class="liq-neto-lbl">A pagar</span>'+
         '<span class="liq-neto-val">'+(conValor?fmt(neto):'—')+'</span>'+
       '</div>'+
-      ((conValor && (d.minPagos>0 || consumo>0 || faltante>0 || (esFijo && sueldo>0))) ?
+      ((conValor && (d.minPagos>0 || consumo>0 || faltante>0 || deuda>0 || (esFijo && sueldo>0))) ?
         '<button class="btn-liq-saldar" style="background:var(--green);color:var(--black);border-color:var(--green);font-weight:700" onclick="registrarPagoLiquidacion(\''+nomEsc+'\')">💵 Registrar pago de la liquidación ('+fmt(neto)+')</button>' : '')+
       // Estos dos botones tocan solo lo de este local: aparecen si acá hay algo.
       (((liqModoDos() ? ((porLoc[emp.nombre]||{})[liqLocalAca()]||{}).consumo : consumo) > 0) ? '<button class="btn-liq-saldar" onclick="marcarConsumosSaldados(\''+emp.nombre+'\')">✓ Marcar consumos como descontados'+(liqModoDos()?' (solo Limay '+liqLocalAca()+')':'')+'</button>' : '')+
@@ -19364,7 +19380,15 @@ function registrarPagoLiquidacion(nombreEmp) {
   if(esFijo){ turnos = []; minPago = 0; sueldo = Math.max(0, sueldoFijoDe(nombreEmp, mesLiq) - pagosSueldoLista(nombreEmp, mesLiq).reduce(function(s, p){ return s + p.monto; }, 0)); }
   var totCons = cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var totFalt = falt.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
-  var neto = sueldo - totCons - totFalt;
+  // Deuda de meses anteriores: consumos y faltantes que quedaron sin descontar.
+  var antes = function(f){ return new Date(f) < rango.desde; };
+  var consPrev = todosK.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombreEmp && pendienteConsumo(c) > 0 && antes(c.fecha); });
+  var faltPrev = todosC.filter(function(c){ return c.empleado===nombreEmp && faltantePendienteCierre(c) > 0 && antes(c.fecha); });
+  var deudaPrev = consPrev.reduce(function(s,c){ return s+pendienteConsumo(c); },0) + faltPrev.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+  // Si lo que hay que descontar supera el sueldo, se descuenta solo hasta lo
+  // que cobra (lo más viejo primero) y el resto pasa al mes siguiente.
+  var totDed = deudaPrev + totCons + totFalt, alcanza = totDed <= sueldo + 0.5, pasa = Math.max(0, Math.round(totDed - sueldo));
+  var neto = Math.max(0, sueldo - totDed);
   // Sueldo bruto, consumos y faltantes por local y por mes (para los egresos).
   var gruposEg = esFijo ? [{ L: liqLocalAca(), mes: mesLiq, min: 0, turnos: [], parcial: 0, fijoBruto: sueldo,
       consumos: cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0), faltantes: falt.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0) }]
@@ -19383,7 +19407,9 @@ function registrarPagoLiquidacion(nombreEmp) {
     (esFijo ? '• Sueldo fijo de '+_balNombreMes(mesLiq).toLowerCase()+' (lo que falta) → '+fmt(sueldo) : '• '+turnos.length+' turno'+(turnos.length===1?'':'s')+' ('+Math.floor(minPago/60)+'h '+Math.round(minPago%60)+'m a pagar) → sueldo '+fmt(sueldo))+(yaParcial ? ' (ya descontados '+fmt(yaParcial)+' pagados en parte)' : '')+'\n'+
     (cons.length ? '• Consumos a descontar: −'+fmt(totCons)+'\n' : '')+
     (falt.length ? '• Faltantes de caja: −'+fmt(totFalt)+'\n' : '')+
+    (deudaPrev ? '• Deuda de meses anteriores: −'+fmt(deudaPrev)+'\n' : '')+
     '\nTOTAL PAGADO: '+fmt(neto)+'\n'+
+    (pasa ? '⚠ Lo que hay que descontar supera lo que cobra: se descuentan '+fmt(sueldo)+' y quedan '+fmt(pasa)+' pendientes, que pasan al mes siguiente.\n' : '')+
     (dosLoc ? Object.keys(porL).map(function(L){ return '   · Paga Limay '+L+': '+fmt(porL[L]); }).join('\n')+'\n' : '')+
     '\nLos turnos quedan como pagados y los consumos/faltantes como descontados'+(dosLoc?' en los dos locales':'')+'. ¿Confirmás?';
   window._liqRegistrando = true;
@@ -19392,14 +19418,27 @@ function registrarPagoLiquidacion(nombreEmp) {
     if(!medioSel) return;
     var ahoraISO = new Date().toISOString();
     var aca = function(c){ return !c._local; };
+    var porFecha = function(a, b){ return new Date(a.fecha) - new Date(b.fecha); };
+    var descC = [], descF = [], presup = sueldo;
+    if(alcanza){ cons = cons.concat(consPrev); falt = falt.concat(faltPrev); }
+    else {
+      // Primero los faltantes enteros que entren, después los consumos (el último en parte).
+      faltPrev.concat(falt).filter(aca).sort(porFecha).forEach(function(c){ var m = faltantePendienteCierre(c); if(m <= presup + 0.5){ descF.push(c); presup -= m; } });
+      consPrev.concat(cons).filter(aca).sort(porFecha).forEach(function(c){ if(presup <= 0.5) return; var m = Math.min(pendienteConsumo(c), presup); descC.push([c.id, m]); presup -= m; });
+      falt = descF; cons = [];
+    }
+    var descConsTot = alcanza ? cons.reduce(function(s,c){ return s+pendienteConsumo(c); },0) : descC.reduce(function(s,x){ return s+x[1]; },0);
+    var descFaltTot = falt.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+    gruposEg.forEach(function(g){ g.consumos = 0; g.faltantes = 0; });
+    if(gruposEg.length){ gruposEg[0].consumos = descConsTot; gruposEg[0].faltantes = descFaltTot; }
     var idsT = {}; turnos.filter(aca).forEach(function(c){ idsT[c.fecha] = true; });
     var idsF = {}; falt.filter(aca).forEach(function(c){ idsF[c.fecha] = true; });
     cierres.forEach(function(c){
       if(c.empleado !== nombreEmp) return;
       if(idsT[c.fecha]){ c.pagado = true; c.fechaPagado = ahoraISO; }
       if(idsF[c.fecha]){
-        if(faltanteCajaCierre(c) > 0){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; }
-        if(faltanteMPCierre(c) > 0){ c.mp.faltanteSaldado = true; c.mp.fechaFaltanteSaldado = ahoraISO; }
+        if(faltanteCajaCierre(c) > 0){ c.arqueo.faltanteSaldado = true; c.arqueo.fechaFaltanteSaldado = ahoraISO; c.arqueo.mesDescuento = mesLiq; }
+        if(faltanteMPCierre(c) > 0){ c.mp.faltanteSaldado = true; c.mp.fechaFaltanteSaldado = ahoraISO; c.mp.mesDescuento = mesLiq; }
       }
     });
     saveCierres(cierres);
@@ -19408,7 +19447,15 @@ function registrarPagoLiquidacion(nombreEmp) {
     var consAca = cons.filter(aca);
     if(consAca.length){
       var idsC = {}; consAca.forEach(function(c){ idsC[c.id] = true; });
-      consumos.forEach(function(c){ if(idsC[c.id]){ c.saldado = true; c.fechaSaldado = ahoraISO; c.montoDescontado = c.total||0; } });
+      consumos.forEach(function(c){ if(idsC[c.id]){ (c.descuentos = c.descuentos || []).push({ fecha: ahoraISO, monto: pendienteConsumo(c), mes: mesLiq }); c.saldado = true; c.fechaSaldado = ahoraISO; c.montoDescontado = c.total||0; } });
+      saveConsumos(consumos);
+    }
+    // Descuento en parte (cuando no alcanza): lo que queda sigue pendiente para el mes siguiente.
+    if(descC.length){
+      var dc = {}; descC.forEach(function(x){ dc[x[0]] = x[1]; });
+      consumos.forEach(function(c){ var m = dc[c.id]; if(!m) return;
+        c.montoDescontado = (c.montoDescontado||0) + m; (c.descuentos = c.descuentos || []).push({ fecha: ahoraISO, monto: m, mes: mesLiq });
+        if(c.montoDescontado >= (c.total||0) - 0.5){ c.saldado = true; c.fechaSaldado = ahoraISO; } });
       saveConsumos(consumos);
     }
     // Lo del otro local se marca directo en su base (sin traer todo).
@@ -19427,7 +19474,7 @@ function registrarPagoLiquidacion(nombreEmp) {
     if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); })
       .catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+liqLocalOtro()+': '+((e && e.message) || e), true); });
     crearEgresosDeLiquidacion(nombreEmp, valorHora, gruposEg, medioSel, ahoraISO);
-    showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')');
+    showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')'+(pasa ? ' · quedan '+fmt(pasa)+' para el mes que viene' : ''));
     renderLiquidacion();
     if(typeof renderHoras === 'function') renderHoras();
   });
@@ -19505,7 +19552,7 @@ function crearEgresosDeLiquidacion(nombreEmp, valorHora, grupos, medioSel, ahora
   nuevos.forEach(function(e){ lista.push(e); });
   window.__lrEgresosCache = lista;
   guardarOperacionProtegida('Egresos', getEgresos, 'Sueldo de '+nombreEmp, true);
-  nuevos.forEach(function(e){ if(e.medio === 'MercadoPago') mpConfirmarEgreso(e.id); });
+  nuevos.forEach(function(e){ if(e.medio === 'MercadoPago' && e.monto > 0) mpConfirmarEgreso(e.id); });
 }
 
 function marcarFaltantesSaldados(nombreEmp) {
@@ -19549,6 +19596,11 @@ function _pagosDelPeriodo(nombre, rango){
   });
   return { pagos: pagos, estados: estados };
 }
+// Consumos y faltantes de antes del período que quedaron sin descontar.
+function _deudaAnterior(nombre, rango, cierres, consumos){
+  return consumos.filter(function(c){ return c.tipo==='empleado' && c.empleado===nombre && pendienteConsumo(c) > 0 && new Date(c.fecha) < rango.desde; }).reduce(function(s,c){ return s+pendienteConsumo(c); },0) +
+    cierres.filter(function(c){ return c.empleado===nombre && faltantePendienteCierre(c) > 0 && new Date(c.fecha) < rango.desde; }).reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
+}
 function exportarLiquidacionPDF(nombre) {
   var empleados = getEmpleados();
   var empObj    = empleados.find(function(e){ return e.nombre===nombre; });
@@ -19571,7 +19623,9 @@ function exportarLiquidacionPDF(nombre) {
   var pagosPer   = _pagosDelPeriodo(nombre, rango);
   var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
   var faltante   = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
-  var neto       = sueldo-consumo-faltante;
+  if(tipoSueldoDe(nombre) === 'fijo'){ var mesF = fechaLocalStr(rango.desde).slice(0,7); sueldo = Math.max(0, sueldoFijoDe(nombre, mesF) - pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0)); }
+  var deuda      = _deudaAnterior(nombre, rango, cierres, consumos);
+  var neto       = sueldo-consumo-faltante-deuda;
 
   var turnosRows = misCierres.map(function(c){
     var fi=c.horaInicio?new Date(c.horaInicio).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
@@ -19593,6 +19647,7 @@ function exportarLiquidacionPDF(nombre) {
       '<div class="kpi"><div class="l">Sueldo bruto</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e74c3c">$'+Number(consumo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Faltantes de caja</div><div class="v" style="color:#e74c3c">$'+Number(faltante).toLocaleString('es-AR')+'</div></div>'+
+      (deuda>0 ? '<div class="kpi"><div class="l">Deuda de meses anteriores</div><div class="v" style="color:#e74c3c">$'+Number(deuda).toLocaleString('es-AR')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">A PAGAR</div><div class="v" style="color:#CC0000;font-size:18px">$'+Number(neto).toLocaleString('es-AR')+'</div></div>'+
       (liqModoDos() ? [1, 2].map(function(L){
         var mc = misCierres.filter(function(c){ return localDe(c)===L; });
@@ -19652,7 +19707,9 @@ function exportarPDFEmpleado(nombre) {
   var pagosPer = _pagosDelPeriodo(nombre, rango);
   var consumoADescontar = misConsumos.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var faltanteADescontar = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
-  var totalACobrar = sueldo - consumoADescontar - faltanteADescontar;
+  if(tipoSueldoDe(nombre) === 'fijo'){ var mesF = fechaLocalStr(rango.desde).slice(0,7); sueldo = Math.max(0, sueldoFijoDe(nombre, mesF) - pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0)); }
+  var deudaAnt = _deudaAnterior(nombre, rango, cierres, consumos);
+  var totalACobrar = sueldo - consumoADescontar - faltanteADescontar - deudaAnt;
   var $f = function(n){ return '$'+Number(n).toLocaleString('es-AR'); };
   var hora = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false}) : '—'; };
   var diaTxt = function(iso){
@@ -19667,7 +19724,7 @@ function exportarPDFEmpleado(nombre) {
     valorHora: valorHora, horasACobrar: txtHs(minACobrar), sueldo: sueldo,
     consumo: consumoADescontar, faltante: faltanteADescontar, total: totalACobrar,
     nTurnos: misCierres.length, horasTotales: txtHs(minValen), hayEspecial: hayEspecial,
-    yaPagadas: minYaPagos > 0 ? txtHs(minYaPagos) : '', totalConsumo: totalConsumo, yaParcial: yaParcial,
+    yaPagadas: minYaPagos > 0 ? txtHs(minYaPagos) : '', totalConsumo: totalConsumo, yaParcial: yaParcial, deuda: deudaAnt,
     estados: pagosPer.estados, pagos: pagosPer.pagos.map(function(p){ return { fecha: p.descuento ? 'Descontado' : _diaMes(p.fecha), monto: Math.round(p.monto), mes: _balNombreMes(p.mes), cubrio: p.cubrio }; }),
     turnos: misCierres.map(function(c){
       var m = multTurno(c);
@@ -19702,6 +19759,7 @@ function exportarPDFEmpleado(nombre) {
     fila('Sueldo ('+D.horasACobrar+' × '+$f(D.valorHora)+')'+(D.yaParcial ? ' − ya pagado en parte' : ''), $f(D.sueldo), '#111', true)+
     (D.consumo>0 ? fila('Consumos a descontar', '− '+$f(D.consumo), '#c0392b') : '')+
     (D.faltante>0 ? fila('Faltantes de caja', '− '+$f(D.faltante), '#c0392b') : '')+
+    (D.deuda>0 ? fila('Deuda de meses anteriores', '− '+$f(D.deuda), '#c0392b') : '')+
     fila('<b>Total a cobrar</b>', $f(D.total), '#CC0000', true)+
     (D.estados.length ? '<div style="margin-top:12px;font-size:14px">'+D.estados.map(function(t){ return '<div style="font-weight:bold;color:'+(/^✅/.test(t)?'#1e7e45':'#8a6d00')+'">'+t+'</div>'; }).join('')+'</div>' : '')+
     titulo('Pagos del período')+
@@ -19777,6 +19835,7 @@ function descargarPDFEmpleadoMovil(D, btn){
       fila('Sueldo ('+D.horasACobrar+' x '+$f(D.valorHora)+')'+(D.yaParcial ? ' - ya pagado en parte' : ''), $f(D.sueldo), null, true);
       if(D.consumo>0) fila('Consumos a descontar', '- '+$f(D.consumo), [192,57,43]);
       if(D.faltante>0) fila('Faltantes de caja', '- '+$f(D.faltante), [192,57,43]);
+      if(D.deuda>0) fila('Deuda de meses anteriores', '- '+$f(D.deuda), [192,57,43]);
       fila('Total a cobrar', $f(D.total), [204,0,0], true);
 
       (D.estados || []).forEach(function(t){ y += 6; txt(t.replace(/^✅\s*/, ''), M, y, 10, 'bold', /^✅/.test(t) ? [30,126,69] : [138,109,0], {maxWidth: AN}); });
@@ -30278,11 +30337,17 @@ function guardarEmpModal() {
 // lo que quedó con el nombre viejo.
 function migrarNombreEmpleado(viejo, nuevo){
   var db = window.__lrDB;
-  var col = function(k, def){ return (window.__lrCOL && window.__lrCOL[k]) || def; };
-  var donde = [[col('ventas','ventas'),'empleado'], [col('cierres','cierres'),'empleado'], [col('consumos','consumos'),'empleado'],
-               ['pedidosWeb','repartidor'], ['fcmTokens','quien']];
-  return Promise.all(donde.map(function(d){
-    return db.collection(d[0]).where(d[1], '==', viejo).get().then(function(snap){
+  var col = function(k, def){ return db.collection((window.__lrCOL && window.__lrCOL[k]) || def); };
+  // Lo de los dos locales (ventas, cierres y consumos de Limay 1 y de Limay 2).
+  var donde = [[ldCol(1, 'ventas'),'empleado'], [ldCol(1, 'cierres'),'empleado'], [ldCol(1, 'consumos'),'empleado'],
+               [ldCol(2, 'ventas'),'empleado'], [ldCol(2, 'cierres'),'empleado'], [ldCol(2, 'consumos'),'empleado'],
+               [col('pedidosWeb','pedidosWeb'),'repartidor'], [col('fcmTokens','fcmTokens'),'quien']];
+  // Lo del dueño: sus pagos de sueldo (el nombre del pago y el detalle privado).
+  if(esEquipoDueno()) [1, 2].forEach(function(L){
+    donde.push([ldCol(L, 'egresos'),'prov'], [ldCol(L, 'egresos'),'proveedor'], [ldCol(L, 'egresosPriv'),'prov'], [ldCol(L, 'egresosDet'),'empleado']);
+  });
+  var cambiar = function(d){
+    return d[0].where(d[1], '==', viejo).get().then(function(snap){
       var docs = snap.docs, tandas = [];
       for(var i = 0; i < docs.length; i += 400){
         var b = db.batch();
@@ -30291,7 +30356,21 @@ function migrarNombreEmpleado(viejo, nuevo){
       }
       return Promise.all(tandas).then(function(){ return docs.length; });
     });
-  }));
+  };
+  return Promise.all(donde.map(cambiar)).then(function(r){
+    if(!esEquipoDueno()) return r;
+    // Lo privado (valor hora, sueldo fijo, horas a mano) pasa a la ficha con el nombre nuevo.
+    var priv = colPriv('empleadosPriv');
+    return priv.doc(viejo).get().then(function(d){
+      if(!d.exists) return r;
+      var datos = d.data();
+      return priv.doc(nuevo).set(datos, { merge: true }).then(function(){ return priv.doc(viejo).delete(); }).then(function(){
+        window.__lrEmpPriv[nuevo] = Object.assign({}, window.__lrEmpPriv[viejo], datos); delete window.__lrEmpPriv[viejo];
+        Object.keys(window.__lrEgDet || {}).forEach(function(k){ var x = window.__lrEgDet[k]; if(x && x.empleado === viejo) x.empleado = nuevo; });
+        return r;
+      });
+    });
+  });
 }
 
 // ── HISTORIAL DE CAMBIOS · DESHACER ─────────────────────────────────────────
