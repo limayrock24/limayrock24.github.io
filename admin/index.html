@@ -18899,6 +18899,7 @@ function renderLiquidacion() {
     var esFijo = esEquipoDueno() && tipoSueldoDe(emp.nombre) === 'fijo', mesLiq = fechaLocalStr(rangoLiq.desde).slice(0,7);
     var fijoMes = esFijo ? sueldoFijoDe(emp.nombre, mesLiq) : 0, yaPagoFijo = esFijo ? pagosSueldoLista(emp.nombre, mesLiq).reduce(function(s, p){ return s + p.monto; }, 0) : 0;
     if(esFijo) sueldo = Math.max(0, fijoMes - yaPagoFijo);
+    var pagosMes = esEquipoDueno() ? pagosSueldoLista(emp.nombre, mesLiq) : [], cobradoMes = pagosMes.reduce(function(s, p){ return s + p.monto; }, 0);
     var fmtHM = function(min){ return Math.floor(min/60)+'h '+(min%60>0?Math.round(min%60)+'m':'0m'); };
     var hayEsp = d.turnosEsp.length > 0;
     var hayAdel = d.turnosAdel > 0;
@@ -18942,7 +18943,10 @@ function renderLiquidacion() {
             d.turnosEsp.map(function(c){ return new Date(c.fecha).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' '+textoMult(multTurno(c))+' ('+fmtHM(c.durMinutos||0)+')'; }).join(' · ')+
           '</span></div>'
         : '')+
-        (hayAdel ? '<div class="liq-row"><span class="liq-lbl">✓ Ya adelantado</span><span class="liq-val" style="color:var(--green)">'+fmtHM(d.minAdelantado)+' ('+d.turnosAdel+' turno'+(d.turnosAdel===1?'':'s')+')</span></div>' : '')+
+        // Lo pagado para el mes, en un solo renglón: cuánto, en cuántos pagos y qué turnos cubre.
+        (pagosMes.length && !esFijo ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado para '+_balNombreMes(mesLiq).toLowerCase()+'</span><span class="liq-val" style="color:var(--green);text-align:right">'+fmt(cobradoMes)+' ('+pagosMes.length+' pago'+(pagosMes.length===1?'':'s')+')'+
+          ((d.turnosAdel || d.parcial) ? '<br><span style="font-size:.72rem;color:var(--gray)">→ cubre '+(d.turnosAdel ? d.turnosAdel+' turno'+(d.turnosAdel===1?'':'s')+' entero'+(d.turnosAdel===1?'':'s')+' ('+fmtHM(d.minAdelantado)+')' : '')+(d.turnosAdel && d.parcial ? ' y ' : '')+(d.parcial ? fmt(d.parcial)+' de otro' : '')+'</span>' : '')+'</span></div>'
+        : hayAdel ? '<div class="liq-row"><span class="liq-lbl">✓ Ya adelantado</span><span class="liq-val" style="color:var(--green)">'+fmtHM(d.minAdelantado)+' ('+d.turnosAdel+' turno'+(d.turnosAdel===1?'':'s')+')</span></div>' : '')+
         ((hayEsp || hayAdel) ? '<div class="liq-row"><span class="liq-lbl">💼 Horas a pagar</span><span class="liq-val">'+fmtHM(d.minPagos)+'</span></div>' : '')+
         (esEquipoDueno() ? '<div class="liq-row" style="align-items:center"><span class="liq-lbl">🧾 Cobra</span>'+
           '<select onchange="setTipoSueldo(\''+nomEsc+'\',this.value)" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:4px 6px;font-size:.8rem">'+
@@ -18962,7 +18966,7 @@ function renderLiquidacion() {
         '</div>'+
         '<div class="liq-row"><span class="liq-lbl">📊 Ventas realizadas</span><span class="liq-val">'+d.ventas+' ventas · '+fmt(d.totalVentas)+'</span></div>'+
         '<div class="liq-row"><span class="liq-lbl">💰 '+(esFijo?'Falta del sueldo':'Sueldo estimado')+'</span><span class="liq-val ing">'+(conValor?fmt(sueldo):'Configurá el valor hora')+'</span></div>'+
-        (d.parcial > 0 ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado en parte (descontado)</span><span class="liq-val">'+fmt(d.parcial)+'</span></div>' : '')+
+        (d.parcial > 0 && !pagosMes.length ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado en parte (descontado)</span><span class="liq-val">'+fmt(d.parcial)+'</span></div>' : '')+
         '<div class="liq-row"><span class="liq-lbl">🛒 Consumos a descontar</span><span class="liq-val egr">−'+fmt(consumo)+'</span></div>'+
         (faltante>0?'<div class="liq-row"><span class="liq-lbl">🔴 Faltantes de caja</span><span class="liq-val egr">−'+fmt(faltante)+'</span></div>':'')+
         (deuda>0?'<div class="liq-row"><span class="liq-lbl">📌 Deuda de meses anteriores</span><span class="liq-val egr">−'+fmt(deuda)+'</span></div>':'')+
