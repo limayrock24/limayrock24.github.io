@@ -30339,12 +30339,19 @@ function migrarNombreEmpleado(viejo, nuevo){
   var db = window.__lrDB;
   var col = function(k, def){ return db.collection((window.__lrCOL && window.__lrCOL[k]) || def); };
   // Lo de los dos locales (ventas, cierres y consumos de Limay 1 y de Limay 2).
-  var donde = [[ldCol(1, 'ventas'),'empleado'], [ldCol(1, 'cierres'),'empleado'], [ldCol(1, 'consumos'),'empleado'],
-               [ldCol(2, 'ventas'),'empleado'], [ldCol(2, 'cierres'),'empleado'], [ldCol(2, 'consumos'),'empleado'],
-               [col('pedidosWeb','pedidosWeb'),'repartidor'], [col('fcmTokens','fcmTokens'),'quien']];
+  var donde = [[col('pedidosWeb','pedidosWeb'),'repartidor'], [col('fcmTokens','fcmTokens'),'quien']];
+  // Todo lo que guarda quién lo hizo, en los dos locales: ventas, turnos, consumos,
+  // fiados, consignaciones, préstamos, retiros e ingresos de caja, cargas virtuales,
+  // cambios y movimientos entre cuentas, mensajes, el registro de movimientos y
+  // quién registró cada pago a proveedores.
+  [1, 2].forEach(function(L){
+    [['ventas','empleado'], ['cierres','empleado'], ['consumos','empleado'], ['fiados','empleado'], ['consignaciones','empleado'],
+     ['prestamos','empleado'], ['prestamos','quien'], ['retirosCaja','empleado'], ['cargasVirtuales','empleado'], ['transferCuentas','empleado'],
+     ['mensajesPunt','empleado'], ['movimientos','responsable'], ['egresos','responsable']].forEach(function(x){ donde.push([ldCol(L, x[0]), x[1]]); });
+  });
   // Lo del dueño: sus pagos de sueldo (el nombre del pago y el detalle privado).
   if(esEquipoDueno()) [1, 2].forEach(function(L){
-    donde.push([ldCol(L, 'egresos'),'prov'], [ldCol(L, 'egresos'),'proveedor'], [ldCol(L, 'egresosPriv'),'prov'], [ldCol(L, 'egresosDet'),'empleado']);
+    donde.push([ldCol(L, 'egresos'),'prov'], [ldCol(L, 'egresos'),'proveedor'], [ldCol(L, 'egresosPriv'),'prov'], [ldCol(L, 'egresosDet'),'empleado'], [ldCol(L, 'egresosDet'),'concepto']);
   });
   var cambiar = function(d){
     return d[0].where(d[1], '==', viejo).get().then(function(snap){
@@ -30357,7 +30364,13 @@ function migrarNombreEmpleado(viejo, nuevo){
       return Promise.all(tandas).then(function(){ return docs.length; });
     });
   };
-  return Promise.all(donde.map(cambiar)).then(function(r){
+  // Mensajes programados: la lista de a quién va dirigido.
+  var mensajesProg = [1, 2].map(function(L){
+    return ldCol(L, 'mensajesProg').where('destinatarios', 'array-contains', viejo).get().then(function(snap){
+      return Promise.all(snap.docs.map(function(doc){ var l = (doc.data().destinatarios || []).map(function(n){ return n === viejo ? nuevo : n; }); return doc.ref.update({ destinatarios: l }); }));
+    });
+  });
+  return Promise.all(donde.map(cambiar).concat(mensajesProg)).then(function(r){
     if(!esEquipoDueno()) return r;
     // Lo privado (valor hora, sueldo fijo, horas a mano) pasa a la ficha con el nombre nuevo.
     var priv = colPriv('empleadosPriv');
@@ -30366,7 +30379,7 @@ function migrarNombreEmpleado(viejo, nuevo){
       var datos = d.data();
       return priv.doc(nuevo).set(datos, { merge: true }).then(function(){ return priv.doc(viejo).delete(); }).then(function(){
         window.__lrEmpPriv[nuevo] = Object.assign({}, window.__lrEmpPriv[viejo], datos); delete window.__lrEmpPriv[viejo];
-        Object.keys(window.__lrEgDet || {}).forEach(function(k){ var x = window.__lrEgDet[k]; if(x && x.empleado === viejo) x.empleado = nuevo; });
+        Object.keys(window.__lrEgDet || {}).forEach(function(k){ var x = window.__lrEgDet[k]; if(x && x.empleado === viejo) x.empleado = nuevo; if(x && x.concepto === viejo) x.concepto = nuevo; });
         return r;
       });
     });
