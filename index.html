@@ -18406,23 +18406,36 @@ function pagosSueldoLista(nombre, mes){
     var d = detDeEgreso(e);
     if(!d || (d.rubro !== 'sueldos' && d.rubro !== 'personal_extra') || (d.empleado || '') !== nombre) return null;
     if((d.mes || String(e.fecha).slice(0,7)) !== mes) return null;
-    // De una liquidación cuenta el bruto: los consumos y faltantes descontados también pagan horas.
-    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: d.liq ? Number(d.liq.bruto) || 0 : Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq };
+    // Cuenta lo que cobró; lo descontado (consumos y faltantes) se suma aparte (descontadoSueldoMes).
+    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq };
   }).filter(Boolean).sort(function(a, b){ return a.fecha.localeCompare(b.fecha) || String(a.ts).localeCompare(String(b.ts)) || (a.id - b.id); });
 }
-function pagosSueldoMes(nombre, mes){ return pagosSueldoLista(nombre, mes).reduce(function(s, p){ return s + p.monto; }, 0); }
+// Lo que se le descontó del sueldo en un mes (consumos y faltantes ya descontados): también le paga horas.
+function descontadoSueldoMes(nombre, mes){
+  var cons = getConsumos().filter(function(c){ return c && c.tipo === 'empleado' && c.empleado === nombre && fechaLocalStr(new Date(c.fecha)).slice(0,7) === mes; })
+    .reduce(function(s, c){ return s + Math.max(0, (Number(c.total) || 0) - pendienteConsumo(c)); }, 0);
+  var falt = getCierres().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; }).reduce(function(s, c){
+    var a = (c.arqueo && c.arqueo.diferencia < 0 && c.arqueo.faltanteSaldado) ? Math.abs(c.arqueo.diferencia) : 0;
+    var m = (c.mp && c.mp.diferencia < 0 && c.mp.faltanteSaldado) ? Math.abs(c.mp.diferencia) : 0;
+    return s + a + m;
+  }, 0);
+  return Math.round(cons + falt);
+}
+function pagosSueldoMes(nombre, mes){ return pagosSueldoLista(nombre, mes).reduce(function(s, p){ return s + p.monto; }, 0) + descontadoSueldoMes(nombre, mes); }
 function _diaMes(iso){ var t = String(iso || ''); if(!(t.length >= 10 && t.charAt(4) === '-' && t.indexOf('T') === -1)) t = fechaLocalStr(new Date(t)); return t.slice(8,10)+'/'+t.slice(5,7); }
 // Cómo quedó el sueldo de un mes: lo trabajado, lo pagado y si está completo.
 function estadoSueldoMes(nombre, mes){
   var vh = valorHoraDe(nombre), pagos = pagosSueldoLista(nombre, mes);
   var trabajado = vh > 0 ? getCierres().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; }).reduce(function(s, c){ return s + _valorTurno(c, vh); }, 0) : 0;
-  var pagado = pagos.reduce(function(s, p){ return s + p.monto; }, 0);
-  return { mes: mes, trabajado: trabajado, pagado: pagado, falta: Math.max(0, Math.round(trabajado - pagado)), ultimo: pagos.length ? pagos[pagos.length - 1].fecha : '',
+  var cobrado = pagos.reduce(function(s, p){ return s + p.monto; }, 0), descontado = descontadoSueldoMes(nombre, mes), pagado = cobrado + descontado;
+  return { mes: mes, vh: vh, trabajado: trabajado, cobrado: cobrado, descontado: descontado, pagado: pagado, falta: Math.max(0, Math.round(trabajado - pagado)), ultimo: pagos.length ? pagos[pagos.length - 1].fecha : '',
     completa: trabajado > 0 && pagado >= trabajado - 0.5, pagos: pagos };
 }
 function textoEstadoSueldo(e){
   if(!e.pagado) return '';
-  return e.completa ? '✅ Liquidación completa · pagado el '+_diaMes(e.ultimo) : 'Pagado '+fmt(Math.round(e.pagado))+' de '+fmt(e.trabajado)+' · falta '+fmt(e.falta);
+  var pag = 'Pagado '+fmt(Math.round(e.cobrado))+(e.descontado ? ' + descontado '+fmt(e.descontado)+' (consumos y faltantes)' : '');
+  if(!(e.vh > 0)) return pag+' · sin valor hora: cargalo para saber si está completo';
+  return e.completa ? '✅ Liquidación completa · pagado el '+_diaMes(e.ultimo) : pag+' de '+fmt(e.trabajado)+' · falta '+fmt(e.falta);
 }
 // Qué turnos cubrió cada pago del mes (en el orden en que se pagaron).
 function coberturaPagosSueldo(nombre, mes){
@@ -18430,8 +18443,9 @@ function coberturaPagosSueldo(nombre, mes){
   var turnos = getCierres().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
     .sort(function(a, b){ return new Date(a.fecha) - new Date(b.fecha); })
     .map(function(c){ return { fecha: c.fecha, valor: vh > 0 ? _valorTurno(c, vh) : 0, cubierto: 0 }; });
-  var i = 0;
-  return est.pagos.map(function(p){
+  var i = 0, lista = est.pagos.slice();
+  if(est.descontado) lista.push({ fecha: '', monto: est.descontado, neto: est.descontado, liq: false, descuento: true });
+  return lista.map(function(p){
     var resto = p.monto, enteros = [], partes = [];
     while(resto > 0.5 && i < turnos.length){
       var t = turnos[i], falta = t.valor - t.cubierto, toma = Math.min(falta, resto);
@@ -18446,7 +18460,7 @@ function coberturaPagosSueldo(nombre, mes){
     if(partes.length && /^lo que faltaba/.test(partes[0]) && txt.length){ txt.unshift(partes.shift()); }
     txt = txt.concat(partes);
     var cubrio = txt.length ? txt.join(' y ') : 'no había turnos sin pagar en ese mes';
-    return { fecha: p.fecha, monto: p.monto, neto: p.neto, liq: p.liq, mes: mes, cubrio: cubrio.charAt(0).toUpperCase() + cubrio.slice(1) };
+    return { fecha: p.fecha, monto: p.monto, neto: p.neto, liq: p.liq, descuento: !!p.descuento, mes: mes, cubrio: cubrio.charAt(0).toUpperCase() + cubrio.slice(1) };
   });
 }
 // Cómo se reparte lo pagado entre los turnos del mes (sin guardar nada):
@@ -18732,7 +18746,7 @@ function renderLiquidacion() {
   });
 
   var empleados = getEmpleados();
-  var empsSinAdmin = empleados.filter(function(e){ return e.rol!=='admin'; });
+  var empsSinAdmin = empleados.filter(function(e){ return e.rol!=='admin' || empData[e.nombre]; });   // un admin con turnos (un socio) también se liquida
 
   if(!empsSinAdmin.length){
     grid.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray);font-size:.8rem">Sin empleados configurados</div>';
@@ -19462,7 +19476,7 @@ function exportarLiquidacionPDF(nombre) {
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Pagos del período</h3>'+
     (pagosPer.pagos.length
       ? '<table><thead><tr><th>Fecha del pago</th><th>Monto</th><th>Mes</th><th>Qué cubrió</th></tr></thead><tbody>'+pagosPer.pagos.map(function(p){
-          return '<tr><td>'+_diaMes(p.fecha)+'</td><td>$'+Number(Math.round(p.monto)).toLocaleString('es-AR')+(p.liq && p.neto !== p.monto ? '<br><span style="font-size:10px;color:#777">(cobró $'+Number(Math.round(p.neto)).toLocaleString('es-AR')+' tras descuentos)</span>' : '')+'</td><td>'+_balNombreMes(p.mes)+'</td><td>'+p.cubrio+'</td></tr>';
+          return '<tr><td>'+(p.descuento ? 'Descontado (consumos y faltantes)' : _diaMes(p.fecha))+'</td><td>$'+Number(Math.round(p.monto)).toLocaleString('es-AR')+''+'</td><td>'+_balNombreMes(p.mes)+'</td><td>'+p.cubrio+'</td></tr>';
         }).join('')+'</tbody></table>'
       : '<p style="font-size:12px;color:#777">Sin pagos de sueldo registrados para los meses de este período.</p>')+
     '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Detalle de turnos</h3>'+
@@ -19523,7 +19537,7 @@ function exportarPDFEmpleado(nombre) {
     consumo: consumoADescontar, faltante: faltanteADescontar, total: totalACobrar,
     nTurnos: misCierres.length, horasTotales: txtHs(minValen), hayEspecial: hayEspecial,
     yaPagadas: minYaPagos > 0 ? txtHs(minYaPagos) : '', totalConsumo: totalConsumo, yaParcial: yaParcial,
-    estados: pagosPer.estados, pagos: pagosPer.pagos.map(function(p){ return { fecha: _diaMes(p.fecha), monto: Math.round(p.monto), mes: _balNombreMes(p.mes), cubrio: p.cubrio }; }),
+    estados: pagosPer.estados, pagos: pagosPer.pagos.map(function(p){ return { fecha: p.descuento ? 'Descontado' : _diaMes(p.fecha), monto: Math.round(p.monto), mes: _balNombreMes(p.mes), cubrio: p.cubrio }; }),
     turnos: misCierres.map(function(c){
       var m = multTurno(c);
       return { dia: diaTxt(c.fecha)+(liqModoDos()?' · Limay '+localDe(c):''), horario: hora(c.horaInicio)+' a '+hora(c.horaFin),
