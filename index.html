@@ -24390,12 +24390,11 @@ function _balCostos(mes, pool, cierres){
       _balSumar(cols[L].pend, c.empleado, Math.round(minutosPagados(c) / 60 * x.vh));
     });
   });
-  // Sueldo fijo: lo que falta pagar del mes se estima como pendiente.
+  // Sueldo fijo: no se estima nada pendiente (se cobra en parte con consumos);
+  // el balance cuenta solo lo registrado.
   Object.keys(emps).forEach(function(n){
     if(tipoSueldoDe(n) !== 'fijo') return;
     delete cols[1].pend[n]; delete cols[2].pend[n]; delete sinValor[n];
-    var f = sueldoFijoDe(n, mes), pag = (cols[1].emp[n] || 0) + (cols[2].emp[n] || 0);
-    if(f > pag) cols[1].pend[n] = Math.round(f - pag);
   });
   cols.sinValorHora = Object.keys(sinValor);
   cols.valorHora = {}; Object.keys(emps).forEach(function(n){ if(emps[n].vh > 0) cols.valorHora[n] = emps[n].vh; });
