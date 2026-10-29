@@ -5170,6 +5170,9 @@ body.night-on{background:#080005}
         <span style="color:var(--gray)">→</span>
         <input type="date" id="rentFechaHasta" onchange="selPeriodoCustom()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
       </div>
+      <div id="rentPlata"></div>
+      <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:18px 0 4px;text-transform:uppercase">🔄 Plata que entró y salió de las cuentas</div>
+      <div style="font-size:.68rem;color:var(--gray);margin-bottom:8px">Tocá un cuadro para ver la lista de ventas, de pagos o de consumos.</div>
       <div class="rent-grid" id="rentGrid"></div>
       <div class="rent-grid" id="margenGrid" style="margin-top:8px"></div>
       <div id="rentDetalleWrap" style="display:none;margin-bottom:16px">
@@ -17959,6 +17962,100 @@ function calcularResumenRentabilidad(rango) {
   };
 }
 
+// La plata del período, con la misma cuenta que el Balance mensual: con un
+// mes elegido da lo mismo que la columna de este local en el balance; con
+// otro período, cada pago cuenta por su fecha de pago (aproximado).
+function _rentBalance(){
+  var p = _periodoCurrent, L = localActual(), otro = L === 1 ? 2 : 1, mes = null, rg = null;
+  if(periodoEsMes(p)) mes = p === 'mes' ? fechaLocalStr(new Date()).slice(0,7) : p.slice(4);
+  else { var fr = getFechasRango(p); rg = { d0: fr.desde, d1: fr.hasta }; mes = fechaLocalStr(fr.hasta).slice(0,7); }
+  var r = rg || _balRango(mes), t0 = r.d0.getTime(), t1 = r.d1.getTime();
+  var ventas = {};
+  ventas[L] = _balCalcular(L, mes, [VENTAS, getFiados(), [], getCargasVirtualesTodas()], rg);
+  ventas[otro] = _balCalcular(otro, mes, [[], [], [], []], rg);
+  var pool = getEgresos().map(function(e){ return { e: e, det: detDeEgreso(e), L: L }; });
+  var cierres = {}; cierres[otro] = [];
+  cierres[L] = getCierres().filter(function(c){ var t = new Date(c.fecha).getTime(); return t >= t0 && t <= t1; });
+  var b = _balCalcularTodo(mes, ventas, pool, cierres, rg);
+  return { b: b, c: b.cols[L - 1], v: b.ventas[L - 1], L: L, exacto: !rg, mes: mes };
+}
+var _rentGastosAbierto = false;
+function _rentPlataHtml(){
+  var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
+  var $ = function(n){ return fmt(Math.round(Number(n) || 0)); };
+  var col = function(n){ return n >= 0 ? 'var(--green)' : 'var(--red)'; };
+  var fila = function(signo, txt, monto, sub, opt){
+    opt = opt || {};
+    // "display: flex" con espacio: así en el celu no se le aplica el corte de renglón general del panel.
+    return '<div style="display: flex;justify-content:space-between;align-items:baseline;gap:10px;padding:'+(opt.grande ? '10px 12px' : '7px 12px')+';border-top:1px solid var(--border);'+(opt.grande ? 'background:rgba(255,255,255,.03);' : '')+(opt.click ? 'cursor:pointer;' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
+      '<div style="flex:1 1 auto;min-width:0"><div style="font-size:'+(opt.grande ? '.86rem' : '.8rem')+';color:var(--white);'+(opt.grande ? 'font-weight:700' : '')+'"><span style="color:var(--gray);display:inline-block;width:14px">'+signo+'</span>'+txt+'</div>'+
+        (sub ? '<div style="font-size:.66rem;color:var(--gray);margin:2px 0 0 14px">'+sub+'</div>' : '')+'</div>'+
+      '<div style="flex:0 0 auto;font-family:Oswald,sans-serif;font-size:'+(opt.grande ? '1.25rem' : '.98rem')+';color:'+(opt.color || 'var(--white)')+';white-space:nowrap">'+$(monto)+'</div></div>';
+  };
+  var sub2 = function(txt, monto){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 12px 4px 30px;font-size:.74rem;color:var(--light)"><span>'+txt+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(monto)+'</span></div>'; };
+  var gastos = r.totalOp + r.creditos;
+  var rubros = [
+    ['Sueldos', r.sueldos], ['Cargas sociales', r.cargas], ['Personal extra y limpieza', c.rub.personal_extra || 0],
+    ['Alquiler', c.rub.alquiler || 0], ['Servicios', r.servicios], ['Impuestos y contadora', r.impuestos],
+    ['Otros costos (costos varios)', r.otros], ['Cuotas de créditos y préstamos', r.creditos]
+  ].filter(function(g){ return Math.round(g[1]) !== 0; });
+  var titPer = x.exacto ? _balNombreMes(x.mes) : 'el período elegido';
+  var h = '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:0 0 4px;text-transform:uppercase">💵 La plata de '+escBaja(titPer)+' — Limay '+x.L+'</div>'+
+    '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px;line-height:1.45">'+(x.exacto
+      ? 'Misma cuenta que el Balance mensual: da los mismos números que la columna de Limay '+x.L+'.'+(v.enCurso ? ' Mes en curso: van '+v.diasTrans+' de '+v.diasMes+' días.' : '')
+      : 'Aproximado: cada pago cuenta el día que se pagó (el alquiler y los sueldos se pagan una vez por mes). Para el número oficial elegí un mes.')+'</div>';
+  h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)">';
+  h += fila('', '🛒 Vendiste', r.ventas, 'Sin el recargo del posnet. El fiado cuenta el día que se llevó la mercadería.').replace('border-top:1px solid var(--border);', '');
+  h += fila('', '📈 Te quedó de lo vendido (margen bruto)', r.margen,
+    (r.margenPctV != null ? Math.round(r.margenPctV)+' % de lo vendido. ' : '')+'Es la venta menos lo que te costó la mercadería.'+
+    (r.pctSinCosto >= 0.5 ? ' <span style="color:'+(r.pctSinCosto > 10 ? '#e74c3c' : 'var(--gold)')+'">El '+Math.round(r.pctSinCosto)+' % de lo vendido no tiene costo cargado y no suma acá.</span>' : ''), { color: 'var(--green)' });
+  if(Math.round(r.otrosIng)) h += fila('+', 'Ganancia de cargas virtuales y cambio de efectivo', r.otrosIng, '', { color: 'var(--green)' });
+  h += fila('−', '💸 Gastos del negocio '+(_rentGastosAbierto ? '▴' : '▾'), gastos, 'Tocá para ver cada rubro.', { color: 'var(--red)', click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()' });
+  if(_rentGastosAbierto){
+    h += rubros.length ? rubros.map(function(g){ return sub2(g[0], g[1]); }).join('') : sub2('Sin gastos cargados en el período', 0);
+    if(r.pendTotal > 0) h += '<div style="padding:2px 12px 6px 30px;font-size:.66rem;color:var(--gold)">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>';
+  }
+  h += fila('=', (r.neto >= 0 ? '✅' : '🔴')+' Ganancia del negocio', r.neto, '', { grande: true, color: col(r.neto) });
+  if(Math.round(r.inversion)) h += fila('−', '🏗 Inversiones (equipamiento)', r.inversion, 'No es un gasto del mes, pero esa plata ya no está para repartir.', { color: 'var(--red)' });
+  h += fila('=', 'Disponible para repartir', r.disponible, '', { grande: true, color: col(r.disponible) });
+  var socios = Object.keys(r.pctSocio || {});
+  Object.keys(c.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
+  if(socios.length){
+    h += '<div style="padding:8px 12px 4px;border-top:1px solid var(--border);font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">👥 Lo que le toca a cada socio</div>';
+    socios.forEach(function(s){
+      var toca = r.corr[s] || 0, ret = c.retiros[s] || 0, saldo = toca - ret, pct = (r.pctSocio || {})[s] || 0;
+      h += '<div style="padding:5px 12px 7px 26px;font-size:.76rem;color:var(--light)">'+
+        '<div style="display:flex;justify-content:space-between;gap:10px"><b style="color:var(--white)">'+escBaja(s)+' ('+pct+' %)</b><span style="font-family:Oswald,sans-serif">le toca '+$(toca)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;gap:10px;color:var(--gray)"><span>Ya retiró</span><span style="font-family:Oswald,sans-serif">'+$(ret)+'</span></div>'+
+        '<div style="display:flex;justify-content:space-between;gap:10px"><span>'+(saldo >= 0 ? 'Le queda por retirar' : 'Retiró de más')+'</span><span style="font-family:Oswald,sans-serif;color:'+col(saldo)+'">'+$(Math.abs(saldo))+'</span></div></div>';
+    });
+  }
+  h += '</div>';
+  // Lo que salió pero no es gasto del negocio.
+  var ap = [];
+  if(Math.round(c.mercaderia)) ap.push(['📦 Compras de mercadería pagadas', c.mercaderia, 'No se restan: ya están en "lo que te costó la mercadería".']);
+  var retT = _balSumaMapa(c.retiros);
+  if(Math.round(retT)) ap.push(['👤 Retiros de socios', retT, 'Se descuentan de lo que le toca a cada uno.']);
+  if(Math.round(v.sinCobrar)) ap.push(['📝 Fiado sin cobrar'+(v.enCurso ? ' (a hoy)' : ' al cierre'), v.sinCobrar, 'Ya está contado como venta.']);
+  if(ap.length){
+    h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gray);margin:12px 0 4px;text-transform:uppercase">Aparte (no son gastos del negocio)</div>'+
+      '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)">'+
+      ap.map(function(a, i){ var f = fila('', a[0], a[1], a[2]); return i ? f : f.replace('border-top:1px solid var(--border);', ''); }).join('')+'</div>';
+  }
+  if(c.nSinClasif) h += '<div style="margin-top:8px;padding:8px 12px;border:1px solid #e74c3c;border-radius:6px;font-size:.72rem;color:#e74c3c;font-weight:700">⚠ Hay '+c.nSinClasif+' pago'+(c.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+$(c.sinClasif)+') que no están en esta cuenta. Clasificalos en Egresos → 🏷 Clasificar.</div>';
+  // La plata que hay hoy (no depende del período).
+  try{
+    var liq = calcularLiquidez(), tot = liq.efectivoCaja + liq.efectivoFuera + liq.mercadoPago;
+    h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gray);margin:12px 0 4px;text-transform:uppercase">💰 La plata que hay hoy</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'+
+      [['💵 En la caja', liq.efectivoCaja], ['👜 Efectivo fuera de la caja', liq.efectivoFuera], ['💳 Mercado Pago', liq.mercadoPago], ['🏦 Total', tot]].map(function(q, i){
+        return '<div class="rent-box" style="padding:10px"><div class="rl">'+q[0]+'</div><div class="rv" style="font-size:1.1rem;color:'+(i === 3 ? 'var(--white)' : col(q[1]))+'">'+$(q[1])+'</div></div>';
+      }).join('')+'</div>'+
+      '<div style="font-size:.64rem;color:var(--gray);margin-top:4px">Es la plata de ahora, sin importar el período elegido. El detalle está más abajo, en 💰 Liquidez del local.</div>';
+  }catch(e){}
+  return h;
+}
+
 function renderRentabilidad() {
   var cds = document.getElementById('claveDuenoSeccion'); if(cds) cds.style.display = esCuentaDueno() ? '' : 'none';
   // En el admin abierto en la caja no están los pagos privados del dueño: se
@@ -17975,6 +18072,9 @@ function renderRentabilidad() {
   var cargasVirtuales = r.cargasVirtuales, gananciaCargas = r.gananciaCargas;
   var cobroFiados = r.cobroFiados, ingresosNetos = r.ingresosNetos, neto = r.neto;
   var positivo = neto >= 0;
+
+  var plata = document.getElementById('rentPlata');
+  if(plata){ try{ plata.innerHTML = _rentPlataHtml(); }catch(e){ console.error('Rentabilidad: la plata del período', e); plata.innerHTML = ''; } }
 
   // Render KPIs
   var grid = document.getElementById('rentGrid');
@@ -17996,9 +18096,9 @@ function renderRentabilidad() {
       '<div style="font-size:.68rem;color:var(--gray);margin-top:3px">'+consumos.length+' · no afecta ingresos/egresos</div>'+
     '</div>'+
     '<div class="rent-box net '+(positivo?'pos':'neg')+'" style="cursor:pointer" onclick="selFiltroRent(\'resultado\')">'+
-      '<div class="rl">'+(positivo?'✅':'🔴')+' Resultado neto del período'+(_filtroRent==='resultado'?' ▲':'')+'</div>'+
+      '<div class="rl">'+(positivo?'⬆':'⬇')+' Entró − salió'+(_filtroRent==='resultado'?' ▲':'')+'</div>'+
       '<div class="rv">'+(positivo?'+':'')+fmt(neto)+'</div>'+
-      '<div style="font-size:.7rem;color:var(--gray);margin-top:4px">Ingresos netos − Egresos</div>'+
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:4px">Ingresos netos − todos los pagos (también mercadería, inversiones y retiros). No es la ganancia: la ganancia está arriba.</div>'+
     '</div>'+
     '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.7rem;color:var(--gray);margin-top:2px">'+
       '💳 Costo posnet sobre $'+Number(Math.round(medios["Débito"])).toLocaleString("es-AR")+' en débito: <b style="color:var(--red)">'+fmt(Math.round(costoPostnet))+'</b>'+
@@ -24323,12 +24423,14 @@ function _balLeerLocal(n, r){
     leer(ldCol(n, 'cargasVirtuales').where('id', '>=', t0).where('id', '<=', t1))
   ]);
 }
-function _balCalcular(n, mes, datos){
-  var r = _balRango(mes), t0 = r.d0.getTime(), t1 = r.d1.getTime();
+// Con rango (Rentabilidad con Hoy, Esta semana, Todo o fechas a mano) se
+// calcula entre esas fechas en vez de en un mes.
+function _balCalcular(n, mes, datos, rango){
+  var r = rango || _balRango(mes), t0 = r.d0.getTime(), t1 = r.d1.getTime();
   var ventasRaw = datos[0], fiados = datos[1], cobrosHist = datos[2], cargas = datos[3];
-  var diasMes = r.d1.getDate(), ahora = new Date();
+  var ahora = new Date(), diasMes = rango ? Math.max(1, Math.round((t1 + 1 - t0) / 86400000)) : r.d1.getDate();
   var enCurso = ahora.getTime() >= t0 && ahora.getTime() <= t1;
-  var diasTrans = enCurso ? ahora.getDate() : diasMes;
+  var diasTrans = enCurso ? (rango ? Math.max(1, Math.ceil((ahora.getTime() - t0) / 86400000)) : ahora.getDate()) : diasMes;
   var enMes = function(f){ var t = new Date(f).getTime(); return t >= t0 && t <= t1; };
   var neto = function(v){ return (Number(v.total)||0) - (Number(v.recargo)||0); };
 
@@ -24473,14 +24575,16 @@ function balSocioDeEmpleado(nombre){
   sociosLista().forEach(function(s){ var p = _balSinTilde(s).split(/\s+/)[0]; if(p.length >= 3 && (n.indexOf(p) === 0 || p.indexOf(n) === 0)) hit = s; });
   return hit;
 }
-// Reparte los egresos de los dos locales en las columnas.
-function _balCostos(mes, pool, cierres){
+// Reparte los egresos de los dos locales en las columnas. Con rango, cada
+// pago cuenta por su fecha de pago (no por el mes al que corresponde).
+function _balCostos(mes, pool, cierres, rango){
   var cols = { 1: _balColVacia(1), 2: _balColVacia(2) };
+  var dR0 = rango ? fechaLocalStr(rango.d0) : '', dR1 = rango ? fechaLocalStr(rango.d1) : '';
   pool.forEach(function(it){
     var e = it.e, det = it.det, monto = Number(e.monto) || 0;
     var rubro = (det && det.rubro) ? det.rubro : ((e.categoria || 'proveedor') === 'proveedor' ? 'mercaderia' : 'sin_clasificar');
     var mesItem = (det && det.mes) ? det.mes : String(e.fecha || '').slice(0,7);
-    var pagadoEnMes = String(e.fecha || '').slice(0,7) === mes;
+    var pagadoEnMes = rango ? (String(e.fecha || '') >= dR0 && String(e.fecha || '') <= dR1) : String(e.fecha || '').slice(0,7) === mes;
     var partes = _balPartes(det, it.L, mesItem), comp = !!(det && det.suc === 'compartido');
     [1, 2].forEach(function(L){
       var f = partes[L], c = cols[L];
@@ -24490,7 +24594,7 @@ function _balCostos(mes, pool, cierres){
       // cualquier empleado. Lo que se lleva de la ganancia va como "Retiro de socios".
       var socio = nombreActual((det && det.socio) || 'Sin socio');
       if(rubro === 'retiro_socio' && pagadoEnMes) _balSumar(c.retirosCaja, socio, m);
-      if(mesItem !== mes) return;
+      if(rango ? !pagadoEnMes : mesItem !== mes) return;
       var item = function(r, monto, detalle){ c.items.push({ L: L, fecha: e.fecha, seccion: _balSeccion(r), rubro: rubroDef(r).t, detalle: detalle || '', concepto: e.prov || '', monto: monto, comp: comp }); };
       if(rubro === 'credito' && det && det.partes){
         var pp = det.partes;
@@ -24533,7 +24637,10 @@ function _balCostos(mes, pool, cierres){
   var emps = {};
   (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0 }; });
   var sinValor = {};
-  var manMes = _turnosManuales().filter(function(c){ return _mesTurno(c) === mes; });
+  var manMes = _turnosManuales().filter(function(c){
+    if(!rango) return _mesTurno(c) === mes;
+    var d = fechaLocalStr(new Date(c.fecha)); return d >= dR0 && d <= dR1;
+  });
   [1, 2].forEach(function(L){
     (cierres[L] || []).concat(L === 1 ? manMes : []).forEach(function(c){
       _balSumar(cols[L].minEmp, c.empleado, c.durMinutos || 0);
@@ -24608,8 +24715,8 @@ function _balDerivar(c, v, mes, extra){
   if(extra) extra(r);
   return r;
 }
-function _balCalcularTodo(mes, ventas, pool, cierres){
-  var cols = _balCostos(mes, pool, cierres);
+function _balCalcularTodo(mes, ventas, pool, cierres, rango){
+  var cols = _balCostos(mes, pool, cierres, rango);
   // Cargas sociales: lo pagado de verdad; si en el mes no hay ningún pago,
   // el % configurado sobre los sueldos brutos.
   var pagadas = (cols[1].rub.cargas_sociales || 0) + (cols[2].rub.cargas_sociales || 0), pct = balCargasPct();
