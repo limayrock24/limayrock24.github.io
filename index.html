@@ -17993,15 +17993,14 @@ function _rentPlataHtml(){
   var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
   var $ = function(n){ return fmt(Math.round(Number(n) || 0)); };
   var col = function(n){ return n >= 0 ? 'var(--green)' : 'var(--red)'; };
-  var fila = function(signo, txt, monto, sub, opt){
+  var sub = function(t){ return t ? '<div style="font-size:.66rem;color:var(--gray);margin-top:4px;line-height:1.35">'+t+'</div>' : ''; };
+  var caja = function(titulo, monto, color, txt, opt){
     opt = opt || {};
-    // "display: flex" con espacio: así en el celu no se le aplica el corte de renglón general del panel.
-    return '<div style="display: flex;justify-content:space-between;align-items:baseline;gap:10px;padding:'+(opt.grande ? '10px 12px' : '7px 12px')+';border-top:1px solid var(--border);'+(opt.grande ? 'background:rgba(255,255,255,.03);' : '')+(opt.click ? 'cursor:pointer;' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
-      '<div style="flex:1 1 auto;min-width:0"><div style="font-size:'+(opt.grande ? '.86rem' : '.8rem')+';color:var(--white);'+(opt.grande ? 'font-weight:700' : '')+'"><span style="color:var(--gray);display:inline-block;width:14px">'+signo+'</span>'+txt+'</div>'+
-        (sub ? '<div style="font-size:.66rem;color:var(--gray);margin:2px 0 0 14px">'+sub+'</div>' : '')+'</div>'+
-      '<div style="flex:0 0 auto;font-family:Oswald,sans-serif;font-size:'+(opt.grande ? '1.25rem' : '.98rem')+';color:'+(opt.color || 'var(--white)')+';white-space:nowrap">'+$(monto)+'</div></div>';
+    return '<div class="rent-box'+(opt.net ? ' net' : '')+'" style="'+(opt.click ? 'cursor:pointer;' : '')+(opt.ancho ? 'grid-column:1/-1;' : '')+(opt.borde ? 'border-color:'+opt.borde+';' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
+      '<div class="rl">'+titulo+'</div><div class="rv" style="color:'+color+(opt.chico ? ';font-size:1.1rem' : '')+'">'+$(monto)+'</div>'+sub(txt)+'</div>';
   };
-  var sub2 = function(txt, monto){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 12px 4px 30px;font-size:.74rem;color:var(--light)"><span>'+txt+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(monto)+'</span></div>'; };
+  var titulo = function(t, extra){ return '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:'+(extra || '14px 0 8px')+';text-transform:uppercase">'+t+'</div>'; };
+  var nota = function(t){ return '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.72rem;color:var(--gray)">'+t+'</div>'; };
   var gastos = r.totalOp + r.creditos;
   var rubros = [
     ['Sueldos', r.sueldos], ['Cargas sociales', r.cargas], ['Personal extra y limpieza', c.rub.personal_extra || 0],
@@ -18009,58 +18008,60 @@ function _rentPlataHtml(){
     ['Otros costos (costos varios)', r.otros], ['Cuotas de créditos y préstamos', r.creditos]
   ].filter(function(g){ return Math.round(g[1]) !== 0; });
   var titPer = x.exacto ? _balNombreMes(x.mes) : 'el período elegido';
-  var h = '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:0 0 4px;text-transform:uppercase">💵 La plata de '+escBaja(titPer)+' — Limay '+x.L+'</div>'+
+  var h = titulo('💵 La plata de '+escBaja(titPer)+' — Limay '+x.L, '0 0 4px')+
     '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px;line-height:1.45">'+(x.exacto
       ? 'Misma cuenta que el Balance mensual: da los mismos números que la columna de Limay '+x.L+'.'+(v.enCurso ? ' Mes en curso: van '+v.diasTrans+' de '+v.diasMes+' días.' : '')
       : 'Aproximado: cada pago cuenta el día que se pagó (el alquiler y los sueldos se pagan una vez por mes). Para el número oficial elegí un mes.')+'</div>';
-  h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)">';
-  h += fila('', '🛒 Vendiste', r.ventas, 'Sin el recargo del posnet. El fiado cuenta el día que se llevó la mercadería.').replace('border-top:1px solid var(--border);', '');
-  h += fila('', '📈 Te quedó de lo vendido (margen bruto)', r.margen,
-    (r.margenPctV != null ? Math.round(r.margenPctV)+' % de lo vendido. ' : '')+'Es la venta menos lo que te costó la mercadería.'+
-    (r.pctSinCosto >= 0.5 ? ' <span style="color:'+(r.pctSinCosto > 10 ? '#e74c3c' : 'var(--gold)')+'">El '+Math.round(r.pctSinCosto)+' % de lo vendido no tiene costo cargado y no suma acá.</span>' : ''), { color: 'var(--green)' });
-  if(Math.round(r.otrosIng)) h += fila('+', 'Ganancia de cargas virtuales y cambio de efectivo', r.otrosIng, '', { color: 'var(--green)' });
-  h += fila('−', '💸 Gastos del negocio '+(_rentGastosAbierto ? '▴' : '▾'), gastos, 'Tocá para ver cada rubro.', { color: 'var(--red)', click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()' });
+  h += '<div class="rent-grid" style="margin-bottom:8px">';
+  h += caja('🛒 Vendiste', r.ventas, 'var(--white)', 'Sin el recargo del posnet');
+  h += caja('📈 Te quedó de lo vendido', r.margen, 'var(--green)',
+    (r.margenPctV != null ? Math.round(r.margenPctV)+' % de lo vendido' : 'Margen bruto')+
+    (Math.round(r.otrosIng) ? '<br>+ '+$(r.otrosIng)+' de cargas virtuales y cambio' : '')+
+    (r.pctSinCosto >= 0.5 ? '<br><span style="color:'+(r.pctSinCosto > 10 ? '#e74c3c' : 'var(--gold)')+'">'+Math.round(r.pctSinCosto)+' % sin costo cargado</span>' : ''));
+  h += caja('💸 Gastos del negocio '+(_rentGastosAbierto ? '▲' : '▼'), gastos, 'var(--red)', 'Tocá para ver cada rubro', { click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()', borde: _rentGastosAbierto ? 'var(--gold)' : '' });
+  h += caja('🏗 Inversiones', r.inversion, Math.round(r.inversion) ? 'var(--red)' : 'var(--gray)', 'Equipamiento: no es gasto del mes');
   if(_rentGastosAbierto){
-    h += rubros.length ? rubros.map(function(g){ return sub2(g[0], g[1]); }).join('') : sub2('Sin gastos cargados en el período', 0);
-    if(r.pendTotal > 0) h += '<div style="padding:2px 12px 6px 30px;font-size:.66rem;color:var(--gold)">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>';
+    h += '<div style="grid-column:1/-1;border:1px solid var(--gold);border-radius:6px;background:var(--card);padding:6px 0">'+
+      (rubros.length ? rubros.map(function(g){ return '<div style="display: flex;justify-content:space-between;gap:10px;padding:5px 14px;font-size:.78rem;color:var(--light)"><span>'+g[0]+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(g[1])+'</span></div>'; }).join('')
+        : '<div style="padding:5px 14px;font-size:.78rem;color:var(--gray)">Sin gastos cargados en el período</div>')+
+      (r.pendTotal > 0 ? '<div style="padding:4px 14px;font-size:.66rem;color:var(--gold)">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>' : '')+
+      '</div>';
   }
-  h += fila('=', (r.neto >= 0 ? '✅' : '🔴')+' Ganancia del negocio', r.neto, '', { grande: true, color: col(r.neto) });
-  if(Math.round(r.inversion)) h += fila('−', '🏗 Inversiones (equipamiento)', r.inversion, 'No es un gasto del mes, pero esa plata ya no está para repartir.', { color: 'var(--red)' });
-  h += fila('=', 'Disponible para repartir', r.disponible, '', { grande: true, color: col(r.disponible) });
-  var socios = Object.keys(r.pctSocio || {});
-  Object.keys(c.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
-  if(socios.length){
-    h += '<div style="padding:8px 12px 4px;border-top:1px solid var(--border);font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase">👥 Lo que le toca a cada socio</div>';
+  h += caja((r.neto >= 0 ? '✅' : '🔴')+' Ganancia del negocio', r.neto, col(r.neto), 'Lo que te quedó de lo vendido − gastos del negocio', { net: true });
+  h += caja('💰 Disponible para repartir', r.disponible, col(r.disponible), 'Ganancia − inversiones', { ancho: true });
+  h += '</div>';
+  if(c.nSinClasif) h += '<div style="margin-bottom:8px;padding:8px 12px;border:1px solid #e74c3c;border-radius:6px;font-size:.72rem;color:#e74c3c;font-weight:700">⚠ Hay '+c.nSinClasif+' pago'+(c.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+$(c.sinClasif)+') que no están en esta cuenta. Clasificalos en Egresos → 🏷 Clasificar.</div>';
+  // Reparto entre socios: solo con el mes terminado.
+  h += titulo('👥 Lo que le toca a cada socio');
+  h += '<div class="rent-grid" style="margin-bottom:8px">';
+  if(!x.exacto) h += nota('El reparto se ve eligiendo un mes que ya terminó.');
+  else if(v.enCurso) h += nota('El reparto aparece cuando termina el mes, con todos los pagos cargados.');
+  else {
+    var socios = Object.keys(r.pctSocio || {});
+    Object.keys(c.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
     socios.forEach(function(s){
       var toca = r.corr[s] || 0, ret = c.retiros[s] || 0, saldo = toca - ret, pct = (r.pctSocio || {})[s] || 0;
-      h += '<div style="padding:5px 12px 7px 26px;font-size:.76rem;color:var(--light)">'+
-        '<div style="display:flex;justify-content:space-between;gap:10px"><b style="color:var(--white)">'+escBaja(s)+' ('+pct+' %)</b><span style="font-family:Oswald,sans-serif">le toca '+$(toca)+'</span></div>'+
-        '<div style="display:flex;justify-content:space-between;gap:10px;color:var(--gray)"><span>Ya retiró</span><span style="font-family:Oswald,sans-serif">'+$(ret)+'</span></div>'+
-        '<div style="display:flex;justify-content:space-between;gap:10px"><span>'+(saldo >= 0 ? 'Le queda por retirar' : 'Retiró de más')+'</span><span style="font-family:Oswald,sans-serif;color:'+col(saldo)+'">'+$(Math.abs(saldo))+'</span></div></div>';
+      h += caja(escBaja(s)+' ('+pct+' %) · '+(saldo >= 0 ? 'le queda' : 'retiró de más'), Math.abs(saldo), col(saldo), 'Le toca '+$(toca)+'<br>Ya retiró '+$(ret));
     });
   }
   h += '</div>';
   // Lo que salió pero no es gasto del negocio.
-  var ap = [];
-  if(Math.round(c.mercaderia)) ap.push(['📦 Compras de mercadería pagadas', c.mercaderia, 'No se restan: ya están en "lo que te costó la mercadería".']);
   var retT = _balSumaMapa(c.retiros);
-  if(Math.round(retT)) ap.push(['👤 Retiros de socios', retT, 'Se descuentan de lo que le toca a cada uno.']);
-  if(Math.round(v.sinCobrar)) ap.push(['📝 Fiado sin cobrar'+(v.enCurso ? ' (a hoy)' : ' al cierre'), v.sinCobrar, 'Ya está contado como venta.']);
-  if(ap.length){
-    h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gray);margin:12px 0 4px;text-transform:uppercase">Aparte (no son gastos del negocio)</div>'+
-      '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)">'+
-      ap.map(function(a, i){ var f = fila('', a[0], a[1], a[2]); return i ? f : f.replace('border-top:1px solid var(--border);', ''); }).join('')+'</div>';
-  }
-  if(c.nSinClasif) h += '<div style="margin-top:8px;padding:8px 12px;border:1px solid #e74c3c;border-radius:6px;font-size:.72rem;color:#e74c3c;font-weight:700">⚠ Hay '+c.nSinClasif+' pago'+(c.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+$(c.sinClasif)+') que no están en esta cuenta. Clasificalos en Egresos → 🏷 Clasificar.</div>';
+  h += titulo('Aparte (no son gastos del negocio)');
+  h += '<div class="rent-grid" style="margin-bottom:8px">'+
+    caja('📦 Mercadería pagada', c.mercaderia, 'var(--white)', 'Ya está en lo que te costó lo vendido', { chico: true })+
+    caja('👤 Retiros de socios', retT, 'var(--white)', 'Se descuentan de lo que le toca a cada uno', { chico: true })+
+    caja('📝 Fiado sin cobrar', v.sinCobrar, 'var(--gold)', (v.enCurso ? 'A hoy. ' : 'Al cierre. ')+'Ya contado como venta', { chico: true, ancho: true })+
+    '</div>';
   // La plata que hay hoy (no depende del período).
   try{
     var liq = calcularLiquidez(), tot = liq.efectivoCaja + liq.efectivoFuera + liq.mercadoPago;
-    h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gray);margin:12px 0 4px;text-transform:uppercase">💰 La plata que hay hoy</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'+
-      [['💵 En la caja', liq.efectivoCaja], ['👜 Efectivo fuera de la caja', liq.efectivoFuera], ['💳 Mercado Pago', liq.mercadoPago], ['🏦 Total', tot]].map(function(q, i){
-        return '<div class="rent-box" style="padding:10px"><div class="rl">'+q[0]+'</div><div class="rv" style="font-size:1.1rem;color:'+(i === 3 ? 'var(--white)' : col(q[1]))+'">'+$(q[1])+'</div></div>';
-      }).join('')+'</div>'+
-      '<div style="font-size:.64rem;color:var(--gray);margin-top:4px">Es la plata de ahora, sin importar el período elegido. El detalle está más abajo, en 💰 Liquidez del local.</div>';
+    h += titulo('🏦 La plata que hay hoy')+'<div class="rent-grid" style="margin-bottom:4px">'+
+      caja('💵 En la caja', liq.efectivoCaja, col(liq.efectivoCaja), '', { chico: true })+
+      caja('👜 Efectivo fuera de la caja', liq.efectivoFuera, col(liq.efectivoFuera), '', { chico: true })+
+      caja('💳 Mercado Pago', liq.mercadoPago, col(liq.mercadoPago), '', { chico: true })+
+      caja('🏦 Total', tot, 'var(--white)', '', { chico: true })+
+      '</div><div style="font-size:.64rem;color:var(--gray)">Es la plata de ahora, sin importar el período elegido. El detalle está más abajo, en 💰 Liquidez del local.</div>';
   }catch(e){}
   return h;
 }
