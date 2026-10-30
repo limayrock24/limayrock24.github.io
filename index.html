@@ -5118,14 +5118,7 @@ body.night-on{background:#080005}
             <input type="date" id="egFechaHasta" onchange="selEgRango()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 6px;font-family:Oswald,sans-serif;font-size:.68rem">
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">Categoría:</span>
-          <button class="period-btn active" id="egcat-todas" onclick="selEgCat('todas')">Todas</button>
-          <button class="period-btn" id="egcat-proveedor" onclick="selEgCat('proveedor')">🚚 Proveedores</button>
-          <button class="period-btn" id="egcat-sueldo" onclick="selEgCat('sueldo')">👤 Sueldos</button>
-          <button class="period-btn" id="egcat-servicio" onclick="selEgCat('servicio')">💡 Servicios</button>
-          <button class="period-btn" id="egcat-otro" onclick="selEgCat('otro')">📋 Otros</button>
-        </div>
+        <div id="egCatBar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
       </div>
 
       <!-- KPIs RESUMEN -->
@@ -5141,30 +5134,13 @@ body.night-on{background:#080005}
       <!-- RESUMEN PROVEEDORES (colapsado) -->
       <div style="margin-top:16px">
         <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenProvBox()">
-          🚚 Resumen por proveedor <span id="resProvArrow">▾</span>
+          <span id="resProvTitulo">🚚 Resumen por proveedor</span> <span id="resProvArrow">▾</span>
         </div>
         <div id="resumenProveedores" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
       </div>
 
-      <!-- RESUMEN SUELDOS / SERVICIOS / OTROS (mismo mecanismo que proveedores, por categoría) -->
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#3498DB;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('sueldo')">
-          👤 Resumen de sueldos <span id="resCatArrow_sueldo">▾</span>
-        </div>
-        <div id="resumenCat_sueldo" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#E67E22;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('servicio')">
-          💡 Resumen de servicios <span id="resCatArrow_servicio">▾</span>
-        </div>
-        <div id="resumenCat_servicio" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gray);margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('otro')">
-          📋 Resumen de otros <span id="resCatArrow_otro">▾</span>
-        </div>
-        <div id="resumenCat_otro" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
+      <!-- RESUMEN DE CADA RUBRO (mismo mecanismo que proveedores): se arma en pintarResumenesEgreso -->
+      <div id="egResumenesCat"></div>
     </div>
 
     <!-- RENTABILIDAD -->
@@ -16367,6 +16343,34 @@ function poblarRubrosEgreso(){
   sel.innerHTML = RUBROS_FORM.map(function(r){ return '<option value="'+r[0]+'">'+r[1]+'</option>'; }).join('');
   sel.value = 'mercaderia';
 }
+// Grupo (el rubro del formulario) de cada rubro guardado, también los viejos.
+var GRUPO_DE_RUBRO = {
+  mercaderia: 'mercaderia', sueldos: 'personal', personal_extra: 'personal', cargas_sociales: 'personal', alquiler: 'alquiler',
+  servicios: 'servicios', luz: 'servicios', gas: 'servicios', agua: 'servicios', internet: 'servicios', otros_servicios: 'servicios',
+  impuestos: 'impuestos', monotributo: 'impuestos', comercio: 'impuestos', contadora: 'impuestos', otros_impuestos: 'impuestos',
+  credito: 'credito', inversion: 'inversion', otros_costos: 'otros_costos', comisiones: 'otros_costos', retiro_socio: 'retiro_socio'
+};
+function grupoDeRubro(r){ return GRUPO_DE_RUBRO[r] || 'sin_clasificar'; }
+function grupoEgreso(e){ return grupoDeRubro(rubroDeEgreso(e)); }
+function nombreGrupo(g, sinIcono){
+  var f = RUBROS_FORM.filter(function(x){ return x[0] === g; })[0];
+  var t = f ? f[1] : '⚠ Sin clasificar';
+  return sinIcono ? t.replace(/^\S+\s/, '') : t;
+}
+// El rubro de un pago para mostrar: el grupo y, si hace falta, cuál dentro de él.
+function textoRubroEgreso(e, sinIcono){
+  var r = rubroDeEgreso(e), g = grupoDeRubro(r), t = nombreGrupo(g, sinIcono);
+  if(g === 'personal') t += ' · '+(r === 'personal_extra' ? 'Personal extra' : rubroDef(r).t);
+  else if(rubroDef(r).viejo && r !== 'comisiones') t += ' · '+rubroDef(r).t;
+  return t;
+}
+// A quién o a qué fue el pago, para agrupar en los resúmenes.
+function nombreResumenEgreso(e){
+  var d = esEquipoDueno() ? detDeEgreso(e) : null;
+  if(d && d.rubro === 'credito' && d.acreedor) return nombreActual(d.acreedor);
+  if(d && d.rubro === 'retiro_socio' && d.socio) return socioCompleto(nombreActual(d.socio));
+  return (d && (d.empleado || d.detalle || d.concepto)) || e.proveedor || e.prov || '—';
+}
 // El rubro de verdad del pago (en Personal, el que se eligió abajo).
 function _rubroForm(){
   var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
@@ -16987,6 +16991,8 @@ function renderEgresos() {
   var kpisEl = document.getElementById('egresosKpis');
   if(!list) return;
 
+  pintarFiltrosEgreso();
+  pintarResumenesEgreso();
   var filtrados = getEgFiltrados();
   mpReintentarEgresos(getEgresos());
   poblarRubrosEgreso();
@@ -16998,8 +17004,27 @@ function renderEgresos() {
     } else barClf.innerHTML = '';
   }
 
-  // KPIs por categoría
-  if(kpisEl) {
+  // Cuadritos por rubro (equipo del dueño): el total de cada uno en el período;
+  // tocando uno se ven solo esos pagos.
+  if(kpisEl && esEquipoDueno()) {
+    var porG = {};
+    getEgDelPeriodo().forEach(function(e){ var g = grupoEgreso(e); porG[g] = (porG[g] || 0) + (Number(e.monto) || 0); });
+    var gs = RUBROS_FORM.map(function(x){ return x[0]; }).concat(['sin_clasificar']).filter(function(g){ return porG[g]; });
+    var totalF = filtrados.reduce(function(s,e){ return s+e.monto; },0);
+    kpisEl.innerHTML =
+      (gs.length ? '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:4px">'+
+      gs.map(function(g){
+        var act = _egCat === g, rojo = g === 'sin_clasificar';
+        return '<div onclick="selEgCat(\''+(act ? 'todas' : g)+'\')" style="cursor:pointer;background:var(--card);border:1px solid '+(act ? 'var(--gold)' : rojo ? '#e74c3c' : 'var(--border)')+';border-radius:5px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+          '<span style="font-size:.72rem;color:'+(rojo ? '#e74c3c' : 'var(--gray)')+'">'+nombreGrupo(g)+'</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:.88rem;color:'+(rojo ? '#e74c3c' : 'var(--light)')+';white-space:nowrap">'+fmt(porG[g])+'</span>'+
+        '</div>';
+      }).join('')+'</div>' : '')+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:4px">'+
+        '<span style="font-size:.72rem;color:var(--gray)">'+(_egCat === 'todas' ? 'Total período' : 'Total '+nombreGrupo(_egCat, true)+' · <span style="text-decoration:underline;cursor:pointer" onclick="selEgCat(\'todas\')">ver todos</span>')+'</span>'+
+        '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalF)+'</span>'+
+      '</div>';
+  } else if(kpisEl) {
     var cats = {proveedor:0, sueldo:0, servicio:0, otro:0};
     filtrados.forEach(function(e){
       var c = catVisibleEgreso(e);
@@ -17037,14 +17062,14 @@ function renderEgresos() {
     row.className = 'egreso-row';
     var prov = conceptoDeEgreso(e);
     var catIconos = {proveedor:'🚚',sueldo:'👤',servicio:'💡',otro:'📋'};
-    var catIcon = catIconos[catVisibleEgreso(e)] || '📋';
+    var catIcon = esEquipoDueno() ? nombreGrupo(grupoEgreso(e)).split(' ')[0] : (catIconos[catVisibleEgreso(e)] || '📋');
     var detE = esEquipoDueno() ? detDeEgreso(e) : null;
     var rubroTxt = '';
     if(esEquipoDueno() && (detE || (e.categoria||'proveedor') !== 'proveedor')){
       var sinClf = egresoSinClasificar(e);
       rubroTxt = '<div style="font-size:.64rem;margin-top:1px;color:'+(sinClf?'#e74c3c;font-weight:700':'var(--gold)')+'">'+
-        (sinClf ? '⚠ Sin clasificar' : rubroDef(detE.rubro).t)+
-        (detE && detE.empleado ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor ? ' · '+escBaja(detE.acreedor) : '')+
+        (sinClf ? '⚠ Sin clasificar' : textoRubroEgreso(e, true))+
+        (detE && detE.empleado && detE.empleado !== prov ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor && nombreActual(detE.acreedor) !== prov ? ' · '+escBaja(detE.acreedor) : '')+
         (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+detE.mes : '')+
         (detE && detE.suc === 'compartido' ? ' · compartido' : (detE && detE.suc && detE.suc !== localActual() ? ' · Limay '+detE.suc : ''))+'</div>';
     }
@@ -17108,11 +17133,25 @@ function selEgRango() {
 
 function selEgCat(cat) {
   _egCat = cat;
-  ['todas','proveedor','sueldo','servicio','otro'].forEach(function(k){
-    var b = document.getElementById('egcat-'+k);
-    if(b) b.classList.toggle('active', k===cat);
-  });
   renderEgresos();
+}
+// En el equipo del dueño se filtra por los rubros del formulario; en la caja,
+// que no tiene el detalle de los rubros, por las categorías de siempre.
+var EG_CATS_CAJA = [['proveedor','🚚 Proveedores'],['sueldo','👤 Sueldos'],['servicio','💡 Servicios'],['otro','📋 Otros']];
+function _egCatsVisibles(){
+  if(!esEquipoDueno()) return EG_CATS_CAJA;
+  var l = RUBROS_FORM.slice();
+  if(getEgDelPeriodo().some(function(e){ return grupoEgreso(e) === 'sin_clasificar'; })) l.push(['sin_clasificar', '⚠ Sin clasificar']);
+  return l;
+}
+function pintarFiltrosEgreso(){
+  var bar = document.getElementById('egCatBar'); if(!bar) return;
+  var cats = _egCatsVisibles();
+  if(_egCat !== 'todas' && !cats.some(function(c){ return c[0] === _egCat; })) _egCat = 'todas';
+  bar.innerHTML = '<span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">'+(esEquipoDueno() ? 'Rubro:' : 'Categoría:')+'</span>'+
+    [['todas', esEquipoDueno() ? 'Todos' : 'Todas']].concat(cats).map(function(c){
+      return '<button class="period-btn'+(c[0] === _egCat ? ' active' : '')+'" id="egcat-'+c[0]+'" onclick="selEgCat(\''+c[0]+'\')"'+(c[0] === 'sin_clasificar' && c[0] !== _egCat ? ' style="color:#e74c3c;border-color:#e74c3c"' : '')+'>'+c[1]+'</button>';
+    }).join('');
 }
 
 function toggleResumenProvBox() {
@@ -17139,17 +17178,19 @@ function _egRango() {
   }
   return { desde: desde, hasta: hasta };
 }
-function getEgFiltrados() {
-  var egresos = getEgresos();
+// Los pagos del período elegido (sin mirar el rubro).
+function getEgDelPeriodo() {
   var rg = _egRango(), desde = rg.desde, hasta = rg.hasta;
-  return egresos.filter(function(e){
+  return getEgresos().filter(function(e){
     var f = new Date((e.ts||e.fecha+'T12:00:00'));
-    if(f < desde || f > hasta) return false;
-    if(_egCat !== 'todas') {
-      var cat = e.categoria || 'proveedor';
-      if(cat !== _egCat) return false;
-    }
-    return true;
+    return !(f < desde || f > hasta);
+  });
+}
+function getEgFiltrados() {
+  var dueno = esEquipoDueno();
+  return getEgDelPeriodo().filter(function(e){
+    if(_egCat === 'todas') return true;
+    return dueno ? grupoEgreso(e) === _egCat : (e.categoria || 'proveedor') === _egCat;
   });
 }
 
@@ -17200,7 +17241,9 @@ function renderResumenProveedores() {
   // categoría), acá faltaba excluir esas categorías — se estaban agrupando
   // TODOS los egresos del período por su campo "proveedor", así que un
   // sueldo o un pago de "otros" con ese campo cargado aparecía mezclado acá.
-  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === 'proveedor'; });
+  // En el equipo del dueño, lo que es mercadería (lo pagado a un proveedor que
+  // se pasó a inversión ya no va acá).
+  var egresos = getEgresos().filter(function(e){ return esEquipoDueno() ? grupoEgreso(e) === 'mercaderia' : (e.categoria||'proveedor') === 'proveedor'; });
   var desde, hasta;
 
   if(_resumenProvDesde && _resumenProvHasta){
@@ -17290,7 +17333,27 @@ var _resCatState = {
   servicio: {periodo:'mes', fecha:'', desde:'', hasta:''},
   otro:     {periodo:'mes', fecha:'', desde:'', hasta:''}
 };
-var _resCatLabels = { sueldo:'sueldos', servicio:'servicios', otro:'otros' };
+var _resCatLabels = { sueldo:'sueldos', servicio:'servicios', otro:'otros',
+  personal:'pagos de personal', alquiler:'pagos de alquiler', servicios:'servicios', impuestos:'impuestos', credito:'cuotas',
+  inversion:'inversiones', otros_costos:'otros costos', retiro_socio:'retiros de socios', sin_clasificar:'pagos sin clasificar' };
+// Un resumen por rubro (los mismos del formulario); en la caja, los de siempre.
+var EG_RES_CAJA = [['sueldo','👤 Resumen de sueldos','#3498DB'],['servicio','💡 Resumen de servicios','#E67E22'],['otro','📋 Resumen de otros','var(--gray)']];
+function pintarResumenesEgreso(){
+  var cont = document.getElementById('egResumenesCat'); if(!cont) return;
+  var dueno = esEquipoDueno(), modo = dueno ? 'rubros' : 'caja';
+  var tp = document.getElementById('resProvTitulo'); if(tp) tp.textContent = dueno ? '🚚 Resumen de mercadería (por proveedor)' : '🚚 Resumen por proveedor';
+  if(cont.dataset.modo === modo) return;   // ya armado: no se cierran los que estén abiertos
+  cont.dataset.modo = modo;
+  var lista = dueno ? RUBROS_FORM.filter(function(x){ return x[0] !== 'mercaderia'; }).map(function(x){ return [x[0], x[1].split(' ')[0]+' Resumen de '+nombreGrupo(x[0], true).toLowerCase(), 'var(--gold)']; }) : EG_RES_CAJA;
+  cont.innerHTML = lista.map(function(x){
+    if(!_resCatState[x[0]]) _resCatState[x[0]] = { periodo:'mes', fecha:'', desde:'', hasta:'' };
+    return '<div style="margin-top:0">'+
+      '<div style="font-family:\'Oswald\',sans-serif;font-size:.7rem;letter-spacing:2px;color:'+x[2]+';margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox(\''+x[0]+'\')">'+
+        x[1]+' <span id="resCatArrow_'+x[0]+'">▾</span></div>'+
+      '<div id="resumenCat_'+x[0]+'" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>'+
+    '</div>';
+  }).join('');
+}
 
 function toggleResumenCatBox(categoria) {
   var box = document.getElementById('resumenCat_'+categoria);
@@ -17344,7 +17407,8 @@ function renderResumenCategoria(categoria) {
   if(!el) return;
   var st = _resCatState[categoria];
 
-  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === categoria; });
+  var porRubro = esEquipoDueno() && !EG_RES_CAJA.some(function(x){ return x[0] === categoria; });
+  var egresos = getEgresos().filter(function(e){ return porRubro ? grupoEgreso(e) === categoria : (e.categoria||'proveedor') === categoria; });
   var desde, hasta;
   if(st.desde && st.hasta){
     desde = new Date(st.desde+'T00:00:00'); hasta = new Date(st.hasta+'T23:59:59');
@@ -17362,7 +17426,7 @@ function renderResumenCategoria(categoria) {
 
   var porNombre = {};
   filtrados.forEach(function(e){
-    var key = e.proveedor || e.prov || '—';
+    var key = porRubro ? nombreResumenEgreso(e) : (e.proveedor || e.prov || '—');
     if(!porNombre[key]) porNombre[key] = {total:0, count:0, pagos:[]};
     porNombre[key].total += e.monto;
     porNombre[key].count++;
@@ -18308,7 +18372,7 @@ function exportarEgresosCSV() {
   var rows = ['Fecha;Proveedor/Concepto;'+(dueno ? 'Rubro;Mes al que corresponde;Sucursal;' : '')+'Monto;Medio de pago;Nota'];
   getEgFiltrados().slice().sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)) || (a.id||0) - (b.id||0); }).forEach(function(e){
     var d = dueno ? detDeEgreso(e) : null;
-    var extra = dueno ? [csvTxt(rubroDef(rubroDeEgreso(e)).t), csvTxt((d && d.mes) || String(e.fecha||'').slice(0,7)),
+    var extra = dueno ? [csvTxt(textoRubroEgreso(e, true)), csvTxt((d && d.mes) || String(e.fecha||'').slice(0,7)),
       csvTxt(d && d.suc === 'compartido' ? 'Compartido' : 'Sucursal '+((d && d.suc) || localActual()))] : [];
     rows.push([csvTxt(e.fecha), csvTxt(conceptoDeEgreso(e))].concat(extra, [csvNum(e.monto), csvTxt(medioEgresoTxt(e.medio)), csvTxt(e.nota||'')]).join(';'));
   });
@@ -18317,18 +18381,20 @@ function exportarEgresosCSV() {
 }
 
 function exportarEgresosPDF() {
-  var egresos = getEgresos().slice().reverse();
+  // Lo mismo que se ve en pantalla: el período y el rubro elegidos.
+  var dueno = esEquipoDueno(), rg = _egRango();
+  var egresos = getEgFiltrados().slice().sort(function(a, b){ return String(b.fecha).localeCompare(String(a.fecha)) || (b.id||0) - (a.id||0); });
   var total = egresos.reduce(function(s,e){return s+e.monto;},0);
   var rows = egresos.map(function(e){
-    return '<tr><td>'+e.fecha+'</td><td>'+e.prov+'</td><td>'+e.medio+'</td>'+
+    return '<tr><td>'+e.fecha+'</td><td>'+escBaja(conceptoDeEgreso(e))+'</td>'+(dueno ? '<td>'+escBaja(textoRubroEgreso(e, true))+'</td>' : '')+'<td>'+medioEgresoTxt(e.medio)+'</td>'+
       '<td style="text-align:right;color:#CC0000">$'+Number(e.monto).toLocaleString('es-AR')+'</td>'+
-      '<td style="color:#666">'+( e.nota||'—')+'</td></tr>';
+      '<td style="color:#666">'+escBaja(e.nota||'—')+'</td></tr>';
   }).join('');
-  abrirVentanaPDF('Historial de Egresos',
+  abrirVentanaPDF('Egresos del '+rg.desde.toLocaleDateString('es-AR')+' al '+rg.hasta.toLocaleDateString('es-AR')+(_egCat !== 'todas' ? ' — '+(dueno ? nombreGrupo(_egCat, true) : _egCat) : ''),
     '<div class="kpis"><div class="kpi"><div class="l">Total egresos</div><div class="v" style="color:#CC0000">$'+
     Number(total).toLocaleString('es-AR')+'</div></div>'+
     '<div class="kpi"><div class="l">Cantidad</div><div class="v">'+egresos.length+'</div></div></div>'+
-    '<table><thead><tr><th>Fecha</th><th>Proveedor/Concepto</th><th>Medio</th><th>Monto</th><th>Nota</th></tr></thead>'+
+    '<table><thead><tr><th>Fecha</th><th>Proveedor/Concepto</th>'+(dueno ? '<th>Rubro</th>' : '')+'<th>Medio</th><th>Monto</th><th>Nota</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table>');
 }
 
