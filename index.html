@@ -17069,7 +17069,7 @@ function renderEgresos() {
       var sinClf = egresoSinClasificar(e);
       rubroTxt = '<div style="font-size:.64rem;margin-top:1px;color:'+(sinClf?'#e74c3c;font-weight:700':'var(--gold)')+'">'+
         (sinClf ? '⚠ Sin clasificar' : textoRubroEgreso(e, true))+
-        (detE && detE.empleado && detE.empleado !== prov ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor && nombreActual(detE.acreedor) !== prov ? ' · '+escBaja(detE.acreedor) : '')+
+        (detE && detE.empleado && detE.empleado !== prov ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor && nombreActual(detE.acreedor) !== prov ? ' · '+escBaja(nombreActual(detE.acreedor)) : '')+
         (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+detE.mes : '')+
         (detE && detE.suc === 'compartido' ? ' · compartido' : (detE && detE.suc && detE.suc !== localActual() ? ' · Limay '+detE.suc : ''))+'</div>';
     }
