@@ -5045,7 +5045,7 @@ body.night-on{background:#080005}
             <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
             <div class="field" id="eSucRow"><label>🏪 ¿Qué local lo paga?</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
           </div>
-          <div class="field" id="eTurnoRow" style="display:none"><label>🗓 ¿Pagás un turno puntual?</label><select id="eTurno" onchange="elegirTurnoEgreso()"></select></div>
+          <div class="field" id="eTurnoRow" style="display:none"><label>🗓 ¿Pagás un turno puntual?</label><select id="eTurno" onchange="elegirTurnoEgreso()"></select><div id="eTurnoAviso" style="display:none;font-size:.74rem;color:var(--gray);padding:6px 2px"></div></div>
           <div id="eRepartoRow" style="display:none">
             <div class="field-row">
               <div class="field"><label>💵 Pone Limay 1 $</label><input type="text" inputmode="decimal" id="eComp1" placeholder="0" oninput="formatMontoDecInput(this);compartidoCambio()"></div>
@@ -5074,7 +5074,7 @@ body.night-on{background:#080005}
             </div>
             <div style="font-size:.66rem;color:var(--gray)">Si no la dividís, la cuota entera se resta como costo en Créditos.</div>
           </div>
-          <div class="field" id="eSocioRow" style="display:none"><label>🤝 Socio que retiró</label><select id="eSocio"></select></div>
+          <div class="field" id="eSocioRow" style="display:none"><label>🤝 ¿A qué socio corresponde?</label><select id="eSocio"></select></div>
         </div>
         <div class="field">
           <label>Medio de pago</label>
@@ -15947,7 +15947,7 @@ var RUBROS_EGRESO = [
   {k:'personal_extra',  t:'Personal extra y limpieza',                  cat:'sueldo',    g:'👤 Personal'},
   {k:'alquiler',        t:'Alquiler',                                   cat:'otro',      g:'🏠 Alquiler'},
   {k:'servicios',       t:'Servicios',                                  cat:'servicio',  g:'💡 Servicios'},
-  {k:'impuestos',       t:'Impuestos y contadora',                      cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'impuestos',       t:'Impuestos',                                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
   // Desde el 30/10 se cargan como Servicios o Impuestos con su concepto (y ya
   // no hay cargas sociales): quedan para los pagos viejos que los tienen.
   {k:'cargas_sociales', t:'Cargas sociales',                            cat:'sueldo',    g:'👤 Personal', viejo:true},
@@ -15970,6 +15970,9 @@ var RUBROS_EGRESO = [
 ];
 var ACREEDORES_BASE = ['Tarjeta Martín Monsalve', 'Tarjeta David Monsalve', 'Mercado Crédito', 'IADEP'];
 var SOCIOS_BASE = ['Martín', 'Jonathan'];
+// Nombre completo de cada socio, para mostrar (por dentro se guarda el corto).
+var SOCIOS_COMPLETO = { 'Martín': 'Martín Monsalve', 'Jonathan': 'Jonathan Alvial' };
+function socioCompleto(s){ return SOCIOS_COMPLETO[s] || s; }
 // Nombres de antes del 24/10, por si quedó algo guardado con ellos.
 var NOMBRES_VIEJOS = { 'Dueño': 'Martín', 'Tarjeta mía': 'Tarjeta Martín Monsalve', 'Tarjeta de mi viejo': 'Tarjeta David Monsalve' };
 function nombreActual(s){ return NOMBRES_VIEJOS[s] || s; }
@@ -16355,7 +16358,7 @@ function guardarClaveDueno(){
 // Personal se abre en Sueldos o Personal extra (son filas distintas del balance).
 var RUBROS_FORM = [
   ['mercaderia', '🚚 Mercadería'], ['personal', '👤 Personal'], ['alquiler', '🏠 Alquiler'], ['servicios', '💡 Servicios'],
-  ['impuestos', '🧾 Impuestos y contadora'], ['credito', '💳 Cuotas y créditos'], ['inversion', '🏗 Inversión'],
+  ['impuestos', '🧾 Impuestos'], ['credito', '💳 Cuotas/Créditos'], ['inversion', '🏗 Inversión'],
   ['otros_costos', '🔧 Otros costos'], ['retiro_socio', '🤝 Retiro de socios']
 ];
 function poblarRubrosEgreso(){
@@ -16429,7 +16432,7 @@ function pintarDetEgreso(){
   var ac = document.getElementById('eAcreedor');
   if(ac){ var va = ac.value; ac.innerHTML = _opciones(acreedoresLista(), va, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; }
   var so = document.getElementById('eSocio');
-  if(so && !so.options.length) so.innerHTML = _opciones(sociosLista(), '', '— Elegí —');
+  if(so && !so.options.length) so.innerHTML = '<option value="">— Elegí a cuál socio —</option>'+sociosLista().map(function(x){ return '<option value="'+escBaja(x)+'">'+escBaja(socioCompleto(x))+'</option>'; }).join('');
   var fe = document.getElementById('eFecha'), me = document.getElementById('eMes');
   if(me && !me.dataset.tocado) me.value = ((fe && fe.value) || fechaLocalStr(new Date())).slice(0,7);
   var su = document.getElementById('eSuc');
@@ -16459,8 +16462,15 @@ function elegirEmpleadoEgreso(){
 function pintarTurnoEgreso(){
   var row = document.getElementById('eTurnoRow'), sel = document.getElementById('eTurno'); if(!row || !sel) return;
   var r = _rubroForm(), emp = (document.getElementById('eEmpleado')||{}).value || '', mes = (document.getElementById('eMes')||{}).value || '';
-  var vh = emp ? valorHoraDe(emp) : 0;
-  if(r !== 'sueldos' || !emp || !mes || !esEquipoDueno() || tipoSueldoDe(emp) === 'fijo' || !(vh > 0)){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
+  var vh = emp ? valorHoraDe(emp) : 0, av = document.getElementById('eTurnoAviso');
+  if(av){ av.style.display = 'none'; sel.style.display = ''; }
+  if(r !== 'sueldos' || !esEquipoDueno()){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
+  // En Sueldos el campo está siempre: si no hay turno para elegir, dice por qué.
+  var aviso = function(t){ row.style.display = ''; sel.innerHTML = ''; sel.dataset.clave = ''; sel.style.display = 'none'; if(av){ av.textContent = t; av.style.display = ''; } };
+  if(!emp) return aviso('Elegí el empleado para ver sus turnos sin pagar.');
+  if(!mes) return aviso('Elegí el mes al que corresponde.');
+  if(tipoSueldoDe(emp) === 'fijo') return aviso(emp+' cobra sueldo fijo: no se paga por turno.');
+  if(!(vh > 0)) return aviso(emp+' no tiene valor hora cargado: cargalo en Equipo para poder pagar un turno puntual.');
   var clave = emp+'|'+mes;
   if(sel.dataset.clave !== clave){
     var rep = _repartoSueldo(emp, mes) || { porTurno: {} };
@@ -16477,7 +16487,8 @@ function pintarTurnoEgreso(){
     sel.innerHTML = '<option value="">No, a cuenta del mes (de los turnos más viejos)</option>'+opts.join('');
     sel.dataset.clave = clave;
   }
-  row.style.display = sel.options.length > 1 ? '' : 'none';
+  if(sel.options.length > 1) row.style.display = '';
+  else aviso('Todos los turnos de '+emp+' de '+_balNombreMes(mes).toLowerCase()+' ya están pagados.');
 }
 function elegirTurnoEgreso(){
   var sel = document.getElementById('eTurno'); if(!sel) return;
@@ -16875,7 +16886,7 @@ function registrarEgreso() {
     } else if(rF === 'retiro_socio'){
       var socioF = (document.getElementById('eSocio')||{}).value || '';
       if(!socioF){ avisoEgreso('Elegí qué socio retiró', 'eSocio'); return; }
-      prov = 'Retiro de '+socioF;
+      prov = 'Retiro de '+socioCompleto(socioF);
     } else {
       // Servicios, impuestos, cuotas, inversión y otros costos: el concepto de la lista.
       var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
