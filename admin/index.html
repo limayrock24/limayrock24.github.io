@@ -9526,7 +9526,8 @@ function switchTab(tab) {
   if(tab==='consumos') renderConsumos();
   if(tab==='egresos'){ _egPeriodo='hoy'; _egDesde=''; _egHasta=''; _egCat='todas'; renderEgresos(); setFechaHoyEgreso(); poblarSelectProveedoresEgreso(); prepararSelectorCaja('egreso'); }
   if(tab==='rentabilidad'){
-    renderRentabilidad(); renderReportes();
+    // Siempre entra con el mes en curso elegido.
+    selPeriodo('mes'); renderReportes();
     // Si la sección liquidez estaba abierta, refrescarla
     var lb = document.getElementById('liquidezSectionBody');
     if(lb && lb.classList.contains('open')) renderLiquidez();
@@ -15857,7 +15858,7 @@ function registrarDevolucionPrestamo() {
 }
 
 var SK_EGRESOS = 'lr_egresos';
-var _periodoCurrent = 'hoy';
+var _periodoCurrent = 'mes';
 
 function getEgresos() {
   var pub = (window.__lrSync && window.__lrSync.egresosListos && Array.isArray(window.__lrEgresosCache)) ? window.__lrEgresosCache : [];
@@ -17979,7 +17980,7 @@ function _rentBalance(){
   var b = _balCalcularTodo(mes, ventas, pool, cierres, rg);
   return { b: b, c: b.cols[L - 1], v: b.ventas[L - 1], L: L, exacto: !rg, mes: mes };
 }
-var _rentGastosAbierto = false;
+var _rentGastosAbierto = false, _rentInvAbierto = false;
 function _rentPlataHtml(){
   var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
   var $ = function(n){ return fmt(Math.round(Number(n) || 0)); };
@@ -18010,12 +18011,22 @@ function _rentPlataHtml(){
     (Math.round(r.otrosIng) ? '<br>+ '+$(r.otrosIng)+' de cargas virtuales y cambio' : '')+
     (r.pctSinCosto >= 0.5 ? '<br><span style="color:'+(r.pctSinCosto > 10 ? '#e74c3c' : 'var(--gold)')+'">'+Math.round(r.pctSinCosto)+' % sin costo cargado</span>' : ''));
   h += caja('💸 Gastos del negocio '+(_rentGastosAbierto ? '▲' : '▼'), gastos, 'var(--red)', 'Tocá para ver cada rubro', { click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()', borde: _rentGastosAbierto ? 'var(--gold)' : '' });
-  h += caja('🏗 Inversiones', r.inversion, Math.round(r.inversion) ? 'var(--red)' : 'var(--gray)', 'Equipamiento: no es gasto del mes');
+  h += caja('🏗 Inversiones '+(_rentInvAbierto ? '▲' : '▼'), r.inversion, Math.round(r.inversion) ? 'var(--red)' : 'var(--gray)', 'Equipamiento: no es gasto del mes<br>Tocá para ver cada una', { click: '_rentInvAbierto=!_rentInvAbierto;renderRentabilidad()', borde: _rentInvAbierto ? 'var(--gold)' : '' });
   if(_rentGastosAbierto){
     h += '<div style="grid-column:1/-1;border:1px solid var(--gold);border-radius:6px;background:var(--card);padding:6px 0">'+
       (rubros.length ? rubros.map(function(g){ return '<div style="display: flex;justify-content:space-between;gap:10px;padding:5px 14px;font-size:.78rem;color:var(--light)"><span>'+g[0]+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(g[1])+'</span></div>'; }).join('')
         : '<div style="padding:5px 14px;font-size:.78rem;color:var(--gray)">Sin gastos cargados en el período</div>')+
       (r.pendTotal > 0 ? '<div style="padding:4px 14px;font-size:.66rem;color:var(--gold)">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>' : '')+
+      '</div>';
+  }
+  if(_rentInvAbierto){
+    // Cada inversión del período: la fecha, a qué fue y el monto.
+    var invs = c.items.filter(function(it){ return it.seccion === _balSeccion('inversion'); }).sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)); });
+    h += '<div style="grid-column:1/-1;border:1px solid var(--gold);border-radius:6px;background:var(--card);padding:6px 0">'+
+      (invs.length ? invs.map(function(it){
+        var que = [it.detalle, it.concepto].filter(function(t, i, a){ return t && a.indexOf(t) === i; }).join(' · ') || 'Sin detalle';
+        return '<div style="display: flex;justify-content:space-between;gap:10px;padding:5px 14px;font-size:.78rem;color:var(--light)"><span><span style="color:var(--gray)">'+escBaja(String(it.fecha || '').split('-').reverse().join('/'))+'</span> · '+escBaja(que)+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(it.monto)+'</span></div>';
+      }).join('') : '<div style="padding:5px 14px;font-size:.78rem;color:var(--gray)">Sin inversiones en el período</div>')+
       '</div>';
   }
   h += caja((r.neto >= 0 ? '✅' : '🔴')+' Ganancia del negocio', r.neto, col(r.neto), 'Lo que te quedó de lo vendido − gastos del negocio', { net: true });
