@@ -1116,6 +1116,9 @@ if(window.__lrSucursal === 2){
           if(antes && antes.stock === ahora.stock && antes.minimo === ahora.minimo) return;
           _hist.push({ id: nombre, antes: antes ? { stock: antes.stock, minimo: antes.minimo } : null, despues: { stock: ahora.stock, minimo: ahora.minimo }, modo: 'fijo' });
           __promesas.push(ref.set(limpiarUndefined({ nombre: nombre, stock: ahora.stock, minimo: ahora.minimo })));
+          // El número fijado pasa a ser la base: si otro guardado llega antes
+          // que la respuesta de la nube, no lo vuelve a sumar como diferencia.
+          prev[nombre] = { stock: ahora.stock, minimo: ahora.minimo };
           return;
         }
         var delta = (Number(ahora.stock)||0) - (Number(antes.stock)||0);
@@ -10318,33 +10321,14 @@ function anularVentaDirecto(id, alTerminar) {
   (function(){
     var v = VENTAS.find(function(v){ return v.id===id; });
     if(!v) return;
+    // Ya anulada (dos toques, o desde otro equipo): no se devuelve el stock otra vez.
+    if(v.anulada){ if(typeof alTerminar === 'function') alTerminar(); return; }
     v.anulada = true;
     saveVentas(VENTAS, [v.id]);
 
     // Devolver stock de los productos de la venta
     var inv = getStockInv();
-    (v.items||[]).forEach(function(item){
-      if(item.manual) return;
-      if(item.comboArmado && item.comboNombre) {
-        var kca = stockKeyCombo(item.comboNombre);
-        if(!inv[kca]) inv[kca] = { nombre: kca, stock: 0, minimo: 0 };
-        inv[kca].stock = (Number(inv[kca].stock)||0) + item.qty;
-        return;
-      }
-      if(item.esCombo && item.comboItems) {
-        // Combo: devolver stock de cada componente
-        item.comboItems.forEach(function(ci){
-          if(ci.tipo === 'manual') return; // ítem manual: no se descontó stock
-          if(inv[ci.nombre] !== undefined) {
-            inv[ci.nombre].stock = (inv[ci.nombre].stock||0) + (ci.qty * item.qty);
-          }
-        });
-      } else {
-        if(inv[item.name] !== undefined) {
-          inv[item.name].stock = (inv[item.name].stock||0) + item.qty;
-        }
-      }
-    });
+    devolverStockItems(inv, v.items);
     window.__lrStockInvCache = inv;
     guardarOperacionProtegida('StockInv', getStockInv, 'Anulación de venta #'+id+' — stock devuelto');
 
@@ -13989,11 +13973,7 @@ function eliminarConsumoMov(id) {
     // Devolver el stock de los productos de ese consumo
     if(c.items && c.items.length){
       var inv = getStockInv();
-      c.items.forEach(function(item){
-        if(inv[item.name] !== undefined){
-          inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-        }
-      });
+      devolverStockItems(inv, c.items);
       window.__lrStockInvCache = inv;
       guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por consumo eliminado');
     }
@@ -22526,11 +22506,7 @@ function eliminarClienteFiado(nombre) {
     if(!ok) return;
     // Devolver stock de fiados no pagados
     var inv = getStockInv();
-    delFiados.filter(function(f){ return !f.pagado; }).forEach(function(f){
-      (f.items||[]).forEach(function(item){
-        if(inv[item.name] !== undefined) inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-      });
-    });
+    delFiados.filter(function(f){ return !f.pagado; }).forEach(function(f){ devolverStockItems(inv, f.items); });
     window.__lrStockInvCache = inv;
     guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiados de '+nombre);
     var restantes = fiados.filter(function(f){ return f.cliente !== nombre; });
@@ -22550,11 +22526,7 @@ function eliminarFiado(id) {
     // Devolver stock si los productos estaban en inventario
     if(f.items && f.items.length && !f.pagado) {
       var inv = getStockInv();
-      f.items.forEach(function(item){
-        if(inv[item.name] !== undefined) {
-          inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-        }
-      });
+      devolverStockItems(inv, f.items);
       window.__lrStockInvCache = inv;
       guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiado de '+f.cliente);
     }
@@ -28540,6 +28512,8 @@ function abrirProdModal(idx) {
     document.getElementById('pmNoc').value=p.pnocAuto?'':(p.pnoc||'');
     var invEdit=getStockInv(); var sEdit=invEdit[p.name]||{stock:0,minimo:0};
     document.getElementById('pmStock').value=sEdit.stock||0;
+    // Lo que mostraba al abrir: al guardar, el stock se cambia solo si se tocó este campo.
+    document.getElementById('pmStock').dataset.alAbrir = String(sEdit.stock||0);
     document.getElementById('pmStockMin').value=sEdit.minimo||0;
     var cs=document.getElementById('pmCat');
     for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===p.cat){cs.selectedIndex=i;break;} }
@@ -28564,6 +28538,7 @@ function abrirProdModal(idx) {
     document.getElementById('filaEtiquetaDestacado').style.display='none';
     document.getElementById('pmEtiquetaDestacado').value='';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('pmStock').dataset.alAbrir = '';
     var _pss0 = document.getElementById('pmSinSync'); if(_pss0) _pss0.checked = false;
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
@@ -29693,10 +29668,21 @@ function guardarProdModal() {
     if(window.registrarAltaPendiente) window.registrarAltaPendiente(prod);
     registrarCambioCatalogo('nuevo', nombre, [{campo:'Categoría',antes:'—',despues:cat},{campo:'Precio venta',antes:'—',despues:pventa||0}], currentEmp?currentEmp.nombre:'Admin');
   }
-  // Guardar stock ajustado desde el modal
-  var nuevoStock = parseInt(document.getElementById('pmStock').value)||0;
+  // Si se renombró, la ficha de stock pasa al nombre nuevo ANTES de ver el
+  // stock: si no, el número del nombre viejo pisaba lo que se escribió.
+  if(huboRename){
+    var invR0 = getStockInv();
+    if(invR0[nombreViejo]){ invR0[nombre] = invR0[nombreViejo]; delete invR0[nombreViejo]; saveStockInv(invR0, [nombreViejo]); }
+  }
+  // Guardar stock ajustado desde el modal. Solo si se cambió el campo: si no,
+  // guardar la ficha (por ejemplo, para cambiar el precio) volvía a grabar el
+  // stock que había al abrirla y borraba las ventas hechas mientras tanto.
+  var _pmSt = document.getElementById('pmStock');
+  var nuevoStock = parseInt(_pmSt.value)||0;
   var nuevoMin   = parseInt(document.getElementById('pmStockMin').value)||0;
+  var tocoStock  = String(_pmSt.dataset.alAbrir || '') === '' || (parseInt(_pmSt.dataset.alAbrir)||0) !== nuevoStock;
   var inv = getStockInv();
+  if(!tocoStock && inv[nombre]) nuevoStock = Number(inv[nombre].stock)||0;
   var stockAntes = inv[nombre] ? inv[nombre].stock : null;
   inv[nombre] = inv[nombre] || {};
   if(!inv[nombre].stock || inv[nombre].stock !== nuevoStock) {
@@ -29711,7 +29697,7 @@ function guardarProdModal() {
       registrarMovimiento('ajuste-stock', nombre, nuevoStock-stockAntes, stockAntes, nuevoStock, currentEmp?currentEmp.nombre:'Admin');
     }
   }
-  if(Number(inv[nombre].stock) !== Number(nuevoStock)) (window.__lrStockFijar = window.__lrStockFijar || {})[nombre] = true;
+  if(tocoStock && Number(inv[nombre].stock) !== Number(nuevoStock)) (window.__lrStockFijar = window.__lrStockFijar || {})[nombre] = true;
   inv[nombre].stock  = nuevoStock;
   inv[nombre].minimo = nuevoMin;
   window.__lrStockInvCache = inv;
@@ -29740,8 +29726,6 @@ function guardarProdModal() {
     }
     // Arrastrar el nombre nuevo a stock, proveedores y combos, para que el
     // producto no quede huérfano en esas listas.
-    var inv = getStockInv();
-    if(inv[nombreViejo]){ inv[nombre] = inv[nombreViejo]; delete inv[nombreViejo]; saveStockInv(inv, [nombreViejo]); }
     var provs = getProveedores();
     var tocoProv = false;
     provs.forEach(function(pr){
@@ -33799,6 +33783,7 @@ function seleccionarCargaStock(nombre) {
   document.getElementById('cargaStockEditorAntes').textContent = stockActual;
   var inp = document.getElementById('cargaStockEditorInput');
   inp.value = stockActual;
+  inp.dataset.alAbrir = String(stockActual);
   document.getElementById('cargaStockEditor').style.display = 'block';
   setTimeout(function(){ inp.focus(); inp.select(); }, 100);
 }
@@ -33812,6 +33797,20 @@ function guardarCargaStock() {
   var inv = getStockInv();
   if(!inv[_cargaStockProdSel]) inv[_cargaStockProdSel] = {stock:0, minimo:0};
   var stockAntes = inv[_cargaStockProdSel].stock || 0;
+  // Se confirmó el mismo número que mostraba al abrir, pero mientras tanto se
+  // vendió: no hay conteo nuevo, así que no se pisa lo vendido.
+  if(inp.dataset.alAbrir !== undefined && inp.dataset.alAbrir !== '' && nuevo === parseInt(inp.dataset.alAbrir) && nuevo !== stockAntes){
+    inp.dataset.alAbrir = '';
+    showToast('Sin cambios: '+_cargaStockProdSel+' sigue en '+stockAntes+' (se vendió mientras estaba abierto)');
+    document.getElementById('cargaStockEditor').style.display = 'none';
+    _cargaStockProdSel = null;
+    var buscar0 = document.getElementById('cargaStockBuscar');
+    buscar0.value = '';
+    buscar0.focus();
+    filtrarCargaStock('');
+    return;
+  }
+  inp.dataset.alAbrir = '';
   var stockDespues = nuevo;
   inv[_cargaStockProdSel].stock = stockDespues;
   (window.__lrStockFijar = window.__lrStockFijar || {})[_cargaStockProdSel] = true;
@@ -40713,6 +40712,30 @@ function renderInventario() {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// Devuelve al stock los productos de una venta, fiado o consumo que se da de
+// baja: lo mismo que restó descontarStock, también los productos de un combo
+// y la cajita de un combo armado.
+function devolverStockItems(inv, items){
+  (items||[]).forEach(function(item){
+    if(!item || item.manual) return;
+    var q = Number(item.qty) || 1;
+    if(item.comboArmado && item.comboNombre){
+      var kca = stockKeyCombo(item.comboNombre);
+      if(!inv[kca]) inv[kca] = { nombre: kca, stock: 0, minimo: 0 };
+      inv[kca].stock = (Number(inv[kca].stock)||0) + q;
+      return;
+    }
+    if(item.esCombo && item.comboItems && item.comboItems.length){
+      item.comboItems.forEach(function(ci){
+        if(ci.tipo === 'manual') return;
+        if(inv[ci.nombre] !== undefined) inv[ci.nombre].stock = (Number(inv[ci.nombre].stock)||0) + (Number(ci.qty)||0) * q;
+      });
+      return;
+    }
+    if(inv[item.name] !== undefined) inv[item.name].stock = (Number(inv[item.name].stock)||0) + q;
+  });
 }
 
 // Descontar stock al confirmar venta
