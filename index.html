@@ -20080,7 +20080,7 @@ function marcarTurnosViejosPagados(){
     var hm = function(m){ m = Math.round(m); return Math.floor(m / 60)+'h'+(m % 60 ? ' '+(m % 60)+'m' : ''); };
     ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:440px;width:100%;padding:16px;color:var(--light);margin:auto">'+
       '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">✓ TURNOS SIN PAGAR ANTES DEL '+desdeTxt+'</div>'+
-      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 10px;line-height:1.45">Elegí de quiénes los marcás como pagados. Es solo para ordenar los registros: <b>no se crea ningún pago</b> ni cambia el balance de los meses en que ya cargaste los sueldos.</div>'+
+      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 10px;line-height:1.45">Elegí de quiénes los marcás como pagados. Es solo para ordenar los registros: <b>no se crea ningún pago</b>. En el balance de esos meses dejan de figurar como sueldo pendiente estimado.</div>'+
       nombres.map(function(n, i){ var x = porEmp[n];
         return '<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 4px;border-top:1px solid var(--border);cursor:pointer">'+
           '<input type="checkbox" data-emp="'+escBaja(n)+'" checked style="margin-top:3px">'+
