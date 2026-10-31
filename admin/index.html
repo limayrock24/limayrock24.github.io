@@ -19174,6 +19174,14 @@ function renderLiquidacion() {
     barraD.innerHTML = '<button onclick="saldarDeudaAnterior()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✓ Saldar toda la deuda anterior al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+conDeuda.length+' empleado'+(conDeuda.length === 1 ? '' : 's')+')</button>';
     grid.appendChild(barraD);
   }
+  // Turnos de antes del período que nunca se marcaron como pagados (para ordenar).
+  var viejosSinPagar = esEquipoDueno() ? turnosSinPagarAntes(rangoLiq.desde).length : 0;
+  if(viejosSinPagar){
+    var barraT = document.createElement('div');
+    barraT.style.cssText = 'margin-bottom:10px;text-align:right';
+    barraT.innerHTML = '<button onclick="marcarTurnosViejosPagados()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✓ Marcar como pagados los turnos anteriores al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+viejosSinPagar+' turno'+(viejosSinPagar === 1 ? '' : 's')+')</button>';
+    grid.appendChild(barraT);
+  }
   empsSinAdmin.forEach(function(emp){
     var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0,parcial:0};
     var horas= d.totalMin/60;
@@ -19869,8 +19877,15 @@ function elegirMedioPagoSueldo(nombreEmp, neto, mesLiq){
           r = armar({ medio: 'Mixto', caja: Number(ov.querySelector('#msMxCaja').value) || 1, mixto: { efectivo: ef, transferencia: Math.round((tot - ef) * 100) / 100 } });
         } else r = armar(m === 'mp' ? { medio: 'MercadoPago' } : m === 'c1' ? { medio: 'Efectivo', caja: 1 } : { medio: 'Efectivo', caja: 2 });
         if(!r) return;
+        // Un último "¿seguro?", por si se tocó el medio equivocado.
         ov.style.display = 'none';
-        resolver(r);
+        var comoTxt = r.medio === 'MercadoPago' ? 'por transferencia (Mercado Pago)'
+          : r.medio === 'Mixto' ? fmt(r.mixto.efectivo)+' en efectivo de la Caja '+r.caja+' + '+fmt(r.mixto.transferencia)+' por Mercado Pago'
+          : 'en efectivo del cajón de la Caja '+r.caja;
+        var extraTxt = r.extra > 0 ? '\n('+(r.extraTipo === 'adelanto' ? 'adelanto de '+mesSig+': '+fmt(r.extra) : 'redondeo: '+fmt(r.extra))+')' : '';
+        askConfirm('¿Registrás el pago de '+nombreEmp+'?\n\n'+fmt(r.monto)+(r.medio === 'Mixto' ? ':\n'+comoTxt : ' '+comoTxt)+extraTxt).then(function(ok){
+          if(ok) resolver(r); else ov.style.display = 'flex';
+        });
       };
     });
   });
@@ -20026,6 +20041,64 @@ function saldarDeudaAnterior(nombre){
     if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); }).catch(function(e){ showToast('⚠ No se pudo marcar lo del otro local: '+((e && e.message) || e), true); });
     showToast('✅ Deuda anterior al '+desdeTxt+' saldada'+(nombre ? ' ('+nombre+')' : ' ('+nombres.length+' empleado'+(nombres.length === 1 ? '' : 's')+')'));
     renderLiquidacion();
+  });
+}
+// Turnos de este local (y horas a mano) de antes de una fecha que siguen sin pagar.
+function turnosSinPagarAntes(desde){
+  var t = desde.getTime();
+  return getCierres().concat(_turnosManuales()).filter(function(c){ return c && c.empleado && !c.pagado && new Date(c.fecha).getTime() < t; });
+}
+// Marca como pagados los turnos viejos que nunca se marcaron (solo para ordenar
+// los registros): no crea ningún egreso ni cuenta como pago de sueldo. Se elige
+// a qué empleados.
+function marcarTurnosViejosPagados(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var rango = getRangoLiquidacion(), desde = rango.desde, desdeTxt = _diaMes(fechaLocalStr(desde));
+  var otro = liqLocalOtro();
+  var delOtro = liqModoDos() ? ldCol(otro, 'cierres').where('fecha', '<', desde.toISOString()).get().then(function(s){
+    var a = []; s.forEach(function(d){ var x = d.data(); if(x && x.empleado && !x.pagado){ x._local = otro; x._docId = d.id; a.push(x); } }); return a;
+  }).catch(function(){ return []; }) : Promise.resolve([]);
+  delOtro.then(function(otros){
+    var todos = turnosSinPagarAntes(desde).concat(otros);
+    if(!todos.length){ showToast('No hay turnos sin pagar antes del '+desdeTxt); return; }
+    var porEmp = {};
+    todos.forEach(function(c){ var x = porEmp[c.empleado] = porEmp[c.empleado] || { n: 0, min: 0, desde: c.fecha, hasta: c.fecha }; x.n++; x.min += Number(c.durMinutos) || 0;
+      if(c.fecha < x.desde) x.desde = c.fecha; if(c.fecha > x.hasta) x.hasta = c.fecha; });
+    var nombres = Object.keys(porEmp).sort();
+    var ov = document.getElementById('lrTurnosViejosOv'); if(ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'lrTurnosViejosOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
+    var hm = function(m){ m = Math.round(m); return Math.floor(m / 60)+'h'+(m % 60 ? ' '+(m % 60)+'m' : ''); };
+    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:440px;width:100%;padding:16px;color:var(--light);margin:auto">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">✓ TURNOS SIN PAGAR ANTES DEL '+desdeTxt+'</div>'+
+      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 10px;line-height:1.45">Elegí de quiénes los marcás como pagados. Es solo para ordenar los registros: <b>no se crea ningún pago</b> ni cambia el balance de los meses en que ya cargaste los sueldos.</div>'+
+      nombres.map(function(n, i){ var x = porEmp[n];
+        return '<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 4px;border-top:1px solid var(--border);cursor:pointer">'+
+          '<input type="checkbox" data-emp="'+escBaja(n)+'" checked style="margin-top:3px">'+
+          '<span style="flex:1"><b style="color:var(--white)">'+escBaja(n)+'</b><br><span style="font-size:.72rem;color:var(--gray)">'+x.n+' turno'+(x.n === 1 ? '' : 's')+' · '+hm(x.min)+' · del '+_diaMes(x.desde)+' al '+_diaMes(x.hasta)+'</span></span></label>';
+      }).join('')+
+      '<div style="display:flex;gap:8px;margin-top:12px"><button data-a="no" style="flex:1;background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px;font-family:Oswald,sans-serif;cursor:pointer">Cancelar</button>'+
+      '<button data-a="si" style="flex:2;background:var(--gold);color:#000;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer">✓ Marcar como pagados</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('[data-a=no]').onclick = function(){ ov.remove(); };
+    ov.querySelector('[data-a=si]').onclick = function(){
+      var elegidos = {}; ov.querySelectorAll('input[data-emp]').forEach(function(ch){ if(ch.checked) elegidos[ch.getAttribute('data-emp')] = true; });
+      var nombresE = Object.keys(elegidos);
+      if(!nombresE.length){ showToast('Elegí al menos un empleado', true); return; }
+      ov.remove();
+      var ahoraISO = new Date().toISOString(), t = desde.getTime(), n = 0;
+      var cierres = getCierres(), cambio = false;
+      cierres.forEach(function(c){ if(c && elegidos[c.empleado] && !c.pagado && new Date(c.fecha).getTime() < t){ c.pagado = true; c.fechaPagado = ahoraISO; c.pagadoAparte = true; cambio = true; n++; } });
+      if(cambio) saveCierres(cierres);
+      nombresE.forEach(function(nom){
+        var man = _turnosManuales().filter(function(c){ return c.empleado === nom && !c.pagado && new Date(c.fecha).getTime() < t; });
+        if(man.length){ n += man.length; _guardarManualesCambiados(nom, man.map(function(c){ return Object.assign({}, c, { pagado: true }); })); }
+      });
+      var ups = otros.filter(function(c){ return elegidos[c.empleado]; }).map(function(c){ n++; return ldCol(otro, 'cierres').doc(c._docId).update({ pagado: true, fechaPagado: ahoraISO, pagadoAparte: true }); });
+      Promise.all(ups).catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+otro+': '+((e && e.message) || e), true); });
+      showToast('✅ '+n+' turno'+(n === 1 ? '' : 's')+' anteriores al '+desdeTxt+' marcado'+(n === 1 ? '' : 's')+' como pagado'+(n === 1 ? '' : 's'));
+      renderLiquidacion();
+    };
   });
 }
 function exportarLiquidacionPDF(nombre) {
