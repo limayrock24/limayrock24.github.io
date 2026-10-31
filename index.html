@@ -16466,7 +16466,7 @@ function elegirEmpleadoEgreso(){
 function pintarTurnoEgreso(){
   var row = document.getElementById('eTurnoRow'), sel = document.getElementById('eTurno'); if(!row || !sel) return;
   var r = _rubroForm(), emp = (document.getElementById('eEmpleado')||{}).value || '', mes = (document.getElementById('eMes')||{}).value || '';
-  var vh = emp ? valorHoraDe(emp) : 0, av = document.getElementById('eTurnoAviso');
+  var vh = emp ? valorHoraDe(emp, mes) : 0, av = document.getElementById('eTurnoAviso');
   if(av){ av.style.display = 'none'; sel.style.display = ''; }
   if(r !== 'sueldos' || !esEquipoDueno()){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
   // En Sueldos el campo está siempre: si no hay turno para elegir, dice por qué.
@@ -18669,9 +18669,33 @@ function setMultiplicadorTurno(empleado, fechaISO, valor) {
 // la plata cubre entero queda pagado; si no alcanza para uno, queda "pagado en
 // parte". Lo que sobra queda a favor y se usa en los turnos que haga después en
 // ese mes. Nunca desmarca un turno (los marcados a mano quedan como están).
-function valorHoraDe(nombre){
+// El valor hora de hoy (el último cargado).
+function _vhActual(nombre){
   var x = (getEmpleados() || []).find(function(e){ return e.nombre === nombre; }) || {}, p = (window.__lrEmpPriv || {})[nombre] || {};
   return parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0;
+}
+// Historial del valor hora: desde qué mes vale cada valor ({ 'AAAA-MM': valor }).
+// Si todavía no se guardó ninguno, se arma con el valor hora de las
+// liquidaciones registradas y el de hoy para el mes en curso.
+function historialVH(nombre){
+  var p = (window.__lrEmpPriv || {})[nombre] || {};
+  if(p.valoresHora && Object.keys(p.valoresHora).length) return p.valoresHora;
+  var h = {};
+  Object.keys(window.__lrEgDet || {}).forEach(function(id){
+    var d = window.__lrEgDet[id];
+    if(d && d.empleado === nombre && d.liq && Number(d.liq.valorHora) > 0 && d.mes) h[d.mes] = Number(d.liq.valorHora);
+  });
+  var actual = _vhActual(nombre);
+  if(actual > 0) h[fechaLocalStr(new Date()).slice(0,7)] = actual;
+  return h;
+}
+// Valor hora de un mes: el último cargado hasta ese mes (antes del primero, el primero).
+function valorHoraDe(nombre, mes){
+  mes = mes || fechaLocalStr(new Date()).slice(0,7);
+  var h = historialVH(nombre), ks = Object.keys(h).sort();
+  if(!ks.length) return _vhActual(nombre);
+  var hasta = ks.filter(function(k){ return k <= mes; });
+  return Number(h[hasta.length ? hasta[hasta.length - 1] : ks[0]]) || 0;
 }
 function _mesTurno(c){ return fechaLocalStr(new Date(c.fecha)).slice(0,7); }
 function _valorTurno(c, vh){ return Math.round(minutosPagados(c) / 60 * vh); }
@@ -18708,7 +18732,7 @@ function pagosSueldoMes(nombre, mes){ return pagosSueldoLista(nombre, mes).reduc
 function _diaMes(iso){ var t = String(iso || ''); if(!(t.length >= 10 && t.charAt(4) === '-' && t.indexOf('T') === -1)) t = fechaLocalStr(new Date(t)); return t.slice(8,10)+'/'+t.slice(5,7); }
 // Cómo quedó el sueldo de un mes: lo trabajado, lo pagado y si está completo.
 function estadoSueldoMes(nombre, mes){
-  var vh = valorHoraDe(nombre), pagos = pagosSueldoLista(nombre, mes), fijo = tipoSueldoDe(nombre) === 'fijo';
+  var vh = valorHoraDe(nombre, mes), pagos = pagosSueldoLista(nombre, mes), fijo = tipoSueldoDe(nombre) === 'fijo';
   var trabajado = fijo ? sueldoFijoDe(nombre, mes) : vh > 0 ? cierresConManuales().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; }).reduce(function(s, c){ return s + _valorTurno(c, vh); }, 0) : 0;
   var cobrado = pagos.reduce(function(s, p){ return s + p.monto; }, 0), descontado = descontadoSueldoMes(nombre, mes), pagado = cobrado + descontado;
   return { mes: mes, vh: vh, fijo: fijo, trabajado: trabajado, cobrado: cobrado, descontado: descontado, pagado: pagado, falta: Math.max(0, Math.round(trabajado - pagado)), ultimo: pagos.length ? pagos[pagos.length - 1].fecha : '',
@@ -18723,7 +18747,7 @@ function textoEstadoSueldo(e){
 }
 // Qué turnos cubrió cada pago del mes (en el orden en que se pagaron).
 function coberturaPagosSueldo(nombre, mes){
-  var vh = valorHoraDe(nombre), est = estadoSueldoMes(nombre, mes);
+  var vh = valorHoraDe(nombre, mes), est = estadoSueldoMes(nombre, mes);
   var asig = est.fijo ? null : _asignarPagosSueldo(nombre, mes);
   var lista = asig ? asig.pagos : est.pagos.slice().concat(est.descontado ? [{ fecha: '', monto: est.descontado, neto: est.descontado, liq: false, descuento: true }] : []);
   return lista.map(function(p){
@@ -18750,7 +18774,7 @@ function coberturaPagosSueldo(nombre, mes){
 // puntual cubre ese turno; lo demás (y lo que sobre) va de los más viejos a
 // los más nuevos. Devuelve los turnos con lo cubierto y, por pago, qué cubrió.
 function _asignarPagosSueldo(nombre, mes, cierres){
-  var vh = valorHoraDe(nombre); if(!(vh > 0)) return null;
+  var vh = valorHoraDe(nombre, mes); if(!(vh > 0)) return null;
   var turnos = (cierres || cierresConManuales()).filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
     .sort(function(a, b){ return new Date(a.fecha) - new Date(b.fecha); })
     .map(function(c){ return { fecha: c.fecha, valor: _valorTurno(c, vh), cubierto: 0 }; });
@@ -18995,7 +19019,7 @@ function renderHoras() {
           '<span class="turno-hora">✍️ A mano</span>'+
           '<span class="turno-duracion">'+dur+'</span>'+
           '<span class="turno-ventas">'+escBaja(c.nota || 'Horas cargadas a mano')+
-            (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre)); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
+            (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre, _mesTurno(c))); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
             '<button onclick="borrarHorasManuales(\''+nE+'\',\''+c.idManual+'\')" title="Borrar" style="background:none;border:none;color:var(--gray);cursor:pointer;font-size:.8rem">🗑</button>'+
             '<label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Marcar como pagado">'+
@@ -19010,7 +19034,7 @@ function renderHoras() {
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
         '<span class="turno-duracion">'+dur+(mT>1?' <span style="background:rgba(245,194,0,.18);color:var(--gold);border-radius:3px;padding:0 4px;font-size:.62rem;white-space:nowrap">🎉 '+textoMult(mT)+'</span>':'')+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+
-          (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre)); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
+          (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre, _mesTurno(c))); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
           '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
           // Pago del turno: x1 normal, x1,5 o x2 (feriado / día no laborable)
@@ -19194,7 +19218,7 @@ function renderLiquidacion() {
   empsSinAdmin.forEach(function(emp){
     var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0,parcial:0};
     var horas= d.totalMin/60;
-    var valorHora = parseFloat(emp.valorHora)||0;
+    var valorHora = valorHoraDe(emp.nombre, fechaLocalStr(rangoLiq.desde).slice(0,7));   // el del mes que se mira
     // Se paga por las horas "pagas": los turnos marcados x1,5 / x2 valen más.
     // Lo ya pagado en parte de un turno se descuenta.
     var sueldo = Math.max(0, Math.round((d.minPagos/60) * valorHora) - (d.parcial || 0));
@@ -19263,10 +19287,17 @@ function renderLiquidacion() {
           '<span style="display:flex;align-items:center;gap:4px">'+
             '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-size:.85rem">$</span>'+
             '<input type="number" min="0" placeholder="0" value="'+(valorHora>0?valorHora:'')+'" '+
-              'onchange="setValorHoraEmpleado(\''+emp.nombre+'\',this.value)" '+
+              'onchange="setValorHoraEmpleado(\''+emp.nombre+'\',this.value,\''+mesLiq+'\')" '+
               'style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--white);font-family:Oswald,sans-serif;font-size:.85rem;text-align:right;outline:none">'+
           '</span>'+
         '</div>'+
+        (!esFijo && esEquipoDueno() ? (function(){
+          // Desde qué mes vale el valor hora que se ve, y el de antes.
+          var h = historialVH(emp.nombre), ks = Object.keys(h).sort(), hasta = ks.filter(function(k){ return k <= mesLiq; });
+          var desdeK = hasta.length ? hasta[hasta.length - 1] : '', antes = hasta.length > 1 ? Number(h[hasta[hasta.length - 2]]) : 0;
+          if(!desdeK) return '';
+          return '<div style="font-size:.64rem;color:var(--gray);text-align:right;margin:-4px 0 4px">Desde '+_balNombreMes(desdeK).toLowerCase()+(antes && antes !== valorHora ? ' · antes: '+fmt(antes) : '')+' · si lo cambiás, vale desde '+_balNombreMes(mesLiq).toLowerCase()+'</div>';
+        })() : '')+
         '<div class="liq-row"><span class="liq-lbl">📊 Ventas realizadas</span><span class="liq-val">'+d.ventas+' ventas · '+fmt(d.totalVentas)+'</span></div>'+
         '<div class="liq-row"><span class="liq-lbl">💰 '+(esFijo?'Falta del sueldo':'Sueldo estimado')+'</span><span class="liq-val ing">'+(conValor?fmt(sueldo):'Configurá el valor hora')+'</span></div>'+
         (d.parcial > 0 && !pagosMes.length ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado en parte (descontado)</span><span class="liq-val">'+fmt(d.parcial)+'</span></div>' : '')+
@@ -19560,15 +19591,21 @@ function aplicarSugeridos(){
   });
 }
 
-function setValorHoraEmpleado(nombre, valor) {
+// El valor hora vale desde el mes que se está mirando en adelante (hasta el
+// próximo cambio): los meses de antes quedan con el suyo.
+function setValorHoraEmpleado(nombre, valor, mes) {
   var empleados = getEmpleados();
   var emp = empleados.find(function(e){ return e.nombre===nombre; });
   // El valor hora se guarda en la colección privada del dueño.
   if(emp && esEquipoDueno()){
     var v = parseFloat(valor)||0;
+    var hist = Object.assign({}, historialVH(nombre));
+    hist[mes || fechaLocalStr(new Date()).slice(0,7)] = v;
+    window.__lrEmpPriv[nombre] = Object.assign({}, window.__lrEmpPriv[nombre], { valoresHora: hist });
+    v = valorHoraDe(nombre);   // el de hoy queda como "el valor hora" (lo usan las cajas)
     emp.valorHora = v;
-    window.__lrEmpPriv[nombre] = Object.assign({}, window.__lrEmpPriv[nombre], { valorHora: v });
-    colPriv('empleadosPriv').doc(nombre).set({ valorHora: v }, { merge: true })
+    window.__lrEmpPriv[nombre].valorHora = v;
+    colPriv('empleadosPriv').doc(nombre).set({ valorHora: v, valoresHora: hist }, { merge: true })
       .catch(function(e){ showToast('⚠ No se pudo guardar el valor hora: '+((e && e.message) || e), true); });
     // En fase A se guarda también en la ficha común, como siempre.
     if(faseB()){ renderLiquidacion(); return; }
@@ -19680,7 +19717,7 @@ function registrarPagoLiquidacion(nombreEmp) {
   var rango = getRangoLiquidacion();
   var enRango = function(f){ var d = new Date(f); return d>=rango.desde && d<=rango.hasta; };
   var emp = getEmpleados().find(function(e){ return e.nombre===nombreEmp; });
-  var valorHora = emp ? (parseFloat(emp.valorHora)||0) : 0;
+  var valorHora = emp ? valorHoraDe(nombreEmp, fechaLocalStr(rango.desde).slice(0,7)) : 0;
   var cierres = getCierres(), consumos = getConsumos();
   if(liqModoDos() && _liqOtro.cargando){ showToast('Esperá a que terminen de llegar los datos del otro local', true); return; }
   var todosC = _liqCierres(), todosK = _liqConsumos();
@@ -20113,7 +20150,7 @@ function marcarTurnosViejosPagados(){
 function exportarLiquidacionPDF(nombre) {
   var empleados = getEmpleados();
   var empObj    = empleados.find(function(e){ return e.nombre===nombre; });
-  var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
+  var valorHora = empObj ? valorHoraDe(nombre, fechaLocalStr(getRangoLiquidacion().desde).slice(0,7)) : 0;
   var cierres   = _liqCierres();
   var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
@@ -20185,7 +20222,7 @@ function exportarLiquidacionPDF(nombre) {
 function exportarPDFEmpleado(nombre) {
   if(!esEquipoDueno()){ showToast('🔒 Los sueldos se ven solo desde el equipo del dueño', true); return; }
   var empObj    = getEmpleados().find(function(e){ return e.nombre===nombre; });
-  var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
+  var valorHora = empObj ? valorHoraDe(nombre, fechaLocalStr(getRangoLiquidacion().desde).slice(0,7)) : 0;
   var cierres   = _liqCierres();
   var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
@@ -24937,7 +24974,7 @@ function _balCostos(mes, pool, cierres, rango){
   // Sueldos pendientes (estimación): turnos del mes sin pagar de los que
   // cobran mensual vencido, a su valor hora.
   var emps = {};
-  (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0 }; });
+  (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: valorHoraDe(x.nombre, mes) }; });
   var sinValor = {};
   var manMes = _turnosManuales().filter(function(c){
     if(!rango) return _mesTurno(c) === mes;
@@ -30447,7 +30484,7 @@ function renderEmpAdmin() {
     }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
 
     // Valor hora
-    var vh    = parseFloat(emp.valorHora)||0;
+    var vh    = esEquipoDueno() ? valorHoraDe(emp.nombre) : (parseFloat(emp.valorHora)||0);
     var sueldo= vh>0 ? fmt(Math.round((minutos/60)*vh)) : '—';
 
     var esDelivery = empEsDelivery(emp);
