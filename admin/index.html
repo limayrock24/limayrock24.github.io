@@ -17014,7 +17014,10 @@ function renderEgresos() {
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:4px">'+
         '<span style="font-size:.72rem;color:var(--gray)">'+(_egCat === 'todas' ? 'Total período' : 'Total '+nombreGrupo(_egCat, true)+' · <span style="text-decoration:underline;cursor:pointer" onclick="selEgCat(\'todas\')">ver todos</span>')+'</span>'+
         '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalF)+'</span>'+
-      '</div>';
+      '</div>'+
+      // Lo que se pagó en el período pero corresponde a otro mes (ej. el sueldo de septiembre pagado en octubre).
+      (filtrados.some(function(e){ var d = detDeEgreso(e); return d && d.mes && d.mes !== String(e.fecha).slice(0,7); })
+        ? '<div style="font-size:.66rem;color:var(--gray);margin:-6px 0 8px">Pagos hechos en el período: algunos corresponden a otro mes (lo dice cada pago). Los resúmenes de abajo y el balance los cuentan en su mes.</div>' : '');
   } else if(kpisEl) {
     var cats = {proveedor:0, sueldo:0, servicio:0, otro:0};
     filtrados.forEach(function(e){
@@ -17061,7 +17064,7 @@ function renderEgresos() {
       rubroTxt = '<div style="font-size:.64rem;margin-top:1px;color:'+(sinClf?'#e74c3c;font-weight:700':'var(--gold)')+'">'+
         (sinClf ? '⚠ Sin clasificar' : textoRubroEgreso(e, true))+
         (detE && detE.empleado && detE.empleado !== prov ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor && nombreActual(detE.acreedor) !== prov ? ' · '+escBaja(nombreActual(detE.acreedor)) : '')+
-        (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+detE.mes : '')+
+        (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+_balNombreMes(detE.mes).toLowerCase() : '')+
         (detE && detE.suc === 'compartido' ? ' · compartido' : (detE && detE.suc && detE.suc !== localActual() ? ' · Limay '+detE.suc : ''))+'</div>';
     }
     var notaE = (detE && detE.nota) || e.nota;
@@ -17410,7 +17413,12 @@ function renderResumenCategoria(categoria) {
     desde = rango.desde; hasta = rango.hasta;
   }
 
+  // Con un mes elegido, cada pago cuenta en el mes al que corresponde (igual
+  // que el balance): el sueldo de septiembre pagado el 3/10 va a septiembre.
+  var mesSel = (porRubro && !st.desde && !st.fecha && periodoEsMes(st.periodo)) ? fechaLocalStr(desde).slice(0,7) : '';
+  var mesDe = function(e){ var d = detDeEgreso(e); return (d && d.mes) || String(e.fecha||'').slice(0,7); };
   var filtrados = egresos.filter(function(e){
+    if(mesSel) return mesDe(e) === mesSel;
     var fechaE = new Date(e.fecha+'T12:00:00');
     return fechaE >= desde && fechaE <= hasta;
   });
@@ -17454,7 +17462,7 @@ function renderResumenCategoria(categoria) {
     var pagosHtml = d.pagos.slice().sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).map(function(p){
       var fechaStr = new Date(p.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
-        '<div><span style="color:var(--gray)">'+fechaStr+'</span>'+(p.nota?' · <span style="color:var(--light)">'+p.nota+'</span>':'')+'</div>'+
+        '<div><span style="color:'+(mesSel && String(p.fecha||'').slice(0,7) !== mesSel ? 'var(--gold)">pagado el ' : 'var(--gray)">')+fechaStr+'</span>'+(p.nota?' · <span style="color:var(--light)">'+escBaja(p.nota)+'</span>':'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px"><span style="color:var(--gray);font-size:.66rem">'+(p.medio||'')+'</span><span style="color:var(--red);font-family:Oswald,sans-serif">'+fmt(p.monto)+'</span></div>'+
       '</div>';
     }).join('');
@@ -17473,9 +17481,10 @@ function renderResumenCategoria(categoria) {
 
   el.innerHTML = tabsHtml +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'+
-      '<span style="font-size:.72rem;color:var(--gray)">Total '+etiqueta+'</span>'+
+      '<span style="font-size:.72rem;color:var(--gray)">Total '+etiqueta+(mesSel ? ' de '+_balNombreMes(mesSel).toLowerCase() : '')+'</span>'+
       '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalGeneral)+'</span>'+
-    '</div>'+rowsHtml;
+    '</div>'+
+    (mesSel ? '<div style="font-size:.66rem;color:var(--gray);margin:-4px 0 10px">Por el mes al que corresponde cada pago, igual que el balance.</div>' : '')+rowsHtml;
 }
 
 function eliminarEgreso(id) {
