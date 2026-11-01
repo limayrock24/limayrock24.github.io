@@ -76,7 +76,7 @@ if(window.__lrSucursal === 2){
   // cartelito discreto (no recarga solo, para no cortar una venta a mitad
   // de camino — el empleado elige el momento de tocar y recargar).
   // Versión con la que se construyó ESTE archivo (la estampa el deploy).
-  window.__LR_BUILD = "1793319468";
+  window.__LR_BUILD = "1793456277";
 
   var _lrMiVersion = null;
   function _lrChequearVersionNueva(){
@@ -1116,6 +1116,9 @@ if(window.__lrSucursal === 2){
           if(antes && antes.stock === ahora.stock && antes.minimo === ahora.minimo) return;
           _hist.push({ id: nombre, antes: antes ? { stock: antes.stock, minimo: antes.minimo } : null, despues: { stock: ahora.stock, minimo: ahora.minimo }, modo: 'fijo' });
           __promesas.push(ref.set(limpiarUndefined({ nombre: nombre, stock: ahora.stock, minimo: ahora.minimo })));
+          // El número fijado pasa a ser la base: si otro guardado llega antes
+          // que la respuesta de la nube, no lo vuelve a sumar como diferencia.
+          prev[nombre] = { stock: ahora.stock, minimo: ahora.minimo };
           return;
         }
         var delta = (Number(ahora.stock)||0) - (Number(antes.stock)||0);
@@ -5025,6 +5028,7 @@ body.night-on{background:#080005}
           <label>Fecha</label>
           <input type="date" id="eFecha" onchange="pintarDetEgreso()">
         </div>
+        <div class="field" id="ePersRow" style="display:none"><label>📋 Concepto</label><select id="ePersonal" onchange="cambiarRubroEgreso()"><option value="sueldos">Sueldos</option><option value="personal_extra">Personal extra</option></select></div>
         <div id="eDetBox" style="display:none;border:1px dashed var(--border);border-radius:6px;padding:8px 10px;margin:2px 0 10px">
           <div class="field" id="eEmpRow"><label>👤 Empleado</label><select id="eEmpleado" onchange="elegirEmpleadoEgreso()"></select></div>
           <div class="field" id="eDetalleRow" style="display:none"><label>🔎 ¿A qué fue?</label><select id="eDetalle" onchange="elegirDetalleEgreso()"></select></div>
@@ -5032,7 +5036,7 @@ body.night-on{background:#080005}
             <div class="field" id="eMesRow"><label>📅 Mes al que corresponde</label><input type="month" id="eMes" onchange="this.dataset.tocado='1';pintarDetEgreso()"></div>
             <div class="field" id="eSucRow"><label>🏪 ¿Qué local lo paga?</label><select id="eSuc" onchange="this.dataset.tocado='1';pintarDetEgreso()"><option value="1">Limay Rock 1</option><option value="2">Limay Rock 2</option><option value="compartido">Compartido entre los dos</option></select></div>
           </div>
-          <div class="field" id="eTurnoRow" style="display:none"><label>🗓 ¿Pagás un turno puntual?</label><select id="eTurno" onchange="elegirTurnoEgreso()"></select></div>
+          <div class="field" id="eTurnoRow" style="display:none"><label>🗓 ¿Pagás un turno puntual?</label><select id="eTurno" onchange="elegirTurnoEgreso()"></select><div id="eTurnoAviso" style="display:none;font-size:.74rem;color:var(--gray);padding:6px 2px"></div></div>
           <div id="eRepartoRow" style="display:none">
             <div class="field-row">
               <div class="field"><label>💵 Pone Limay 1 $</label><input type="text" inputmode="decimal" id="eComp1" placeholder="0" oninput="formatMontoDecInput(this);compartidoCambio()"></div>
@@ -5061,7 +5065,7 @@ body.night-on{background:#080005}
             </div>
             <div style="font-size:.66rem;color:var(--gray)">Si no la dividís, la cuota entera se resta como costo en Créditos.</div>
           </div>
-          <div class="field" id="eSocioRow" style="display:none"><label>🤝 Socio que retiró</label><select id="eSocio"></select></div>
+          <div class="field" id="eSocioRow" style="display:none"><label>🤝 ¿A qué socio corresponde?</label><select id="eSocio"></select></div>
         </div>
         <div class="field">
           <label>Medio de pago</label>
@@ -5081,7 +5085,7 @@ body.night-on{background:#080005}
           <div style="font-size:.68rem;color:var(--gray);margin-top:4px;text-align:right" id="eMixtoTotal">Total: $0</div>
         </div>
         <div class="field">
-          <label>Nota (opcional)</label>
+          <label id="eNotaLabel">Nota (opcional)</label>
           <input type="text" id="eNota" placeholder="Factura N°, detalle de compra...">
         </div>
         <div class="field" id="egresoCajaRow" style="display:none">
@@ -5105,14 +5109,7 @@ body.night-on{background:#080005}
             <input type="date" id="egFechaHasta" onchange="selEgRango()" style="background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:4px;padding:5px 6px;font-family:Oswald,sans-serif;font-size:.68rem">
           </div>
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">Categoría:</span>
-          <button class="period-btn active" id="egcat-todas" onclick="selEgCat('todas')">Todas</button>
-          <button class="period-btn" id="egcat-proveedor" onclick="selEgCat('proveedor')">🚚 Proveedores</button>
-          <button class="period-btn" id="egcat-sueldo" onclick="selEgCat('sueldo')">👤 Sueldos</button>
-          <button class="period-btn" id="egcat-servicio" onclick="selEgCat('servicio')">💡 Servicios</button>
-          <button class="period-btn" id="egcat-otro" onclick="selEgCat('otro')">📋 Otros</button>
-        </div>
+        <div id="egCatBar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div>
       </div>
 
       <!-- KPIs RESUMEN -->
@@ -5128,30 +5125,13 @@ body.night-on{background:#080005}
       <!-- RESUMEN PROVEEDORES (colapsado) -->
       <div style="margin-top:16px">
         <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenProvBox()">
-          🚚 Resumen por proveedor <span id="resProvArrow">▾</span>
+          <span id="resProvTitulo">🚚 Resumen por proveedor</span> <span id="resProvArrow">▾</span>
         </div>
         <div id="resumenProveedores" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
       </div>
 
-      <!-- RESUMEN SUELDOS / SERVICIOS / OTROS (mismo mecanismo que proveedores, por categoría) -->
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#3498DB;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('sueldo')">
-          👤 Resumen de sueldos <span id="resCatArrow_sueldo">▾</span>
-        </div>
-        <div id="resumenCat_sueldo" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:#E67E22;margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('servicio')">
-          💡 Resumen de servicios <span id="resCatArrow_servicio">▾</span>
-        </div>
-        <div id="resumenCat_servicio" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
-      <div style="margin-top:0">
-        <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gray);margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox('otro')">
-          📋 Resumen de otros <span id="resCatArrow_otro">▾</span>
-        </div>
-        <div id="resumenCat_otro" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>
-      </div>
+      <!-- RESUMEN DE CADA RUBRO (mismo mecanismo que proveedores): se arma en pintarResumenesEgreso -->
+      <div id="egResumenesCat"></div>
     </div>
 
     <!-- RENTABILIDAD -->
@@ -10318,33 +10298,14 @@ function anularVentaDirecto(id, alTerminar) {
   (function(){
     var v = VENTAS.find(function(v){ return v.id===id; });
     if(!v) return;
+    // Ya anulada (dos toques, o desde otro equipo): no se devuelve el stock otra vez.
+    if(v.anulada){ if(typeof alTerminar === 'function') alTerminar(); return; }
     v.anulada = true;
     saveVentas(VENTAS, [v.id]);
 
     // Devolver stock de los productos de la venta
     var inv = getStockInv();
-    (v.items||[]).forEach(function(item){
-      if(item.manual) return;
-      if(item.comboArmado && item.comboNombre) {
-        var kca = stockKeyCombo(item.comboNombre);
-        if(!inv[kca]) inv[kca] = { nombre: kca, stock: 0, minimo: 0 };
-        inv[kca].stock = (Number(inv[kca].stock)||0) + item.qty;
-        return;
-      }
-      if(item.esCombo && item.comboItems) {
-        // Combo: devolver stock de cada componente
-        item.comboItems.forEach(function(ci){
-          if(ci.tipo === 'manual') return; // ítem manual: no se descontó stock
-          if(inv[ci.nombre] !== undefined) {
-            inv[ci.nombre].stock = (inv[ci.nombre].stock||0) + (ci.qty * item.qty);
-          }
-        });
-      } else {
-        if(inv[item.name] !== undefined) {
-          inv[item.name].stock = (inv[item.name].stock||0) + item.qty;
-        }
-      }
-    });
+    devolverStockItems(inv, v.items);
     window.__lrStockInvCache = inv;
     guardarOperacionProtegida('StockInv', getStockInv, 'Anulación de venta #'+id+' — stock devuelto');
 
@@ -13989,11 +13950,7 @@ function eliminarConsumoMov(id) {
     // Devolver el stock de los productos de ese consumo
     if(c.items && c.items.length){
       var inv = getStockInv();
-      c.items.forEach(function(item){
-        if(inv[item.name] !== undefined){
-          inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-        }
-      });
+      devolverStockItems(inv, c.items);
       window.__lrStockInvCache = inv;
       guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por consumo eliminado');
     }
@@ -15955,17 +15912,21 @@ var RUBROS_EGRESO = [
   {k:'mercaderia',      t:'Compra de mercadería',                       cat:'proveedor', g:'🚚 Mercadería'},
   {k:'sueldos',         t:'Sueldos',                                    cat:'sueldo',    g:'👤 Personal'},
   {k:'personal_extra',  t:'Personal extra y limpieza',                  cat:'sueldo',    g:'👤 Personal'},
-  {k:'cargas_sociales', t:'Cargas sociales',                            cat:'sueldo',    g:'👤 Personal'},
-  {k:'alquiler',        t:'Alquiler',                                   cat:'otro',      g:'🏠 Local'},
-  {k:'luz',             t:'Luz',                                        cat:'servicio',  g:'💡 Servicios'},
-  {k:'gas',             t:'Gas',                                        cat:'servicio',  g:'💡 Servicios'},
-  {k:'agua',            t:'Agua',                                       cat:'servicio',  g:'💡 Servicios'},
-  {k:'internet',        t:'Internet y teléfono',                        cat:'servicio',  g:'💡 Servicios'},
-  {k:'otros_servicios', t:'Otros servicios (YouTube, Canva, Spotify…)', cat:'servicio', g:'💡 Servicios'},
-  {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y contadora'},
-  {k:'comercio',        t:'Comercio municipal',                         cat:'servicio',  g:'🧾 Impuestos y contadora'},
-  {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
-  {k:'otros_impuestos', t:'Otros impuestos (multas…)',                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  {k:'alquiler',        t:'Alquiler',                                   cat:'otro',      g:'🏠 Alquiler'},
+  {k:'servicios',       t:'Servicios',                                  cat:'servicio',  g:'💡 Servicios'},
+  {k:'impuestos',       t:'Impuestos',                                  cat:'servicio',  g:'🧾 Impuestos y contadora'},
+  // Desde el 30/10 se cargan como Servicios o Impuestos con su concepto (y ya
+  // no hay cargas sociales): quedan para los pagos viejos que los tienen.
+  {k:'cargas_sociales', t:'Cargas sociales',                            cat:'sueldo',    g:'👤 Personal', viejo:true},
+  {k:'luz',             t:'Luz',                                        cat:'servicio',  g:'💡 Servicios', viejo:true},
+  {k:'gas',             t:'Gas',                                        cat:'servicio',  g:'💡 Servicios', viejo:true},
+  {k:'agua',            t:'Agua',                                       cat:'servicio',  g:'💡 Servicios', viejo:true},
+  {k:'internet',        t:'Internet y teléfono',                        cat:'servicio',  g:'💡 Servicios', viejo:true},
+  {k:'otros_servicios', t:'Otros servicios (YouTube, Canva, Spotify…)', cat:'servicio', g:'💡 Servicios', viejo:true},
+  {k:'monotributo',     t:'Monotributo',                                cat:'servicio',  g:'🧾 Impuestos y contadora', viejo:true},
+  {k:'comercio',        t:'Comercio municipal',                         cat:'servicio',  g:'🧾 Impuestos y contadora', viejo:true},
+  {k:'contadora',       t:'Contadora',                                  cat:'servicio',  g:'🧾 Impuestos y contadora', viejo:true},
+  {k:'otros_impuestos', t:'Otros impuestos (multas…)',                  cat:'servicio',  g:'🧾 Impuestos y contadora', viejo:true},
   {k:'otros_costos',    t:'Costos varios de Limay Rock',                cat:'otro',      g:'🔧 Otros costos'},
   // Ya no se ofrece al cargar: queda para los pagos viejos que lo tienen.
   {k:'comisiones',      t:'Comisiones (pagos viejos)',                  cat:'otro',      g:'🔧 Otros costos', viejo:true},
@@ -15976,6 +15937,9 @@ var RUBROS_EGRESO = [
 ];
 var ACREEDORES_BASE = ['Tarjeta Martín Monsalve', 'Tarjeta David Monsalve', 'Mercado Crédito', 'IADEP'];
 var SOCIOS_BASE = ['Martín', 'Jonathan'];
+// Nombre completo de cada socio, para mostrar (por dentro se guarda el corto).
+var SOCIOS_COMPLETO = { 'Martín': 'Martín Monsalve', 'Jonathan': 'Jonathan Alvial' };
+function socioCompleto(s){ return SOCIOS_COMPLETO[s] || s; }
 // Nombres de antes del 24/10, por si quedó algo guardado con ellos.
 var NOMBRES_VIEJOS = { 'Dueño': 'Martín', 'Tarjeta mía': 'Tarjeta Martín Monsalve', 'Tarjeta de mi viejo': 'Tarjeta David Monsalve' };
 function nombreActual(s){ return NOMBRES_VIEJOS[s] || s; }
@@ -15983,24 +15947,44 @@ function _sinRepetir(l){ return l.filter(function(x, i){ return l.indexOf(x) ===
 // "¿A qué fue?": de estos rubros se elige el detalle de una lista que el
 // dueño puede agrandar. Así el balance muestra en qué se fue cada peso.
 var DETALLES_BASE = {
+  servicios: ['EPEN - Luz', 'Camuzzi - Gas', 'EPAS - Agua', 'Internet', 'YouTube', 'Canva', 'Spotify'],
+  impuestos: ['Monotributo', 'Comercio municipal', 'Contadora'],
   otros_servicios: ['YouTube', 'Canva', 'Spotify'],
   otros_impuestos: ['Multa'],
   otros_costos: ['Bolsas', 'Ferretería', 'Limpieza', 'Mantenimiento', 'Regalos y obsequios'],
   inversion: ['Equipamiento', 'Reforma del local']
 };
 function tieneDetalle(r){ return !!DETALLES_BASE[r]; }
+// Rubros sueltos de antes que ahora son un concepto de Servicios o Impuestos:
+// lo que se cargó con ellos aparece en la lista de conceptos del grupo.
+var FAMILIA_RUBRO = {
+  servicios: ['luz', 'gas', 'agua', 'internet', 'otros_servicios', 'servicios'],
+  impuestos: ['monotributo', 'comercio', 'contadora', 'otros_impuestos', 'impuestos']
+};
 function detallesDe(r){
-  var c = ((window.__lrCfgPriv.detallesRubro || {}).listas || {})[r];
-  return _sinRepetir((Array.isArray(c) && c.length ? c : (DETALLES_BASE[r] || [])).slice());
+  var listas = (window.__lrCfgPriv.detallesRubro || {}).listas || {}, c = listas[r];
+  if(Array.isArray(c) && c.length) return _sinRepetir(c.slice());
+  var l = (DETALLES_BASE[r] || []).slice();
+  (FAMILIA_RUBRO[r] || []).forEach(function(k){
+    if(Array.isArray(listas[k])) l = l.concat(listas[k]);
+    Object.keys(window.__lrEgDet || {}).forEach(function(id){
+      var d = window.__lrEgDet[id];
+      if(d && d.rubro === k){ var n = d.detalle || d.concepto; if(n && n !== 'Sin detalle') l.push(n); }
+    });
+  });
+  return _sinRepetir(l);
+}
+function guardarListaDetalles(r, lista){
+  var cfg = window.__lrCfgPriv.detallesRubro = window.__lrCfgPriv.detallesRubro || {};
+  cfg.listas = cfg.listas || {}; cfg.listas[r] = lista;
+  if(esEquipoDueno()){ var cambio = {}; cambio[r] = lista; colPriv('configPriv').doc('detallesRubro').set({ listas: cambio }, { merge: true }).catch(function(){}); }
 }
 function agregarDetalle(r, sel){
   var n = (prompt('¿A qué fue? Escribí el nombre nuevo (ej.: '+(DETALLES_BASE[r] || ['Otro'])[0]+'):') || '').trim();
   if(!n) return '';
   var lista = detallesDe(r);
   if(lista.indexOf(n) === -1) lista.push(n);
-  var cfg = window.__lrCfgPriv.detallesRubro = window.__lrCfgPriv.detallesRubro || {};
-  cfg.listas = cfg.listas || {}; cfg.listas[r] = lista;
-  if(esEquipoDueno()){ var cambio = {}; cambio[r] = lista; colPriv('configPriv').doc('detallesRubro').set({ listas: cambio }, { merge: true }).catch(function(){}); }
+  guardarListaDetalles(r, lista);
   if(sel){ sel.innerHTML = _opcionesDetalle(r, n); sel.value = n; }
   return n;
 }
@@ -16337,62 +16321,113 @@ function guardarClaveDueno(){
 
 
 // ── Formulario de egresos: rubro y detalle ──
+// Al cargar un pago se elige solo el grupo; lo de cada grupo va en "Concepto".
+// Personal se abre en Sueldos o Personal extra (son filas distintas del balance).
+var RUBROS_FORM = [
+  ['mercaderia', '🚚 Mercadería'], ['personal', '👤 Personal'], ['alquiler', '🏠 Alquiler'], ['servicios', '💡 Servicios'],
+  ['impuestos', '🧾 Impuestos'], ['credito', '💳 Cuotas/Créditos'], ['inversion', '🏗 Inversión'],
+  ['otros_costos', '🔧 Otros costos'], ['retiro_socio', '🤝 Retiro de socios']
+];
 function poblarRubrosEgreso(){
   var sel = document.getElementById('eRubro');
   if(!sel || sel.options.length) return;
-  var grupos = [];
-  RUBROS_EGRESO.forEach(function(r){ if(grupos.indexOf(r.g) === -1) grupos.push(r.g); });
-  sel.innerHTML = grupos.map(function(g){
-    if(g === '❓ Sin clasificar') return '';   // no se carga a propósito: es lo que queda de los pagos viejos
-    return '<optgroup label="'+g+'">'+RUBROS_EGRESO.filter(function(r){ return r.g === g && !r.viejo; }).map(function(r){ return '<option value="'+r.k+'">'+r.t+'</option>'; }).join('')+'</optgroup>';
-  }).join('');
+  sel.innerHTML = RUBROS_FORM.map(function(r){ return '<option value="'+r[0]+'">'+r[1]+'</option>'; }).join('');
   sel.value = 'mercaderia';
+}
+// Grupo (el rubro del formulario) de cada rubro guardado, también los viejos.
+var GRUPO_DE_RUBRO = {
+  mercaderia: 'mercaderia', sueldos: 'personal', personal_extra: 'personal', cargas_sociales: 'personal', alquiler: 'alquiler',
+  servicios: 'servicios', luz: 'servicios', gas: 'servicios', agua: 'servicios', internet: 'servicios', otros_servicios: 'servicios',
+  impuestos: 'impuestos', monotributo: 'impuestos', comercio: 'impuestos', contadora: 'impuestos', otros_impuestos: 'impuestos',
+  credito: 'credito', inversion: 'inversion', otros_costos: 'otros_costos', comisiones: 'otros_costos', retiro_socio: 'retiro_socio'
+};
+function grupoDeRubro(r){ return GRUPO_DE_RUBRO[r] || 'sin_clasificar'; }
+function grupoEgreso(e){ return grupoDeRubro(rubroDeEgreso(e)); }
+function nombreGrupo(g, sinIcono){
+  var f = RUBROS_FORM.filter(function(x){ return x[0] === g; })[0];
+  var t = f ? f[1] : '⚠ Sin clasificar';
+  return sinIcono ? t.replace(/^\S+\s/, '') : t;
+}
+// El rubro de un pago para mostrar: el grupo y, si hace falta, cuál dentro de él.
+function textoRubroEgreso(e, sinIcono){
+  var r = rubroDeEgreso(e), g = grupoDeRubro(r), t = nombreGrupo(g, sinIcono);
+  if(g === 'personal') t += ' · '+(r === 'personal_extra' ? 'Personal extra' : rubroDef(r).t);
+  else if(rubroDef(r).viejo && r !== 'comisiones') t += ' · '+rubroDef(r).t;
+  return t;
+}
+// A quién o a qué fue el pago, para agrupar en los resúmenes.
+function nombreResumenEgreso(e){
+  var d = esEquipoDueno() ? detDeEgreso(e) : null;
+  if(d && d.rubro === 'credito' && d.acreedor) return nombreActual(d.acreedor);
+  if(d && d.rubro === 'retiro_socio' && d.socio) return socioCompleto(nombreActual(d.socio));
+  return (d && (d.empleado || d.detalle || d.concepto)) || e.proveedor || e.prov || '—';
+}
+// El rubro de verdad del pago (en Personal, el que se eligió abajo).
+function _rubroForm(){
+  var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  if(r === 'personal') return (document.getElementById('ePersonal')||{}).value || 'sueldos';
+  return r;
+}
+// Rubros que eligen el concepto de una lista que se puede agrandar.
+function usaListaConcepto(r){ return r === 'credito' || r === 'servicios' || r === 'impuestos' || r === 'inversion' || r === 'otros_costos'; }
+function conceptosDeRubro(r){ return r === 'credito' ? acreedoresLista() : detallesDe(r); }
+function guardarConceptosDeRubro(r, lista){
+  if(r === 'credito'){
+    window.__lrCfgPriv.acreedores = { lista: lista };
+    if(esEquipoDueno()) colPriv('configPriv').doc('acreedores').set({ lista: lista }).catch(function(){});
+  } else guardarListaDetalles(r, lista);
 }
 function _opciones(lista, actual, vacio){
   return (vacio ? '<option value="">'+vacio+'</option>' : '')+lista.map(function(x){ return '<option value="'+escBaja(x)+'"'+(x === actual ? ' selected' : '')+'>'+escBaja(x)+'</option>'; }).join('');
 }
 function cambiarRubroEgreso(){
-  var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var r = _rubroForm();
   var cat = document.getElementById('eCategoria');
   var nueva = rubroDef(r).cat;
   if(cat && cat.value !== nueva){ cat.value = nueva; cambiarCatEgreso(); }
+  // Otro rubro, otra lista: el concepto escrito no se arrastra.
+  var ec = document.getElementById('eConcepto');
+  if(ec && ec.dataset.rubro !== r){ ec.value = ''; ec.dataset.rubro = r; _conceptoEditando = null; var dd = document.getElementById('eConceptoDropdown'); if(dd) dd.style.display = 'none'; _conceptoDropOpen = false; }
   pintarDetEgreso();
 }
 // Sueldos y personal extra: el empleado se elige una sola vez, arriba, de la
 // lista de empleados (sin los de delivery). Ese nombre es el concepto del pago.
 function esRubroPersonal(r){ return r === 'sueldos' || r === 'personal_extra'; }
 function pintarDetEgreso(){
-  var r = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var r = _rubroForm();
   var box = document.getElementById('eDetBox');
   if(!box) return;
   var ver = function(id, si){ var el = document.getElementById(id); if(el) el.style.display = si ? '' : 'none'; };
-  var empRow = document.getElementById('eEmpRow'), cw = document.getElementById('eConceptoWrap');
-  if(empRow && cw && empRow.parentNode !== cw.parentNode) cw.parentNode.insertBefore(empRow, cw.nextSibling);
-  // "¿A qué fue?" también va arriba, en lugar del concepto (es lo mismo).
-  var detRow = document.getElementById('eDetalleRow');
-  if(detRow && cw && detRow.parentNode !== cw.parentNode) cw.parentNode.insertBefore(detRow, cw.nextSibling);
-  var personal = esRubroPersonal(r);
-  ver('eEmpRow', personal);
-  ver('eDetalleRow', tieneDetalle(r));
-  var catEl = document.getElementById('eCategoria');
-  if(personal || tieneDetalle(r)) ver('eConceptoWrap', false);
-  else if(catEl && catEl.value !== 'proveedor') ver('eConceptoWrap', true);   // ej. de Personal extra a Cargas sociales (mismo grupo)
+  var cw = document.getElementById('eConceptoWrap');
+  // Arriba, debajo del concepto: en Personal, Sueldos o Personal extra y el empleado.
+  var ancla = cw;
+  ['ePersRow', 'eEmpRow'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && ancla && ancla.nextSibling !== el) ancla.parentNode.insertBefore(el, ancla.nextSibling);
+    if(el) ancla = el;
+  });
+  var personal = (document.getElementById('eRubro')||{}).value === 'personal';
+  ver('ePersRow', personal);
+  ver('eEmpRow', r === 'sueldos');
+  ver('eDetalleRow', false);   // "¿A qué fue?" ahora es el concepto
+  ver('eConceptoWrap', usaListaConcepto(r));
+  var cl = document.getElementById('eConceptoLabel'); if(cl) cl.textContent = r === 'credito' ? '📋 Concepto (tarjeta o crédito)' : '📋 Concepto';
+  var nl = document.getElementById('eNotaLabel'); if(nl) nl.textContent = r === 'personal_extra' ? 'Nota: ¿a qué fue destinado?' : 'Nota (opcional)';
+  var en = document.getElementById('eNota'); if(en) en.placeholder = r === 'personal_extra' ? 'Ej.: limpieza del depósito, ayudante el sábado…' : 'Factura N°, detalle de compra...';
+  var acF = document.getElementById('eAcreedor'); if(acF && acF.parentNode) acF.parentNode.style.display = 'none';   // el acreedor es el concepto
   // Todo menos la mercadería: el local que lo paga (o compartido, con el % de cada uno).
   box.style.display = r === 'mercaderia' ? 'none' : 'block';
   if(r === 'mercaderia') return;
-  ver('eMesRow', personal);
+  ver('eMesRow', r === 'sueldos');
   ver('eCredRow', r === 'credito');
   ver('eSocioRow', r === 'retiro_socio');
-  ver('eDetalleRow', tieneDetalle(r));
   pintarTurnoEgreso();
-  var de = document.getElementById('eDetalle');
-  if(de && tieneDetalle(r) && de.dataset.rubro !== r){ de.innerHTML = _opcionesDetalle(r, ''); de.dataset.rubro = r; }
   var emp = document.getElementById('eEmpleado');
   if(emp && !emp.options.length) emp.innerHTML = _opciones((getEmpleados()||[]).filter(function(e){ return e && e.rol !== 'repartidor'; }).map(function(e){ return e.nombre; }).sort(), '', '— Elegí —');
   var ac = document.getElementById('eAcreedor');
   if(ac){ var va = ac.value; ac.innerHTML = _opciones(acreedoresLista(), va, '— Elegí —')+'<option value="__nuevo__">＋ Agregar otro…</option>'; }
   var so = document.getElementById('eSocio');
-  if(so && !so.options.length) so.innerHTML = _opciones(sociosLista(), '', '— Elegí —');
+  if(so && !so.options.length) so.innerHTML = '<option value="">— Elegí a cuál socio —</option>'+sociosLista().map(function(x){ return '<option value="'+escBaja(x)+'">'+escBaja(socioCompleto(x))+'</option>'; }).join('');
   var fe = document.getElementById('eFecha'), me = document.getElementById('eMes');
   if(me && !me.dataset.tocado) me.value = ((fe && fe.value) || fechaLocalStr(new Date())).slice(0,7);
   var su = document.getElementById('eSuc');
@@ -16407,7 +16442,7 @@ function toggleCredPartes(){
   if(b) b.textContent = (abrir ? '▾' : '▸')+' Dividir la cuota (mercadería, intereses…) — opcional';
 }
 function elegirDetalleEgreso(){
-  var sel = document.getElementById('eDetalle'), r = (document.getElementById('eRubro')||{}).value;
+  var sel = document.getElementById('eDetalle'), r = _rubroForm();
   if(!sel) return;
   if(sel.value === '__nuevo__'){ if(!agregarDetalle(r, sel)) sel.value = ''; }
 }
@@ -16421,9 +16456,16 @@ function elegirEmpleadoEgreso(){
 // lista son los turnos del mes que no están pagados enteros.
 function pintarTurnoEgreso(){
   var row = document.getElementById('eTurnoRow'), sel = document.getElementById('eTurno'); if(!row || !sel) return;
-  var r = (document.getElementById('eRubro')||{}).value, emp = (document.getElementById('eEmpleado')||{}).value || '', mes = (document.getElementById('eMes')||{}).value || '';
-  var vh = emp ? valorHoraDe(emp) : 0;
-  if(!esRubroPersonal(r) || !emp || !mes || !esEquipoDueno() || tipoSueldoDe(emp) === 'fijo' || !(vh > 0)){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
+  var r = _rubroForm(), emp = (document.getElementById('eEmpleado')||{}).value || '', mes = (document.getElementById('eMes')||{}).value || '';
+  var vh = emp ? valorHoraDe(emp, mes) : 0, av = document.getElementById('eTurnoAviso');
+  if(av){ av.style.display = 'none'; sel.style.display = ''; }
+  if(r !== 'sueldos' || !esEquipoDueno()){ row.style.display = 'none'; sel.innerHTML = ''; sel.dataset.clave = ''; return; }
+  // En Sueldos el campo está siempre: si no hay turno para elegir, dice por qué.
+  var aviso = function(t){ row.style.display = ''; sel.innerHTML = ''; sel.dataset.clave = ''; sel.style.display = 'none'; if(av){ av.textContent = t; av.style.display = ''; } };
+  if(!emp) return aviso('Elegí el empleado para ver sus turnos sin pagar.');
+  if(!mes) return aviso('Elegí el mes al que corresponde.');
+  if(tipoSueldoDe(emp) === 'fijo') return aviso(emp+' cobra sueldo fijo: no se paga por turno.');
+  if(!(vh > 0)) return aviso(emp+' no tiene valor hora cargado: cargalo en Equipo para poder pagar un turno puntual.');
   var clave = emp+'|'+mes;
   if(sel.dataset.clave !== clave){
     var rep = _repartoSueldo(emp, mes) || { porTurno: {} };
@@ -16440,7 +16482,8 @@ function pintarTurnoEgreso(){
     sel.innerHTML = '<option value="">No, a cuenta del mes (de los turnos más viejos)</option>'+opts.join('');
     sel.dataset.clave = clave;
   }
-  row.style.display = sel.options.length > 1 ? '' : 'none';
+  if(sel.options.length > 1) row.style.display = '';
+  else aviso('Todos los turnos de '+emp+' de '+_balNombreMes(mes).toLowerCase()+' ya están pagados.');
 }
 function elegirTurnoEgreso(){
   var sel = document.getElementById('eTurno'); if(!sel) return;
@@ -16496,8 +16539,8 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
     det.reparto = { 1: a / (a + b) * 100, 2: b / (a + b) * 100 };
   }
   if(rubro === 'credito'){
-    det.acreedor = val('eAcreedor');
-    if(!det.acreedor || det.acreedor === '__nuevo__') return { error: 'Elegí el acreedor (tarjeta o crédito)', campo: 'eAcreedor' };
+    det.acreedor = concepto;
+    if(!det.acreedor) return { error: 'Elegí el concepto: la tarjeta o el crédito', campo: 'eConcepto' };
     var p = { mercaderia: getMontoInputValue('ePMerc'), equipamiento: getMontoInputValue('ePEquip'), gastos: getMontoInputValue('ePGastos'), intereses: getMontoInputValue('ePInt') };
     var tot = p.mercaderia + p.equipamiento + p.gastos + p.intereses;
     if(tot > 0){
@@ -16506,8 +16549,8 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
     } else det.partes = { mercaderia: 0, equipamiento: 0, gastos: monto, intereses: 0 };   // sin dividir: entera a Créditos
   }
   if(tieneDetalle(rubro)){
-    det.detalle = val('eDetalle');
-    if(!det.detalle || det.detalle === '__nuevo__') return { error: 'Elegí a qué fue el pago', campo: 'eDetalle' };
+    det.detalle = concepto;
+    if(!det.detalle) return { error: 'Elegí el concepto del pago', campo: 'eConcepto' };
   }
   if(rubro === 'retiro_socio'){
     det.socio = val('eSocio');
@@ -16517,6 +16560,7 @@ function leerDetEgresoForm(rubro, monto, concepto, fecha){
 }
 function resetDetEgreso(){
   var r = document.getElementById('eRubro'); if(r) r.value = 'mercaderia';
+  var ep = document.getElementById('ePersonal'); if(ep) ep.value = 'sueldos';
   ['eMes','eSuc'].forEach(function(id){ var el = document.getElementById(id); if(el) delete el.dataset.tocado; });
   var cr = document.getElementById('eCompResumen'); if(cr) cr.innerHTML = '';
   ['ePMerc','ePEquip','ePGastos','ePInt','eComp1','eComp2'].forEach(function(id){ var el = document.getElementById(id); if(el) el.value = ''; });
@@ -16594,15 +16638,11 @@ function claveConceptoOculto(cat, c) { return (cat||'')+'|'+c; }
 // ya cargados con ese concepto quedan como están. Si más adelante se vuelve a
 // registrar un egreso con ese concepto, vuelve a aparecer solo.
 function ocultarConceptoSugerido(c) {
-  var cat = document.getElementById('eCategoria') ? document.getElementById('eCategoria').value : '';
-  askConfirm('¿Sacar "'+c+'" de las sugerencias?\n\nLos egresos ya cargados con ese concepto no se tocan.').then(function(ok){
+  var r = _rubroForm();
+  askConfirm('¿Sacás "'+c+'" de la lista de '+rubroDef(r).t+'?\n\nLos pagos ya cargados con ese concepto no se tocan.').then(function(ok){
     if(!ok) return;
-    var lista = (window.__lrConceptosOcultosCache || []).slice();
-    var k = claveConceptoOculto(cat, c);
-    if(lista.indexOf(k) === -1) lista.push(k);
-    if(window.__lrSaveConceptosOcultos) window.__lrSaveConceptosOcultos(lista).catch(function(){ showToast('⚠️ No se pudo guardar en la nube — probá de nuevo con señal', true); });
-    else window.__lrConceptosOcultosCache = lista;
-    showToast('✅ "'+c+'" ya no aparece en las sugerencias');
+    guardarConceptosDeRubro(r, conceptosDeRubro(r).filter(function(x){ return x !== c; }));
+    showToast('✅ "'+c+'" ya no aparece en la lista');
     abrirConceptoDropdown();
   });
 }
@@ -16616,21 +16656,31 @@ function cancelarEdicionConcepto() { _conceptoEditando = null; abrirConceptoDrop
 function guardarEdicionConcepto(viejo) {
   var inp = document.getElementById('eConceptoEditInput');
   var nuevo = inp ? inp.value.trim() : '';
-  var cat = document.getElementById('eCategoria') ? document.getElementById('eCategoria').value : '';
+  var r = _rubroForm(), fam = FAMILIA_RUBRO[r] || [r];
   if(!nuevo){ showToast('Escribí el nombre nuevo', true); return; }
   if(nuevo === viejo){ cancelarEdicionConcepto(); return; }
-  var afectados = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === cat && e.prov === viejo; });
+  var esDelRubro = function(e){ var d = detDeEgreso(e); return d && fam.indexOf(d.rubro) !== -1 && (d.detalle === viejo || d.concepto === viejo || nombreActual(d.acreedor || '') === viejo); };
+  var afectados = getEgresos().filter(esDelRubro);
   askConfirm('Cambiar "'+viejo+'" por "'+nuevo+'".\n\nSe actualiza en '+afectados.length+' egreso'+(afectados.length===1?'':'s')+' ya cargado'+(afectados.length===1?'':'s')+' (solo el nombre; montos y fechas no cambian).').then(function(ok){
     if(!ok) return;
+    // La lista del rubro, con el nombre nuevo en el mismo lugar.
+    guardarConceptosDeRubro(r, _sinRepetir(conceptosDeRubro(r).map(function(x){ return x === viejo ? nuevo : x; })));
     var egresos = getEgresos();
     egresos.forEach(function(e){
-      if((e.categoria||'proveedor') !== cat || e.prov !== viejo) return;
-      e.prov = nuevo;
+      if(!esDelRubro(e)) return;
+      if(e.prov === viejo) e.prov = nuevo;
       if(e.proveedor === viejo) e.proveedor = nuevo;
     });
     Object.keys(window.__lrEgDet || {}).forEach(function(id){
       var d = window.__lrEgDet[id];
-      if(d && d.concepto === viejo && d.rubro && rubroDef(d.rubro).cat === cat){ d.concepto = nuevo; colEgDet().doc(id).update({ concepto: nuevo }).catch(function(){}); }
+      if(!d || fam.indexOf(d.rubro) === -1) return;
+      var cambio = {};
+      if(d.detalle === viejo) cambio.detalle = nuevo;
+      if(d.concepto === viejo) cambio.concepto = nuevo;
+      if(r === 'credito' && nombreActual(d.acreedor || '') === viejo) cambio.acreedor = nuevo;
+      if(!Object.keys(cambio).length) return;
+      Object.assign(d, cambio);
+      colEgDet().doc(id).update(cambio).catch(function(){});
     });
     window.__lrEgresosCache = egresos;
     guardarOperacionProtegida('Egresos', getEgresos, 'Concepto "'+viejo+'" → "'+nuevo+'"');
@@ -16667,13 +16717,12 @@ function filtrarConceptosSugeridos() {
   var nuevoTxt = document.getElementById('eConceptoNuevoTexto');
   if(!lista) return;
   var term = (inp ? inp.value : '').trim();
-  var cat  = document.getElementById('eCategoria') ? document.getElementById('eCategoria').value : '';
-  var todos = getConceptosPrevios(cat);
+  var todos = conceptosDeRubro(_rubroForm()).slice().sort(function(a, b){ return a.localeCompare(b, 'es'); });
   var matches = term ? todos.filter(function(c){ return c.toLowerCase().includes(term.toLowerCase()); }) : todos;
 
   lista.innerHTML = '';
   if(!matches.length && !term) {
-    lista.innerHTML = '<div style="padding:10px 12px;color:var(--gray);font-size:.78rem">Sin conceptos previos — escribí uno nuevo</div>';
+    lista.innerHTML = '<div style="padding:10px 12px;color:var(--gray);font-size:.78rem">Sin conceptos todavía: escribí uno nuevo</div>';
   } else {
     matches.forEach(function(c){
       var div = document.createElement('div');
@@ -16707,7 +16756,7 @@ function filtrarConceptosSugeridos() {
       bEd.style.cssText = 'background:none;border:1px solid var(--border);color:var(--gold);border-radius:4px;padding:2px 8px;font-size:.75rem;cursor:pointer';
       bEd.onclick = function(ev){ ev.stopPropagation(); editarConceptoSugerido(c); };
       var bX = document.createElement('button');
-      bX.textContent = '✕'; bX.title = 'Sacar de las sugerencias';
+      bX.textContent = '✕'; bX.title = 'Sacar de la lista';
       bX.style.cssText = 'background:none;border:1px solid rgba(231,76,60,.4);color:#E74C3C;border-radius:4px;padding:2px 8px;font-size:.75rem;cursor:pointer';
       bX.onclick = function(ev){ ev.stopPropagation(); ocultarConceptoSugerido(c); };
       div.appendChild(txt); div.appendChild(bEd); div.appendChild(bX);
@@ -16717,7 +16766,7 @@ function filtrarConceptosSugeridos() {
       lista.appendChild(div);
     });
   }
-  var esNuevo = term && matches.indexOf(term) === -1;
+  var esNuevo = term && !todos.some(function(c){ return c.toLowerCase() === term.toLowerCase(); });
   if(nuevoRow) nuevoRow.style.display = esNuevo ? 'block' : 'none';
   if(nuevoTxt) nuevoTxt.textContent = term;
 }
@@ -16762,7 +16811,7 @@ function cambiarCatEgreso() {
   } else if(cat === 'servicio') {
     provWrap.style.display = 'none';
     conceptoWrap.style.display = 'block';
-    conceptoLabel.textContent = '💡 Servicio / Impuesto';
+    conceptoLabel.textContent = '📋 Concepto';
     if(conceptoInput) conceptoInput.value='';
   } else {
     provWrap.style.display = 'none';
@@ -16819,22 +16868,28 @@ function registrarEgreso() {
       prov = nombreNuevo;
     }
     if(!prov){ avisoEgreso('Elegí un proveedor', 'eProvSel'); return; }
-  } else if(esRubroPersonal((document.getElementById('eRubro')||{}).value)) {
-    prov = (document.getElementById('eEmpleado')||{}).value || '';
-    if(!prov){ avisoEgreso('Elegí el empleado', 'eEmpleado'); return; }
-  } else if(tieneDetalle((document.getElementById('eRubro')||{}).value)) {
-    // El nombre del pago es lo que se eligió en "¿A qué fue?"; lo demás, en la nota.
-    prov = (document.getElementById('eDetalle')||{}).value || '';
-    if(!prov || prov === '__nuevo__'){ avisoEgreso('Elegí a qué fue el pago', 'eDetalle'); return; }
   } else {
-    var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
-    if(!concepto){ avisoEgreso('Ingresá el concepto', 'eConcepto'); return; }
-    prov = concepto;
-    // Si se había sacado de las sugerencias y se vuelve a usar, vuelve a aparecer
-    var kOculto = claveConceptoOculto(cat, concepto);
-    var ocultosAct = window.__lrConceptosOcultosCache || [];
-    if(ocultosAct.indexOf(kOculto) !== -1 && window.__lrSaveConceptosOcultos){
-      window.__lrSaveConceptosOcultos(ocultosAct.filter(function(k){ return k !== kOculto; })).catch(function(){});
+    var rF = _rubroForm(), notaF = document.getElementById('eNota').value.trim();
+    if(rF === 'sueldos'){
+      prov = (document.getElementById('eEmpleado')||{}).value || '';
+      if(!prov){ avisoEgreso('Elegí a qué empleado le pagaste', 'eEmpleado'); return; }
+    } else if(rF === 'personal_extra'){
+      if(!notaF){ avisoEgreso('Escribí en la nota a qué fue destinado el pago de personal extra', 'eNota'); return; }
+      prov = 'Personal extra';
+    } else if(rF === 'alquiler'){
+      prov = 'Alquiler';
+    } else if(rF === 'retiro_socio'){
+      var socioF = (document.getElementById('eSocio')||{}).value || '';
+      if(!socioF){ avisoEgreso('Elegí qué socio retiró', 'eSocio'); return; }
+      prov = 'Retiro de '+socioCompleto(socioF);
+    } else {
+      // Servicios, impuestos, cuotas, inversión y otros costos: el concepto de la lista.
+      var concepto = document.getElementById('eConcepto') ? document.getElementById('eConcepto').value.trim() : '';
+      if(!concepto){ avisoEgreso('Elegí el concepto (o escribí uno nuevo)', 'eConcepto'); return; }
+      var listaC = conceptosDeRubro(rF), igualC = listaC.filter(function(x){ return x.toLowerCase() === concepto.toLowerCase(); })[0];
+      if(igualC) concepto = igualC;
+      else guardarConceptosDeRubro(rF, listaC.concat([concepto]));   // nuevo: queda en la lista
+      prov = concepto;
     }
   }
 
@@ -16859,7 +16914,7 @@ function registrarEgreso() {
 
   // Rubro y detalle: lo que no es mercadería guarda su detalle aparte (solo lo
   // lee el dueño). En fase B, además, el pago no queda a la vista de la caja.
-  var rubroEg = (document.getElementById('eRubro')||{}).value || 'mercaderia';
+  var rubroEg = _rubroForm();
   var detEg = rubroEg === 'mercaderia' ? null : leerDetEgresoForm(rubroEg, monto, prov, fecha);
   if(detEg && detEg.error){ avisoEgreso(detEg.error, detEg.campo); return; }
 
@@ -16927,6 +16982,8 @@ function renderEgresos() {
   var kpisEl = document.getElementById('egresosKpis');
   if(!list) return;
 
+  pintarFiltrosEgreso();
+  pintarResumenesEgreso();
   var filtrados = getEgFiltrados();
   mpReintentarEgresos(getEgresos());
   poblarRubrosEgreso();
@@ -16938,8 +16995,30 @@ function renderEgresos() {
     } else barClf.innerHTML = '';
   }
 
-  // KPIs por categoría
-  if(kpisEl) {
+  // Cuadritos por rubro (equipo del dueño): el total de cada uno en el período;
+  // tocando uno se ven solo esos pagos.
+  if(kpisEl && esEquipoDueno()) {
+    var porG = {};
+    getEgDelPeriodo().forEach(function(e){ var g = grupoEgreso(e); porG[g] = (porG[g] || 0) + (Number(e.monto) || 0); });
+    var gs = RUBROS_FORM.map(function(x){ return x[0]; }).concat(['sin_clasificar']).filter(function(g){ return porG[g]; });
+    var totalF = filtrados.reduce(function(s,e){ return s+e.monto; },0);
+    kpisEl.innerHTML =
+      (gs.length ? '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:4px">'+
+      gs.map(function(g){
+        var act = _egCat === g, rojo = g === 'sin_clasificar';
+        return '<div onclick="selEgCat(\''+(act ? 'todas' : g)+'\')" style="cursor:pointer;background:var(--card);border:1px solid '+(act ? 'var(--gold)' : rojo ? '#e74c3c' : 'var(--border)')+';border-radius:5px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+          '<span style="font-size:.72rem;color:'+(rojo ? '#e74c3c' : 'var(--gray)')+'">'+nombreGrupo(g)+'</span>'+
+          '<span style="font-family:Oswald,sans-serif;font-size:.88rem;color:'+(rojo ? '#e74c3c' : 'var(--light)')+';white-space:nowrap">'+fmt(porG[g])+'</span>'+
+        '</div>';
+      }).join('')+'</div>' : '')+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0 10px;border-bottom:1px solid var(--border);margin-bottom:4px">'+
+        '<span style="font-size:.72rem;color:var(--gray)">'+(_egCat === 'todas' ? 'Total período' : 'Total '+nombreGrupo(_egCat, true)+' · <span style="text-decoration:underline;cursor:pointer" onclick="selEgCat(\'todas\')">ver todos</span>')+'</span>'+
+        '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalF)+'</span>'+
+      '</div>'+
+      // Lo que se pagó en el período pero corresponde a otro mes (ej. el sueldo de septiembre pagado en octubre).
+      (filtrados.some(function(e){ var d = detDeEgreso(e); return d && d.mes && d.mes !== String(e.fecha).slice(0,7); })
+        ? '<div style="font-size:.66rem;color:var(--gray);margin:-6px 0 8px">Pagos hechos en el período: algunos corresponden a otro mes (lo dice cada pago). Los resúmenes de abajo y el balance los cuentan en su mes.</div>' : '');
+  } else if(kpisEl) {
     var cats = {proveedor:0, sueldo:0, servicio:0, otro:0};
     filtrados.forEach(function(e){
       var c = catVisibleEgreso(e);
@@ -16977,15 +17056,15 @@ function renderEgresos() {
     row.className = 'egreso-row';
     var prov = conceptoDeEgreso(e);
     var catIconos = {proveedor:'🚚',sueldo:'👤',servicio:'💡',otro:'📋'};
-    var catIcon = catIconos[catVisibleEgreso(e)] || '📋';
+    var catIcon = esEquipoDueno() ? nombreGrupo(grupoEgreso(e)).split(' ')[0] : (catIconos[catVisibleEgreso(e)] || '📋');
     var detE = esEquipoDueno() ? detDeEgreso(e) : null;
     var rubroTxt = '';
     if(esEquipoDueno() && (detE || (e.categoria||'proveedor') !== 'proveedor')){
       var sinClf = egresoSinClasificar(e);
       rubroTxt = '<div style="font-size:.64rem;margin-top:1px;color:'+(sinClf?'#e74c3c;font-weight:700':'var(--gold)')+'">'+
-        (sinClf ? '⚠ Sin clasificar' : rubroDef(detE.rubro).t)+
-        (detE && detE.empleado ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor ? ' · '+escBaja(detE.acreedor) : '')+
-        (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+detE.mes : '')+
+        (sinClf ? '⚠ Sin clasificar' : textoRubroEgreso(e, true))+
+        (detE && detE.empleado && detE.empleado !== prov ? ' · '+escBaja(detE.empleado) : '')+(detE && detE.acreedor && nombreActual(detE.acreedor) !== prov ? ' · '+escBaja(nombreActual(detE.acreedor)) : '')+
+        (detE && detE.mes && detE.mes !== String(e.fecha).slice(0,7) ? ' · corresponde a '+_balNombreMes(detE.mes).toLowerCase() : '')+
         (detE && detE.suc === 'compartido' ? ' · compartido' : (detE && detE.suc && detE.suc !== localActual() ? ' · Limay '+detE.suc : ''))+'</div>';
     }
     var notaE = (detE && detE.nota) || e.nota;
@@ -17048,11 +17127,25 @@ function selEgRango() {
 
 function selEgCat(cat) {
   _egCat = cat;
-  ['todas','proveedor','sueldo','servicio','otro'].forEach(function(k){
-    var b = document.getElementById('egcat-'+k);
-    if(b) b.classList.toggle('active', k===cat);
-  });
   renderEgresos();
+}
+// En el equipo del dueño se filtra por los rubros del formulario; en la caja,
+// que no tiene el detalle de los rubros, por las categorías de siempre.
+var EG_CATS_CAJA = [['proveedor','🚚 Proveedores'],['sueldo','👤 Sueldos'],['servicio','💡 Servicios'],['otro','📋 Otros']];
+function _egCatsVisibles(){
+  if(!esEquipoDueno()) return EG_CATS_CAJA;
+  var l = RUBROS_FORM.slice();
+  if(getEgDelPeriodo().some(function(e){ return grupoEgreso(e) === 'sin_clasificar'; })) l.push(['sin_clasificar', '⚠ Sin clasificar']);
+  return l;
+}
+function pintarFiltrosEgreso(){
+  var bar = document.getElementById('egCatBar'); if(!bar) return;
+  var cats = _egCatsVisibles();
+  if(_egCat !== 'todas' && !cats.some(function(c){ return c[0] === _egCat; })) _egCat = 'todas';
+  bar.innerHTML = '<span style="font-size:.65rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">'+(esEquipoDueno() ? 'Rubro:' : 'Categoría:')+'</span>'+
+    [['todas', esEquipoDueno() ? 'Todos' : 'Todas']].concat(cats).map(function(c){
+      return '<button class="period-btn'+(c[0] === _egCat ? ' active' : '')+'" id="egcat-'+c[0]+'" onclick="selEgCat(\''+c[0]+'\')"'+(c[0] === 'sin_clasificar' && c[0] !== _egCat ? ' style="color:#e74c3c;border-color:#e74c3c"' : '')+'>'+c[1]+'</button>';
+    }).join('');
 }
 
 function toggleResumenProvBox() {
@@ -17079,17 +17172,19 @@ function _egRango() {
   }
   return { desde: desde, hasta: hasta };
 }
-function getEgFiltrados() {
-  var egresos = getEgresos();
+// Los pagos del período elegido (sin mirar el rubro).
+function getEgDelPeriodo() {
   var rg = _egRango(), desde = rg.desde, hasta = rg.hasta;
-  return egresos.filter(function(e){
+  return getEgresos().filter(function(e){
     var f = new Date((e.ts||e.fecha+'T12:00:00'));
-    if(f < desde || f > hasta) return false;
-    if(_egCat !== 'todas') {
-      var cat = e.categoria || 'proveedor';
-      if(cat !== _egCat) return false;
-    }
-    return true;
+    return !(f < desde || f > hasta);
+  });
+}
+function getEgFiltrados() {
+  var dueno = esEquipoDueno();
+  return getEgDelPeriodo().filter(function(e){
+    if(_egCat === 'todas') return true;
+    return dueno ? grupoEgreso(e) === _egCat : (e.categoria || 'proveedor') === _egCat;
   });
 }
 
@@ -17140,7 +17235,9 @@ function renderResumenProveedores() {
   // categoría), acá faltaba excluir esas categorías — se estaban agrupando
   // TODOS los egresos del período por su campo "proveedor", así que un
   // sueldo o un pago de "otros" con ese campo cargado aparecía mezclado acá.
-  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === 'proveedor'; });
+  // En el equipo del dueño, lo que es mercadería (lo pagado a un proveedor que
+  // se pasó a inversión ya no va acá).
+  var egresos = getEgresos().filter(function(e){ return esEquipoDueno() ? grupoEgreso(e) === 'mercaderia' : (e.categoria||'proveedor') === 'proveedor'; });
   var desde, hasta;
 
   if(_resumenProvDesde && _resumenProvHasta){
@@ -17230,7 +17327,27 @@ var _resCatState = {
   servicio: {periodo:'mes', fecha:'', desde:'', hasta:''},
   otro:     {periodo:'mes', fecha:'', desde:'', hasta:''}
 };
-var _resCatLabels = { sueldo:'sueldos', servicio:'servicios', otro:'otros' };
+var _resCatLabels = { sueldo:'sueldos', servicio:'servicios', otro:'otros',
+  personal:'pagos de personal', alquiler:'pagos de alquiler', servicios:'servicios', impuestos:'impuestos', credito:'cuotas',
+  inversion:'inversiones', otros_costos:'otros costos', retiro_socio:'retiros de socios', sin_clasificar:'pagos sin clasificar' };
+// Un resumen por rubro (los mismos del formulario); en la caja, los de siempre.
+var EG_RES_CAJA = [['sueldo','👤 Resumen de sueldos','#3498DB'],['servicio','💡 Resumen de servicios','#E67E22'],['otro','📋 Resumen de otros','var(--gray)']];
+function pintarResumenesEgreso(){
+  var cont = document.getElementById('egResumenesCat'); if(!cont) return;
+  var dueno = esEquipoDueno(), modo = dueno ? 'rubros' : 'caja';
+  var tp = document.getElementById('resProvTitulo'); if(tp) tp.textContent = dueno ? '🚚 Resumen de mercadería (por proveedor)' : '🚚 Resumen por proveedor';
+  if(cont.dataset.modo === modo) return;   // ya armado: no se cierran los que estén abiertos
+  cont.dataset.modo = modo;
+  var lista = dueno ? RUBROS_FORM.filter(function(x){ return x[0] !== 'mercaderia'; }).map(function(x){ return [x[0], x[1].split(' ')[0]+' Resumen de '+nombreGrupo(x[0], true).toLowerCase(), 'var(--gold)']; }) : EG_RES_CAJA;
+  cont.innerHTML = lista.map(function(x){
+    if(!_resCatState[x[0]]) _resCatState[x[0]] = { periodo:'mes', fecha:'', desde:'', hasta:'' };
+    return '<div style="margin-top:0">'+
+      '<div style="font-family:\'Oswald\',sans-serif;font-size:.7rem;letter-spacing:2px;color:'+x[2]+';margin-bottom:8px;text-transform:uppercase;cursor:pointer" onclick="toggleResumenCatBox(\''+x[0]+'\')">'+
+        x[1]+' <span id="resCatArrow_'+x[0]+'">▾</span></div>'+
+      '<div id="resumenCat_'+x[0]+'" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:16px"></div>'+
+    '</div>';
+  }).join('');
+}
 
 function toggleResumenCatBox(categoria) {
   var box = document.getElementById('resumenCat_'+categoria);
@@ -17284,7 +17401,8 @@ function renderResumenCategoria(categoria) {
   if(!el) return;
   var st = _resCatState[categoria];
 
-  var egresos = getEgresos().filter(function(e){ return (e.categoria||'proveedor') === categoria; });
+  var porRubro = esEquipoDueno() && !EG_RES_CAJA.some(function(x){ return x[0] === categoria; });
+  var egresos = getEgresos().filter(function(e){ return porRubro ? grupoEgreso(e) === categoria : (e.categoria||'proveedor') === categoria; });
   var desde, hasta;
   if(st.desde && st.hasta){
     desde = new Date(st.desde+'T00:00:00'); hasta = new Date(st.hasta+'T23:59:59');
@@ -17295,14 +17413,19 @@ function renderResumenCategoria(categoria) {
     desde = rango.desde; hasta = rango.hasta;
   }
 
+  // Con un mes elegido, cada pago cuenta en el mes al que corresponde (igual
+  // que el balance): el sueldo de septiembre pagado el 3/10 va a septiembre.
+  var mesSel = (porRubro && !st.desde && !st.fecha && periodoEsMes(st.periodo)) ? fechaLocalStr(desde).slice(0,7) : '';
+  var mesDe = function(e){ var d = detDeEgreso(e); return (d && d.mes) || String(e.fecha||'').slice(0,7); };
   var filtrados = egresos.filter(function(e){
+    if(mesSel) return mesDe(e) === mesSel;
     var fechaE = new Date(e.fecha+'T12:00:00');
     return fechaE >= desde && fechaE <= hasta;
   });
 
   var porNombre = {};
   filtrados.forEach(function(e){
-    var key = e.proveedor || e.prov || '—';
+    var key = porRubro ? nombreResumenEgreso(e) : (e.proveedor || e.prov || '—');
     if(!porNombre[key]) porNombre[key] = {total:0, count:0, pagos:[]};
     porNombre[key].total += e.monto;
     porNombre[key].count++;
@@ -17339,7 +17462,7 @@ function renderResumenCategoria(categoria) {
     var pagosHtml = d.pagos.slice().sort(function(a,b){ return new Date(b.fecha)-new Date(a.fecha); }).map(function(p){
       var fechaStr = new Date(p.fecha+'T12:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.74rem">'+
-        '<div><span style="color:var(--gray)">'+fechaStr+'</span>'+(p.nota?' · <span style="color:var(--light)">'+p.nota+'</span>':'')+'</div>'+
+        '<div><span style="color:'+(mesSel && String(p.fecha||'').slice(0,7) !== mesSel ? 'var(--gold)">pagado el ' : 'var(--gray)">')+fechaStr+'</span>'+(p.nota?' · <span style="color:var(--light)">'+escBaja(p.nota)+'</span>':'')+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px"><span style="color:var(--gray);font-size:.66rem">'+(p.medio||'')+'</span><span style="color:var(--red);font-family:Oswald,sans-serif">'+fmt(p.monto)+'</span></div>'+
       '</div>';
     }).join('');
@@ -17358,9 +17481,10 @@ function renderResumenCategoria(categoria) {
 
   el.innerHTML = tabsHtml +
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'+
-      '<span style="font-size:.72rem;color:var(--gray)">Total '+etiqueta+'</span>'+
+      '<span style="font-size:.72rem;color:var(--gray)">Total '+etiqueta+(mesSel ? ' de '+_balNombreMes(mesSel).toLowerCase() : '')+'</span>'+
       '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--red)">'+fmt(totalGeneral)+'</span>'+
-    '</div>'+rowsHtml;
+    '</div>'+
+    (mesSel ? '<div style="font-size:.66rem;color:var(--gray);margin:-4px 0 10px">Por el mes al que corresponde cada pago, igual que el balance.</div>' : '')+rowsHtml;
 }
 
 function eliminarEgreso(id) {
@@ -18248,7 +18372,7 @@ function exportarEgresosCSV() {
   var rows = ['Fecha;Proveedor/Concepto;'+(dueno ? 'Rubro;Mes al que corresponde;Sucursal;' : '')+'Monto;Medio de pago;Nota'];
   getEgFiltrados().slice().sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)) || (a.id||0) - (b.id||0); }).forEach(function(e){
     var d = dueno ? detDeEgreso(e) : null;
-    var extra = dueno ? [csvTxt(rubroDef(rubroDeEgreso(e)).t), csvTxt((d && d.mes) || String(e.fecha||'').slice(0,7)),
+    var extra = dueno ? [csvTxt(textoRubroEgreso(e, true)), csvTxt((d && d.mes) || String(e.fecha||'').slice(0,7)),
       csvTxt(d && d.suc === 'compartido' ? 'Compartido' : 'Sucursal '+((d && d.suc) || localActual()))] : [];
     rows.push([csvTxt(e.fecha), csvTxt(conceptoDeEgreso(e))].concat(extra, [csvNum(e.monto), csvTxt(medioEgresoTxt(e.medio)), csvTxt(e.nota||'')]).join(';'));
   });
@@ -18257,18 +18381,20 @@ function exportarEgresosCSV() {
 }
 
 function exportarEgresosPDF() {
-  var egresos = getEgresos().slice().reverse();
+  // Lo mismo que se ve en pantalla: el período y el rubro elegidos.
+  var dueno = esEquipoDueno(), rg = _egRango();
+  var egresos = getEgFiltrados().slice().sort(function(a, b){ return String(b.fecha).localeCompare(String(a.fecha)) || (b.id||0) - (a.id||0); });
   var total = egresos.reduce(function(s,e){return s+e.monto;},0);
   var rows = egresos.map(function(e){
-    return '<tr><td>'+e.fecha+'</td><td>'+e.prov+'</td><td>'+e.medio+'</td>'+
+    return '<tr><td>'+e.fecha+'</td><td>'+escBaja(conceptoDeEgreso(e))+'</td>'+(dueno ? '<td>'+escBaja(textoRubroEgreso(e, true))+'</td>' : '')+'<td>'+medioEgresoTxt(e.medio)+'</td>'+
       '<td style="text-align:right;color:#CC0000">$'+Number(e.monto).toLocaleString('es-AR')+'</td>'+
-      '<td style="color:#666">'+( e.nota||'—')+'</td></tr>';
+      '<td style="color:#666">'+escBaja(e.nota||'—')+'</td></tr>';
   }).join('');
-  abrirVentanaPDF('Historial de Egresos',
+  abrirVentanaPDF('Egresos del '+rg.desde.toLocaleDateString('es-AR')+' al '+rg.hasta.toLocaleDateString('es-AR')+(_egCat !== 'todas' ? ' — '+(dueno ? nombreGrupo(_egCat, true) : _egCat) : ''),
     '<div class="kpis"><div class="kpi"><div class="l">Total egresos</div><div class="v" style="color:#CC0000">$'+
     Number(total).toLocaleString('es-AR')+'</div></div>'+
     '<div class="kpi"><div class="l">Cantidad</div><div class="v">'+egresos.length+'</div></div></div>'+
-    '<table><thead><tr><th>Fecha</th><th>Proveedor/Concepto</th><th>Medio</th><th>Monto</th><th>Nota</th></tr></thead>'+
+    '<table><thead><tr><th>Fecha</th><th>Proveedor/Concepto</th>'+(dueno ? '<th>Rubro</th>' : '')+'<th>Medio</th><th>Monto</th><th>Nota</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table>');
 }
 
@@ -18534,9 +18660,33 @@ function setMultiplicadorTurno(empleado, fechaISO, valor) {
 // la plata cubre entero queda pagado; si no alcanza para uno, queda "pagado en
 // parte". Lo que sobra queda a favor y se usa en los turnos que haga después en
 // ese mes. Nunca desmarca un turno (los marcados a mano quedan como están).
-function valorHoraDe(nombre){
+// El valor hora de hoy (el último cargado).
+function _vhActual(nombre){
   var x = (getEmpleados() || []).find(function(e){ return e.nombre === nombre; }) || {}, p = (window.__lrEmpPriv || {})[nombre] || {};
   return parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0;
+}
+// Historial del valor hora: desde qué mes vale cada valor ({ 'AAAA-MM': valor }).
+// Si todavía no se guardó ninguno, se arma con el valor hora de las
+// liquidaciones registradas y el de hoy para el mes en curso.
+function historialVH(nombre){
+  var p = (window.__lrEmpPriv || {})[nombre] || {};
+  if(p.valoresHora && Object.keys(p.valoresHora).length) return p.valoresHora;
+  var h = {};
+  Object.keys(window.__lrEgDet || {}).forEach(function(id){
+    var d = window.__lrEgDet[id];
+    if(d && d.empleado === nombre && d.liq && Number(d.liq.valorHora) > 0 && d.mes) h[d.mes] = Number(d.liq.valorHora);
+  });
+  var actual = _vhActual(nombre);
+  if(actual > 0) h[fechaLocalStr(new Date()).slice(0,7)] = actual;
+  return h;
+}
+// Valor hora de un mes: el último cargado hasta ese mes (antes del primero, el primero).
+function valorHoraDe(nombre, mes){
+  mes = mes || fechaLocalStr(new Date()).slice(0,7);
+  var h = historialVH(nombre), ks = Object.keys(h).sort();
+  if(!ks.length) return _vhActual(nombre);
+  var hasta = ks.filter(function(k){ return k <= mes; });
+  return Number(h[hasta.length ? hasta[hasta.length - 1] : ks[0]]) || 0;
 }
 function _mesTurno(c){ return fechaLocalStr(new Date(c.fecha)).slice(0,7); }
 function _valorTurno(c, vh){ return Math.round(minutosPagados(c) / 60 * vh); }
@@ -18547,7 +18697,8 @@ function pagosSueldoLista(nombre, mes){
     if(!d || (d.rubro !== 'sueldos' && d.rubro !== 'personal_extra') || (d.empleado || '') !== nombre) return null;
     if((d.mes || String(e.fecha).slice(0,7)) !== mes) return null;
     // Cuenta lo que cobró; lo descontado (consumos y faltantes) se suma aparte (descontadoSueldoMes).
-    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq, turno: d.turno || '' };
+    return { id: e.id, fecha: String(e.fecha || ''), ts: e.ts || '', monto: Number(e.monto) || 0, neto: Number(e.monto) || 0, liq: !!d.liq, turno: d.turno || '',
+      redondeo: (d.liq && Number(d.liq.redondeo)) || 0, adelantoDe: d.adelantoDe || '' };
   }).filter(Boolean).sort(function(a, b){ return a.fecha.localeCompare(b.fecha) || String(a.ts).localeCompare(String(b.ts)) || (a.id - b.id); });
 }
 // Lo que se le descontó del sueldo en un mes (consumos y faltantes ya descontados): también le paga horas.
@@ -18572,7 +18723,7 @@ function pagosSueldoMes(nombre, mes){ return pagosSueldoLista(nombre, mes).reduc
 function _diaMes(iso){ var t = String(iso || ''); if(!(t.length >= 10 && t.charAt(4) === '-' && t.indexOf('T') === -1)) t = fechaLocalStr(new Date(t)); return t.slice(8,10)+'/'+t.slice(5,7); }
 // Cómo quedó el sueldo de un mes: lo trabajado, lo pagado y si está completo.
 function estadoSueldoMes(nombre, mes){
-  var vh = valorHoraDe(nombre), pagos = pagosSueldoLista(nombre, mes), fijo = tipoSueldoDe(nombre) === 'fijo';
+  var vh = valorHoraDe(nombre, mes), pagos = pagosSueldoLista(nombre, mes), fijo = tipoSueldoDe(nombre) === 'fijo';
   var trabajado = fijo ? sueldoFijoDe(nombre, mes) : vh > 0 ? cierresConManuales().filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; }).reduce(function(s, c){ return s + _valorTurno(c, vh); }, 0) : 0;
   var cobrado = pagos.reduce(function(s, p){ return s + p.monto; }, 0), descontado = descontadoSueldoMes(nombre, mes), pagado = cobrado + descontado;
   return { mes: mes, vh: vh, fijo: fijo, trabajado: trabajado, cobrado: cobrado, descontado: descontado, pagado: pagado, falta: Math.max(0, Math.round(trabajado - pagado)), ultimo: pagos.length ? pagos[pagos.length - 1].fecha : '',
@@ -18587,7 +18738,7 @@ function textoEstadoSueldo(e){
 }
 // Qué turnos cubrió cada pago del mes (en el orden en que se pagaron).
 function coberturaPagosSueldo(nombre, mes){
-  var vh = valorHoraDe(nombre), est = estadoSueldoMes(nombre, mes);
+  var vh = valorHoraDe(nombre, mes), est = estadoSueldoMes(nombre, mes);
   var asig = est.fijo ? null : _asignarPagosSueldo(nombre, mes);
   var lista = asig ? asig.pagos : est.pagos.slice().concat(est.descontado ? [{ fecha: '', monto: est.descontado, neto: est.descontado, liq: false, descuento: true }] : []);
   return lista.map(function(p){
@@ -18602,7 +18753,9 @@ function coberturaPagosSueldo(nombre, mes){
     // Lo que faltaba de un turno se paga antes que los turnos enteros que siguen.
     if(partes.length && /^lo que faltaba/.test(partes[0]) && txt.length){ txt.unshift(partes.shift()); }
     txt = txt.concat(partes);
-    var cubrio = est.fijo ? 'sueldo fijo de '+_balNombreMes(mes).toLowerCase() : txt.length ? txt.join(' y ') : 'no había turnos sin pagar en ese mes';
+    var cubrio = est.fijo ? 'sueldo fijo de '+_balNombreMes(mes).toLowerCase() : txt.length ? txt.join(' y ') : (p.adelantoDe ? 'adelanto: cubre los turnos que haga en el mes' : 'no había turnos sin pagar en ese mes');
+    if(p.redondeo) cubrio += ' (liquidación '+fmt(p.monto - p.redondeo)+' + redondeo '+fmt(p.redondeo)+')';
+    if(p.adelantoDe) cubrio = 'Adelanto pagado con la liquidación de '+_balNombreMes(p.adelantoDe).toLowerCase()+' · '+cubrio;
     return { fecha: p.fecha, monto: p.monto, neto: p.neto, liq: p.liq, descuento: !!p.descuento, mes: mes, cubrio: cubrio.charAt(0).toUpperCase() + cubrio.slice(1) };
   });
 }
@@ -18612,7 +18765,7 @@ function coberturaPagosSueldo(nombre, mes){
 // puntual cubre ese turno; lo demás (y lo que sobre) va de los más viejos a
 // los más nuevos. Devuelve los turnos con lo cubierto y, por pago, qué cubrió.
 function _asignarPagosSueldo(nombre, mes, cierres){
-  var vh = valorHoraDe(nombre); if(!(vh > 0)) return null;
+  var vh = valorHoraDe(nombre, mes); if(!(vh > 0)) return null;
   var turnos = (cierres || cierresConManuales()).filter(function(c){ return c.empleado === nombre && _mesTurno(c) === mes; })
     .sort(function(a, b){ return new Date(a.fecha) - new Date(b.fecha); })
     .map(function(c){ return { fecha: c.fecha, valor: _valorTurno(c, vh), cubierto: 0 }; });
@@ -18857,7 +19010,7 @@ function renderHoras() {
           '<span class="turno-hora">✍️ A mano</span>'+
           '<span class="turno-duracion">'+dur+'</span>'+
           '<span class="turno-ventas">'+escBaja(c.nota || 'Horas cargadas a mano')+
-            (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre)); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
+            (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre, _mesTurno(c))); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
             '<button onclick="borrarHorasManuales(\''+nE+'\',\''+c.idManual+'\')" title="Borrar" style="background:none;border:none;color:var(--gray);cursor:pointer;font-size:.8rem">🗑</button>'+
             '<label style="display:flex;align-items:center;gap:4px;cursor:pointer" title="Marcar como pagado">'+
@@ -18872,7 +19025,7 @@ function renderHoras() {
         '<span class="turno-hora">'+fi+' → '+ff+'</span>'+
         '<span class="turno-duracion">'+dur+(mT>1?' <span style="background:rgba(245,194,0,.18);color:var(--gold);border-radius:3px;padding:0 4px;font-size:.62rem;white-space:nowrap">🎉 '+textoMult(mT)+'</span>':'')+'</span>'+
         '<span class="turno-ventas">'+c.cantVentas+' ventas · $'+Number(c.total||0).toLocaleString('es-AR')+
-          (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre)); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
+          (!c.pagado && c.pagoParcial > 0 ? (function(){ var v = _valorTurno(c, valorHoraDe(nombre, _mesTurno(c))); return '<br><span style="color:var(--gold)">💵 Pagado en parte: '+fmt(c.pagoParcial)+(v ? ' de '+fmt(v)+' · falta '+fmt(Math.max(0, v - c.pagoParcial)) : '')+'</span>'; })() : '')+'</span>'+
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
           '<span class="turno-tipo '+(c.turno==='Nocturno'?'nocturno':'diurno')+'">'+c.turno+'</span>'+
           // Pago del turno: x1 normal, x1,5 o x2 (feriado / día no laborable)
@@ -19045,10 +19198,18 @@ function renderLiquidacion() {
     barraD.innerHTML = '<button onclick="saldarDeudaAnterior()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✓ Saldar toda la deuda anterior al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+conDeuda.length+' empleado'+(conDeuda.length === 1 ? '' : 's')+')</button>';
     grid.appendChild(barraD);
   }
+  // Turnos de antes del período que nunca se marcaron como pagados (para ordenar).
+  var viejosSinPagar = esEquipoDueno() ? turnosSinPagarAntes(rangoLiq.desde).length : 0;
+  if(viejosSinPagar){
+    var barraT = document.createElement('div');
+    barraT.style.cssText = 'margin-bottom:10px;text-align:right';
+    barraT.innerHTML = '<button onclick="marcarTurnosViejosPagados()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:6px 10px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:1px;cursor:pointer">✓ Marcar como pagados los turnos anteriores al '+_diaMes(fechaLocalStr(rangoLiq.desde))+' ('+viejosSinPagar+' turno'+(viejosSinPagar === 1 ? '' : 's')+')</button>';
+    grid.appendChild(barraT);
+  }
   empsSinAdmin.forEach(function(emp){
     var d    = empData[emp.nombre]||{totalMin:0,minPagos:0,minAdelantado:0,turnosAdel:0,turnosEsp:[],turnos:0,ventas:0,totalVentas:0,parcial:0};
     var horas= d.totalMin/60;
-    var valorHora = parseFloat(emp.valorHora)||0;
+    var valorHora = valorHoraDe(emp.nombre, fechaLocalStr(rangoLiq.desde).slice(0,7));   // el del mes que se mira
     // Se paga por las horas "pagas": los turnos marcados x1,5 / x2 valen más.
     // Lo ya pagado en parte de un turno se descuenta.
     var sueldo = Math.max(0, Math.round((d.minPagos/60) * valorHora) - (d.parcial || 0));
@@ -19117,10 +19278,17 @@ function renderLiquidacion() {
           '<span style="display:flex;align-items:center;gap:4px">'+
             '<span style="font-family:Oswald,sans-serif;color:var(--gold);font-size:.85rem">$</span>'+
             '<input type="number" min="0" placeholder="0" value="'+(valorHora>0?valorHora:'')+'" '+
-              'onchange="setValorHoraEmpleado(\''+emp.nombre+'\',this.value)" '+
+              'onchange="setValorHoraEmpleado(\''+emp.nombre+'\',this.value,\''+mesLiq+'\')" '+
               'style="width:80px;background:var(--dark);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--white);font-family:Oswald,sans-serif;font-size:.85rem;text-align:right;outline:none">'+
           '</span>'+
         '</div>'+
+        (!esFijo && esEquipoDueno() ? (function(){
+          // Desde qué mes vale el valor hora que se ve, y el de antes.
+          var h = historialVH(emp.nombre), ks = Object.keys(h).sort(), hasta = ks.filter(function(k){ return k <= mesLiq; });
+          var desdeK = hasta.length ? hasta[hasta.length - 1] : '', antes = hasta.length > 1 ? Number(h[hasta[hasta.length - 2]]) : 0;
+          if(!desdeK) return '';
+          return '<div style="font-size:.64rem;color:var(--gray);text-align:right;margin:-4px 0 4px">Desde '+_balNombreMes(desdeK).toLowerCase()+(antes && antes !== valorHora ? ' · antes: '+fmt(antes) : '')+' · si lo cambiás, vale desde '+_balNombreMes(mesLiq).toLowerCase()+'</div>';
+        })() : '')+
         '<div class="liq-row"><span class="liq-lbl">📊 Ventas realizadas</span><span class="liq-val">'+d.ventas+' ventas · '+fmt(d.totalVentas)+'</span></div>'+
         '<div class="liq-row"><span class="liq-lbl">💰 '+(esFijo?'Falta del sueldo':'Sueldo estimado')+'</span><span class="liq-val ing">'+(conValor?fmt(sueldo):'Configurá el valor hora')+'</span></div>'+
         (d.parcial > 0 && !pagosMes.length ? '<div class="liq-row"><span class="liq-lbl">💵 Ya pagado en parte (descontado)</span><span class="liq-val">'+fmt(d.parcial)+'</span></div>' : '')+
@@ -19414,15 +19582,21 @@ function aplicarSugeridos(){
   });
 }
 
-function setValorHoraEmpleado(nombre, valor) {
+// El valor hora vale desde el mes que se está mirando en adelante (hasta el
+// próximo cambio): los meses de antes quedan con el suyo.
+function setValorHoraEmpleado(nombre, valor, mes) {
   var empleados = getEmpleados();
   var emp = empleados.find(function(e){ return e.nombre===nombre; });
   // El valor hora se guarda en la colección privada del dueño.
   if(emp && esEquipoDueno()){
     var v = parseFloat(valor)||0;
+    var hist = Object.assign({}, historialVH(nombre));
+    hist[mes || fechaLocalStr(new Date()).slice(0,7)] = v;
+    window.__lrEmpPriv[nombre] = Object.assign({}, window.__lrEmpPriv[nombre], { valoresHora: hist });
+    v = valorHoraDe(nombre);   // el de hoy queda como "el valor hora" (lo usan las cajas)
     emp.valorHora = v;
-    window.__lrEmpPriv[nombre] = Object.assign({}, window.__lrEmpPriv[nombre], { valorHora: v });
-    colPriv('empleadosPriv').doc(nombre).set({ valorHora: v }, { merge: true })
+    window.__lrEmpPriv[nombre].valorHora = v;
+    colPriv('empleadosPriv').doc(nombre).set({ valorHora: v, valoresHora: hist }, { merge: true })
       .catch(function(e){ showToast('⚠ No se pudo guardar el valor hora: '+((e && e.message) || e), true); });
     // En fase A se guarda también en la ficha común, como siempre.
     if(faseB()){ renderLiquidacion(); return; }
@@ -19534,7 +19708,7 @@ function registrarPagoLiquidacion(nombreEmp) {
   var rango = getRangoLiquidacion();
   var enRango = function(f){ var d = new Date(f); return d>=rango.desde && d<=rango.hasta; };
   var emp = getEmpleados().find(function(e){ return e.nombre===nombreEmp; });
-  var valorHora = emp ? (parseFloat(emp.valorHora)||0) : 0;
+  var valorHora = emp ? valorHoraDe(nombreEmp, fechaLocalStr(rango.desde).slice(0,7)) : 0;
   var cierres = getCierres(), consumos = getConsumos();
   if(liqModoDos() && _liqOtro.cargando){ showToast('Esperá a que terminen de llegar los datos del otro local', true); return; }
   var todosC = _liqCierres(), todosK = _liqConsumos();
@@ -19577,12 +19751,12 @@ function registrarPagoLiquidacion(nombreEmp) {
     (cons.length ? '• Consumos a descontar: −'+fmt(totCons)+'\n' : '')+
     (falt.length ? '• Faltantes de caja: −'+fmt(totFalt)+'\n' : '')+
     (deudaPrev ? '• Deuda de meses anteriores: −'+fmt(deudaPrev)+'\n' : '')+
-    '\nTOTAL PAGADO: '+fmt(neto)+'\n'+
+    '\nTOTAL DE LA LIQUIDACIÓN: '+fmt(neto)+'\n'+
     (pasa ? '⚠ Lo que hay que descontar supera lo que cobra: se descuentan '+fmt(sueldo)+' y quedan '+fmt(pasa)+' pendientes, que pasan al mes siguiente.\n' : '')+
     (dosLoc ? Object.keys(porL).map(function(L){ return '   · Paga Limay '+L+': '+fmt(porL[L]); }).join('\n')+'\n' : '')+
     '\nLos turnos quedan como pagados y los consumos/faltantes como descontados'+(dosLoc?' en los dos locales':'')+'. ¿Confirmás?';
   window._liqRegistrando = true;
-  askConfirm(txt).then(function(ok){ return ok ? elegirMedioPagoSueldo(nombreEmp, neto) : null; }).then(function(medioSel){
+  askConfirm(txt).then(function(ok){ return ok ? elegirMedioPagoSueldo(nombreEmp, neto, mesLiq) : null; }).then(function(medioSel){
     window._liqRegistrando = false;
     if(!medioSel) return;
     var ahoraISO = new Date().toISOString();
@@ -19642,8 +19816,9 @@ function registrarPagoLiquidacion(nombreEmp) {
     });
     if(otros.length) Promise.all(otros).then(function(){ cargarLiqOtro(getRangoLiquidacion(), true); })
       .catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+liqLocalOtro()+': '+((e && e.message) || e), true); });
-    crearEgresosDeLiquidacion(nombreEmp, valorHora, gruposEg, medioSel, ahoraISO);
-    showToast('✅ Liquidación de '+nombreEmp+' registrada como pagada ('+fmt(neto)+')'+(pasa ? ' · quedan '+fmt(pasa)+' para el mes que viene' : ''));
+    crearEgresosDeLiquidacion(nombreEmp, valorHora, gruposEg, medioSel, ahoraISO, mesLiq);
+    var extraTxt = medioSel.extra > 0 ? (medioSel.extraTipo === 'adelanto' ? ' · adelanto de '+_balNombreMes(_balMesVecino(mesLiq, 1)).toLowerCase()+': '+fmt(medioSel.extra) : ' · redondeo: '+fmt(medioSel.extra)) : '';
+    showToast('✅ Liquidación de '+nombreEmp+' registrada ('+fmt(medioSel.monto != null ? medioSel.monto : neto)+' pagado'+extraTxt+')'+(pasa ? ' · quedan '+fmt(pasa)+' para el mes que viene' : ''));
     renderLiquidacion();
     if(typeof renderHoras === 'function') renderHoras();
   });
@@ -19660,35 +19835,94 @@ function gruposLiquidacion(turnos, cons, falt){
   falt.forEach(function(c){ g(localDe(c), mesDe(c.fecha)).faltantes += faltantePendienteCierre(c); });
   return Object.keys(grupos).map(function(k){ return grupos[k]; });
 }
-// Pregunta cómo se pagó el sueldo. Resuelve {medio, caja}, 'ninguno' o null (cancelar).
-function elegirMedioPagoSueldo(nombreEmp, neto){
+// Pregunta cuánto y cómo se pagó el sueldo. Resuelve {medio, caja, mixto,
+// monto, extra, extraTipo}, 'ninguno' o null (cancelar). Si se paga más que la
+// liquidación, la diferencia es redondeo (no se descuenta) o adelanto del mes
+// siguiente; si la liquidación da $0 (debe más de lo que cobra), lo que se pague
+// es adelanto del mes siguiente.
+function elegirMedioPagoSueldo(nombreEmp, neto, mesLiq){
   return new Promise(function(resolver){
     var ov = document.getElementById('medioSueldoOverlay');
     if(!ov){
       ov = document.createElement('div'); ov.id = 'medioSueldoOverlay';
-      ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
       document.body.appendChild(ov);
     }
+    neto = Math.round(Number(neto) || 0);
+    var mesSig = _balNombreMes(_balMesVecino(mesLiq || fechaLocalStr(new Date()).slice(0,7), 1)).toLowerCase();
     var b = 'display:block;width:100%;margin-top:8px;border-radius:7px;padding:12px;font-family:Oswald,sans-serif;font-size:.85rem;letter-spacing:1px;cursor:pointer;text-align:left;';
+    var inp = 'background:var(--dark);border:1px solid var(--border);color:var(--white);border-radius:5px;padding:8px 10px;font-size:.9rem;width:100%;box-sizing:border-box';
     // Si hay un turno abierto en esa caja, el pago se descuenta de lo que
     // tiene que haber en el cajón al cerrarlo: se avisa de quién es.
     var turnoEn = function(c){ var s = (window.__lrSesionesVigentes || []).find(function(x){ return x && x.turnoInicio && cajaDe(x) === c; }); return s ? s.nombre : ''; };
-    var notaCaja = function(c){ var q = turnoEn(c); return '<div style="font-family:Barlow,sans-serif;font-size:.68rem;letter-spacing:0;color:'+(q?'#e67e22':'var(--gray)')+';margin-top:3px">'+(q ? '⚠ Turno abierto de '+escBaja(q)+': se descuenta de lo que tiene que haber al cerrar.' : 'No hay turno abierto en esta caja.')+'</div>'; };
-    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:400px;width:100%;padding:16px;color:var(--light)">'+
-      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">💵 ¿CÓMO LE PAGASTE A '+escBaja(nombreEmp).toUpperCase()+'?</div>'+
-      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 4px">Se registra el egreso del sueldo ('+fmt(neto)+').</div>'+
+    var notaCaja = function(c){ var q = turnoEn(c); return '<div style="font-family:Barlow,sans-serif;font-size:.68rem;letter-spacing:0;color:'+(q?'#e67e22':'var(--gray)')+';margin-top:3px">'+(q ? '⚠ Turno abierto de '+escBaja(q)+': se descuenta de lo que tiene que haber al cerrar' : 'Sin turno abierto en esa caja')+'</div>'; };
+    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:420px;width:100%;padding:16px;color:var(--light);margin:auto">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">💵 PAGO A '+escBaja(nombreEmp).toUpperCase()+'</div>'+
+      '<div style="font-size:.78rem;color:var(--gray);margin:6px 0 10px">'+(neto > 0 ? 'Total de la liquidación: <b style="color:var(--white)">'+fmt(neto)+'</b>' : 'La liquidación da <b style="color:var(--white)">$ 0</b> (lo que debe supera lo que cobra). Si igual le pagás algo, queda como <b>adelanto de '+mesSig+'</b>.')+'</div>'+
+      '<label style="font-size:.72rem;color:var(--gray)">Monto que le pagás</label>'+
+      '<input type="text" inputmode="decimal" id="msMonto" style="'+inp+';font-family:Oswald,sans-serif;font-size:1.1rem">'+
+      '<div id="msExtra" style="font-size:.76rem;margin:8px 0 2px;line-height:1.5"></div>'+
+      '<div style="font-size:.72rem;color:var(--gray);margin-top:10px">¿Cómo le pagaste?</div>'+
       '<button data-m="mp" style="'+b+'background:var(--gold);color:#000;border:none">📲 Mercado Pago / transferencia</button>'+
       '<button data-m="c1" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 1'+notaCaja(1)+'</button>'+
       '<button data-m="c2" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">💵 Efectivo que saco AHORA del cajón de la Caja 2'+notaCaja(2)+'</button>'+
+      '<button data-m="mx" style="'+b+'background:none;border:1px solid var(--gold);color:var(--gold)">⚡ Mixto (parte efectivo y parte Mercado Pago)</button>'+
+      '<div id="msMixto" style="display:none;border:1px dashed var(--gold);border-radius:7px;padding:10px;margin-top:8px">'+
+        '<label style="font-size:.72rem;color:var(--gray)">En efectivo $</label><input type="text" inputmode="decimal" id="msMxEf" style="'+inp+'">'+
+        '<label style="font-size:.72rem;color:var(--gray);display:block;margin-top:6px">El efectivo sale del cajón de</label><select id="msMxCaja" style="'+inp+'"><option value="1">Caja 1</option><option value="2">Caja 2</option></select>'+
+        '<div id="msMxMp" style="font-size:.76rem;color:var(--light);margin-top:6px"></div>'+
+        '<button data-m="mxok" style="'+b+'background:var(--gold);color:#000;border:none;text-align:center">✓ Confirmar pago mixto</button>'+
+      '</div>'+
       // (sin la opción "de mi bolsillo": la plata se ingresa a la caja y se paga desde ahí)
       '<button data-m="no" style="'+b+'background:none;border:1px solid var(--border);color:var(--gray)">Ya cargué el egreso a mano (no crear otro)</button>'+
       '<button data-m="x" style="'+b+'background:none;border:none;color:var(--gray);text-decoration:underline">Cancelar</button></div>';
     ov.style.display = 'flex';
+    var montoEl = ov.querySelector('#msMonto'), extraEl = ov.querySelector('#msExtra');
+    montoEl.value = String(neto); formatMontoDecInput(montoEl);
+    var tipoExtra = 'redondeo';
+    var leer = function(){ return Math.round(getMontoInputValue('msMonto') * 100) / 100; };
+    var pintarExtra = function(){
+      var m = leer(), dif = Math.round((m - neto) * 100) / 100;
+      if(m < neto - 0.5){ extraEl.innerHTML = '<span style="color:#e74c3c;font-weight:700">No puede ser menos que la liquidación ('+fmt(neto)+'). Para pagar una parte, cargá un adelanto en Egresos (Personal → Sueldos).</span>'; }
+      else if(neto <= 0 && m > 0){ extraEl.innerHTML = '<span style="color:var(--gold)">'+fmt(m)+' quedan como <b>adelanto de '+mesSig+'</b>: se le descuentan en esa liquidación.</span>'; }
+      else if(dif > 0.5){
+        extraEl.innerHTML = 'Diferencia: <b style="color:var(--gold)">+'+fmt(dif)+'</b> ¿qué es?<br>'+
+          '<label style="cursor:pointer"><input type="radio" name="msTipo" value="redondeo"'+(tipoExtra === 'redondeo' ? ' checked' : '')+'> Redondeo (no se le descuenta)</label><br>'+
+          '<label style="cursor:pointer"><input type="radio" name="msTipo" value="adelanto"'+(tipoExtra === 'adelanto' ? ' checked' : '')+'> Adelanto de '+mesSig+' (se le descuenta el mes que viene)</label>';
+        extraEl.querySelectorAll('input[name=msTipo]').forEach(function(r){ r.onchange = function(){ tipoExtra = r.value; }; });
+      } else extraEl.innerHTML = '';
+      var mxMp = ov.querySelector('#msMxMp'); if(mxMp) mxMp.textContent = 'Por Mercado Pago: '+fmt(Math.max(0, m - getMontoInputValue('msMxEf')));
+    };
+    montoEl.addEventListener('input', function(){ formatMontoDecInput(montoEl); pintarExtra(); });
+    var mxEf = ov.querySelector('#msMxEf'); mxEf.addEventListener('input', function(){ formatMontoDecInput(mxEf); pintarExtra(); });
+    pintarExtra();
+    var armar = function(base){
+      var m = leer();
+      if(m < neto - 0.5){ pintarExtra(); montoEl.focus(); return null; }
+      var extra = Math.max(0, Math.round((m - neto) * 100) / 100);
+      return Object.assign(base, { monto: m, extra: extra, extraTipo: neto <= 0 ? 'adelanto' : tipoExtra });
+    };
     ov.querySelectorAll('button').forEach(function(btn){
       btn.onclick = function(){
+        var m = btn.getAttribute('data-m'), r;
+        if(m === 'mx'){ var px = ov.querySelector('#msMixto'); px.style.display = px.style.display === 'none' ? '' : 'none'; pintarExtra(); return; }
+        if(m === 'x'){ ov.style.display = 'none'; resolver(null); return; }
+        if(m === 'no'){ ov.style.display = 'none'; resolver('ninguno'); return; }
+        if(m === 'mxok'){
+          var tot = leer(), ef = Math.round(getMontoInputValue('msMxEf') * 100) / 100;
+          if(!(ef > 0) || ef >= tot){ showToast('En un pago mixto, el efectivo tiene que ser más de $0 y menos que el total', true); return; }
+          r = armar({ medio: 'Mixto', caja: Number(ov.querySelector('#msMxCaja').value) || 1, mixto: { efectivo: ef, transferencia: Math.round((tot - ef) * 100) / 100 } });
+        } else r = armar(m === 'mp' ? { medio: 'MercadoPago' } : m === 'c1' ? { medio: 'Efectivo', caja: 1 } : { medio: 'Efectivo', caja: 2 });
+        if(!r) return;
+        // Un último "¿seguro?", por si se tocó el medio equivocado.
         ov.style.display = 'none';
-        var m = btn.getAttribute('data-m');
-        resolver(m === 'mp' ? { medio: 'MercadoPago' } : m === 'c1' ? { medio: 'Efectivo', caja: 1 } : m === 'c2' ? { medio: 'Efectivo', caja: 2 } : m === 'fu' ? { medio: 'EfectivoFuera' } : m === 'no' ? 'ninguno' : null);
+        var comoTxt = r.medio === 'MercadoPago' ? 'por transferencia (Mercado Pago)'
+          : r.medio === 'Mixto' ? fmt(r.mixto.efectivo)+' en efectivo de la Caja '+r.caja+' + '+fmt(r.mixto.transferencia)+' por Mercado Pago'
+          : 'en efectivo del cajón de la Caja '+r.caja;
+        var extraTxt = r.extra > 0 ? '\n('+(r.extraTipo === 'adelanto' ? 'adelanto de '+mesSig+': '+fmt(r.extra) : 'redondeo: '+fmt(r.extra))+')' : '';
+        askConfirm('¿Registrás el pago de '+nombreEmp+'?\n\n'+fmt(r.monto)+(r.medio === 'Mixto' ? ':\n'+comoTxt : ' '+comoTxt)+extraTxt).then(function(ok){
+          if(ok) resolver(r); else ov.style.display = 'flex';
+        });
       };
     });
   });
@@ -19697,9 +19931,9 @@ function elegirMedioPagoSueldo(nombreEmp, neto){
 // donde se hizo el pago (de ahí salió la plata); el detalle dice a qué
 // sucursal y mes corresponde. Cada uno lleva una clave (empleado + local + mes
 // + turnos): si se vuelve a registrar lo mismo, no se crea otro.
-function crearEgresosDeLiquidacion(nombreEmp, valorHora, grupos, medioSel, ahoraISO){
+function crearEgresosDeLiquidacion(nombreEmp, valorHora, grupos, medioSel, ahoraISO, mesLiq){
   if(!medioSel || medioSel === 'ninguno') return;
-  var nuevos = [];
+  var nuevos = [], pares = [], claveBase = '';
   grupos.forEach(function(x, i){
     var bruto = x.fijoBruto != null ? x.fijoBruto : Math.max(0, Math.round((x.min/60) * valorHora) - (x.parcial || 0));
     if(!bruto && !x.consumos && !x.faltantes) return;
@@ -19707,15 +19941,45 @@ function crearEgresosDeLiquidacion(nombreEmp, valorHora, grupos, medioSel, ahora
     var clave = hashTexto('liq|'+nombreEmp+'|'+x.L+'|'+x.mes+'|'+x.turnos.slice().sort().join(','));
     if(getEgresos().some(function(e){ return e.liqClave === clave; })) return;
     var id = Date.now() + i;
+    if(!claveBase) claveBase = clave;
     var eg = { id: id, prov: nombreEmp, proveedor: nombreEmp, categoria: 'sueldo', monto: Math.max(0, neto),
       fecha: fechaLocalStr(new Date()), ts: ahoraISO, medio: medioSel.medio, nota: 'Liquidación', liqClave: clave,
       caja: medioSel.caja || cajaTurnoActual() };
     var det = { id: id, rubro: 'sueldos', concepto: nombreEmp, empleado: nombreEmp, mes: x.mes, suc: x.L,
       liq: { bruto: bruto, consumos: x.consumos, faltantes: x.faltantes, neto: neto, minutos: x.min, turnos: x.turnos.length, valorHora: valorHora },
       creado: ahoraISO, por: currentEmp ? currentEmp.nombre : 'Admin' };
-    nuevos.push(prepararEgresoDueno(eg, det));
-    guardarDetEgreso(det);
+    pares.push([eg, det]);
   });
+  var extra = Number(medioSel.extra) || 0;
+  // Redondeo: va en el primer egreso de la liquidación (cuenta como sueldo de ese mes y no se descuenta).
+  if(extra > 0 && medioSel.extraTipo !== 'adelanto' && pares.length){
+    pares[0][0].monto = Math.round((pares[0][0].monto + extra) * 100) / 100;
+    pares[0][1].liq.redondeo = extra;
+    pares[0][0].nota = 'Liquidación (redondeo '+fmt(extra)+')';
+  } else if(extra > 0){
+    // Adelanto del mes siguiente: un egreso de sueldo aparte, de ese mes (se le
+    // descuenta en esa liquidación). Lleva su clave para no crearse dos veces.
+    var mesSig = _balMesVecino(mesLiq || fechaLocalStr(new Date()).slice(0,7), 1);
+    var claveA = hashTexto('adel|'+nombreEmp+'|'+mesSig+'|'+(claveBase || ahoraISO));
+    if(!getEgresos().some(function(e){ return e.liqClave === claveA; })){
+      var idA = Date.now() + 50;
+      pares.push([{ id: idA, prov: nombreEmp, proveedor: nombreEmp, categoria: 'sueldo', monto: extra, fecha: fechaLocalStr(new Date()), ts: ahoraISO,
+        medio: medioSel.medio, nota: 'Adelanto de '+_balNombreMes(mesSig).toLowerCase()+' (pagado con la liquidación de '+_balNombreMes(mesLiq || mesSig).toLowerCase()+')', liqClave: claveA, caja: medioSel.caja || cajaTurnoActual() },
+        { id: idA, rubro: 'sueldos', concepto: nombreEmp, empleado: nombreEmp, mes: mesSig, suc: (grupos[0] && grupos[0].L) || localActual(), adelantoDe: mesLiq || '',
+          creado: ahoraISO, por: currentEmp ? currentEmp.nombre : 'Admin' }]);
+    }
+  }
+  // Pago mixto: el efectivo se reparte entre los egresos (del primero en adelante) y el resto es Mercado Pago.
+  if(medioSel.medio === 'Mixto' && medioSel.mixto){
+    var ef = Number(medioSel.mixto.efectivo) || 0;
+    pares.forEach(function(pr){
+      var eg = pr[0], m = Number(eg.monto) || 0, e1 = Math.min(ef, m), t1 = Math.round((m - e1) * 100) / 100;
+      ef = Math.round((ef - e1) * 100) / 100;
+      if(e1 > 0 && t1 > 0){ eg.medio = 'Mixto'; eg.mixto = { efectivo: e1, transferencia: t1 }; }
+      else eg.medio = e1 > 0 ? 'Efectivo' : 'MercadoPago';
+    });
+  }
+  pares.forEach(function(pr){ nuevos.push(prepararEgresoDueno(pr[0], pr[1])); guardarDetEgreso(pr[1]); });
   if(!nuevos.length) return;
   var lista = getEgresos();
   nuevos.forEach(function(e){ lista.push(e); });
@@ -19816,10 +20080,68 @@ function saldarDeudaAnterior(nombre){
     renderLiquidacion();
   });
 }
+// Turnos de este local (y horas a mano) de antes de una fecha que siguen sin pagar.
+function turnosSinPagarAntes(desde){
+  var t = desde.getTime();
+  return getCierres().concat(_turnosManuales()).filter(function(c){ return c && c.empleado && !c.pagado && new Date(c.fecha).getTime() < t; });
+}
+// Marca como pagados los turnos viejos que nunca se marcaron (solo para ordenar
+// los registros): no crea ningún egreso ni cuenta como pago de sueldo. Se elige
+// a qué empleados.
+function marcarTurnosViejosPagados(){
+  if(!esEquipoDueno()){ showToast('🔒 Solo desde el equipo del dueño', true); return; }
+  var rango = getRangoLiquidacion(), desde = rango.desde, desdeTxt = _diaMes(fechaLocalStr(desde));
+  var otro = liqLocalOtro();
+  var delOtro = liqModoDos() ? ldCol(otro, 'cierres').where('fecha', '<', desde.toISOString()).get().then(function(s){
+    var a = []; s.forEach(function(d){ var x = d.data(); if(x && x.empleado && !x.pagado){ x._local = otro; x._docId = d.id; a.push(x); } }); return a;
+  }).catch(function(){ return []; }) : Promise.resolve([]);
+  delOtro.then(function(otros){
+    var todos = turnosSinPagarAntes(desde).concat(otros);
+    if(!todos.length){ showToast('No hay turnos sin pagar antes del '+desdeTxt); return; }
+    var porEmp = {};
+    todos.forEach(function(c){ var x = porEmp[c.empleado] = porEmp[c.empleado] || { n: 0, min: 0, desde: c.fecha, hasta: c.fecha }; x.n++; x.min += Number(c.durMinutos) || 0;
+      if(c.fecha < x.desde) x.desde = c.fecha; if(c.fecha > x.hasta) x.hasta = c.fecha; });
+    var nombres = Object.keys(porEmp).sort();
+    var ov = document.getElementById('lrTurnosViejosOv'); if(ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'lrTurnosViejosOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto';
+    var hm = function(m){ m = Math.round(m); return Math.floor(m / 60)+'h'+(m % 60 ? ' '+(m % 60)+'m' : ''); };
+    ov.innerHTML = '<div style="background:#161616;border:1px solid var(--gold);border-radius:10px;max-width:440px;width:100%;padding:16px;color:var(--light);margin:auto">'+
+      '<div style="font-family:Oswald,sans-serif;color:var(--gold);letter-spacing:1px">✓ TURNOS SIN PAGAR ANTES DEL '+desdeTxt+'</div>'+
+      '<div style="font-size:.76rem;color:var(--gray);margin:6px 0 10px;line-height:1.45">Elegí de quiénes los marcás como pagados. Es solo para ordenar los registros: <b>no se crea ningún pago</b>. En el balance de esos meses dejan de figurar como sueldo pendiente estimado.</div>'+
+      nombres.map(function(n, i){ var x = porEmp[n];
+        return '<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 4px;border-top:1px solid var(--border);cursor:pointer">'+
+          '<input type="checkbox" data-emp="'+escBaja(n)+'" checked style="margin-top:3px">'+
+          '<span style="flex:1"><b style="color:var(--white)">'+escBaja(n)+'</b><br><span style="font-size:.72rem;color:var(--gray)">'+x.n+' turno'+(x.n === 1 ? '' : 's')+' · '+hm(x.min)+' · del '+_diaMes(x.desde)+' al '+_diaMes(x.hasta)+'</span></span></label>';
+      }).join('')+
+      '<div style="display:flex;gap:8px;margin-top:12px"><button data-a="no" style="flex:1;background:none;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:10px;font-family:Oswald,sans-serif;cursor:pointer">Cancelar</button>'+
+      '<button data-a="si" style="flex:2;background:var(--gold);color:#000;border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;letter-spacing:1px;cursor:pointer">✓ Marcar como pagados</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('[data-a=no]').onclick = function(){ ov.remove(); };
+    ov.querySelector('[data-a=si]').onclick = function(){
+      var elegidos = {}; ov.querySelectorAll('input[data-emp]').forEach(function(ch){ if(ch.checked) elegidos[ch.getAttribute('data-emp')] = true; });
+      var nombresE = Object.keys(elegidos);
+      if(!nombresE.length){ showToast('Elegí al menos un empleado', true); return; }
+      ov.remove();
+      var ahoraISO = new Date().toISOString(), t = desde.getTime(), n = 0;
+      var cierres = getCierres(), cambio = false;
+      cierres.forEach(function(c){ if(c && elegidos[c.empleado] && !c.pagado && new Date(c.fecha).getTime() < t){ c.pagado = true; c.fechaPagado = ahoraISO; c.pagadoAparte = true; cambio = true; n++; } });
+      if(cambio) saveCierres(cierres);
+      nombresE.forEach(function(nom){
+        var man = _turnosManuales().filter(function(c){ return c.empleado === nom && !c.pagado && new Date(c.fecha).getTime() < t; });
+        if(man.length){ n += man.length; _guardarManualesCambiados(nom, man.map(function(c){ return Object.assign({}, c, { pagado: true }); })); }
+      });
+      var ups = otros.filter(function(c){ return elegidos[c.empleado]; }).map(function(c){ n++; return ldCol(otro, 'cierres').doc(c._docId).update({ pagado: true, fechaPagado: ahoraISO, pagadoAparte: true }); });
+      Promise.all(ups).catch(function(e){ showToast('⚠ No se pudo marcar lo de Limay '+otro+': '+((e && e.message) || e), true); });
+      showToast('✅ '+n+' turno'+(n === 1 ? '' : 's')+' anteriores al '+desdeTxt+' marcado'+(n === 1 ? '' : 's')+' como pagado'+(n === 1 ? '' : 's'));
+      renderLiquidacion();
+    };
+  });
+}
 function exportarLiquidacionPDF(nombre) {
   var empleados = getEmpleados();
   var empObj    = empleados.find(function(e){ return e.nombre===nombre; });
-  var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
+  var valorHora = empObj ? valorHoraDe(nombre, fechaLocalStr(getRangoLiquidacion().desde).slice(0,7)) : 0;
   var cierres   = _liqCierres();
   var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
@@ -19891,7 +20213,7 @@ function exportarLiquidacionPDF(nombre) {
 function exportarPDFEmpleado(nombre) {
   if(!esEquipoDueno()){ showToast('🔒 Los sueldos se ven solo desde el equipo del dueño', true); return; }
   var empObj    = getEmpleados().find(function(e){ return e.nombre===nombre; });
-  var valorHora = empObj ? (parseFloat(empObj.valorHora)||0) : 0;
+  var valorHora = empObj ? valorHoraDe(nombre, fechaLocalStr(getRangoLiquidacion().desde).slice(0,7)) : 0;
   var cierres   = _liqCierres();
   var consumos  = _liqConsumos();
   var rango     = getRangoLiquidacion();
@@ -22526,11 +22848,7 @@ function eliminarClienteFiado(nombre) {
     if(!ok) return;
     // Devolver stock de fiados no pagados
     var inv = getStockInv();
-    delFiados.filter(function(f){ return !f.pagado; }).forEach(function(f){
-      (f.items||[]).forEach(function(item){
-        if(inv[item.name] !== undefined) inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-      });
-    });
+    delFiados.filter(function(f){ return !f.pagado; }).forEach(function(f){ devolverStockItems(inv, f.items); });
     window.__lrStockInvCache = inv;
     guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiados de '+nombre);
     var restantes = fiados.filter(function(f){ return f.cliente !== nombre; });
@@ -22550,11 +22868,7 @@ function eliminarFiado(id) {
     // Devolver stock si los productos estaban en inventario
     if(f.items && f.items.length && !f.pagado) {
       var inv = getStockInv();
-      f.items.forEach(function(item){
-        if(inv[item.name] !== undefined) {
-          inv[item.name].stock = (inv[item.name].stock||0) + (item.qty||1);
-        }
-      });
+      devolverStockItems(inv, f.items);
       window.__lrStockInvCache = inv;
       guardarOperacionProtegida('StockInv', getStockInv, 'Stock devuelto por eliminación de fiado de '+f.cliente);
     }
@@ -24081,12 +24395,16 @@ function sugerirClasificacion(e){
     [/mantenimiento|arreglo|bolsa|seguro|insumo|limpieza/, 'otros_costos']
   ];
   for(var i = 0; i < reglas.length; i++){ if(reglas[i][0].test(texto)){ s.rubro = reglas[i][1]; s.confianza = 'alta'; break; } }
+  // Luz, gas, agua e internet son Servicios; monotributo, comercio y contadora,
+  // Impuestos: el nombre del pago queda como concepto.
+  if(['luz','gas','agua','internet'].indexOf(s.rubro) !== -1){ s.rubro = 'servicios'; s.detalle = e.prov || ''; }
+  if(['monotributo','comercio','contadora'].indexOf(s.rubro) !== -1){ s.rubro = 'impuestos'; s.detalle = e.prov || ''; }
   if(s.rubro === 'credito'){
     s.acreedor = /iadep/.test(texto) ? 'IADEP' : /mercado/.test(texto) ? 'Mercado Crédito' : /viejo|pap[aá]|david/.test(texto) ? 'Tarjeta David Monsalve' : '';
     s.confianza = 'revisar';   // hay que decir a qué corresponde
   }
   if(s.rubro === 'retiro_socio'){ s.socio = /jonathan/.test(texto) ? 'Jonathan' : ''; s.confianza = s.socio ? 'alta' : 'revisar'; }
-  if(s.rubro === 'sin_clasificar' && cat === 'servicio'){ s.rubro = 'otros_servicios'; s.confianza = 'revisar'; }
+  if(s.rubro === 'sin_clasificar' && cat === 'servicio'){ s.rubro = 'servicios'; s.detalle = e.prov || ''; s.confianza = 'revisar'; }
   return s;
 }
 function _clfBorrador(e){
@@ -24512,8 +24830,8 @@ function _balNombreMes(mes){ var t = _balRango(mes).d0.toLocaleDateString('es-AR
 // fecha de pago. La mercadería pagada a proveedores no se resta: ya está en
 // el costo de lo vendido. Solo lee; lo único que guarda es la configuración
 // (reparto, cargas sociales) y los saldos del mes, en lo privado del dueño.
-var BAL_SERVICIOS = ['luz','gas','agua','internet','otros_servicios'];
-var BAL_IMPUESTOS = ['monotributo','comercio','contadora','otros_impuestos'];
+var BAL_SERVICIOS = ['servicios','luz','gas','agua','internet','otros_servicios'];
+var BAL_IMPUESTOS = ['impuestos','monotributo','comercio','contadora','otros_impuestos'];
 var BAL_OTROS = ['otros_costos','comisiones'];   // costos varios (bolsas, ferretería…) y las comisiones viejas: aparte de los impuestos
 var BAL_OPERATIVOS = ['sueldos','cargas_sociales','personal_extra','alquiler'].concat(BAL_SERVICIOS, BAL_IMPUESTOS, BAL_OTROS);
 var BAL_SALDOS = [['efec','Efectivo en cajones'],['fuera','Efectivo fuera de caja'],['mp','Mercado Pago'],['banco','Banco']];
@@ -24631,7 +24949,7 @@ function _balCostos(mes, pool, cierres, rango){
       }
       if(rubro === 'sueldos'){
         // Si vino de una liquidación: bruto y lo descontado (recuperos).
-        var liq = det && det.liq, bruto = liq ? (Number(liq.bruto) || 0) : monto;
+        var liq = det && det.liq, bruto = liq ? (Number(liq.bruto) || 0) + (Number(liq.redondeo) || 0) : monto;   // el redondeo también es sueldo
         var rec = liq ? (Number(liq.consumos) || 0) + (Number(liq.faltantes) || 0) : 0;
         _balSumar(c.emp, (det && (det.empleado || det.concepto)) || e.prov || 'Sin nombre', bruto * f);
         c.recup += rec * f;
@@ -24647,7 +24965,7 @@ function _balCostos(mes, pool, cierres, rango){
   // Sueldos pendientes (estimación): turnos del mes sin pagar de los que
   // cobran mensual vencido, a su valor hora.
   var emps = {};
-  (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: parseFloat(p.valorHora != null ? p.valorHora : x.valorHora) || 0 }; });
+  (getEmpleados() || []).forEach(function(x){ var p = window.__lrEmpPriv[x.nombre] || {}; emps[x.nombre] = { forma: p.formaPago || x.formaPago || '', vh: valorHoraDe(x.nombre, mes) }; });
   var sinValor = {};
   var manMes = _turnosManuales().filter(function(c){
     if(!rango) return _mesTurno(c) === mes;
@@ -24786,10 +25104,10 @@ function _balFilas(b){
   unir('retiros').concat(unir('retirosCaja')).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
   var rub = function(k){ return function(c){ return c.rub[k] || 0; }; };
   // Un rubro con "¿a qué fue?": su total y abajo cada detalle.
-  var rubDet = function(k){ var fila = [rubroDef(k).t, rub(k), '$'];
+  var rubDet = function(k){ var fila = [rubroDef(k).t, rub(k), '$'].concat(rubroDef(k).viejo ? [{ ocultarCero: true }] : []);
     var dets = unir('detalle').filter(function(x){ return x.indexOf(k+'|') === 0; });
     return [fila].concat(dets.map(function(x){ return ['    · '+x.slice(k.length + 1), function(c){ return c.detalle[x] || 0; }, '$']; })); };
-  var conDet = function(ks){ return ks.reduce(function(a, k){ return a.concat(tieneDetalle(k) ? rubDet(k) : [[rubroDef(k).t, rub(k), '$']]); }, []); };
+  var conDet = function(ks){ return ks.reduce(function(a, k){ return a.concat(tieneDetalle(k) ? rubDet(k) : [[rubroDef(k).t, rub(k), '$'].concat(rubroDef(k).viejo ? [{ ocultarCero: true }] : [])]); }, []); };
   var compDe = function(ks){ return ['(de los cuales compartido)', function(c){ return ks.reduce(function(s, k){ return s + (c.comp[k] || 0); }, 0); }, '$', { ocultarCero: true }]; };
   var saldoDet = function(cual){ return BAL_SALDOS.map(function(s){ return [s[1], function(c){ var o = c.res[cual]; return (o && o[s[0]] != null) ? Number(o[s[0]]) || 0 : null; }, '$']; }); };
   var modoTxt = b.modoCargas === 'pagado' ? 'Lo pagado en el mes' : b.modoCargas === 'estimado' ? 'Estimado: '+String(b.pctCargas).replace('.', ',')+' % de los sueldos brutos (no hay pagos cargados)' : 'Sin pagos cargados y 0 % configurado';
@@ -25149,9 +25467,9 @@ function _xlHojaSucursal(wb, b, N){
   };
   seccion('extra', '2. PERSONAL EXTRA Y LIMPIEZA', [['Personal extra y limpieza (del sistema)', rub('personal_extra'), comp(['personal_extra'])]], 3, 'Total personal extra y limpieza');
   seccion('alq', '3. ALQUILER', [['Alquiler del mes', rub('alquiler'), comp(['alquiler'])]], 1, 'Total alquiler');
-  seccion('serv', '4. SERVICIOS', [['Luz', rub('luz'), comp(['luz'])], ['Gas', rub('gas'), comp(['gas'])], ['Agua', rub('agua'), comp(['agua'])],
+  seccion('serv', '4. SERVICIOS', [['Servicios (cada concepto en "Detalle egresos")', rub('servicios'), comp(['servicios'])], ['Luz', rub('luz'), comp(['luz'])], ['Gas', rub('gas'), comp(['gas'])], ['Agua', rub('agua'), comp(['agua'])],
     ['Internet y teléfono', rub('internet'), comp(['internet'])], ['Otros servicios', rub('otros_servicios'), comp(['otros_servicios'])]], 2, 'Total servicios');
-  seccion('imp', '5. IMPUESTOS Y CONTADORA', [['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Comercio municipal', rub('comercio'), comp(['comercio'])],
+  seccion('imp', '5. IMPUESTOS Y CONTADORA', [['Impuestos y contadora (cada concepto en "Detalle egresos")', rub('impuestos'), comp(['impuestos'])], ['Monotributo', rub('monotributo'), comp(['monotributo'])], ['Comercio municipal', rub('comercio'), comp(['comercio'])],
     ['Contadora (honorarios)', rub('contadora'), comp(['contadora'])], ['Otros impuestos (multas…)', rub('otros_impuestos'), comp(['otros_impuestos'])]], 1, 'Total impuestos y contadora');
   seccion('otros', '6. OTROS COSTOS', [['Costos varios de Limay Rock', rub('otros_costos'), comp(['otros_costos'])]].concat(c.rub.comisiones ? [['Comisiones (pagos viejos)', rub('comisiones'), comp(['comisiones'])]] : []), 2, 'Total otros costos');
   ws.getCell('I'+refs._ultimo).value = 'A qué fue cada pago: hoja "Detalle egresos", filtrando la sección "Otros costos".';
@@ -28540,6 +28858,8 @@ function abrirProdModal(idx) {
     document.getElementById('pmNoc').value=p.pnocAuto?'':(p.pnoc||'');
     var invEdit=getStockInv(); var sEdit=invEdit[p.name]||{stock:0,minimo:0};
     document.getElementById('pmStock').value=sEdit.stock||0;
+    // Lo que mostraba al abrir: al guardar, el stock se cambia solo si se tocó este campo.
+    document.getElementById('pmStock').dataset.alAbrir = String(sEdit.stock||0);
     document.getElementById('pmStockMin').value=sEdit.minimo||0;
     var cs=document.getElementById('pmCat');
     for(var i=0;i<cs.options.length;i++){ if(cs.options[i].value===p.cat){cs.selectedIndex=i;break;} }
@@ -28564,6 +28884,7 @@ function abrirProdModal(idx) {
     document.getElementById('filaEtiquetaDestacado').style.display='none';
     document.getElementById('pmEtiquetaDestacado').value='';
     ['pmNombre','pmCosto','pmPventa','pmNoc','pmStock','pmStockMin'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('pmStock').dataset.alAbrir = '';
     var _pss0 = document.getElementById('pmSinSync'); if(_pss0) _pss0.checked = false;
     var defaultCat = catSel ? catSel.value : '';
     var defaultMrg = defaultCat && MARGINS[defaultCat] ? MARGINS[defaultCat] : 50;
@@ -29693,10 +30014,21 @@ function guardarProdModal() {
     if(window.registrarAltaPendiente) window.registrarAltaPendiente(prod);
     registrarCambioCatalogo('nuevo', nombre, [{campo:'Categoría',antes:'—',despues:cat},{campo:'Precio venta',antes:'—',despues:pventa||0}], currentEmp?currentEmp.nombre:'Admin');
   }
-  // Guardar stock ajustado desde el modal
-  var nuevoStock = parseInt(document.getElementById('pmStock').value)||0;
+  // Si se renombró, la ficha de stock pasa al nombre nuevo ANTES de ver el
+  // stock: si no, el número del nombre viejo pisaba lo que se escribió.
+  if(huboRename){
+    var invR0 = getStockInv();
+    if(invR0[nombreViejo]){ invR0[nombre] = invR0[nombreViejo]; delete invR0[nombreViejo]; saveStockInv(invR0, [nombreViejo]); }
+  }
+  // Guardar stock ajustado desde el modal. Solo si se cambió el campo: si no,
+  // guardar la ficha (por ejemplo, para cambiar el precio) volvía a grabar el
+  // stock que había al abrirla y borraba las ventas hechas mientras tanto.
+  var _pmSt = document.getElementById('pmStock');
+  var nuevoStock = parseInt(_pmSt.value)||0;
   var nuevoMin   = parseInt(document.getElementById('pmStockMin').value)||0;
+  var tocoStock  = String(_pmSt.dataset.alAbrir || '') === '' || (parseInt(_pmSt.dataset.alAbrir)||0) !== nuevoStock;
   var inv = getStockInv();
+  if(!tocoStock && inv[nombre]) nuevoStock = Number(inv[nombre].stock)||0;
   var stockAntes = inv[nombre] ? inv[nombre].stock : null;
   inv[nombre] = inv[nombre] || {};
   if(!inv[nombre].stock || inv[nombre].stock !== nuevoStock) {
@@ -29711,7 +30043,7 @@ function guardarProdModal() {
       registrarMovimiento('ajuste-stock', nombre, nuevoStock-stockAntes, stockAntes, nuevoStock, currentEmp?currentEmp.nombre:'Admin');
     }
   }
-  if(Number(inv[nombre].stock) !== Number(nuevoStock)) (window.__lrStockFijar = window.__lrStockFijar || {})[nombre] = true;
+  if(tocoStock && Number(inv[nombre].stock) !== Number(nuevoStock)) (window.__lrStockFijar = window.__lrStockFijar || {})[nombre] = true;
   inv[nombre].stock  = nuevoStock;
   inv[nombre].minimo = nuevoMin;
   window.__lrStockInvCache = inv;
@@ -29740,8 +30072,6 @@ function guardarProdModal() {
     }
     // Arrastrar el nombre nuevo a stock, proveedores y combos, para que el
     // producto no quede huérfano en esas listas.
-    var inv = getStockInv();
-    if(inv[nombreViejo]){ inv[nombre] = inv[nombreViejo]; delete inv[nombreViejo]; saveStockInv(inv, [nombreViejo]); }
     var provs = getProveedores();
     var tocoProv = false;
     provs.forEach(function(pr){
@@ -30145,7 +30475,7 @@ function renderEmpAdmin() {
     }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
 
     // Valor hora
-    var vh    = parseFloat(emp.valorHora)||0;
+    var vh    = esEquipoDueno() ? valorHoraDe(emp.nombre) : (parseFloat(emp.valorHora)||0);
     var sueldo= vh>0 ? fmt(Math.round((minutos/60)*vh)) : '—';
 
     var esDelivery = empEsDelivery(emp);
@@ -33799,6 +34129,7 @@ function seleccionarCargaStock(nombre) {
   document.getElementById('cargaStockEditorAntes').textContent = stockActual;
   var inp = document.getElementById('cargaStockEditorInput');
   inp.value = stockActual;
+  inp.dataset.alAbrir = String(stockActual);
   document.getElementById('cargaStockEditor').style.display = 'block';
   setTimeout(function(){ inp.focus(); inp.select(); }, 100);
 }
@@ -33812,6 +34143,20 @@ function guardarCargaStock() {
   var inv = getStockInv();
   if(!inv[_cargaStockProdSel]) inv[_cargaStockProdSel] = {stock:0, minimo:0};
   var stockAntes = inv[_cargaStockProdSel].stock || 0;
+  // Se confirmó el mismo número que mostraba al abrir, pero mientras tanto se
+  // vendió: no hay conteo nuevo, así que no se pisa lo vendido.
+  if(inp.dataset.alAbrir !== undefined && inp.dataset.alAbrir !== '' && nuevo === parseInt(inp.dataset.alAbrir) && nuevo !== stockAntes){
+    inp.dataset.alAbrir = '';
+    showToast('Sin cambios: '+_cargaStockProdSel+' sigue en '+stockAntes+' (se vendió mientras estaba abierto)');
+    document.getElementById('cargaStockEditor').style.display = 'none';
+    _cargaStockProdSel = null;
+    var buscar0 = document.getElementById('cargaStockBuscar');
+    buscar0.value = '';
+    buscar0.focus();
+    filtrarCargaStock('');
+    return;
+  }
+  inp.dataset.alAbrir = '';
   var stockDespues = nuevo;
   inv[_cargaStockProdSel].stock = stockDespues;
   (window.__lrStockFijar = window.__lrStockFijar || {})[_cargaStockProdSel] = true;
@@ -40713,6 +41058,30 @@ function renderInventario() {
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// Devuelve al stock los productos de una venta, fiado o consumo que se da de
+// baja: lo mismo que restó descontarStock, también los productos de un combo
+// y la cajita de un combo armado.
+function devolverStockItems(inv, items){
+  (items||[]).forEach(function(item){
+    if(!item || item.manual) return;
+    var q = Number(item.qty) || 1;
+    if(item.comboArmado && item.comboNombre){
+      var kca = stockKeyCombo(item.comboNombre);
+      if(!inv[kca]) inv[kca] = { nombre: kca, stock: 0, minimo: 0 };
+      inv[kca].stock = (Number(inv[kca].stock)||0) + q;
+      return;
+    }
+    if(item.esCombo && item.comboItems && item.comboItems.length){
+      item.comboItems.forEach(function(ci){
+        if(ci.tipo === 'manual') return;
+        if(inv[ci.nombre] !== undefined) inv[ci.nombre].stock = (Number(inv[ci.nombre].stock)||0) + (Number(ci.qty)||0) * q;
+      });
+      return;
+    }
+    if(inv[item.name] !== undefined) inv[item.name].stock = (Number(inv[item.name].stock)||0) + q;
+  });
 }
 
 // Descontar stock al confirmar venta
