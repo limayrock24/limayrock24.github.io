@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const arca = require('../arca');
-const { antesDelInicio, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt } = require('../facturacion');
+const { antesDelInicio, debajoDelMinimo, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt } = require('../facturacion');
 
 test('monto de Mercado Pago según el medio de pago', () => {
   assert.strictEqual(montoMercadoPago({ medio: 'Efectivo', total: 5000 }), 0);
@@ -100,4 +100,14 @@ test('fecha de inicio: no factura antes de las 00:00 (Argentina) de ese día', (
   assert.strictEqual(antesDelInicio(cfg, '2026-11-01T02:59:00Z'), true);   // 31/10 23:59 en Argentina
   assert.strictEqual(antesDelInicio(cfg, '2026-11-01T03:00:00Z'), false);  // 01/11 00:00 en Argentina
   assert.strictEqual(antesDelInicio({}, '2026-10-01T12:00:00Z'), false);   // sin fecha: factura siempre
+});
+
+test('monto mínimo: los cobros chicos no se facturan, salvo "facturar igual"', () => {
+  const cfg = { montoMinimo: 5000 };
+  assert.strictEqual(debajoDelMinimo(cfg, { medio: 'Transferencia', total: 4999 }), true);
+  assert.strictEqual(debajoDelMinimo(cfg, { medio: 'Transferencia', total: 5000 }), false);
+  assert.strictEqual(debajoDelMinimo(cfg, { medio: 'Transferencia', total: 3000, facturaPedido: { forzar: true } }), false);
+  // en un mixto cuenta solo la parte de Mercado Pago
+  assert.strictEqual(debajoDelMinimo(cfg, { medio: 'Mixto', total: 9000, recargo: 0, mixto: { efectivo: 6000, transferencia: 3000, debito: 0 } }), true);
+  assert.strictEqual(debajoDelMinimo({}, { medio: 'Transferencia', total: 100 }), false);
 });

@@ -72,6 +72,15 @@ function antesDelInicio(cfg, fechaVenta) {
   return new Date(fechaVenta) < new Date(cfg.desde + 'T00:00:00-03:00');
 }
 
+// Monto mínimo (config/facturacion.montoMinimo): un cobro por Mercado Pago
+// menor no se factura, salvo que la caja lo haya pedido igual (forzar).
+function debajoDelMinimo(cfg, v) {
+  const min = Number(cfg && cfg.montoMinimo) || 0;
+  if (!(min > 0)) return false;
+  if (v && v.facturaPedido && v.facturaPedido.forzar) return false;
+  return montoMercadoPago(v) < min;
+}
+
 function numeroTxt(ptoVta, numero) {
   return String(ptoVta).padStart(5, '0') + '-' + String(numero).padStart(8, '0');
 }
@@ -292,4 +301,4 @@ function crearFacturacion(ctx) {
   return { crearDesdeVenta, procesar, crearNotaCredito, reintentar, procesarPendientes };
 }
 
-module.exports = { crearFacturacion, antesDelInicio, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt, ErrorArca };
+module.exports = { crearFacturacion, antesDelInicio, debajoDelMinimo, montoMercadoPago, armarReceptor, cuitValido, fechaArgentina, numeroTxt, ErrorArca };
