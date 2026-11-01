@@ -31,7 +31,7 @@ const admin = require('firebase-admin');
 
 const arca = require('./arca');
 const { crearSimulador } = require('./simulador');
-const { crearFacturacion, antesDelInicio, debajoDelMinimo } = require('./facturacion');
+const { crearFacturacion, debajoDelMinimo } = require('./facturacion');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -90,7 +90,6 @@ const manejadores = {
     const cfg = await leerConfig();
     if (!cfg.activa) { logger.info('Facturación apagada; venta ' + ventaId + ' sin factura'); return; }
     if (debajoDelMinimo(cfg, v)) { logger.info('Venta ' + ventaId + ' menor al mínimo para facturar ($' + cfg.montoMinimo + '); sin factura'); return; }
-    if (antesDelInicio(cfg, v.fecha)) { logger.info('Venta ' + ventaId + ' anterior a la fecha de inicio (' + cfg.desde + '); sin factura'); return; }
     const fx = servicio();
     const r = await fx.crearDesdeVenta(ventaId, v);
     logger.info('Venta ' + ventaId, r);

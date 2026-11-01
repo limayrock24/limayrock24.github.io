@@ -43,7 +43,8 @@
   // Por ahora la facturación es solo de Limay Rock 1 (Pascual Puente).
   var SUC2 = window.__lrSucursal === 2;
   // "Facturar desde": fecha (aaaa-mm-dd) en que arranca, a las 00:00 de Argentina.
-  function inicioDesde(){ return CFG.desde ? new Date(CFG.desde + 'T00:00:00-03:00') : null; }
+  // (Se dejó de usar: se prende y se apaga solo con el interruptor.)
+  function inicioDesde(){ return null; }
   function programada(){ var d = inicioDesde(); return !!(CFG.activa && d && Date.now() < d.getTime()); }
   function activa(){ return !SUC2 && !!CFG.activa && !programada(); }
 
@@ -531,9 +532,7 @@
           (modo ? ' &nbsp;<span class="lrf-modo '+esc(modo)+'">'+(modo==='produccion'?'ARCA REAL':modo==='homologacion'?'ARCA PRUEBAS':'SIMULADO')+'</span>' : '')+'</span></div>'+
         (programada() ? '<div class="lrf-mini" style="color:var(--gold)">Empieza a facturar sola el '+inicioDesde().toLocaleDateString('es-AR')+' a las 00:00. Hasta entonces no se factura nada.</div>' : '')+
         '<button class="lrf-btn '+(CFG.activa?'lrf-gr':'lrf-wa')+'" onclick="__lrFact.activar('+(CFG.activa?'false':'true')+')">'+(CFG.activa?'⏸ Apagar la facturación':'▶ Prender la facturación')+'</button>'+
-        '<div class="lrf-r" style="margin-top:8px"><span>Empezar a facturar desde</span>'+
-          '<input type="date" class="lrf-in" style="width:auto;padding:5px 8px" value="'+esc(CFG.desde||'')+'" onchange="__lrFact.desde(this.value)"></div>'+
-        '<div class="lrf-mini">Opcional. Si ponés una fecha, aunque esté prendida no factura nada antes de ese día. Para sacarla, borrá la fecha.</div>'+
+
         '<div class="lrf-r" style="margin-top:8px"><span>No facturar cobros menores a $</span>'+
           '<input type="number" min="0" step="500" inputmode="numeric" class="lrf-in" style="width:120px;padding:5px 8px;text-align:right" value="'+(minimo()||'')+'" placeholder="0" onchange="__lrFact.minimo(this.value)"></div>'+
         '<div class="lrf-mini">'+(minimo() ? 'Los cobros por Mercado Pago de menos de '+plata(minimo())+' no se facturan. Si el cliente pide factura, el empleado toca "Facturar igual".' : 'Vacío o 0: se factura todo lo cobrado por Mercado Pago.')+'</div>'+
