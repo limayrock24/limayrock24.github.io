@@ -1,0 +1,116 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alerta LR · Limay Rock</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="../icon-192.png">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Alerta LR">
+<!-- Alerta del dueño: un botón por local. Prendida, las cajas de ese local
+     titilan en rojo (sin bloquear nada) hasta que se apaga acá. Entra solo la
+     cuenta del dueño. Se guarda en config/alerta (Limay 1) y l2_config/alerta (Limay 2). -->
+<script>
+if(['limayrock24.github.io','localhost','127.0.0.1'].indexOf(location.hostname) === -1) location.replace('https://limayrock24.github.io/alerta/');
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+html,body{margin:0;background:#0a0a0a;color:#eee;font-family:Arial,Helvetica,sans-serif;min-height:100%}
+.caja{max-width:420px;margin:0 auto;padding:22px 16px 30px}
+h1{font-size:1.1rem;letter-spacing:2px;color:#ff3b3b;margin:0 0 4px}
+.sub{font-size:.8rem;color:#888;margin-bottom:22px}
+.btn{display:block;width:100%;border:none;border-radius:16px;padding:26px 16px;margin-bottom:16px;font-size:1.25rem;font-weight:bold;letter-spacing:1px;cursor:pointer;text-align:left;transition:background .2s}
+.btn .est{display:block;font-size:.85rem;font-weight:normal;margin-top:6px;letter-spacing:0}
+.btn.off{background:#1d1d1d;color:#ddd;border:2px solid #333}
+.btn.on{background:#d60000;color:#fff;border:2px solid #ff4d4d;animation:tit .9s ease-in-out infinite}
+.btn:disabled{opacity:.5}
+@keyframes tit{0%,100%{box-shadow:0 0 0 0 rgba(255,0,0,.7)}50%{box-shadow:0 0 26px 6px rgba(255,0,0,.7)}}
+input{width:100%;box-sizing:border-box;background:#161616;border:1px solid #333;border-radius:10px;color:#fff;padding:13px;font-size:1rem;margin-bottom:10px}
+.entrar{background:#ff3b3b;color:#fff;border:none;border-radius:10px;padding:14px;width:100%;font-size:1rem;font-weight:bold;cursor:pointer}
+.msg{font-size:.85rem;min-height:1.2em;margin:8px 0}
+.salir{background:none;border:none;color:#777;text-decoration:underline;font-size:.8rem;margin-top:18px;cursor:pointer}
+</style></head><body>
+<div class="caja">
+  <h1>🚨 ALERTA LIMAY ROCK</h1>
+  <div class="sub">Prendida, las cajas de ese local titilan en rojo hasta que la apagues acá. Siguen vendiendo normal.</div>
+  <div id="cargando" class="msg" style="color:#888">Conectando…</div>
+  <div id="login" style="display:none">
+    <div class="msg" style="color:#bbb">Entrá con tu cuenta de dueño (solo la primera vez en este celu).</div>
+    <input id="email" type="email" autocomplete="username" placeholder="Correo de la cuenta de dueño">
+    <input id="clave" type="password" autocomplete="current-password" placeholder="Contraseña">
+    <button class="entrar" id="entrar">Entrar</button>
+    <div class="msg" id="loginMsg" style="color:#ff6b6b"></div>
+  </div>
+  <div id="panel" style="display:none">
+    <button class="btn off" id="b1" disabled>🚨 LIMAY 1<span class="est">…</span></button>
+    <button class="btn off" id="b2" disabled>🚨 LIMAY 2<span class="est">…</span></button>
+    <div class="msg" id="panelMsg"></div>
+    <button class="salir" id="salir">Salir de esta cuenta</button>
+  </div>
+</div>
+<script>
+(function(){
+  var cfg = {
+    apiKey: "AIzaSyCuzBomW56nvwUO10WMldYRfkLGwdQmSyM",
+    authDomain: "limay-rock-852cb.firebaseapp.com",
+    projectId: "limay-rock-852cb",
+    storageBucket: "limay-rock-852cb.firebasestorage.app",
+    messagingSenderId: "391677998496",
+    appId: "1:391677998496:web:e1b0550cf114a2fc39a0c5"
+  };
+  // Emulador para pruebas (solo en esta compu, con ?emulador=1).
+  var emu = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /[?&]emulador=1/.test(location.search);
+  if(emu) cfg.projectId = 'demo-limayrock';
+  firebase.initializeApp(cfg);
+  var auth = firebase.auth(), db = firebase.firestore();
+  if(emu){ auth.useEmulator('http://127.0.0.1:9099'); db.useEmulator('127.0.0.1', 8080); }
+  var DUENO = 'admin@limayrock.app';
+  var $ = function(id){ return document.getElementById(id); };
+  var docs = { 1: db.collection('config').doc('alerta'), 2: db.collection('l2_config').doc('alerta') };
+  var estado = { 1: false, 2: false }, quitar = [];
+  function pintar(n){
+    var b = $('b'+n), on = estado[n];
+    b.className = 'btn ' + (on ? 'on' : 'off');
+    b.innerHTML = '🚨 LIMAY '+n+'<span class="est">'+(on ? 'PRENDIDA · las cajas titilan en rojo · tocá para apagar' : 'Apagada · tocá para prender')+'</span>';
+    b.disabled = false;
+  }
+  function escuchar(){
+    [1, 2].forEach(function(n){
+      quitar.push(docs[n].onSnapshot(function(d){ estado[n] = !!(d.exists && d.data().activa === true); pintar(n); },
+        function(e){ $('panelMsg').style.color = '#ff6b6b'; $('panelMsg').textContent = 'No se pudo leer la alerta de Limay '+n+': '+(e && e.message || e); }));
+      $('b'+n).onclick = function(){
+        var b = $('b'+n), nuevo = !estado[n];
+        b.disabled = true;
+        docs[n].set({ activa: nuevo, cambio: new Date().toISOString(), por: 'dueño' }, { merge: true }).then(function(){
+          $('panelMsg').style.color = nuevo ? '#ff6b6b' : '#6bd36b';
+          $('panelMsg').textContent = nuevo ? 'Alerta prendida en Limay '+n+'.' : 'Alerta apagada en Limay '+n+'.';
+        }).catch(function(e){
+          b.disabled = false;
+          $('panelMsg').style.color = '#ff6b6b'; $('panelMsg').textContent = 'No se pudo cambiar (¿sin internet?): '+(e && e.message || e);
+        });
+      };
+    });
+  }
+  auth.onAuthStateChanged(function(u){
+    $('cargando').style.display = 'none';
+    quitar.forEach(function(f){ try{ f(); }catch(e){} }); quitar = [];
+    var esDueno = !!(u && String(u.email || '').toLowerCase() === DUENO);
+    $('login').style.display = esDueno ? 'none' : '';
+    $('panel').style.display = esDueno ? '' : 'none';
+    if(u && !esDueno) $('loginMsg').textContent = 'Este celu tiene abierta otra cuenta. Entrá con la del dueño.';
+    if(esDueno) escuchar();
+  });
+  $('entrar').onclick = function(){
+    var e = $('email').value.trim(), c = $('clave').value;
+    if(!e || !c){ $('loginMsg').textContent = 'Completá el correo y la contraseña.'; return; }
+    $('loginMsg').textContent = '';
+    auth.signInWithEmailAndPassword(e, c).then(function(){ $('clave').value = ''; })
+      .catch(function(){ $('loginMsg').textContent = 'No se pudo entrar: revisá el correo y la contraseña.'; });
+  };
+  $('salir').onclick = function(){ auth.signOut(); };
+})();
+</script>
+</body></html>

@@ -1884,6 +1884,26 @@ if(window.__lrSucursal === 2){
     });
   };
 
+  // Alerta del dueño (link /alerta/): mientras está prendida, la pantalla de
+  // la caja titila en rojo. No bloquea nada (se sigue vendiendo) y solo se
+  // apaga desde ese link. No va en el admin ni en el Puesto Delivery.
+  function mostrarAlertaDueno(on){
+    var el = document.getElementById('lrAlertaDueno');
+    if(!on){ if(el) el.remove(); return; }
+    if(el) return;
+    if(!document.getElementById('lrAlertaDuenoCss')){
+      var st = document.createElement('style'); st.id = 'lrAlertaDuenoCss';
+      st.textContent = '@keyframes lrAlertaTitila{0%,100%{opacity:1}50%{opacity:.1}}'+
+        '#lrAlertaDueno{position:fixed;inset:0;z-index:2147483000;pointer-events:none;border:14px solid #ff0000;box-shadow:inset 0 0 90px 30px rgba(255,0,0,.55);background:rgba(255,0,0,.12);animation:lrAlertaTitila .9s ease-in-out infinite}';
+      document.head.appendChild(st);
+    }
+    el = document.createElement('div'); el.id = 'lrAlertaDueno';
+    document.body.appendChild(el);
+  }
+  if(!window.__lrEsPanelAdmin && !window.__lrEsPuesto) window.__lrDB.collection(window.__lrCOL.config).doc('alerta').onSnapshot(function(doc){
+    mostrarAlertaDueno(!!(doc.exists && doc.data().activa === true));
+  }, function(err){ console.error('Error escuchando la alerta del dueño:', err); });
+
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
