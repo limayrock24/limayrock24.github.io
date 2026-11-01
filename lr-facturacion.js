@@ -67,6 +67,7 @@
   '.lrf-aviso{border:1.5px solid var(--green);background:rgba(0,204,68,.08);border-radius:6px;padding:10px 12px;margin:10px 0;font-size:.82rem;color:var(--light)}'+
   '.lrf-aviso .t{font-family:Oswald,sans-serif;color:var(--green);letter-spacing:1px;font-size:.82rem;margin-bottom:3px}'+
   '.lrf-aviso b{color:var(--white)}'+
+  '.lrf-aviso.gris{border-color:var(--border);background:var(--card)}.lrf-aviso.gris .t{color:var(--gray)}'+
   '.lrf-link{color:var(--gold);text-decoration:underline;cursor:pointer;font-size:.78rem;display:inline-block;margin-top:4px;background:none;border:none;padding:0;font-family:inherit}'+
   '.lrf-rec{display:none;margin-top:8px;gap:6px;flex-direction:column}'+
   '.lrf-rec.show{display:flex}'+
@@ -143,9 +144,16 @@
 
   // ── 1. AVISO EN "CONFIRMÁ LA VENTA" ─────────────────────────────────────
   // carrito: 1 o 2 (cada uno tiene su propio aviso dentro de la misma hoja).
-  function avisoConfirm(medio, mixto, total, recargo){
+  // Monto mínimo (config/facturacion.montoMinimo): los cobros por Mercado Pago
+  // menores a eso no se facturan, salvo que el empleado toque "Facturar igual".
+  function minimo(){ return Number(CFG.montoMinimo) || 0; }
+  function debajoDelMinimo(monto){ return minimo() > 0 && monto < minimo(); }
+  var _forzar = false, _ultimoAviso = null;
+  function avisoConfirm(medio, mixto, total, recargo, forzado){
     var hoja = document.querySelector('#confirmOverlay .confirm-sheet');
     if(!hoja) return;
+    _forzar = !!forzado;
+    _ultimoAviso = [medio, mixto, total, recargo];
     var aviso = document.getElementById('lrfAviso');
     var monto = activa() ? montoMP(medio, mixto, total, recargo) : 0;
     if(!(monto > 0)){ if(aviso) aviso.style.display = 'none'; return; }
@@ -156,6 +164,14 @@
       hoja.insertBefore(aviso, btns);
     }
     aviso.style.display = 'block';
+    if(debajoDelMinimo(monto) && !_forzar){
+      aviso.className = 'lrf-aviso gris';
+      aviso.innerHTML = '<div class="t">🧾 NO SE FACTURA</div>'+
+        'Cobro por Mercado Pago de <b>'+plata(monto)+'</b>: es menos de '+plata(minimo())+'.<br>'+
+        '<button type="button" class="lrf-link" onclick="__lrFact._facturarIgual()">Facturar igual (si el cliente la pide)</button>';
+      return;
+    }
+    aviso.className = 'lrf-aviso';
     var parcial = medio === 'Mixto' ? ' (la parte de Mercado Pago)' : '';
     aviso.innerHTML =
       '<div class="t">🧾 SE FACTURA AUTOMÁTICO</div>'+
@@ -207,10 +223,15 @@
       if(d.length === 11 && cuitValido(d)){ rec.doc = d; rec.condIva = Number(document.getElementById('lrfCond').value)||1; }
       else if(d.length >= 7 && d.length <= 8) rec.doc = d;
       rec.nombre = (document.getElementById('lrfNombre').value||'').trim() || rec.nombre;
-      var aviso = document.getElementById('lrfAviso'); if(aviso) aviso.remove();
     }
-    if(!activa() || !(montoMP(v.medio, v.mixto, v.total, v.recargo) > 0)) return null;
-    return { receptor: rec, pedido: new Date().toISOString() };
+    var aviso = document.getElementById('lrfAviso'); if(aviso) aviso.remove();
+    var forzar = _forzar; _forzar = false;
+    var monto = montoMP(v.medio, v.mixto, v.total, v.recargo);
+    if(!activa() || !(monto > 0)) return null;
+    if(debajoDelMinimo(monto) && !forzar) return null;
+    var pedido = { receptor: rec, pedido: new Date().toISOString() };
+    if(debajoDelMinimo(monto)) pedido.forzar = true;
+    return pedido;
   }
 
   // ── 3. COMPROBANTE (después de cobrar, o desde el admin) ────────────────
@@ -513,6 +534,9 @@
         '<div class="lrf-r" style="margin-top:8px"><span>Empezar a facturar desde</span>'+
           '<input type="date" class="lrf-in" style="width:auto;padding:5px 8px" value="'+esc(CFG.desde||'')+'" onchange="__lrFact.desde(this.value)"></div>'+
         '<div class="lrf-mini">Opcional. Si ponés una fecha, aunque esté prendida no factura nada antes de ese día. Para sacarla, borrá la fecha.</div>'+
+        '<div class="lrf-r" style="margin-top:8px"><span>No facturar cobros menores a $</span>'+
+          '<input type="number" min="0" step="500" inputmode="numeric" class="lrf-in" style="width:120px;padding:5px 8px;text-align:right" value="'+(minimo()||'')+'" placeholder="0" onchange="__lrFact.minimo(this.value)"></div>'+
+        '<div class="lrf-mini">'+(minimo() ? 'Los cobros por Mercado Pago de menos de '+plata(minimo())+' no se facturan. Si el cliente pide factura, el empleado toca "Facturar igual".' : 'Vacío o 0: se factura todo lo cobrado por Mercado Pago.')+'</div>'+
         (modo && modo !== 'produccion' ? '<div class="lrf-mini">'+(modo==='homologacion'?'Conectado al ambiente de pruebas de ARCA: los comprobantes no valen.':'Todavía no está conectado a ARCA: los comprobantes son de prueba y no valen.')+'</div>' : '')+
         venceTxt+
       '</div>'+
@@ -602,6 +626,12 @@
     whatsapp: whatsapp,
     renderAdmin: renderAdmin,
     activar: activar,
+    minimo: function(v){
+      var n = Math.max(0, Math.round(Number(String(v||'').replace(/[^\d]/g,'')) || 0));
+      guardarConfig({ montoMinimo: n }).then(function(){ toast(n ? 'Mínimo para facturar: '+plata(n) : 'Se factura todo, sin mínimo'); })
+        .catch(function(){ toast('No se pudo guardar', true); dibujarAdmin(); });
+    },
+    _facturarIgual: function(){ if(_ultimoAviso) avisoConfirm(_ultimoAviso[0], _ultimoAviso[1], _ultimoAviso[2], _ultimoAviso[3], true); },
     desde: function(v){
       guardarConfig({ desde: /^\d{4}-\d{2}-\d{2}$/.test(v||'') ? v : null }).then(function(){ toast(v ? 'Fecha de inicio guardada' : 'Fecha de inicio borrada'); })
         .catch(function(){ toast('No se pudo guardar', true); dibujarAdmin(); });
