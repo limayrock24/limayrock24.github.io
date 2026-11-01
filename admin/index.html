@@ -20160,7 +20160,8 @@ function exportarLiquidacionPDF(nombre) {
   var pagosPer   = _pagosDelPeriodo(nombre, rango);
   var consumo    = consumos.filter(function(c){ var d=new Date(c.fecha); return c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
   var faltante   = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
-  if(tipoSueldoDe(nombre) === 'fijo'){ var mesF = fechaLocalStr(rango.desde).slice(0,7); sueldo = Math.max(0, sueldoFijoDe(nombre, mesF) - pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0)); }
+  var esFijo = tipoSueldoDe(nombre) === 'fijo', mesF = fechaLocalStr(rango.desde).slice(0,7), fijoAcordado = 0, yaCobrado = 0;
+  if(esFijo){ fijoAcordado = sueldoFijoDe(nombre, mesF); yaCobrado = pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0); sueldo = Math.max(0, fijoAcordado - yaCobrado); }
   var deuda      = _deudaAnterior(nombre, rango, cierres, consumos);
   var neto       = sueldo-consumo-faltante-deuda;
 
@@ -20177,16 +20178,19 @@ function exportarLiquidacionPDF(nombre) {
   var contenido=
     '<h3 style="font-size:14px;margin-bottom:12px">Período: '+periodoTxt+'</h3>'+
     '<div class="kpis">'+
-      '<div class="kpi"><div class="l">Horas trabajadas</div><div class="v">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
+      (esFijo ? '<div class="kpi"><div class="l">Sueldo acordado de '+_balNombreMes(mesF).toLowerCase()+'</div><div class="v">$'+Number(fijoAcordado).toLocaleString('es-AR')+'</div></div>'+
+        (yaCobrado > 0 ? '<div class="kpi"><div class="l">Ya cobrado en el mes</div><div class="v" style="color:#27ae60">$'+Number(yaCobrado).toLocaleString('es-AR')+'</div></div>' : '')+
+        '<div class="kpi"><div class="l">Falta del sueldo</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>' : '')+
+      (esFijo ? '' : '<div class="kpi"><div class="l">Horas trabajadas</div><div class="v">'+Math.floor(horas)+'h '+(totalMin%60>0?totalMin%60+'m':'')+'</div></div>'+
       (minAdel>0 ? '<div class="kpi"><div class="l">Ya adelantado</div><div class="v" style="color:#27ae60">'+Math.floor(minAdel/60)+'h '+(minAdel%60>0?Math.round(minAdel%60)+'m':'')+'</div></div>' : '')+
       (minPagos !== totalMin ? '<div class="kpi"><div class="l">Horas a pagar</div><div class="v">'+Math.floor(minPagos/60)+'h '+(minPagos%60>0?Math.round(minPagos%60)+'m':'')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">Valor hora</div><div class="v">$'+Number(valorHora).toLocaleString('es-AR')+'</div></div>'+
-      '<div class="kpi"><div class="l">Sueldo bruto</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>'+
+      '<div class="kpi"><div class="l">Sueldo bruto</div><div class="v" style="color:#27ae60">$'+Number(sueldo).toLocaleString('es-AR')+'</div></div>')+
       '<div class="kpi"><div class="l">Consumos</div><div class="v" style="color:#e74c3c">$'+Number(consumo).toLocaleString('es-AR')+'</div></div>'+
       '<div class="kpi"><div class="l">Faltantes de caja</div><div class="v" style="color:#e74c3c">$'+Number(faltante).toLocaleString('es-AR')+'</div></div>'+
       (deuda>0 ? '<div class="kpi"><div class="l">Deuda de meses anteriores</div><div class="v" style="color:#e74c3c">$'+Number(deuda).toLocaleString('es-AR')+'</div></div>' : '')+
       '<div class="kpi"><div class="l">A PAGAR</div><div class="v" style="color:#CC0000;font-size:18px">$'+Number(neto).toLocaleString('es-AR')+'</div></div>'+
-      (liqModoDos() ? [1, 2].map(function(L){
+      (liqModoDos() && !esFijo ? [1, 2].map(function(L){
         var mc = misCierres.filter(function(c){ return localDe(c)===L; });
         var kc = consumos.filter(function(c){ var d=new Date(c.fecha); return localDe(c)===L&&c.tipo==='empleado'&&c.empleado===nombre&&!c.saldado&&d>=rango.desde&&d<=rango.hasta; }).reduce(function(s,c){return s+pendienteConsumo(c);},0);
         if(!mc.length && !kc) return '';
@@ -20202,8 +20206,13 @@ function exportarLiquidacionPDF(nombre) {
           return '<tr><td>'+(p.descuento ? 'Descontado (consumos y faltantes)' : _diaMes(p.fecha))+'</td><td>$'+Number(Math.round(p.monto)).toLocaleString('es-AR')+''+'</td><td>'+_balNombreMes(p.mes)+'</td><td>'+p.cubrio+'</td></tr>';
         }).join('')+'</tbody></table>'
       : '<p style="font-size:12px;color:#777">Sin pagos de sueldo registrados para los meses de este período.</p>')+
-    '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Detalle de turnos</h3>'+
-    '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Duración</th><th>Pago</th><th>Ventas</th></tr></thead><tbody>'+turnosRows+'</tbody></table>';
+    (neto < 0 ? '<p style="font-size:12px;color:#8a6d00">Quedan $'+Number(-neto).toLocaleString('es-AR')+' a descontar del mes que viene.</p>' : '')+
+    // Sueldo fijo: no hay horas; solo los faltantes de caja, si hubo.
+    (esFijo
+      ? (misCierres.some(function(c){ return faltantePendienteCierre(c) > 0; }) ? '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Faltantes de caja</h3><table><thead><tr><th>Fecha</th><th>Faltante</th></tr></thead><tbody>'+
+          misCierres.filter(function(c){ return faltantePendienteCierre(c) > 0; }).map(function(c){ return '<tr><td>'+new Date(c.fecha).toLocaleDateString('es-AR')+'</td><td>$'+Number(faltantePendienteCierre(c)).toLocaleString('es-AR')+'</td></tr>'; }).join('')+'</tbody></table>' : '')
+      : '<h3 style="font-size:13px;color:#CC0000;margin:12px 0 8px">Detalle de turnos</h3>'+
+        '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Duración</th><th>Pago</th><th>Ventas</th></tr></thead><tbody>'+turnosRows+'</tbody></table>');
 
   abrirVentanaPDF('Liquidación — '+nombre, contenido);
 }
@@ -20244,7 +20253,9 @@ function exportarPDFEmpleado(nombre) {
   var pagosPer = _pagosDelPeriodo(nombre, rango);
   var consumoADescontar = misConsumos.reduce(function(s,c){ return s+pendienteConsumo(c); },0);
   var faltanteADescontar = misCierres.reduce(function(s,c){ return s+faltantePendienteCierre(c); },0);
-  if(tipoSueldoDe(nombre) === 'fijo'){ var mesF = fechaLocalStr(rango.desde).slice(0,7); sueldo = Math.max(0, sueldoFijoDe(nombre, mesF) - pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0)); }
+  // Sueldo fijo: lo acordado del mes, menos lo que ya cobró ese mes. No hay horas.
+  var esFijo = tipoSueldoDe(nombre) === 'fijo', mesF = fechaLocalStr(rango.desde).slice(0,7), fijoAcordado = 0, yaCobrado = 0;
+  if(esFijo){ fijoAcordado = sueldoFijoDe(nombre, mesF); yaCobrado = pagosSueldoLista(nombre, mesF).reduce(function(s, p){ return s + p.monto; }, 0); sueldo = Math.max(0, fijoAcordado - yaCobrado); }
   var deudaAnt = _deudaAnterior(nombre, rango, cierres, consumos);
   var totalACobrar = sueldo - consumoADescontar - faltanteADescontar - deudaAnt;
   var $f = function(n){ return '$'+Number(n).toLocaleString('es-AR'); };
@@ -20262,6 +20273,8 @@ function exportarPDFEmpleado(nombre) {
     consumo: consumoADescontar, faltante: faltanteADescontar, total: totalACobrar,
     nTurnos: misCierres.length, horasTotales: txtHs(minValen), hayEspecial: hayEspecial,
     yaPagadas: minYaPagos > 0 ? txtHs(minYaPagos) : '', totalConsumo: totalConsumo, yaParcial: yaParcial, deuda: deudaAnt,
+    esFijo: esFijo, fijoAcordado: fijoAcordado, yaCobrado: yaCobrado, mesNombre: _balNombreMes(mesF).toLowerCase(),
+    faltantes: misCierres.filter(function(c){ return faltantePendienteCierre(c) > 0; }).map(function(c){ return { dia: diaTxt(c.fecha), monto: faltantePendienteCierre(c) }; }),
     estados: pagosPer.estados, pagos: pagosPer.pagos.map(function(p){ return { fecha: p.descuento ? 'Descontado' : _diaMes(p.fecha), monto: Math.round(p.monto), mes: _balNombreMes(p.mes), cubrio: p.cubrio }; }),
     turnos: misCierres.map(function(c){
       var m = multTurno(c);
@@ -20291,13 +20304,17 @@ function exportarPDFEmpleado(nombre) {
       '<div style="font-size:34px;font-weight:bold;margin-top:2px">'+$f(D.total)+'</div>'+
     '</div>'+
     titulo('Cómo se calcula')+
-    fila('Horas a cobrar', D.horasACobrar)+
-    fila('Valor de tu hora', $f(D.valorHora))+
-    fila('Sueldo ('+D.horasACobrar+' × '+$f(D.valorHora)+')'+(D.yaParcial ? ' − ya pagado en parte' : ''), $f(D.sueldo), '#111', true)+
+    (D.esFijo
+      ? fila('Sueldo acordado de '+D.mesNombre, $f(D.fijoAcordado), '#111', true)+
+        (D.yaCobrado > 0 ? fila('Ya cobrado en '+D.mesNombre, '− '+$f(D.yaCobrado), '#27ae60') : '')
+      : fila('Horas a cobrar', D.horasACobrar)+
+        fila('Valor de tu hora', $f(D.valorHora))+
+        fila('Sueldo ('+D.horasACobrar+' × '+$f(D.valorHora)+')'+(D.yaParcial ? ' − ya pagado en parte' : ''), $f(D.sueldo), '#111', true))+
     (D.consumo>0 ? fila('Consumos a descontar', '− '+$f(D.consumo), '#c0392b') : '')+
     (D.faltante>0 ? fila('Faltantes de caja', '− '+$f(D.faltante), '#c0392b') : '')+
     (D.deuda>0 ? fila('Deuda de meses anteriores', '− '+$f(D.deuda), '#c0392b') : '')+
     fila('<b>Total a cobrar</b>', $f(D.total), '#CC0000', true)+
+    (D.total < 0 ? '<div style="font-size:13px;color:#8a6d00;margin-top:6px">Quedan '+$f(-D.total)+' a descontar del mes que viene.</div>' : '')+
     (D.estados.length ? '<div style="margin-top:12px;font-size:14px">'+D.estados.map(function(t){ return '<div style="font-weight:bold;color:'+(/^✅/.test(t)?'#1e7e45':'#8a6d00')+'">'+t+'</div>'; }).join('')+'</div>' : '')+
     titulo('Pagos del período')+
     (D.pagos.length ? D.pagos.map(function(p){
@@ -20305,7 +20322,7 @@ function exportarPDFEmpleado(nombre) {
         '<div style="display:flex;justify-content:space-between;font-size:15px"><b>'+p.fecha+' · '+p.mes+'</b><b>'+$f(p.monto)+'</b></div>'+
         '<div style="font-size:13px;color:#666;margin-top:2px">'+p.cubrio+'</div></div>';
     }).join('') : '<div style="color:#888;font-size:14px;padding:8px 0">Sin pagos registrados en este período.</div>')+
-    titulo('Tus horas')+
+    (D.esFijo ? (D.faltantes.length ? titulo('Faltantes de caja')+D.faltantes.map(function(x){ return fila(x.dia, '− '+$f(x.monto), '#c0392b'); }).join('') : '') : titulo('Tus horas')+
     fila('Turnos trabajados', D.nTurnos)+
     fila('Horas totales'+(D.hayEspecial?' (con feriados x2)':''), D.horasTotales)+
     (D.yaPagadas ? fila('Ya pagadas', '− '+D.yaPagadas, '#27ae60') : '')+
@@ -20319,14 +20336,14 @@ function exportarPDFEmpleado(nombre) {
           (t.pagado ? etiqueta('✓ Ya pagado', '#1e7e45', '#dff5e7') : '')+
         '</div></div>';
     }).join('') : '<div style="color:#888;font-size:14px;padding:8px 0">Sin turnos en este período.</div>')+
-    (D.hayEspecial ? '<div style="font-size:12px;color:#888;margin-top:6px">Los turnos 🎉 x2 (feriados) cuentan doble: 4 h en x2 suman 8 h.</div>' : '')+
+    (D.hayEspecial ? '<div style="font-size:12px;color:#888;margin-top:6px">Los turnos 🎉 x2 (feriados) cuentan doble: 4 h en x2 suman 8 h.</div>' : ''))+
     titulo('Tus consumos ('+$f(D.totalConsumo)+')')+
     (D.consumos.length ? D.consumos.map(function(c){
       return '<div style="padding:9px 0;border-bottom:1px solid #eee;'+(c.descontado?'opacity:.55':'')+'">'+
         '<div style="display:flex;justify-content:space-between;font-size:15px"><b>'+c.fecha+'</b><b>'+$f(c.total)+'</b></div>'+
         '<div style="font-size:13px;color:#666;margin-top:2px">'+c.prods+(c.descontado ? etiqueta('✓ Ya descontado', '#1e7e45', '#dff5e7') : '')+'</div></div>';
     }).join('') : '<div style="color:#888;font-size:14px;padding:8px 0">Sin consumos en este período.</div>')+
-    '<div style="font-size:12px;color:#888;margin:20px 0 10px">Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste. Cualquier diferencia, avisale a tu encargado.</div>'+
+    '<div style="font-size:12px;color:#888;margin:20px 0 10px">'+(D.esFijo ? 'Revisá que los consumos coincidan con lo que consumiste.' : 'Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste.')+' Cualquier diferencia, avisale a tu encargado.</div>'+
   '</div>';
 
   abrirVentanaPDF('Liquidación — '+nombre, html);
@@ -20367,13 +20384,19 @@ function descargarPDFEmpleadoMovil(D, btn){
       y += 25;
 
       titulo('Cómo se calcula');
-      fila('Horas a cobrar', D.horasACobrar);
-      fila('Valor de tu hora', $f(D.valorHora));
-      fila('Sueldo ('+D.horasACobrar+' x '+$f(D.valorHora)+')'+(D.yaParcial ? ' - ya pagado en parte' : ''), $f(D.sueldo), null, true);
+      if(D.esFijo){
+        fila('Sueldo acordado de '+D.mesNombre, $f(D.fijoAcordado), null, true);
+        if(D.yaCobrado > 0) fila('Ya cobrado en '+D.mesNombre, '- '+$f(D.yaCobrado), [39,174,96]);
+      } else {
+        fila('Horas a cobrar', D.horasACobrar);
+        fila('Valor de tu hora', $f(D.valorHora));
+        fila('Sueldo ('+D.horasACobrar+' x '+$f(D.valorHora)+')'+(D.yaParcial ? ' - ya pagado en parte' : ''), $f(D.sueldo), null, true);
+      }
       if(D.consumo>0) fila('Consumos a descontar', '- '+$f(D.consumo), [192,57,43]);
       if(D.faltante>0) fila('Faltantes de caja', '- '+$f(D.faltante), [192,57,43]);
       if(D.deuda>0) fila('Deuda de meses anteriores', '- '+$f(D.deuda), [192,57,43]);
       fila('Total a cobrar', $f(D.total), [204,0,0], true);
+      if(D.total < 0){ y += 5.5; txt('Quedan '+$f(-D.total)+' a descontar del mes que viene.', M, y, 9.5, 'normal', [138,109,0], {maxWidth: AN}); }
 
       (D.estados || []).forEach(function(t){ y += 6; txt(t.replace(/^✅\s*/, ''), M, y, 10, 'bold', /^✅/.test(t) ? [30,126,69] : [138,109,0], {maxWidth: AN}); });
       titulo('Pagos del período');
@@ -20384,6 +20407,9 @@ function descargarPDFEmpleadoMovil(D, btn){
         y += 2.6; linea();
       });
       if(!(D.pagos || []).length){ y += 6; txt('Sin pagos registrados en este período.', M, y, 9.5, 'normal', [130,130,130]); }
+      if(D.esFijo){
+        if(D.faltantes.length){ titulo('Faltantes de caja'); D.faltantes.forEach(function(x){ fila(x.dia, '- '+$f(x.monto), [192,57,43]); }); }
+      } else {
       titulo('Tus horas');
       fila('Turnos trabajados', String(D.nTurnos));
       fila('Horas totales'+(D.hayEspecial?' (con feriados x2)':''), D.horasTotales);
@@ -20404,6 +20430,7 @@ function descargarPDFEmpleadoMovil(D, btn){
       });
       if(!D.turnos.length){ y += 6; txt('Sin turnos en este período.', M, y, 9.5, 'normal', [130,130,130]); }
       if(D.hayEspecial){ y += 5; txt('Los turnos x2 (feriados) cuentan doble: 4 h en x2 suman 8 h.', M, y, 7.5, 'italic', [130,130,130], {maxWidth:AN}); }
+      }
 
       titulo('Tus consumos ('+$f(D.totalConsumo)+')');
       D.consumos.forEach(function(c){
@@ -20419,7 +20446,7 @@ function descargarPDFEmpleadoMovil(D, btn){
 
       y += 7;
       doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(130,130,130);
-      var nota = doc.splitTextToSize('Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste. Cualquier diferencia, avisale a tu encargado.', AN);
+      var nota = doc.splitTextToSize((D.esFijo ? 'Revisá que los consumos coincidan con lo que consumiste.' : 'Revisá que las horas y los consumos coincidan con lo que trabajaste y consumiste.')+' Cualquier diferencia, avisale a tu encargado.', AN);
       doc.text(nota, M, y); y += nota.length*3.8;
       return y + 8;
     }
