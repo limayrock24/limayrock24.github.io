@@ -19,11 +19,13 @@ const { XMLParser } = require('fast-xml-parser');
 const URLS = {
   homologacion: {
     wsaa: 'https://wsaahomo.afip.gov.ar/ws/services/LoginCms',
-    wsfe: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx'
+    wsfe: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+    padron: 'https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA5'
   },
   produccion: {
     wsaa: 'https://wsaa.afip.gov.ar/ws/services/LoginCms',
-    wsfe: 'https://servicios1.afip.gov.ar/wsfev1/service.asmx'
+    wsfe: 'https://servicios1.afip.gov.ar/wsfev1/service.asmx',
+    padron: 'https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5'
   }
 };
 
@@ -141,8 +143,9 @@ function leerRespuestaLogin(xml) {
   };
 }
 
-async function login(modo, certPem, clavePem) {
-  const cms = firmarTRA(armarTRA('wsfe'), certPem, clavePem);
+// servicio: 'wsfe' (facturar) o 'ws_sr_constancia_inscripcion' (padrón).
+async function login(modo, certPem, clavePem, servicio) {
+  const cms = firmarTRA(armarTRA(servicio || 'wsfe'), certPem, clavePem);
   const sobre = '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:wsaa="http://wsaa.view.sua.dvadac.desein.afip.gov">' +
     '<soapenv:Header/><soapenv:Body><wsaa:loginCms><wsaa:in0>' + cms + '</wsaa:in0></wsaa:loginCms></soapenv:Body></soapenv:Envelope>';
   const r = await postSoap(URLS[modo].wsaa, '""', sobre);
@@ -252,6 +255,57 @@ async function consultar(modo, cred, ptoVta, cbteTipo, numero) {
   return { cae: String(g.CodAutorizacion), caeVto: String(g.FchVto), importe: Number(g.ImpTotal), docNro: String(g.DocNro), numero: Number(g.CbteDesde) };
 }
 
+// ── PADRÓN (constancia de inscripción) ─────────────────────────────────
+// Con un CUIT, ARCA devuelve el nombre o razón social y si es Responsable
+// Inscripto, Monotributista o Exento. Servicio: ws_sr_constancia_inscripcion.
+const SERVICIO_PADRON = 'ws_sr_constancia_inscripcion';
+
+function armarConsultaPadron(cred, cuitConsulta) {
+  return '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:a5="http://a5.soap.ws.server.puc.sr/">' +
+    '<soapenv:Header/><soapenv:Body><a5:getPersona_v2>' +
+    '<token>' + cred.token + '</token><sign>' + cred.sign + '</sign>' +
+    '<cuitRepresentada>' + cred.cuit + '</cuitRepresentada><idPersona>' + String(cuitConsulta).replace(/\D/g, '') + '</idPersona>' +
+    '</a5:getPersona_v2></soapenv:Body></soapenv:Envelope>';
+}
+
+function leerRespuestaPadron(xml) {
+  const sobre = parser.parse(xml);
+  const cuerpo = sobre && sobre.Envelope && sobre.Envelope.Body;
+  if (cuerpo && cuerpo.Fault) {
+    const msg = String(cuerpo.Fault.faultstring || '');
+    if (/no existe|inexistente|no se encontr/i.test(msg)) return { encontrado: false, mensaje: msg };
+    throw new ErrorArca('ARCA (padrón): ' + msg, { reintentable: true });
+  }
+  const r = cuerpo && cuerpo.getPersona_v2Response && cuerpo.getPersona_v2Response.personaReturn;
+  if (!r) throw new ErrorArca('Respuesta del padrón no reconocida', { reintentable: true });
+  const g = r.datosGenerales;
+  if (!g) {
+    const errs = lista(r.errorConstancia && r.errorConstancia.error).map(String);
+    return { encontrado: false, mensaje: errs.join(' / ') || 'Sin datos en el padrón' };
+  }
+  const nombre = g.razonSocial ? String(g.razonSocial)
+    : [g.apellido, g.nombre].filter(Boolean).map(String).join(' ');
+  const impuestos = lista(r.datosRegimenGeneral && r.datosRegimenGeneral.impuesto).map((i) => Number(i.idImpuesto));
+  let condIva = COND_IVA.CONSUMIDOR_FINAL;
+  if (r.datosMonotributo) condIva = COND_IVA.MONOTRIBUTO;
+  else if (impuestos.indexOf(30) !== -1) condIva = COND_IVA.RESPONSABLE_INSCRIPTO;
+  else if (impuestos.indexOf(32) !== -1) condIva = COND_IVA.EXENTO;
+  const d = g.domicilioFiscal || {};
+  return {
+    encontrado: true,
+    cuit: String(g.idPersona || ''),
+    nombre: nombre.trim(),
+    condIva,
+    domicilio: [d.direccion, d.localidad, d.descripcionProvincia].filter(Boolean).map(String).join(', '),
+    estado: String(g.estadoClave || '')
+  };
+}
+
+async function consultarPadron(modo, cred, cuitConsulta) {
+  const resp = await postSoap(URLS[modo].padron, '""', armarConsultaPadron(cred, cuitConsulta), 15000);
+  return leerRespuestaPadron(resp.body);
+}
+
 // ── QR (RG 4892) ─────────────────────────────────────────────────────────
 // Link oficial que cualquiera puede escanear para verificar el comprobante.
 function urlQR(d) {
@@ -285,7 +339,8 @@ function crearClienteReal(modo, cuit, obtenerCredenciales) {
 }
 
 module.exports = {
-  URLS, CBTE, DOC, COND_IVA, ErrorArca,
+  URLS, CBTE, DOC, COND_IVA, ErrorArca, SERVICIO_PADRON,
+  armarConsultaPadron, leerRespuestaPadron, consultarPadron,
   armarTRA, firmarTRA, venceCertificado, leerRespuestaLogin, login,
   armarPedidoCAE, leerRespuestaCAE, urlQR, importe, escaparXml,
   crearClienteReal

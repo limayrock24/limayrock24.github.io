@@ -102,6 +102,17 @@ function crearFacturacion(ctx) {
     const monto = montoMercadoPago(v);
     if (!(monto > 0)) return { omitida: 'sin monto de Mercado Pago' };
     const receptor = armarReceptor(v.facturaPedido);
+    // Con CUIT: si ARCA ya informó sus datos (padronCache), se usan su
+    // condición frente al IVA y su nombre, así no depende de lo que se eligió a mano.
+    if (receptor.docTipo === DOC.CUIT) {
+      try {
+        const p = await db.collection('padronCache').doc(receptor.docNro).get();
+        if (p.exists && p.data().encontrado) {
+          if (p.data().condIva) receptor.condIva = Number(p.data().condIva);
+          if (!receptor.nombre && p.data().nombre) receptor.nombre = String(p.data().nombre).slice(0, 80);
+        }
+      } catch (e) { log.warn('No se pudo leer el padrón de ' + receptor.docNro, e); }
+    }
     const base = {
       ventaId: String(ventaId), tipo: 'FC', cbteTipo: CBTE.FACTURA_C,
       ptoVta: ctx.ptoVta, cuitEmisor: ctx.cuit, modo: ctx.cliente.modo,

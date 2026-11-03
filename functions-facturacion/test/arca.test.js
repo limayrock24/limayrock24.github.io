@@ -111,3 +111,24 @@ test('monto mínimo: los cobros chicos no se facturan, salvo "facturar igual"', 
   assert.strictEqual(debajoDelMinimo(cfg, { medio: 'Mixto', total: 9000, recargo: 0, mixto: { efectivo: 6000, transferencia: 3000, debito: 0 } }), true);
   assert.strictEqual(debajoDelMinimo({}, { medio: 'Transferencia', total: 100 }), false);
 });
+
+test('padrón: lee persona monotributista, empresa RI y CUIT inexistente', () => {
+  const sobre = (interior) => '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>' + interior + '</soap:Body></soap:Envelope>';
+  const mono = sobre('<ns2:getPersona_v2Response xmlns:ns2="http://a5.soap.ws.server.puc.sr/"><personaReturn>' +
+    '<datosGenerales><apellido>PEREZ</apellido><nombre>JUAN</nombre><idPersona>20123456786</idPersona><estadoClave>ACTIVO</estadoClave>' +
+    '<domicilioFiscal><direccion>SAN MARTIN 100</direccion><localidad>SENILLOSA</localidad><descripcionProvincia>NEUQUEN</descripcionProvincia></domicilioFiscal></datosGenerales>' +
+    '<datosMonotributo><impuesto><idImpuesto>20</idImpuesto></impuesto><categoriaMonotributo><descripcionCategoria>B LOCACIONES</descripcionCategoria></categoriaMonotributo></datosMonotributo>' +
+    '</personaReturn></ns2:getPersona_v2Response>');
+  const r1 = arca.leerRespuestaPadron(mono);
+  assert.strictEqual(r1.encontrado, true); assert.strictEqual(r1.nombre, 'PEREZ JUAN'); assert.strictEqual(r1.condIva, 6);
+  assert.strictEqual(r1.domicilio, 'SAN MARTIN 100, SENILLOSA, NEUQUEN');
+  const ri = sobre('<ns2:getPersona_v2Response xmlns:ns2="http://a5.soap.ws.server.puc.sr/"><personaReturn>' +
+    '<datosGenerales><razonSocial>DISTRIBUIDORA SUR SA</razonSocial><idPersona>30712345671</idPersona></datosGenerales>' +
+    '<datosRegimenGeneral><impuesto><idImpuesto>10</idImpuesto></impuesto><impuesto><idImpuesto>30</idImpuesto></impuesto></datosRegimenGeneral>' +
+    '</personaReturn></ns2:getPersona_v2Response>');
+  const r2 = arca.leerRespuestaPadron(ri);
+  assert.strictEqual(r2.nombre, 'DISTRIBUIDORA SUR SA'); assert.strictEqual(r2.condIva, 1);
+  const no = sobre('<soap:Fault><faultcode>soap:Server</faultcode><faultstring>No existe persona con ese Id</faultstring></soap:Fault>');
+  assert.strictEqual(arca.leerRespuestaPadron(no).encontrado, false);
+  assert.ok(arca.armarConsultaPadron({ token: 'T', sign: 'S', cuit: '20433394896' }, '20-12345678-6').includes('<idPersona>20123456786</idPersona>'));
+});

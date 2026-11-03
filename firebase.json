@@ -16,7 +16,8 @@
         "*.crt",
         "*.csr",
         "README.md",
-        "probar-homologacion.js"
+        "probar-homologacion.js",
+        "probar-padron.js"
       ]
     }
   ],

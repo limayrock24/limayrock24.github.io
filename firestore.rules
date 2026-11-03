@@ -124,6 +124,8 @@ service cloud.firestore {
     // (functions-facturacion/). La caja y el admin pueden verlos, no tocarlos.
     match /facturas/{id}          { allow read: if local(); }
     match /facturacionEstado/{id} { allow read: if local(); }
+    // Datos de ARCA de un CUIT (nombre y condición de IVA): los escribe la nube.
+    match /padronCache/{id}       { allow read: if local(); }
     // arcaPrivado (token de ARCA, numeración): nadie desde afuera.
     // servidorPrivado (la clave de dueño, cifrada) e intentosClave: solo la nube.
 
@@ -147,7 +149,7 @@ service cloud.firestore {
     // del dueño y lo de facturación (que escribe solo la nube).
     match /{coleccion}/{resto=**} {
       allow read, write: if local() && !privada(coleccion)
-        && !(coleccion in ['facturas', 'facturacionEstado', 'arcaPrivado', 'servidorPrivado', 'intentosClave']);
+        && !(coleccion in ['facturas', 'facturacionEstado', 'padronCache', 'arcaPrivado', 'servidorPrivado', 'intentosClave']);
     }
   }
 }

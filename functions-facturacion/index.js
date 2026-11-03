@@ -31,7 +31,7 @@ const admin = require('firebase-admin');
 
 const arca = require('./arca');
 const { crearSimulador } = require('./simulador');
-const { crearFacturacion, debajoDelMinimo } = require('./facturacion');
+const { crearFacturacion, debajoDelMinimo, cuitValido } = require('./facturacion');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -57,9 +57,12 @@ async function leerConfig() {
 
 // Token de ARCA: vale unas 12 horas, así que se guarda y se reusa (ARCA
 // rechaza pedir uno nuevo mientras el anterior siga vigente).
-async function credenciales() {
+// servicio: 'wsfe' (facturar, por defecto) o arca.SERVICIO_PADRON (consultar CUIT).
+// Cada servicio tiene su propio token.
+async function credenciales(servicioArca) {
   const modo = ARCA_MODO.value();
-  const ref = db.collection('arcaPrivado').doc('ta_' + modo);
+  const srv = servicioArca || 'wsfe';
+  const ref = db.collection('arcaPrivado').doc('ta_' + modo + (srv === 'wsfe' ? '' : '_' + srv));
   const s = await ref.get();
   if (s.exists && new Date(s.data().vence) - Date.now() > 10 * 60 * 1000) {
     return { token: s.data().token, sign: s.data().sign, cuit: ARCA_CUIT.value() };
@@ -68,7 +71,7 @@ async function credenciales() {
   const cert = modo === 'produccion' ? ARCA_CERT_PRODUCCION.value() : ARCA_CERT.value();
   const clave = ARCA_KEY.value();
   if (!cert || !clave) throw new arca.ErrorArca('Falta cargar el certificado de ARCA', { reintentable: true });
-  const ta = await arca.login(modo, cert, clave);
+  const ta = await arca.login(modo, cert, clave, srv);
   await ref.set(ta);
   await db.collection('facturacionEstado').doc('general').set({
     modo, certVence: arca.venceCertificado(cert), ultimoLogin: new Date().toISOString()
@@ -108,6 +111,32 @@ const manejadores = {
       logger.info('Reintento de ' + s.facturaId, r);
     }
   },
+  // Consulta de un CUIT en el padrón de ARCA (pedida desde la caja). El
+  // resultado queda en padronCache/<cuit>, que la caja escucha; se reusa
+  // por 30 días para que el próximo cliente igual salga al instante.
+  async consultaPadron(s) {
+    const cuit = String((s && s.cuit) || '').replace(/\D/g, '');
+    if (!cuitValido(cuit)) return;
+    const ref = db.collection('padronCache').doc(cuit);
+    const prev = await ref.get();
+    if (prev.exists && prev.data().encontrado && Date.now() - new Date(prev.data().consultado) < 30 * 24 * 3600 * 1000) return;
+    let r;
+    try {
+      if (modoReal()) {
+        const cred = await credenciales(arca.SERVICIO_PADRON);
+        r = await arca.consultarPadron(ARCA_MODO.value(), cred, cuit);
+      } else {
+        // Simulado: datos inventados (20/23/24/27 = persona monotributista; 30/33 = empresa RI).
+        r = /^(30|33|34)/.test(cuit)
+          ? { encontrado: true, cuit, nombre: 'EMPRESA DE PRUEBA SRL', condIva: arca.COND_IVA.RESPONSABLE_INSCRIPTO, domicilio: 'Neuquén' }
+          : { encontrado: true, cuit, nombre: 'PERSONA DE PRUEBA', condIva: arca.COND_IVA.MONOTRIBUTO, domicilio: 'Neuquén' };
+      }
+    } catch (e) {
+      logger.error('Consulta de padrón ' + cuit, e);
+      r = { encontrado: false, error: (e && e.message) || String(e) };
+    }
+    await ref.set(Object.assign({ cuit, consultado: new Date().toISOString(), modo: ARCA_MODO.value() }, r));
+  },
   async pendientes() {
     const cfg = await leerConfig();
     if (!cfg.activa) return;
@@ -125,6 +154,10 @@ exports.anularFactura = onDocumentUpdated(Object.assign({ document: 'ventas/{ven
 
 exports.solicitudFacturacion = onDocumentCreated(Object.assign({ document: 'facturacionSolicitudes/{id}' }, OPCIONES), async (event) => {
   try { await manejadores.solicitud(event.data && event.data.data()); } finally { await event.data.ref.delete(); }
+});
+
+exports.consultaPadron = onDocumentCreated(Object.assign({ document: 'consultasPadron/{id}' }, OPCIONES), async (event) => {
+  try { await manejadores.consultaPadron(event.data && event.data.data()); } finally { await event.data.ref.delete(); }
 });
 
 exports.reintentarPendientes = onSchedule(Object.assign({ schedule: 'every 10 minutes', timeZone: 'America/Argentina/Buenos_Aires' }, OPCIONES), () => manejadores.pendientes());

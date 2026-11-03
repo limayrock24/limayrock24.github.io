@@ -201,14 +201,69 @@
     var cond = document.getElementById('lrfCond'), nota = document.getElementById('lrfDocNota'), q = document.getElementById('lrfAQuien');
     cond.style.display = d.length === 11 ? 'block' : 'none';
     if(!d){ nota.textContent = 'Si lo dejás vacío, sale a Consumidor final.'; nota.style.color=''; q.textContent='Consumidor final'; return; }
+    if(d.length !== 11) cancelarPadron();
     if(d.length === 11){
       var ok = cuitValido(d);
       nota.textContent = ok ? 'CUIT '+d.slice(0,2)+'-'+d.slice(2,10)+'-'+d.slice(10)+' ✓' : '⚠ Ese CUIT no es válido, revisalo';
       nota.style.color = ok ? 'var(--green)' : 'var(--red)';
       q.textContent = ok ? 'CUIT '+d : 'Consumidor final';
+      if(ok) buscarPadron(d);
     } else if(d.length >= 7 && d.length <= 8){
       nota.textContent = 'DNI '+Number(d).toLocaleString('es-AR')+' ✓'; nota.style.color='var(--green)'; q.textContent='DNI '+Number(d).toLocaleString('es-AR');
     } else { nota.textContent = 'Un DNI tiene 7 u 8 números; un CUIT, 11'; nota.style.color='var(--gold)'; q.textContent='Consumidor final'; }
+  }
+
+  // Consulta del CUIT en ARCA: la caja deja un pedido en consultasPadron y la
+  // nube responde en padronCache/<cuit> (nombre y condición frente al IVA).
+  var COND_CORTA = { 1: 'Responsable Inscripto', 4: 'Exento', 5: 'Consumidor final', 6: 'Monotributista' };
+  var _padron = { cuit: null, unsub: null, timer: null, autoNombre: '' };
+  function cancelarPadron(){
+    if(_padron.unsub){ _padron.unsub(); _padron.unsub = null; }
+    if(_padron.timer){ clearTimeout(_padron.timer); _padron.timer = null; }
+    _padron.cuit = null;
+  }
+  function cuitActual(){ var e = document.getElementById('lrfDoc'); return e ? (e.value||'').replace(/\D/g,'') : ''; }
+  function aplicarPadron(cuit, p){
+    if(cuitActual() !== cuit) return;   // ya cambiaron el número
+    var nota = document.getElementById('lrfDocNota'), nom = document.getElementById('lrfNombre');
+    var cond = document.getElementById('lrfCond'), q = document.getElementById('lrfAQuien');
+    if(!nota) return;
+    if(p.encontrado){
+      if(nom && (!nom.value.trim() || nom.value === _padron.autoNombre)){ nom.value = p.nombre || ''; _padron.autoNombre = nom.value; }
+      if(cond && p.condIva) cond.value = String(p.condIva);
+      nota.innerHTML = '✓ <b>'+esc(p.nombre || 'Sin nombre')+'</b> · '+esc(COND_CORTA[p.condIva] || '')+' <span style="color:var(--gray)">(datos de ARCA)</span>';
+      nota.style.color = 'var(--green)';
+      if(q) q.textContent = (p.nombre || 'CUIT '+cuit);
+    } else if(p.error){
+      nota.textContent = '⚠ No se pudo consultar ARCA ahora: escribí el nombre y elegí la condición a mano.';
+      nota.style.color = 'var(--gold)';
+    } else {
+      nota.textContent = '⚠ ARCA no encontró ese CUIT. Revisalo con el cliente.';
+      nota.style.color = 'var(--red)';
+    }
+  }
+  function buscarPadron(cuit){
+    if(_padron.cuit === cuit || !db()) return;
+    cancelarPadron();
+    _padron.cuit = cuit;
+    var nota = document.getElementById('lrfDocNota');
+    if(nota){ nota.textContent = '🔎 Buscando el CUIT en ARCA…'; nota.style.color = 'var(--gold)'; }
+    var pedido = new Date().toISOString(), listo = false;
+    var ref = db().collection('padronCache').doc(cuit);
+    ref.get().then(function(s){
+      var d = s.exists ? s.data() : null;
+      var fresco = d && d.encontrado && (Date.now() - new Date(d.consultado)) < 30*24*3600*1000;
+      if(fresco){ listo = true; aplicarPadron(cuit, d); return; }
+      return db().collection('consultasPadron').add({ cuit: cuit, pedido: pedido }).then(function(){
+        if(_padron.cuit !== cuit) return;
+        _padron.unsub = ref.onSnapshot(function(s2){
+          if(!s2.exists || !(s2.data().consultado >= pedido)) return;
+          listo = true; aplicarPadron(cuit, s2.data());
+          if(_padron.unsub){ _padron.unsub(); _padron.unsub = null; }
+        }, function(){});
+        _padron.timer = setTimeout(function(){ if(!listo) aplicarPadron(cuit, { encontrado: false, error: 'tiempo' }); }, 15000);
+      });
+    }).catch(function(){ aplicarPadron(cuit, { encontrado: false, error: 'lectura' }); });
   }
 
   // ── 2. MARCAR LA VENTA ──────────────────────────────────────────────────
@@ -226,6 +281,7 @@
       rec.nombre = (document.getElementById('lrfNombre').value||'').trim() || rec.nombre;
     }
     var aviso = document.getElementById('lrfAviso'); if(aviso) aviso.remove();
+    cancelarPadron(); _padron.autoNombre = '';
     var forzar = _forzar; _forzar = false;
     var monto = montoMP(v.medio, v.mixto, v.total, v.recargo);
     if(!activa() || !(monto > 0)) return null;
