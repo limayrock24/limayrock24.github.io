@@ -9210,7 +9210,7 @@ function confirmarVenta2() {
   mpEsperaIniciar(_confirmCarrito);
 }
 
-function doConfirmarVenta2() {
+function _doConfirmarVenta2SinCandado() {
   var mpPago = mpEsperaTomar(2);
   closeConfirm();
   var subtotal = cart2.reduce(function(s,i){ return s+i.subtotal; },0);
@@ -11216,7 +11216,7 @@ function confirmarVenta() {
 
 function closeConfirm() { mpEsperaSoltar(); document.getElementById('confirmOverlay').classList.remove('open'); }
 
-function doConfirmarVenta() {
+function _doConfirmarVentaSinCandado() {
   var mpPago = mpEsperaTomar(1);
   closeConfirm();
   var subtotal = cart.reduce(function(s,i){ return s+i.subtotal; },0);
@@ -11550,6 +11550,7 @@ function marcarPedidoWebCobrado(id, ventaId, envioCobrado, itemsVenta, auto){
   p.cobradoEn = new Date().toISOString();
   p.cobradoPor = currentEmp ? currentEmp.nombre : 'Local';
   p.listoParaRetirar = true;
+  marcarCobroPedidoHecho(id, ventaId, auto);
   if(ventaId) p.ventaId = ventaId;
   if(auto) p.cobroAuto = true;
   savePedidosWeb(pedidos);
@@ -13455,6 +13456,14 @@ function cobrarPedidoAutomatico(id, pago){
     if(typeof renderDeliveryPanel === 'function') try{ renderDeliveryPanel(); }catch(e){}
     return;
   }
+  reservarCobroPedidoWeb(id, true).then(function(r){
+    if(!r.ok) return;
+    var ped = getPedidosWeb().find(function(x){ return x.id === id; });
+    if(!ped || ped.pagoConfirmado || ped.ventaId){ soltarCobroPedidoWeb(id); return; }
+    _cobrarPedidoAutomaticoSigue(id, pago, lineas, subtotal, envio);
+  });
+}
+function _cobrarPedidoAutomaticoSigue(id, pago, lineas, subtotal, envio){
   var venta = {
     id: Date.now()+3,
     fecha: new Date().toISOString(),
@@ -34885,7 +34894,7 @@ function abrirDeliveryPendModal() {
             ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.68rem">⏳ Esperando la transferencia (se cobra solo)</div>'
             : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
           (pedidoTrabadoEnOtraCaja(p)
-            ? '<div style="flex:1;min-width:120px;text-align:center;padding:6px;border:1px dashed var(--gold);border-radius:5px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">🔒 Lo está cobrando la Caja '+p.cargadoCaja+(p.cargadoPor?' ('+p.cargadoPor+')':'')+
+            ? '<div style="flex:1;min-width:120px;text-align:center;padding:6px;border:1px dashed var(--gold);border-radius:5px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">🔒 Lo tiene cargado '+textoCargadoEn(p)+
                 '<div><button onclick="destrabarPedidoWeb('+p.id+')" style="margin-top:4px;background:none;border:none;color:var(--gray);text-decoration:underline;font-size:.62rem;cursor:pointer">Destrabar</button></div></div>'
             : p.estado === 'cargado'
             ? '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">Volver a cargar</button>'
@@ -34903,6 +34912,105 @@ function abrirDeliveryPendModal() {
   document.getElementById('deliveryPendModal').classList.add('open');
 }
 
+// ── UN PEDIDO WEB SE COBRA UNA SOLA VEZ ─────────────────────────────────────
+// Se cobraban pedidos dos veces cuando la caja y el Puesto Delivery (o dos
+// cajas, o una caja y el cobro automático de Mercado Pago) cobraban el mismo
+// pedido casi al mismo tiempo: cada pantalla miraba su copia del pedido, que
+// todavía no sabía del otro cobro. Ahora, justo antes de guardar la venta de
+// un pedido web, se lo "reserva" en la nube con una transacción, en una ficha
+// aparte (cobrosPedidos/<pedido>) que nadie más pisa: si ya está cobrado o lo
+// está cobrando otra pantalla, acá no se cobra y se avisa quién lo cobró.
+var COBRO_PEDIDO_RESERVA_MS = 3 * 60000;
+// Cada pantalla tiene su propia marca (caja y puesto en la misma compu son dos
+// pantallas distintas). Se conserva al recargar la misma pestaña.
+function _pantallaId(){
+  if(window.__lrPantallaId) return window.__lrPantallaId;
+  var t = null;
+  try{ t = sessionStorage.getItem('lr_pantalla'); }catch(e){}
+  if(!t){ t = 'p'+Date.now().toString(36)+Math.random().toString(36).slice(2, 7); try{ sessionStorage.setItem('lr_pantalla', t); }catch(e){} }
+  return (window.__lrPantallaId = _mpDispId()+'-'+t);
+}
+function _quienCobraAhora(auto){
+  var o = { disp: _pantallaId(), quien: (typeof currentEmp !== 'undefined' && currentEmp) ? currentEmp.nombre : 'Local',
+    caja: (typeof cajaTurnoActual === 'function' ? cajaTurnoActual() : 1), puesto: !!window.__lrEsPuesto, ts: Date.now() };
+  if(auto) o.auto = true;
+  return o;
+}
+function textoQuienCobra(c){
+  c = c || {};
+  return (c.quien || 'otra pantalla')+' ('+(c.auto ? 'cobro automático de Mercado Pago' : c.puesto ? 'Puesto Delivery' : 'Caja '+(c.caja || 1))+')';
+}
+function _horaCorta(v){ var d = new Date(v); return isNaN(d) ? '' : d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+function _refCobroPedido(id){ return window.__lrDB.collection('cobrosPedidos').doc(String(id).replace(/\//g, '-')); }
+function reservarCobroPedidoWeb(id, auto){
+  var yo = _quienCobraAhora(auto);
+  // Una venta de este pedido que ya llegó a esta pantalla: no se cobra de nuevo.
+  var vYa = (VENTAS || []).find(function(v){ return v.pedidoWebId === id && !v.anulada; });
+  if(vYa) return Promise.resolve({ ok: false, yaCobrado: true, msg: 'Ese pedido ya está cobrado ('+(vYa.empleado || '')+', '+_horaCorta(vYa.fecha)+'). No se cobra de nuevo.' });
+  if(!navigator.onLine) return Promise.resolve({ ok: false, msg: 'Sin internet no se puede cobrar un pedido web: no hay forma de saber si ya lo cobró otra pantalla. Cobralo cuando vuelva la conexión.' });
+  var refC = _refCobroPedido(id), refP = window.__lrDB.collection('pedidosWeb').doc(String(id).replace(/\//g, '-'));
+  return window.__lrDB.runTransaction(function(tx){
+    return Promise.all([tx.get(refC), tx.get(refP)]).then(function(s){
+      var c = s[0].exists ? s[0].data() : null, p = s[1].exists ? s[1].data() : null;
+      if(c && c.estado === 'cobrado') return { ok: false, yaCobrado: true, msg: 'Ese pedido ya lo cobró '+textoQuienCobra(c)+' a las '+_horaCorta(c.ts)+'. No se cobra de nuevo.' };
+      if(p && (p.pagoConfirmado || p.ventaId)) return { ok: false, yaCobrado: true, msg: 'Ese pedido ya lo cobró '+(p.cobradoPor || 'otra pantalla')+(p.cobradoEn ? ' a las '+_horaCorta(p.cobradoEn) : '')+'. No se cobra de nuevo.' };
+      if(p && p.anulado) return { ok: false, yaCobrado: true, msg: 'Ese pedido está cancelado.' };
+      if(c && c.estado === 'reservado' && c.disp !== yo.disp && Date.now() - (Number(c.ts) || 0) < COBRO_PEDIDO_RESERVA_MS)
+        return { ok: false, msg: 'Ese pedido lo está cobrando ahora '+textoQuienCobra(c)+'. Esperá un momento y fijate si queda cobrado.' };
+      yo.estado = 'reservado';
+      tx.set(refC, yo);
+      return { ok: true };
+    });
+  }).catch(function(e){
+    console.error('Reserva del cobro del pedido', id, e);
+    return { ok: false, msg: 'No se pudo confirmar con la nube que el pedido no esté cobrado ('+((e && (e.code || e.message)) || e)+'). Probá de nuevo.' };
+  });
+}
+// Después de guardar la venta: el pedido queda cobrado para todas las pantallas.
+function marcarCobroPedidoHecho(id, ventaId, auto){
+  try{
+    var o = _quienCobraAhora(auto); o.estado = 'cobrado'; o.ventaId = ventaId || null;
+    _refCobroPedido(id).set(o).catch(function(e){ console.error('Marca de cobro del pedido', id, e); });
+  }catch(e){}
+}
+// Si se reservó y al final no se cobró, se suelta enseguida (si no, vence sola).
+function soltarCobroPedidoWeb(id){
+  try{
+    var ref = _refCobroPedido(id), yo = _pantallaId();
+    window.__lrDB.runTransaction(function(tx){
+      return tx.get(ref).then(function(s){ if(s.exists && s.data().estado === 'reservado' && s.data().disp === yo) tx.delete(ref); });
+    }).catch(function(){});
+  }catch(e){}
+}
+// El pedido de un cobro que se acaba de bloquear: se saca del carrito para que
+// nadie lo vuelva a intentar por error.
+function _vaciarCarritoPedidoYaCobrado(){
+  try{ if(typeof closeConfirm === 'function') closeConfirm(); }catch(e){}
+  cart = []; _pedidoWebEnCarrito = null; pagoSel = null;
+  try{ if(typeof resetMixto === 'function') resetMixto(); }catch(e){}
+  try{ resetDelivery(); }catch(e){}
+  try{ updateCart(); }catch(e){}
+}
+var _cobroPedidoEnCurso = false;
+function _confirmarConCandado(real){
+  var id = _pedidoWebEnCarrito;
+  if(!id) return real();
+  if(_cobroPedidoEnCurso) return;
+  _cobroPedidoEnCurso = true;
+  return reservarCobroPedidoWeb(id).then(function(r){
+    _cobroPedidoEnCurso = false;
+    if(!r.ok){
+      showToast('🔒 '+r.msg, true);
+      if(r.yaCobrado){ _vaciarCarritoPedidoYaCobrado(); if(typeof actualizarDeliveryPendBadge === 'function') actualizarDeliveryPendBadge(); }
+      return;
+    }
+    if(_pedidoWebEnCarrito !== id){ soltarCobroPedidoWeb(id); return; }
+    real();
+  });
+}
+function doConfirmarVenta(yaReservado){ return yaReservado ? _doConfirmarVentaSinCandado() : _confirmarConCandado(_doConfirmarVentaSinCandado); }
+function doConfirmarVenta2(yaReservado){ return yaReservado ? _doConfirmarVenta2SinCandado() : _confirmarConCandado(_doConfirmarVenta2SinCandado); }
+
 // Guarda qué pedido web está cargado en el carrito, para poder marcarlo como
 // cobrado automáticamente cuando se confirme la venta.
 var _pedidoWebEnCarrito = null;
@@ -34911,17 +35019,22 @@ var _pedidoWebEnCarrito = null;
 // acá, para que no se cobre dos veces. Se puede destrabar a mano (por si la
 // otra caja lo cargó y después lo sacó del carrito sin cobrarlo).
 function pedidoTrabadoEnOtraCaja(p){
-  return !!(p && p.estado === 'cargado' && !p.pagoConfirmado && p.cargadoCaja &&
-    hayVariasCajas() && Number(p.cargadoCaja) !== cajaTurnoActual());
+  if(!(p && p.estado === 'cargado' && !p.pagoConfirmado)) return false;
+  if(p.cargadoDisp) return p.cargadoDisp !== _pantallaId();
+  return !!(p.cargadoCaja && hayVariasCajas() && Number(p.cargadoCaja) !== cajaTurnoActual());
 }
+// Quién tiene cargado el pedido, para los avisos.
+function textoCargadoEn(p){ return (p.cargadoPuesto ? 'el Puesto Delivery' : 'la Caja '+(p.cargadoCaja || 1))+(p.cargadoPor ? ' ('+p.cargadoPor+')' : ''); }
 function destrabarPedidoWeb(id){
   var pedidos = getPedidosWeb();
   var p = pedidos.find(function(x){ return x.id === id; });
   if(!p) return;
-  if(!confirm('¿Destrabar el pedido de '+p.nombre+'?\n\nHacelo solo si la Caja '+p.cargadoCaja+' NO lo está cobrando (ya lo sacó del carrito). Si no, se puede cobrar dos veces.')) return;
+  if(!confirm('¿Destrabar el pedido de '+p.nombre+'?\n\nHacelo solo si '+textoCargadoEn(p)+' NO lo está cobrando (ya lo sacó del carrito). Si no, se puede cobrar dos veces.')) return;
   p.estado = 'pendiente';
   delete p.cargadoCaja;
   delete p.cargadoPor;
+  delete p.cargadoDisp;
+  delete p.cargadoPuesto;
   savePedidosWeb(pedidos);
   if(typeof abrirDeliveryPendModal === 'function') abrirDeliveryPendModal();
 }
@@ -35013,7 +35126,7 @@ function cargarPedidoAlCarrito(id) {
   var pedido = pedidos.find(function(p){ return p.id===id; });
   if(!pedido) return;
   if(pedidoTrabadoEnOtraCaja(pedido)){
-    showToast('🔒 Ese pedido lo está cobrando la Caja '+pedido.cargadoCaja, true);
+    showToast('🔒 Ese pedido lo tiene cargado '+textoCargadoEn(pedido), true);
     return;
   }
 
@@ -35059,6 +35172,8 @@ function cargarPedidoAlCarrito(id) {
   pedido.estado = 'cargado';
   pedido.cargadoCaja = cajaTurnoActual();
   pedido.cargadoPor = currentEmp ? currentEmp.nombre : '';
+  pedido.cargadoDisp = _pantallaId();
+  pedido.cargadoPuesto = !!window.__lrEsPuesto;
   savePedidosWeb(pedidos);
   document.getElementById('deliveryPendModal').classList.remove('open');
   showToast('🛵 Pedido de '+pedido.nombre+' cargado al carrito');
@@ -37929,7 +38044,7 @@ function _pzTarjeta(p){
         '<button onclick="cerrarPedidoWebEntregado('+p.id+')" class="pz-btn-sec" style="color:#22c55e;border-color:rgba(34,197,94,.5)">✓ Entregado</button>'+
       '</div>';
   } else if(trabado){
-    acciones = '<div class="pz-trabado">🔒 Lo está cobrando la Caja '+p.cargadoCaja+(p.cargadoPor?' ('+_pzEsc(p.cargadoPor)+')':'')+
+    acciones = '<div class="pz-trabado">🔒 Lo tiene cargado '+_pzEsc(textoCargadoEn(p))+
       '<button onclick="destrabarPedidoWeb('+p.id+')">Destrabar</button></div>';
   } else {
     acciones =
@@ -38164,8 +38279,20 @@ function puestoCobrar(){
   _pz.cobrando = true;
   var vuelto = (_pz.medio === 'Efectivo' && Number(_pz.pagaCon)) ? Number(_pz.pagaCon) - T.total : null;
   var nombre = p.nombre, medioTxt = _pz.medio === 'Débito' ? 'Posnet' : _pz.medio;
+  reservarCobroPedidoWeb(p.id).then(function(r){
+    if(!r.ok){
+      _pz.cobrando = false;
+      showToast('🔒 '+r.msg, true);
+      if(r.yaCobrado) salirCobroPuesto(true); else renderCobroPuesto();
+      return;
+    }
+    if(_pedidoWebEnCarrito !== p.id){ _pz.cobrando = false; soltarCobroPedidoWeb(p.id); renderCobroPuesto(); return; }
+    _puestoCobrarSigue(T, vuelto, nombre, medioTxt);
+  });
+}
+function _puestoCobrarSigue(T, vuelto, nombre, medioTxt){
   try{
-    doConfirmarVenta();
+    doConfirmarVenta(true);
   }catch(e){
     _pz.cobrando = false;
     console.error('Cobro puesto', e);
@@ -38192,7 +38319,7 @@ function salirCobroPuesto(sinPreguntar){
   var p = pedidos.find(function(x){ return x.id === id; });
   if(p && !p.pagoConfirmado && p.estado === 'cargado'){
     p.estado = 'pendiente';
-    delete p.cargadoCaja; delete p.cargadoPor;
+    delete p.cargadoCaja; delete p.cargadoPor; delete p.cargadoDisp; delete p.cargadoPuesto;
     savePedidosWeb(pedidos);
   }
   cart = []; pagoSel = null; _pedidoWebEnCarrito = null;
