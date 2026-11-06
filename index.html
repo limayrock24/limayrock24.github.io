@@ -16188,6 +16188,7 @@ function iniciarEscuchasPrivadas(){
       e_(colPriv('configPriv'), function(snap){
         var c = {}; snap.forEach(function(d){ c[d.id] = d.data(); });
         window.__lrCfgPriv = c;
+        window.__lrCfgPrivListo = true;
       }, 'configuración privada');
     }catch(e){ console.warn('datos privados', e); }
 }
@@ -18177,6 +18178,73 @@ function _rentVariables(c, r){
   return [['Personal extra', c.rub.personal_extra || 0], ['Otros costos (bolsas, ferretería…)', r.otros]];
 }
 function _rentSuma(l){ return l.reduce(function(s, g){ return s + (Number(g[1]) || 0); }, 0); }
+// ── La mercadería: cuánta plata hay en stock, cuánta está quieta y el control ──
+// Valor = stock × precio de costo de cada producto (los que no tienen costo no
+// se pueden sumar y se avisan aparte). El sistema guarda ese valor en lo
+// privado del dueño: la primera vez que se abre Rentabilidad en el mes
+// (inicio) y cada vez que se vuelve a abrir (último visto). Con esas dos fotos
+// sale el control: al empezar + compras − costo de lo vendido = lo que debería
+// quedar, contra lo que quedó de verdad.
+var RENT_DIAS_QUIETA = 30, _rentQuietaAbierto = false, _rentFotoUlt = 0;
+function _rentStockDe(inv, p){ return inv[p.name] ? (Number(inv[p.name].stock) || 0) : 0; }
+function _rentValorStock(){
+  var inv = getStockInv(), valor = 0, sinCosto = 0, n = 0;
+  (PRODUCTS || []).forEach(function(p){
+    var st = _rentStockDe(inv, p);
+    if(st <= 0) return;
+    n++;
+    if(Number(p.costo) > 0) valor += st * Number(p.costo); else sinCosto++;
+  });
+  return { valor: valor, sinCosto: sinCosto, n: n };
+}
+// Mercadería quieta: productos con stock y costo que no se vendieron en los
+// últimos RENT_DIAS_QUIETA días (ni sueltos, ni en combos, ni fiados).
+function _rentQuieta(){
+  var inv = getStockInv(), vendido = {}, lim = Date.now() - RENT_DIAS_QUIETA * 86400000;
+  var anotar = function(v){
+    if(!v || v.anulada || !(new Date(v.fecha).getTime() >= lim)) return;
+    (v.items || []).forEach(function(i){ if(i.name) vendido[i.name] = true; (i.comboItems || []).forEach(function(ci){ if(ci.nombre) vendido[ci.nombre] = true; }); });
+  };
+  (VENTAS || []).forEach(anotar); (getFiados() || []).forEach(anotar);
+  var lista = [];
+  (PRODUCTS || []).forEach(function(p){
+    var st = _rentStockDe(inv, p);
+    if(st > 0 && Number(p.costo) > 0 && !vendido[p.name]) lista.push([p.name+' ('+st+' u.)', st * Number(p.costo)]);
+  });
+  lista.sort(function(a, b){ return b[1] - a[1]; });
+  return { total: _rentSuma(lista), lista: lista };
+}
+function _rentFotosStock(L){ return (((window.__lrCfgPriv || {}).stockValor) || {})['L'+L] || {}; }
+// Guarda la foto del valor de la mercadería del mes (a lo sumo cada media hora).
+function _rentGuardarFotoStock(L, sv){
+  if(!esEquipoDueno() || !window.__lrCfgPrivListo || !(sv.n > 0)) return;
+  var ahora = Date.now();
+  if(ahora - _rentFotoUlt < 30 * 60000) return;
+  var mes = fechaLocalStr(new Date()).slice(0, 7), k = 'L'+L, m = _rentFotosStock(L)[mes] || {};
+  var foto = { v: Math.round(sv.valor), ts: new Date(ahora).toISOString(), sc: sv.sinCosto };
+  var parte = { fin: foto }; if(!m.ini) parte.ini = foto;
+  var nuevo = {}; nuevo[k] = {}; nuevo[k][mes] = parte;
+  _rentFotoUlt = ahora;
+  var c = window.__lrCfgPriv; c.stockValor = c.stockValor || {}; c.stockValor[k] = c.stockValor[k] || {};
+  c.stockValor[k][mes] = Object.assign({}, m, parte);
+  try{ colPriv('configPriv').doc('stockValor').set(nuevo, { merge: true }).catch(function(e){ console.warn('valor de la mercadería', e); }); }catch(e){}
+}
+// Control de la mercadería de un mes, entre la foto del inicio y la del final
+// (en el mes en curso, hasta ahora). Las compras van por fecha de pago.
+function _rentControl(L, mes, sv, enCurso){
+  var f = _rentFotosStock(L), m = f[mes];
+  if(!m || !m.ini) return null;
+  var A = m.ini, B = null;
+  if(enCurso) B = { v: Math.round(sv.valor), ts: new Date().toISOString() };
+  else { var sig = f[_balMesVecino(mes, 1)]; B = (sig && sig.ini && new Date(sig.ini.ts) - new Date(A.ts) < 45 * 86400000) ? sig.ini : m.fin; }
+  if(!B || !(new Date(B.ts) > new Date(A.ts))) return { A: A, B: null };
+  var dA = new Date(A.ts), dB = new Date(B.ts), sA = fechaLocalStr(dA), sB = fechaLocalStr(dB), compras = 0;
+  (getEgresos() || []).forEach(function(e){ var fe = String(e.fecha || '').slice(0, 10); if(fe >= sA && fe <= sB && rubroDeEgreso(e) === 'mercaderia') compras += Number(e.monto) || 0; });
+  var costo = calcularMargenBrutoDeVentas(ventasDevengadas(dA, dB, VENTAS, getFiados())).costoTotal;
+  var deberia = A.v + compras - costo;
+  return { A: A, B: B, compras: compras, costo: costo, deberia: deberia, real: B.v, dif: B.v - deberia };
+}
+function _rentFechaCorta(ts){ var d = new Date(ts); return String(d.getDate()).padStart(2, '0')+'/'+String(d.getMonth() + 1).padStart(2, '0'); }
 function _rentDatos(){
   var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
   var d = { x: x, c: c, r: r, v: v, titPer: x.exacto ? _balNombreMes(x.mes) : 'el período elegido', enCursoMes: x.exacto && v.enCurso };
@@ -18222,6 +18290,10 @@ function _rentDatos(){
     Object.keys(c.retiros).forEach(function(s){ if(ss.indexOf(s) === -1) ss.push(s); });
     d.socios = ss.map(function(s){ var toca = r.corr[s] || 0, ret = c.retiros[s] || 0; return { s: s, pct: (r.pctSocio || {})[s] || 0, toca: toca, ret: ret, saldo: toca - ret }; });
   }
+  // La mercadería (es la de hoy; el control, el del mes elegido).
+  d.stock = _rentValorStock(); d.quieta = _rentQuieta();
+  _rentGuardarFotoStock(x.L, d.stock);
+  d.control = x.exacto ? _rentControl(x.L, x.mes, d.stock, v.enCurso) : null;
   return d;
 }
 function _rentPlataHtml(){
@@ -18284,6 +18356,26 @@ function _rentPlataHtml(){
   if(_rentSalioAbierto) h += detalle(d.salio);
   h += fila('=', 'Quedó en plata', d.entro - d.totSalio, { tot: true, sinPct: true, sub: 'No es la ganancia: acá también salió la mercadería que quedó en stock, las inversiones y los retiros' });
   h += '</div>';
+
+  // ── La mercadería ──
+  var sv = d.stock, q = d.quieta, ct = d.control;
+  h += titulo('📦 La mercadería');
+  h += '<div class="rent-esc">';
+  h += fila('', '📦 Plata en mercadería hoy', sv.valor, { sinPct: true, sub: 'Stock × precio de costo de cada producto'+(sv.sinCosto ? ' · <span style="color:var(--gold)">'+sv.sinCosto+' producto'+(sv.sinCosto === 1 ? '' : 's')+' con stock sin costo cargado no se cuentan</span>' : '') });
+  h += fila('', '🧊 Mercadería quieta '+ab(_rentQuietaAbierto), q.total, { sinPct: true, color: q.total ? 'var(--gold)' : 'var(--gray)', sub: 'Sin ventas en los últimos '+RENT_DIAS_QUIETA+' días'+(sv.valor > 0 ? ' · '+Math.round(q.total / sv.valor * 100)+' % de tu mercadería' : '')+' · tocá para ver cuáles', click: '_rentQuietaAbierto=!_rentQuietaAbierto;renderRentabilidad()' });
+  if(_rentQuietaAbierto) h += detalle(q.lista.slice(0, 15));
+  h += '</div>';
+  if(ct && ct.B){
+    h += '<div style="font-size:.68rem;color:var(--gray);margin:2px 0 6px">🔍 <b style="color:var(--light)">Control de la mercadería</b> · ¿se te está yendo mercadería sin vender?</div>';
+    h += '<div class="rent-esc">';
+    h += fila('', 'Al empezar ('+_rentFechaCorta(ct.A.ts)+')', ct.A.v, { sinPct: true, sub: 'Plata en mercadería ese día' });
+    h += fila('+', 'Compraste', ct.compras, { sinPct: true, color: 'var(--white)', sub: 'Pagos de mercadería a proveedores' });
+    h += fila('−', 'Costo de lo vendido', ct.costo, { sinPct: true, sub: 'Lo que salió vendido, a precio de costo' });
+    h += fila('=', 'Te debería quedar', ct.deberia, { tot: true, sinPct: true, color: 'var(--white)' });
+    h += fila('', 'Quedó de verdad ('+_rentFechaCorta(ct.B.ts)+')', ct.real, { sinPct: true });
+    h += fila('=', (Math.abs(ct.dif) < 1 ? '✅' : ct.dif < 0 ? '⚠' : 'ℹ')+' Diferencia', ct.dif, { tot: true, sinPct: true, sub: ct.dif < 0 ? 'Mercadería que falta: vencida, rota, faltante o stock mal cargado. También cuenta si bajaste costos.' : 'Sobra mercadería: stock mal cargado, compras sin cargar como egreso o costos que subiste.' });
+    h += '</div>';
+  } else h += '<div style="font-size:.68rem;color:var(--gray);margin:-4px 0 10px;line-height:1.45">🔍 Control de la mercadería: '+(ct ? 'el sistema guardó el valor el '+_rentFechaCorta(ct.A.ts)+'; el control aparece cuando haya otra foto para comparar.' : (d.enCursoMes ? 'arranca hoy: el sistema guarda el valor de la mercadería y desde ahora compara lo que debería quedar con lo que quedó.' : 'no hay fotos de la mercadería de ese mes (se guardan desde noviembre de 2026).'))+'</div>';
 
   // ── 3) Plata libre para decidir (la plata de hoy) ──
   if(d.liq){
@@ -18354,6 +18446,14 @@ function _rentPdfContenido(){
   h += tabla(['Concepto', 'Monto', ''], [{ c: ['+ Entro (ventas cobradas y fiados cobrados)', $(d.entro), ''] }, { c: ['- Salio', menos(d.totSalio), ''] }]
     .concat(det(d.salio)).concat([{ tot: true, c: ['= QUEDO EN PLATA', $(d.entro - d.totSalio), ''] }]));
   h += '<p class="rent-nota">No es la ganancia: aca tambien salio la mercaderia que quedo en stock, las inversiones y los retiros.</p>';
+  var sv = d.stock, q = d.quieta, ct = d.control;
+  var fm = [{ c: ['Plata en mercaderia hoy (stock x precio de costo)', $(sv.valor), ''] }, { c: ['Mercaderia quieta (sin ventas en '+RENT_DIAS_QUIETA+' dias)', $(q.total), sv.valor > 0 ? Math.round(q.total / sv.valor * 100)+' %' : ''] }].concat(det(q.lista.slice(0, 15)));
+  h += '<h3>La mercaderia</h3>'+tabla(['Concepto', 'Monto', '% del stock'], fm);
+  if(sv.sinCosto) h += '<p class="rent-nota">'+sv.sinCosto+' producto(s) con stock sin costo cargado no se cuentan.</p>';
+  if(ct && ct.B) h += tabla(['Control de la mercaderia', 'Monto', ''], [
+    { c: ['Al empezar ('+_rentFechaCorta(ct.A.ts)+')', $(ct.A.v), ''] }, { c: ['+ Compraste', $(ct.compras), ''] }, { c: ['- Costo de lo vendido', menos(ct.costo), ''] },
+    { tot: true, c: ['= TE DEBERIA QUEDAR', $(ct.deberia), ''] }, { c: ['Quedo de verdad ('+_rentFechaCorta(ct.B.ts)+')', $(ct.real), ''] }, { tot: true, c: ['= DIFERENCIA', $(ct.dif), ''] }]);
+  else h += '<p class="rent-nota">Control de la mercaderia: todavia no hay dos fotos del valor para comparar.</p>';
   if(d.liq){
     var fl = [{ c: ['Plata que hay hoy (caja '+$(d.liq.efectivoCaja)+', fuera de la caja '+$(d.liq.efectivoFuera)+', Mercado Pago '+$(d.liq.mercadoPago)+')', $(d.hoy), ''] }];
     if(d.enCursoMes){ fl.push({ c: ['- Falta pagar este mes (como el mes pasado)', menos(d.totFalta), ''] }); fl = fl.concat(det(d.falta)); }
