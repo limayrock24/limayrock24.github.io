@@ -3335,6 +3335,27 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .rent-box.net .rv{font-size:1.7rem}
 .rent-box.net.pos .rv{color:var(--green)}
 .rent-box.net.neg .rv{color:var(--red)}
+/* Rentabilidad: estado de resultados en escalera */
+.rent-esc{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px}
+.rent-esc .f{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--border)}
+.rent-esc .f:first-child{border-top:0}
+.rent-esc .f.click{cursor:pointer}
+.rent-esc .s{width:14px;font-family:'Oswald',sans-serif;color:var(--gray);font-size:1rem;text-align:center;flex-shrink:0}
+.rent-esc .t{flex:1;font-size:.82rem;color:var(--light);line-height:1.25}
+.rent-esc .t small{display:block;font-size:.64rem;color:var(--gray);margin-top:1px}
+.rent-esc .m{font-family:'Oswald',sans-serif;font-size:1rem;white-space:nowrap}
+.rent-esc .p{font-size:.66rem;color:var(--gray);width:34px;text-align:right;flex-shrink:0}
+.rent-esc .f.tot{background:rgba(255,255,255,.045)}
+.rent-esc .f.tot .t{font-family:'Oswald',sans-serif;letter-spacing:1px;text-transform:uppercase;font-size:.8rem;color:var(--white)}
+.rent-esc .f.tot .m{font-size:1.3rem}
+.rent-esc .f.tot .t small{font-family:'Barlow',sans-serif;letter-spacing:0;text-transform:none;font-size:.66rem}
+.rent-esc .det{padding:2px 12px 8px 34px;background:rgba(0,0,0,.18)}
+.rent-esc .det div{display:flex;justify-content:space-between;gap:10px;font-size:.74rem;color:var(--gray);padding:3px 0}
+.rent-esc .det div b{font-weight:400;color:var(--light);font-family:'Oswald',sans-serif;white-space:nowrap}
+.rent-esc .aviso{padding:6px 12px 8px 34px;font-size:.66rem;color:var(--gold);line-height:1.35}
+.rent-mas{margin-top:18px;border:1px solid var(--border);border-radius:8px;padding:0 12px}
+.rent-mas>summary{cursor:pointer;padding:12px 0;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:1.5px;color:var(--gray);text-transform:uppercase}
+.rent-mas[open]>summary{color:var(--gold)}
 .rent-box.net{grid-column:span 2;border-width:2px}
 .rent-bar{height:10px;border-radius:5px;overflow:hidden;background:var(--border);margin-bottom:4px;display:flex}
 .rent-bar-fill{height:100%;border-radius:5px;transition:width .5s ease}
@@ -5171,6 +5192,7 @@ body.night-on{background:#080005}
         <input type="date" id="rentFechaHasta" onchange="selPeriodoCustom()" style="background:var(--card);border:1.5px solid var(--border);border-radius:3px;padding:5px 8px;color:var(--white);font-family:Barlow,sans-serif;font-size:.78rem;outline:none">
       </div>
       <div id="rentPlata"></div>
+      <details id="rentMasDetalle" class="rent-mas"><summary>🔎 Más detalle (ventas, pagos, medios de cobro, día por día)</summary>
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:18px 0 4px;text-transform:uppercase">🔄 Plata que entró y salió de las cuentas</div>
       <div style="font-size:.68rem;color:var(--gray);margin-bottom:8px">Tocá un cuadro para ver la lista de ventas, de pagos o de consumos.</div>
       <div class="rent-grid" id="rentGrid"></div>
@@ -5191,6 +5213,7 @@ body.night-on{background:#080005}
 
       <div style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:14px 0 8px;text-transform:uppercase">📈 Margen bruto día por día</div>
       <div style="border:1px solid var(--border);border-radius:4px;overflow:hidden" id="margenDiaEl"></div>
+      </details>
 
       <div class="section-export-bar" style="margin-top:10px">
         <button class="sec-exp-btn pdf" onclick="exportarRentabilidadPDF()">📄 Exportar reporte</button>
@@ -18110,8 +18133,8 @@ function calcularResumenRentabilidad(rango) {
 // La plata del período, con la misma cuenta que el Balance mensual: con un
 // mes elegido da lo mismo que la columna de este local en el balance; con
 // otro período, cada pago cuenta por su fecha de pago (aproximado).
-function _rentBalance(){
-  var p = _periodoCurrent, L = localActual(), otro = L === 1 ? 2 : 1, mes = null, rg = null;
+function _rentBalance(mesForzado){
+  var p = mesForzado ? 'mes:'+mesForzado : _periodoCurrent, L = localActual(), otro = L === 1 ? 2 : 1, mes = null, rg = null;
   if(periodoEsMes(p)) mes = p === 'mes' ? fechaLocalStr(new Date()).slice(0,7) : p.slice(4);
   else { var fr = getFechasRango(p); rg = { d0: fr.desde, d1: fr.hasta }; mes = fechaLocalStr(fr.hasta).slice(0,7); }
   var r = rg || _balRango(mes), t0 = r.d0.getTime(), t1 = r.d1.getTime();
@@ -18124,60 +18147,144 @@ function _rentBalance(){
   var b = _balCalcularTodo(mes, ventas, pool, cierres, rg);
   return { b: b, c: b.cols[L - 1], v: b.ventas[L - 1], L: L, exacto: !rg, mes: mes };
 }
-var _rentGastosAbierto = false, _rentInvAbierto = false;
+// ── RENTABILIDAD: estado de resultados y la plata ───────────────────────────
+// Dos cuentas separadas, para no mezclar "¿gano?" con "¿dónde está la plata?":
+//  1) Estado de resultados: cuenta cuando se vende (el fiado entra el día que
+//     se fía). Es la misma cuenta que el Balance mensual.
+//  2) La plata: cuenta cuando la plata entra o sale.
+// Gastos variables: los que suben si se vende más (personal extra, bolsas y
+// otros costos). Los demás operativos son fijos.
+var _rentGastosAbierto = false, _rentInvAbierto = false, _rentVarAbierto = false, _rentSalioAbierto = false, _rentLibreAbierto = false;
+function _rentFijos(c, r){
+  return [['Sueldos', r.sueldos], ['Cargas sociales', r.cargas], ['Alquiler', c.rub.alquiler || 0], ['Servicios', r.servicios], ['Impuestos y contadora', r.impuestos]];
+}
+function _rentVariables(c, r){
+  return [['Personal extra', c.rub.personal_extra || 0], ['Otros costos (bolsas, ferretería…)', r.otros]];
+}
+function _rentSuma(l){ return l.reduce(function(s, g){ return s + (Number(g[1]) || 0); }, 0); }
 function _rentPlataHtml(){
   var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
   var $ = function(n){ return fmt(Math.round(Number(n) || 0)); };
   var col = function(n){ return n >= 0 ? 'var(--green)' : 'var(--red)'; };
-  var sub = function(t){ return t ? '<div style="font-size:.66rem;color:var(--gray);margin-top:4px;line-height:1.35">'+t+'</div>' : ''; };
-  var caja = function(titulo, monto, color, txt, opt){
-    opt = opt || {};
-    return '<div class="rent-box'+(opt.net ? ' net' : '')+'" style="'+(opt.click ? 'cursor:pointer;' : '')+(opt.ancho ? 'grid-column:1/-1;' : '')+(opt.borde ? 'border-color:'+opt.borde+';' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
-      '<div class="rl">'+titulo+'</div><div class="rv" style="color:'+color+(opt.chico ? ';font-size:1.1rem' : '')+'">'+$(monto)+'</div>'+sub(txt)+'</div>';
-  };
-  var titulo = function(t, extra){ return '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:'+(extra || '14px 0 8px')+';text-transform:uppercase">'+t+'</div>'; };
+  var pct = function(n){ return r.ventas > 0 ? Math.round(n / r.ventas * 100)+' %' : ''; };
+  var titulo = function(t, extra){ return '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);margin:'+(extra || '16px 0 8px')+';text-transform:uppercase">'+t+'</div>'; };
   var nota = function(t){ return '<div style="grid-column:1/-1;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:6px;font-size:.72rem;color:var(--gray)">'+t+'</div>'; };
-  var gastos = r.totalOp + r.creditos;
-  var rubros = [
-    ['Sueldos', r.sueldos], ['Cargas sociales', r.cargas], ['Personal extra y limpieza', c.rub.personal_extra || 0],
-    ['Alquiler', c.rub.alquiler || 0], ['Servicios', r.servicios], ['Impuestos y contadora', r.impuestos],
-    ['Otros costos (costos varios)', r.otros], ['Cuotas de créditos y préstamos', r.creditos]
-  ].filter(function(g){ return Math.round(g[1]) !== 0; });
+  var caja = function(tit, monto, color, txt, opt){
+    opt = opt || {};
+    return '<div class="rent-box'+(opt.net ? ' net' : '')+'" style="'+(opt.ancho ? 'grid-column:1/-1;' : '')+(opt.borde ? 'border-color:'+opt.borde+';' : '')+(opt.click ? 'cursor:pointer;' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
+      '<div class="rl">'+tit+'</div><div class="rv" style="color:'+color+(opt.chico ? ';font-size:1.1rem' : '')+'">'+$(monto)+'</div>'+
+      (txt ? '<div style="font-size:.66rem;color:var(--gray);margin-top:4px;line-height:1.35">'+txt+'</div>' : '')+'</div>';
+  };
+  // Una fila de la escalera: signo, qué es, cuánto y qué % de lo vendido.
+  var fila = function(signo, tit, monto, opt){
+    opt = opt || {};
+    var color = opt.color || (signo === '−' ? 'var(--red)' : signo === '=' ? col(monto) : 'var(--white)');
+    return '<div class="f'+(opt.tot ? ' tot' : '')+(opt.click ? ' click' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
+      '<span class="s">'+signo+'</span><span class="t">'+tit+(opt.sub ? '<small>'+opt.sub+'</small>' : '')+'</span>'+
+      '<span class="m" style="color:'+color+'">'+((signo === '−' ? Math.round(monto) > 0 : Math.round(monto) < 0) ? '−' : '')+$(Math.abs(monto))+'</span>'+
+      '<span class="p">'+(opt.sinPct ? '' : pct(Math.abs(monto)))+'</span></div>';
+  };
+  var detalle = function(lista){
+    lista = lista.filter(function(g){ return Math.round(g[1]) !== 0; });
+    return '<div class="det">'+(lista.length ? lista.map(function(g){ return '<div><span>'+g[0]+'</span><b>'+$(g[1])+'</b></div>'; }).join('') : '<div><span>Nada cargado en el período</span></div>')+'</div>';
+  };
   var titPer = x.exacto ? _balNombreMes(x.mes) : 'el período elegido';
-  var h = titulo('💵 La plata de '+escBaja(titPer)+' — Limay '+x.L, '0 0 4px')+
-    '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px;line-height:1.45">'+(x.exacto
-      ? 'Misma cuenta que el Balance mensual: da los mismos números que la columna de Limay '+x.L+'.'+(v.enCurso ? ' Mes en curso: van '+v.diasTrans+' de '+v.diasMes+' días.' : '')
-      : 'Aproximado: cada pago cuenta el día que se pagó (el alquiler y los sueldos se pagan una vez por mes). Para el número oficial elegí un mes.')+'</div>';
-  h += '<div class="rent-grid" style="margin-bottom:8px">';
-  h += caja('🛒 Vendiste', r.ventas, 'var(--white)', 'Sin el recargo del posnet');
-  h += caja('📈 Te quedó de lo vendido', r.margen, 'var(--green)',
-    (r.margenPctV != null ? Math.round(r.margenPctV)+' % de lo vendido' : 'Margen bruto')+
-    (Math.round(r.otrosIng) ? '<br>+ '+$(r.otrosIng)+' de cargas virtuales y cambio' : '')+
-    (r.pctSinCosto >= 0.5 ? '<br><span style="color:'+(r.pctSinCosto > 10 ? '#e74c3c' : 'var(--gold)')+'">'+Math.round(r.pctSinCosto)+' % sin costo cargado</span>' : ''));
-  h += caja('💸 Gastos del negocio '+(_rentGastosAbierto ? '▲' : '▼'), gastos, 'var(--red)', 'Tocá para ver cada rubro', { click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()', borde: _rentGastosAbierto ? 'var(--gold)' : '' });
-  h += caja('🏗 Inversiones '+(_rentInvAbierto ? '▲' : '▼'), r.inversion, Math.round(r.inversion) ? 'var(--red)' : 'var(--gray)', 'Equipamiento: no es gasto del mes<br>Tocá para ver cada una', { click: '_rentInvAbierto=!_rentInvAbierto;renderRentabilidad()', borde: _rentInvAbierto ? 'var(--gold)' : '' });
+  var enCursoMes = x.exacto && v.enCurso;
+  // El mes anterior: para los gastos que todavía no se pagaron este mes.
+  var ant = null;
+  if(enCursoMes){ try{ ant = _rentBalance(_balMesVecino(x.mes, -1)); }catch(e){ ant = null; } }
+  var fijos = _rentFijos(c, r), vars = _rentVariables(c, r);
+  var totFijos = _rentSuma(fijos), totVars = _rentSuma(vars);
+  var sinCostoFila = r.ventas - v.costo - r.margen;   // ventas de productos sin costo cargado
+  var gan = r.resOp;                                   // ganancia del negocio (antes de cuotas e inversiones)
+
+  // ── 1) Estado de resultados ──
+  var h = titulo('📊 Estado de resultados · '+escBaja(titPer), '0 0 4px')+
+    '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px;line-height:1.45">Limay '+x.L+' · ¿El negocio gana plata? '+(x.exacto
+      ? 'Mismos números que el Balance mensual.'+(v.enCurso ? ' Mes en curso: van '+v.diasTrans+' de '+v.diasMes+' días.' : '')
+      : 'Aproximado: cada pago cuenta el día que se pagó. Para el número oficial elegí un mes.')+'</div>';
+  h += '<div class="rent-esc">';
+  h += fila('', '🛒 Vendiste', r.ventas, { sub: 'Sin el recargo del posnet · el fiado cuenta el día que se fía' });
+  h += fila('−', 'Costo de lo vendido', v.costo, { sub: 'Lo que te costó al proveedor lo que vendiste' });
+  if(Math.round(sinCostoFila) !== 0) h += fila('−', 'Ventas sin costo cargado', sinCostoFila, { sub: 'No se cuentan como ganancia hasta que cargues el costo', color: 'var(--gold)' });
+  h += fila('=', '📈 Margen bruto', r.margen, { tot: true, sub: 'Lo que te dejó la mercadería' });
+  if(Math.round(r.otrosIng)) h += fila('+', 'Otros ingresos', r.otrosIng, { sub: 'Ganancia de cargas virtuales y cambio de efectivo', color: 'var(--green)' });
+  h += fila('−', 'Gastos variables '+(_rentVarAbierto ? '▲' : '▼'), totVars, { sub: 'Suben si vendés más', click: '_rentVarAbierto=!_rentVarAbierto;renderRentabilidad()' });
+  if(_rentVarAbierto) h += detalle(vars);
+  h += fila('−', 'Gastos fijos '+(_rentGastosAbierto ? '▲' : '▼'), totFijos, { sub: 'Se pagan vendas o no', click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()' });
   if(_rentGastosAbierto){
-    h += '<div style="grid-column:1/-1;border:1px solid var(--gold);border-radius:6px;background:var(--card);padding:6px 0">'+
-      (rubros.length ? rubros.map(function(g){ return '<div style="display: flex;justify-content:space-between;gap:10px;padding:5px 14px;font-size:.78rem;color:var(--light)"><span>'+g[0]+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(g[1])+'</span></div>'; }).join('')
-        : '<div style="padding:5px 14px;font-size:.78rem;color:var(--gray)">Sin gastos cargados en el período</div>')+
-      (r.pendTotal > 0 ? '<div style="padding:4px 14px;font-size:.66rem;color:var(--gold)">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>' : '')+
-      '</div>';
+    h += detalle(fijos);
+    if(r.pendTotal > 0) h += '<div class="aviso">Los sueldos incluyen '+$(r.pendTotal)+' de turnos todavía sin pagar (estimado con el valor hora).</div>';
   }
+  h += fila('=', (gan >= 0 ? '✅' : '🔴')+' Ganancia del negocio', gan, { tot: true, sub: Math.round(v.sinCobrar) ? 'De esto, '+$(v.sinCobrar)+' está en fiado sin cobrar' : 'Lo que dejó el negocio en el período' });
+  h += fila('−', 'Cuotas de créditos', r.creditos, { sub: 'Intereses y gastos de préstamos' });
+  h += fila('−', 'Inversiones '+(_rentInvAbierto ? '▲' : '▼'), r.inversion, { sub: 'Equipamiento: no es gasto, pero sale de la ganancia', click: '_rentInvAbierto=!_rentInvAbierto;renderRentabilidad()' });
   if(_rentInvAbierto){
-    // Cada inversión del período: la fecha, a qué fue y el monto.
     var invs = c.items.filter(function(it){ return it.seccion === _balSeccion('inversion'); }).sort(function(a, b){ return String(a.fecha).localeCompare(String(b.fecha)); });
-    h += '<div style="grid-column:1/-1;border:1px solid var(--gold);border-radius:6px;background:var(--card);padding:6px 0">'+
-      (invs.length ? invs.map(function(it){
-        var que = [it.detalle, it.concepto].filter(function(t, i, a){ return t && a.indexOf(t) === i; }).join(' · ') || 'Sin detalle';
-        return '<div style="display: flex;justify-content:space-between;gap:10px;padding:5px 14px;font-size:.78rem;color:var(--light)"><span><span style="color:var(--gray)">'+escBaja(String(it.fecha || '').split('-').reverse().join('/'))+'</span> · '+escBaja(que)+'</span><span style="font-family:Oswald,sans-serif;white-space:nowrap">'+$(it.monto)+'</span></div>';
-      }).join('') : '<div style="padding:5px 14px;font-size:.78rem;color:var(--gray)">Sin inversiones en el período</div>')+
-      '</div>';
+    h += detalle(invs.map(function(it){
+      var que = [it.detalle, it.concepto].filter(function(t, i, a){ return t && a.indexOf(t) === i; }).join(' · ') || 'Sin detalle';
+      return [escBaja(String(it.fecha || '').split('-').reverse().join('/'))+' · '+escBaja(que), it.monto];
+    }));
   }
-  h += caja((r.neto >= 0 ? '✅' : '🔴')+' Ganancia del negocio', r.neto, col(r.neto), 'Lo que te quedó de lo vendido − gastos del negocio', { net: true });
-  h += caja('💰 Disponible para repartir', r.disponible, col(r.disponible), 'Ganancia − inversiones', { ancho: true });
+  h += fila('=', '💰 Disponible para repartir', r.disponible, { tot: true, sub: 'Lo que pueden retirar los socios sin descapitalizar el negocio' });
   h += '</div>';
-  if(c.nSinClasif) h += '<div style="margin-bottom:8px;padding:8px 12px;border:1px solid #e74c3c;border-radius:6px;font-size:.72rem;color:#e74c3c;font-weight:700">⚠ Hay '+c.nSinClasif+' pago'+(c.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+$(c.sinClasif)+') que no están en esta cuenta. Clasificalos en Egresos → 🏷 Clasificar.</div>';
-  // Reparto entre socios: solo con el mes terminado.
+  if(c.nSinClasif) h += '<div style="margin-bottom:8px;padding:8px 12px;border:1px solid #e74c3c;border-radius:6px;font-size:.72rem;color:#e74c3c;font-weight:700">⚠ Hay '+c.nSinClasif+' pago'+(c.nSinClasif === 1 ? '' : 's')+' sin clasificar ('+$(c.sinClasif)+') que no se cuentan. Clasificalos en Egresos.</div>';
+
+  // ── 2) La plata del período ──
+  var salio = { 'Mercadería': 0, 'Gastos del negocio': 0, 'Cuotas de créditos': 0, 'Inversiones': 0, 'Retiros de socios': 0, 'Sin clasificar': 0 };
+  c.items.forEach(function(it){
+    var s = String(it.seccion || ''), k = /^Mercader/.test(s) ? 'Mercadería' : /^Inversion/.test(s) ? 'Inversiones' : /^Retiros/.test(s) ? 'Retiros de socios' : /^Cuotas/.test(s) ? 'Cuotas de créditos' : /^Sin clasificar/.test(s) ? 'Sin clasificar' : 'Gastos del negocio';
+    salio[k] += Number(it.monto) || 0;
+  });
+  var listaSalio = Object.keys(salio).map(function(k){ return [k, salio[k]]; });
+  var totSalio = _rentSuma(listaSalio), entro = r.plataVentas + r.otrosIng;
+  h += titulo('🔄 La plata de '+escBaja(titPer));
+  h += '<div class="rent-esc">';
+  h += fila('+', '💵 Entró', entro, { color: 'var(--green)', sinPct: true, sub: 'Ventas cobradas y fiados cobrados'+(Math.round(r.otrosIng) ? ', más cargas virtuales y cambio' : '') });
+  h += fila('−', 'Salió '+(_rentSalioAbierto ? '▲' : '▼'), totSalio, { sinPct: true, sub: 'Tocá para ver a qué se fue', click: '_rentSalioAbierto=!_rentSalioAbierto;renderRentabilidad()' });
+  if(_rentSalioAbierto) h += detalle(listaSalio);
+  h += fila('=', 'Quedó en plata', entro - totSalio, { tot: true, sinPct: true, sub: 'No es la ganancia: acá también salió la mercadería que quedó en stock, las inversiones y los retiros' });
+  h += '</div>';
+
+  // ── 3) Plata libre para decidir (la plata de hoy) ──
+  try{
+    var liq = calcularLiquidez(), tot = liq.efectivoCaja + liq.efectivoFuera + liq.mercadoPago;
+    var falta = [];
+    if(ant){
+      var fa = _rentFijos(ant.c, ant.c.res), fh = _rentFijos(c, r);
+      fh[0][1] = c.rub.sueldos || 0;   // sueldos: solo lo pagado, sin lo estimado
+      fa[0][1] = ant.c.rub.sueldos || 0;
+      fa.forEach(function(g, i){ var d = (Number(g[1]) || 0) - (Number(fh[i][1]) || 0); if(d > 0) falta.push([g[0]+' (como el mes pasado)', d]); });
+      if(Math.round(ant.c.res.creditos - r.creditos) > 0) falta.push(['Cuotas de créditos (como el mes pasado)', ant.c.res.creditos - r.creditos]);
+    }
+    var totFalta = _rentSuma(falta);
+    h += titulo('🟢 Plata libre para decidir');
+    h += '<div class="rent-esc">';
+    h += fila('', '🏦 Plata que hay hoy', tot, { sinPct: true, sub: 'Caja '+$(liq.efectivoCaja)+' · Fuera de la caja '+$(liq.efectivoFuera)+' · Mercado Pago '+$(liq.mercadoPago) });
+    if(enCursoMes){
+      h += fila('−', 'Falta pagar este mes '+(_rentLibreAbierto ? '▲' : '▼'), totFalta, { sinPct: true, sub: 'Gastos fijos que todavía no cargaste, tomando lo del mes pasado', click: '_rentLibreAbierto=!_rentLibreAbierto;renderRentabilidad()' });
+      if(_rentLibreAbierto) h += detalle(falta);
+    }
+    h += fila('=', '🟢 Plata libre', tot - totFalta, { tot: true, sinPct: true, sub: 'Lo que podés usar para mercadería, inversión o contratar sin quedarte corto' });
+    h += '</div>';
+  }catch(e){}
+
+  // ── 4) Cuánto hay que vender por día ──
+  if(x.exacto && r.ventas > 0){
+    var fijosRef = totFijos + r.creditos;
+    if(ant){ var fAnt = _rentSuma(_rentFijos(ant.c, ant.c.res)) + ant.c.res.creditos; if(fAnt > fijosRef) fijosRef = fAnt; }
+    var contrib = (r.margen - totVars) / r.ventas;
+    if(contrib > 0){
+      var eqDia = Math.max(0, fijosRef - r.otrosIng) / contrib / v.diasMes, vd = r.ventaDiaria, ok = vd >= eqDia;
+      h += titulo('🎯 ¿Cuánto tengo que vender?');
+      h += '<div class="rent-grid" style="margin-bottom:4px">'+
+        caja('Para cubrir gastos', eqDia, 'var(--white)', 'por día · gastos fijos y cuotas de '+$(fijosRef)+(ant ? ' (el más alto entre este mes y el anterior)' : ''))+
+        caja('Venís vendiendo', vd, ok ? 'var(--green)' : 'var(--red)', 'por día · '+(ok ? '✅ '+$(vd - eqDia)+' por encima' : '⚠ faltan '+$(eqDia - vd)+' por día'))+
+        '</div>';
+    }
+  }
+
+  // ── 5) Reparto entre socios: solo con el mes terminado ──
   h += titulo('👥 Lo que le toca a cada socio');
   h += '<div class="rent-grid" style="margin-bottom:8px">';
   if(!x.exacto) h += nota('El reparto se ve eligiendo un mes que ya terminó.');
@@ -18186,29 +18293,11 @@ function _rentPlataHtml(){
     var socios = Object.keys(r.pctSocio || {});
     Object.keys(c.retiros).forEach(function(s){ if(socios.indexOf(s) === -1) socios.push(s); });
     socios.forEach(function(s){
-      var toca = r.corr[s] || 0, ret = c.retiros[s] || 0, saldo = toca - ret, pct = (r.pctSocio || {})[s] || 0;
-      h += caja(escBaja(s)+' ('+pct+' %) · '+(saldo >= 0 ? 'le queda' : 'retiró de más'), Math.abs(saldo), col(saldo), 'Le toca '+$(toca)+'<br>Ya retiró '+$(ret));
+      var toca = r.corr[s] || 0, ret = c.retiros[s] || 0, saldo = toca - ret, pc = (r.pctSocio || {})[s] || 0;
+      h += caja(escBaja(s)+' ('+pc+' %) · '+(saldo >= 0 ? 'le queda' : 'retiró de más'), Math.abs(saldo), col(saldo), 'Le toca '+$(toca)+'<br>Ya retiró '+$(ret));
     });
   }
   h += '</div>';
-  // Lo que salió pero no es gasto del negocio.
-  var retT = _balSumaMapa(c.retiros);
-  h += titulo('Aparte (no son gastos del negocio)');
-  h += '<div class="rent-grid" style="margin-bottom:8px">'+
-    caja('📦 Mercadería pagada', c.mercaderia, 'var(--white)', 'Ya está en lo que te costó lo vendido', { chico: true })+
-    caja('👤 Retiros de socios', retT, 'var(--white)', 'Se descuentan de lo que le toca a cada uno', { chico: true })+
-    caja('📝 Fiado sin cobrar', v.sinCobrar, 'var(--gold)', (v.enCurso ? 'A hoy. ' : 'Al cierre. ')+'Ya contado como venta', { chico: true, ancho: true })+
-    '</div>';
-  // La plata que hay hoy (no depende del período).
-  try{
-    var liq = calcularLiquidez(), tot = liq.efectivoCaja + liq.efectivoFuera + liq.mercadoPago;
-    h += titulo('🏦 La plata que hay hoy')+'<div class="rent-grid" style="margin-bottom:4px">'+
-      caja('💵 En la caja', liq.efectivoCaja, col(liq.efectivoCaja), '', { chico: true })+
-      caja('👜 Efectivo fuera de la caja', liq.efectivoFuera, col(liq.efectivoFuera), '', { chico: true })+
-      caja('💳 Mercado Pago', liq.mercadoPago, col(liq.mercadoPago), '', { chico: true })+
-      caja('🏦 Total', tot, 'var(--white)', '', { chico: true })+
-      '</div><div style="font-size:.64rem;color:var(--gray)">Es la plata de ahora, sin importar el período elegido. El detalle está más abajo, en 💰 Liquidez del local.</div>';
-  }catch(e){}
   return h;
 }
 
