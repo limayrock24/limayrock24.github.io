@@ -18245,6 +18245,34 @@ function _rentControl(L, mes, sv, enCurso){
   return { A: A, B: B, compras: compras, costo: costo, deberia: deberia, real: B.v, dif: B.v - deberia };
 }
 function _rentFechaCorta(ts){ var d = new Date(ts); return String(d.getDate()).padStart(2, '0')+'/'+String(d.getMonth() + 1).padStart(2, '0'); }
+// ── Envíos del delivery: son del repartidor ─────────────────────────────────
+// El envío que paga el cliente no es venta de Limay Rock (la venta lo guarda
+// aparte) y lo que se le paga al repartidor no es gasto: no suman ni restan en
+// la ganancia. Se muestran solo para saber cuánto se cobró, cuánto ya se le
+// pagó y cuánto se le debe (esa plata está en la caja o en la cuenta, pero es suya).
+var _rentEnviosAbierto = false;
+function _rentEnvios(desde, hasta){
+  var porVenta = {};
+  (getPedidosWeb() || []).forEach(function(p){ if(p && p.ventaId && !p.anulado) porVenta[p.ventaId] = p; });
+  var o = { cobrados: 0, n: 0, pagados: 0, pend: 0, mano: 0, nMano: 0, porRep: {}, debeHoy: 0, debeRep: {} };
+  (getDeliveries() || []).forEach(function(dl){
+    var t = new Date(dl.fecha);
+    if(!(t >= desde && t <= hasta)) return;
+    var m = Number(dl.monto) || 0;
+    if(!(m > 0)) return;
+    o.cobrados += m; o.n++;
+    var p = porVenta[dl.ventaId];
+    if(!p || !p.repartidor){ o.mano += m; o.nMano++; return; }
+    var r = o.porRep[p.repartidor] || (o.porRep[p.repartidor] = { pagado: 0, pend: 0 });
+    if(p.pagadoRepartidor){ o.pagados += m; r.pagado += m; } else { o.pend += m; r.pend += m; }
+  });
+  // Lo que se le debe HOY a cada repartidor (todos los envíos entregados sin pagar, de cualquier fecha).
+  pedidosEntregadosEnRango({ desde: new Date(0), hasta: new Date() }).forEach(function(p){
+    if(p.pagadoRepartidor || !(p.envio > 0)) return;
+    o.debeHoy += p.envio; o.debeRep[p.repartidor] = (o.debeRep[p.repartidor] || 0) + p.envio;
+  });
+  return o;
+}
 function _rentDatos(){
   var x = _rentBalance(), c = x.c, r = c.res, v = x.v;
   var d = { x: x, c: c, r: r, v: v, titPer: x.exacto ? _balNombreMes(x.mes) : 'el período elegido', enCursoMes: x.exacto && v.enCurso };
@@ -18290,6 +18318,9 @@ function _rentDatos(){
     Object.keys(c.retiros).forEach(function(s){ if(ss.indexOf(s) === -1) ss.push(s); });
     d.socios = ss.map(function(s){ var toca = r.corr[s] || 0, ret = c.retiros[s] || 0; return { s: s, pct: (r.pctSocio || {})[s] || 0, toca: toca, ret: ret, saldo: toca - ret }; });
   }
+  // Envíos del período (son del repartidor).
+  var rgE = x.exacto ? _balRango(x.mes) : null, frE = rgE ? null : getFechasRango(_periodoCurrent);
+  d.envios = _rentEnvios(rgE ? rgE.d0 : frE.desde, rgE ? rgE.d1 : frE.hasta);
   // La mercadería (es la de hoy; el control, el del mes elegido).
   d.stock = _rentValorStock(); d.quieta = _rentQuieta();
   _rentGuardarFotoStock(x.L, d.stock);
@@ -18357,6 +18388,19 @@ function _rentPlataHtml(){
   h += fila('=', 'Quedó en plata', d.entro - d.totSalio, { tot: true, sinPct: true, sub: 'No es la ganancia: acá también salió la mercadería que quedó en stock, las inversiones y los retiros' });
   h += '</div>';
 
+  // ── Envíos del delivery (no entran en la ganancia) ──
+  var en = d.envios;
+  if(en && (en.n || en.debeHoy)){
+    h += titulo('🛵 Envíos del delivery');
+    h += '<div class="rent-esc">';
+    h += fila('', 'Envíos cobrados', en.cobrados, { sinPct: true, sub: en.n+' envío'+(en.n === 1 ? '' : 's')+' · no suman en la ganancia: son del repartidor' });
+    h += fila('', '✅ Ya pagados al repartidor', en.pagados, { sinPct: true, color: 'var(--green)' });
+    h += fila('', '⏳ Falta pagarle '+ab(_rentEnviosAbierto), en.pend, { sinPct: true, color: en.pend ? 'var(--gold)' : 'var(--gray)', sub: 'Tocá para ver por repartidor', click: '_rentEnviosAbierto=!_rentEnviosAbierto;renderRentabilidad()' });
+    if(_rentEnviosAbierto) h += detalle(Object.keys(en.porRep).map(function(k){ return [k+' (le falta)', en.porRep[k].pend]; }));
+    if(en.mano) h += '<div class="aviso">'+$(en.mano)+' de envíos se cargaron a mano en el mostrador, sin repartidor en el sistema.</div>';
+    h += '</div>';
+  }
+
   // ── La mercadería ──
   var sv = d.stock, q = d.quieta, ct = d.control;
   h += titulo('📦 La mercadería');
@@ -18373,7 +18417,7 @@ function _rentPlataHtml(){
     h += fila('−', 'Costo de lo vendido', ct.costo, { sinPct: true, sub: 'Lo que salió vendido, a precio de costo' });
     h += fila('=', 'Te debería quedar', ct.deberia, { tot: true, sinPct: true, color: 'var(--white)' });
     h += fila('', 'Quedó de verdad ('+_rentFechaCorta(ct.B.ts)+')', ct.real, { sinPct: true });
-    h += fila('=', (Math.abs(ct.dif) < 1 ? '✅' : ct.dif < 0 ? '⚠' : 'ℹ')+' Diferencia', ct.dif, { tot: true, sinPct: true, sub: ct.dif < 0 ? 'Mercadería que falta: vencida, rota, faltante o stock mal cargado. También cuenta si bajaste costos.' : 'Sobra mercadería: stock mal cargado, compras sin cargar como egreso o costos que subiste.' });
+    h += fila('=', (Math.abs(ct.dif) < 1 ? '✅' : ct.dif < 0 ? '⚠' : 'ℹ')+' Diferencia', ct.dif, { tot: true, sinPct: true, sub: Math.abs(ct.dif) < 1 ? 'Todo cierra: no falta ni sobra mercadería.' : ct.dif < 0 ? 'Mercadería que falta: vencida, rota, faltante o stock mal cargado. También cuenta si bajaste costos.' : 'Sobra mercadería: stock mal cargado, compras sin cargar como egreso o costos que subiste.' });
     h += '</div>';
   } else h += '<div style="font-size:.68rem;color:var(--gray);margin:-4px 0 10px;line-height:1.45">🔍 Control de la mercadería: '+(ct ? 'el sistema guardó el valor el '+_rentFechaCorta(ct.A.ts)+'; el control aparece cuando haya otra foto para comparar.' : (d.enCursoMes ? 'arranca hoy: el sistema guarda el valor de la mercadería y desde ahora compara lo que debería quedar con lo que quedó.' : 'no hay fotos de la mercadería de ese mes (se guardan desde noviembre de 2026).'))+'</div>';
 
@@ -18386,7 +18430,8 @@ function _rentPlataHtml(){
       h += fila('−', 'Falta pagar este mes '+ab(_rentLibreAbierto), d.totFalta, { sinPct: true, sub: 'Gastos fijos que todavía no cargaste, tomando lo del mes pasado', click: '_rentLibreAbierto=!_rentLibreAbierto;renderRentabilidad()' });
       if(_rentLibreAbierto) h += detalle(d.falta);
     }
-    h += fila('=', '🟢 Plata libre', d.hoy - d.totFalta, { tot: true, sinPct: true, sub: 'Lo que podés usar para mercadería, inversión o contratar sin quedarte corto' });
+    if(d.envios && d.envios.debeHoy > 0) h += fila('−', 'Envíos que le debés al repartidor', d.envios.debeHoy, { sinPct: true, sub: 'Está en la caja o en la cuenta, pero es del repartidor' });
+    h += fila('=', '🟢 Plata libre', d.hoy - d.totFalta - (d.envios ? d.envios.debeHoy : 0), { tot: true, sinPct: true, sub: 'Lo que podés usar para mercadería, inversión o contratar sin quedarte corto' });
     h += '</div>';
   }
 
@@ -18446,6 +18491,12 @@ function _rentPdfContenido(){
   h += tabla(['Concepto', 'Monto', ''], [{ c: ['+ Entro (ventas cobradas y fiados cobrados)', $(d.entro), ''] }, { c: ['- Salio', menos(d.totSalio), ''] }]
     .concat(det(d.salio)).concat([{ tot: true, c: ['= QUEDO EN PLATA', $(d.entro - d.totSalio), ''] }]));
   h += '<p class="rent-nota">No es la ganancia: aca tambien salio la mercaderia que quedo en stock, las inversiones y los retiros.</p>';
+  var en = d.envios;
+  if(en && (en.n || en.debeHoy)){
+    h += '<h3>Envios del delivery (no entran en la ganancia)</h3>'+tabla(['Concepto', 'Monto', ''], [
+      { c: ['Envios cobrados ('+en.n+')', $(en.cobrados), ''] }, { c: ['Ya pagados al repartidor', $(en.pagados), ''] }, { tot: true, c: ['FALTA PAGARLE', $(en.pend), ''] }]
+      .concat(det(Object.keys(en.porRep).map(function(k){ return [k, en.porRep[k].pend]; }))).concat(en.mano ? [{ c: ['Cargados a mano en el mostrador ('+en.nMano+')', $(en.mano), ''] }] : []));
+  }
   var sv = d.stock, q = d.quieta, ct = d.control;
   var fm = [{ c: ['Plata en mercaderia hoy (stock x precio de costo)', $(sv.valor), ''] }, { c: ['Mercaderia quieta (sin ventas en '+RENT_DIAS_QUIETA+' dias)', $(q.total), sv.valor > 0 ? Math.round(q.total / sv.valor * 100)+' %' : ''] }].concat(det(q.lista.slice(0, 15)));
   h += '<h3>La mercaderia</h3>'+tabla(['Concepto', 'Monto', '% del stock'], fm);
@@ -18457,7 +18508,8 @@ function _rentPdfContenido(){
   if(d.liq){
     var fl = [{ c: ['Plata que hay hoy (caja '+$(d.liq.efectivoCaja)+', fuera de la caja '+$(d.liq.efectivoFuera)+', Mercado Pago '+$(d.liq.mercadoPago)+')', $(d.hoy), ''] }];
     if(d.enCursoMes){ fl.push({ c: ['- Falta pagar este mes (como el mes pasado)', menos(d.totFalta), ''] }); fl = fl.concat(det(d.falta)); }
-    fl.push({ tot: true, c: ['= PLATA LIBRE PARA DECIDIR', $(d.hoy - d.totFalta), ''] });
+    if(d.envios && d.envios.debeHoy > 0) fl.push({ c: ['- Envios que le debes al repartidor', menos(d.envios.debeHoy), ''] });
+    fl.push({ tot: true, c: ['= PLATA LIBRE PARA DECIDIR', $(d.hoy - d.totFalta - (d.envios ? d.envios.debeHoy : 0)), ''] });
     h += '<h3>Plata libre para decidir</h3>'+tabla(['Concepto', 'Monto', ''], fl);
   }
   if(d.eq){
