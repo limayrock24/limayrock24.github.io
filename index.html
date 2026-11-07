@@ -2356,6 +2356,12 @@ if(window.__lrSucursal === 2){
     window.__lrSesionActivaCache = vigentes.length ? vigentes[0] : null;
     window.__lrSesionesVigentes = vigentes;
     if(typeof pintarCajaEquipo === 'function') try{ pintarCajaEquipo(); }catch(e){}
+    // La primera vez que llegan los turnos de la nube, si esta compu está en el
+    // login sin nadie adentro, se vuelve a revisar: así aparece "retomar mi
+    // turno" para un turno de esta caja que se abrió en otra compu.
+    if(!window.__lrSync.sesionActivaListos && !window.__lrEsPanelAdmin && !window.__lrEsPuesto && typeof currentEmp !== 'undefined' && !currentEmp){
+      try{ var _ls = document.getElementById('loginScreen'); if(_ls && !_ls.classList.contains('hidden') && typeof chequearSesionInterrumpida === 'function') setTimeout(function(){ if(!currentEmp) chequearSesionInterrumpida(); }, 0); }catch(e){}
+    }
     window.__lrSync.sesionActivaListos = true;
     if(typeof renderDashboard==='function' && document.getElementById('adminOverlay') && document.getElementById('adminOverlay').classList.contains('open')){
       renderDashboard();
@@ -8445,6 +8451,14 @@ function refrescarPermisosCurrentEmp(){
   if(typeof updateRecepBtn==='function') updateRecepBtn();
 }
 
+// Seguir en esta compu un turno que se abrió en otra (misma caja): se arma
+// la sesión con los datos del empleado y los del turno de la nube (hora de
+// inicio, efectivo inicial) y se retoma como si se hubiera recargado.
+function retomarTurnoDeLaNube(sv, emp){
+  var ses = Object.assign({}, emp || {}, sv);
+  try{ localStorage.setItem(SK_SESION_ACTIVA, JSON.stringify(ses)); }catch(e){}
+  retomarSesionInterrumpida();
+}
 function retomarSesionInterrumpida() {
   var sesion = getSesionActivaGuardada();
   if(!sesion) return;
@@ -8592,6 +8606,17 @@ function lpp(d) {
         var _sv = (window.__lrSesionesActivasCache || {})[String(emp.nombre).replace(/\//g,'-')];
         if(_sv && _sv.turnoInicio && (Date.now() - new Date(_sv.turnoInicio).getTime()) < 16*3600000 && cajaDe(_sv) !== cajaEquipo()){
           alert('👤 '+emp.nombre+', tenés un turno abierto en la Caja '+cajaDe(_sv)+'.\n\nCerralo allá antes de abrir uno en esta caja.');
+          return;
+        }
+        // Turno abierto en ESTA caja desde otra compu (se pasó de la compu a la
+        // netbook, o se apagó una): se ofrece seguir con ese mismo turno en vez
+        // de abrir uno nuevo.
+        if(_sv && _sv.turnoInicio && (Date.now() - new Date(_sv.turnoInicio).getTime()) < 16*3600000 && cajaDe(_sv) === cajaEquipo() && !window.__lrEsPuesto){
+          var _hIni = new Date(_sv.turnoInicio).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+          askConfirm('👤 '+emp.nombre+', tenés un turno abierto en la Caja '+cajaDe(_sv)+' desde las '+_hIni+'.\n\n¿Seguís con ese mismo turno en esta compu?').then(function(si){
+            if(!si) return;
+            retomarTurnoDeLaNube(_sv, emp);
+          });
           return;
         }
         turnoAbiertoEnOtroLocal(emp).then(function(otro){
