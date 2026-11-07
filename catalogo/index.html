@@ -437,7 +437,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
       </button>
       <div id="ubicacionEstado" style="font-size:.72rem;margin-top:6px;display:none"></div>
       <div id="zonaEnvioAviso" style="display:none;font-size:.75rem;margin-top:8px;padding:9px 11px;border:1px solid;border-radius:6px;line-height:1.5"></div>
-      <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>Compartir tu ubicación</b> es lo que mejor guía al repartidor. Si no podés, escribí tu dirección abajo y mandanos la ubicación por WhatsApp.</div>
+      <div id="avisoGpsObligatorio" style="font-size:.68rem;color:var(--gray);margin-top:6px"><b>La ubicación es obligatoria:</b> compartila con el GPS o marcala en el mapa. Es lo que guía al repartidor hasta tu casa.</div>
       <input type="text" id="clienteDireccion" placeholder="Calle y número" style="margin-top:8px">
       <input type="text" id="clienteReferencia" placeholder="Referencia: casa con rejas negras, portón verde... (opcional)" style="margin-top:6px">
     </div>
@@ -448,6 +448,9 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
           style="flex:1;background:transparent;border:1.5px solid var(--gray);color:var(--gray);border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer">💵 Efectivo</button>
         <button type="button" id="mpTransferencia" onclick="elegirMedioPago('Transferencia')"
           style="flex:1;background:transparent;border:1.5px solid var(--gray);color:var(--gray);border-radius:6px;padding:11px;font-size:.82rem;cursor:pointer">📲 Transferencia</button>
+      </div>
+      <div id="avisoSoloTransf" style="display:none;font-size:.74rem;color:var(--light);margin-top:2px;padding:9px 11px;border:1px solid rgba(56,189,248,.45);border-radius:6px;background:rgba(56,189,248,.08);line-height:1.45">
+        📲 <b>Pagás por transferencia</b> el total (productos + envío). Cuando tu pedido esté listo te mandamos los datos para transferir, y apenas llega la plata sale el repartidor.
       </div>
       <div id="avisoEfectivo" style="display:none;font-size:.72rem;color:var(--gray);margin-top:6px">
         💡 Si podés, avisanos con cuánto vas a pagar así llevamos el vuelto.
@@ -2198,6 +2201,7 @@ function cerrarImagenAmpliada(){
 }
 
 function elegirMedioPago(medio){
+  if(SOLO_TRANSFERENCIA) medio = 'Transferencia';
   MEDIO_PAGO_SEL = medio;
   var ef = document.getElementById('mpEfectivo');
   var tr = document.getElementById('mpTransferencia');
@@ -2208,13 +2212,25 @@ function elegirMedioPago(medio){
   var aviso = document.getElementById('avisoEfectivo');
   if(aviso) aviso.style.display = (medio==='Efectivo') ? 'block' : 'none';
 }
+// Solo transferencia: queda elegida y no se ofrecen los botones.
+function aplicarSoloTransferencia(){
+  if(!SOLO_TRANSFERENCIA) return;
+  var ef = document.getElementById('mpEfectivo'), tr = document.getElementById('mpTransferencia'), av = document.getElementById('avisoSoloTransf');
+  if(ef) ef.style.display = 'none';
+  if(tr && tr.parentNode) tr.parentNode.style.display = 'none';
+  if(av) av.style.display = 'block';
+  MEDIO_PAGO_SEL = 'Transferencia';
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aplicarSoloTransferencia); else aplicarSoloTransferencia();
 
-// La ubicación ya NO es obligatoria: hubo clientes que no pudieron
-// compartirla (permiso trabado, GPS que no responde) y se quedaban sin poder
-// pedir. Sin ubicación se pide la dirección escrita y, antes de seguir, un
-// cartel pregunta si confirma así (y le pide mandarla por WhatsApp) o si
-// prefiere compartirla.
-var GPS_OBLIGATORIO = false;
+// La ubicación es OBLIGATORIA (decisión del dueño, nov. 2026): con el GPS del
+// celu o marcándola a mano en el mapa (para el que no puede usar el GPS). Así
+// el envío sale exacto y el repartidor encuentra la casa sin ida y vuelta por
+// WhatsApp. Para volver a permitir pedidos sin ubicación: false.
+var GPS_OBLIGATORIO = true;
+// El delivery se paga SOLO por transferencia del total (productos + envío):
+// sin efectivo, débito ni mixto. Para volver a ofrecer efectivo: false.
+var SOLO_TRANSFERENCIA = true;
 var _sinUbicacionAceptado = false;
 function preguntarSinUbicacion(){
   var ov = document.getElementById('sinUbicOverlay');
@@ -2228,13 +2244,13 @@ function preguntarSinUbicacion(){
         '<p style="font-size:.88rem;color:var(--light);line-height:1.5;margin:0 0 16px">Así te mostramos el <b>envío exacto</b> y el repartidor <b>te encuentra rápido</b>.</p>'+
         '<button type="button" id="sinUbicNo" style="width:100%;background:#D2201F;border:none;color:#fff;border-radius:8px;padding:14px;font-size:.95rem;font-weight:700;cursor:pointer;margin-bottom:8px">📍 Usar mi ubicación actual</button>'+
         '<button type="button" id="sinUbicMapa" style="width:100%;background:transparent;border:1.5px solid #F4B400;color:#F4B400;border-radius:8px;padding:13px;font-size:.92rem;font-weight:700;cursor:pointer;margin-bottom:14px">🗺️ Marcarla en el mapa</button>'+
-        '<button type="button" id="sinUbicSi" style="background:none;border:none;color:var(--gray);font-size:.78rem;text-decoration:underline;cursor:pointer;padding:4px">Seguir sin ubicación (el local te confirma el envío por WhatsApp)</button>'+
+        (GPS_OBLIGATORIO ? '<div style="font-size:.74rem;color:var(--gray);margin-top:4px">Es necesaria para confirmar el pedido.</div>' : '<button type="button" id="sinUbicSi" style="background:none;border:none;color:var(--gray);font-size:.78rem;text-decoration:underline;cursor:pointer;padding:4px">Seguir sin ubicación (el local te confirma el envío por WhatsApp)</button>')+
       '</div>';
     document.body.appendChild(ov);
     ov.addEventListener('click', function(e){ if(e.target === ov) ov.classList.remove('show'); });
   }
   ov.classList.add('show');
-  document.getElementById('sinUbicSi').onclick = function(){
+  if(document.getElementById('sinUbicSi')) document.getElementById('sinUbicSi').onclick = function(){
     ov.classList.remove('show');
     _sinUbicacionAceptado = true;
     irAConfirmar();
@@ -2432,6 +2448,12 @@ function irAConfirmar(){
     errEl.style.display = 'block';
     return;
   }
+  // Ubicación obligatoria: se ofrece el GPS o marcarla en el mapa.
+  if(!UBICACION_GPS && GPS_OBLIGATORIO){
+    errEl.style.display = 'none';
+    preguntarSinUbicacion();
+    return;
+  }
   // Sin ubicación compartida hace falta al menos la dirección escrita.
   if(!UBICACION_GPS && !direccion){
     errEl.textContent = 'Compartí tu ubicación o escribí tu dirección (calle y número) para que el repartidor te encuentre.';
@@ -2511,6 +2533,7 @@ function confirmarPedido(){
     envioEstimado: _pend ? COSTO_ENVIO : null,
     ubicacionMarcadaEnMapa: !!(UBICACION_GPS && UBICACION_GPS.mapa),
     medioPago: MEDIO_PAGO_SEL,
+    soloTransferencia: !!SOLO_TRANSFERENCIA,
     zona: ZONA_ACTUAL,
     distanciaKm: ZONA_ACTUAL ? Math.round(ZONA_DISTANCIA*10)/10 : null,
     // Con la foto de cada producto: el repartidor arma el pedido mirándola.

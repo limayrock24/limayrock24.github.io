@@ -35044,9 +35044,14 @@ function _vaciarCarritoPedidoYaCobrado(){
   try{ updateCart(); }catch(e){}
 }
 var _cobroPedidoEnCurso = false;
+// Pedidos del catálogo con "solo transferencia": no se cobran en efectivo,
+// posnet ni mixto (los pedidos viejos, de antes de esta regla, sí).
+function pedidoSoloTransferencia(id){ var p = getPedidosWeb().find(function(x){ return x.id === id; }); return !!(p && p.soloTransferencia); }
+var AVISO_SOLO_TRANSF = 'Los pedidos de delivery se cobran solo por transferencia del total (productos + envío).';
 function _confirmarConCandado(real){
   var id = _pedidoWebEnCarrito;
   if(!id) return real();
+  if(pedidoSoloTransferencia(id) && (mixtoActivo || pagoSel !== 'Transferencia')){ showToast('🔒 '+AVISO_SOLO_TRANSF, true); return; }
   if(_cobroPedidoEnCurso) return;
   _cobroPedidoEnCurso = true;
   return reservarCobroPedidoWeb(id).then(function(r){
@@ -38259,7 +38264,7 @@ function renderCobroPuesto(){
         '</div>'+
         '<div class="pz-ccol">'+
           '<div class="pz-sec">Medio de pago</div>'+
-          '<div class="pz-medios">'+medio('Efectivo','💵 Efectivo')+medio('Transferencia','📲 Transferencia')+medio('Débito','💳 Posnet')+medio('Mixto','🔀 Mixto')+'</div>'+
+          '<div class="pz-medios">'+(p.soloTransferencia ? medio('Transferencia','📲 Transferencia (único medio para delivery)') : medio('Efectivo','💵 Efectivo')+medio('Transferencia','📲 Transferencia')+medio('Débito','💳 Posnet')+medio('Mixto','🔀 Mixto'))+'</div>'+
           extra+
           '<div class="pz-totales">'+
             '<div><span>Productos</span><b>'+fmt(T.sub)+'</b></div>'+
@@ -38312,6 +38317,7 @@ function puestoCobrar(){
   if(!cart.length){ showToast('No hay productos para cobrar', true); return; }
   if(cart.some(function(i){ return !(i.precio > 0); })){ showToast('⚠️ Hay un producto sin precio: cargale el precio antes de cobrar', true); return; }
   if(!_pz.medio){ showToast('Elegí el medio de pago', true); return; }
+  if(p.soloTransferencia && _pz.medio !== 'Transferencia'){ showToast('🔒 '+AVISO_SOLO_TRANSF, true); return; }
   var T = _pzTotales();
   if(_pz.medio === 'Efectivo' && _pz.pagaCon && Number(_pz.pagaCon) < T.total){ showToast('Con lo que paga no alcanza', true); return; }
   // Se arma el pago igual que en el carrito de la caja.
