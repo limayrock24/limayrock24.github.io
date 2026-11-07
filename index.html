@@ -5857,6 +5857,8 @@ body.night-on{background:#080005}
       <!-- Pedidos en curso: arriba de todo, apenas llegan -->
       <div id="deliveryPedidosActivos"></div>
       <div id="deliveryZonas" style="margin-bottom:12px"></div>
+      <!-- Lo que se les debe a los repartidores: siempre a la vista -->
+      <div id="deliveryDeuda"></div>
 
       <!-- Historial plegable -->
       <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 16px">
@@ -40313,6 +40315,8 @@ function renderDeliveryPanel() {
   if(activosEl) activosEl.innerHTML = pedidosWebHtml;
   var histRes = document.getElementById('deliveryHistResumen');
   if(histRes) histRes.textContent = deliveries.length+' pedido'+(deliveries.length===1?'':'s')+' · '+fmt(total)+' · '+etiquetaPeriodo(_periodoDelivery==='custom'?'':_periodoDelivery).toLowerCase();
+  var deudaEl = document.getElementById('deliveryDeuda');
+  if(deudaEl) deudaEl.innerHTML = armarDeudaRepartidores();
   resEl.innerHTML =
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+
       '<div style="background:var(--card);border:1px solid rgba(231,76,60,.3);border-radius:6px;padding:12px;text-align:center">'+
@@ -40371,13 +40375,15 @@ function renderDeliveryPanel() {
       var mins = ped ? minutosEntrega(ped) : null;
       if(mins !== null) repTxt += ' <span style="color:var(--gray);font-size:.74rem">· ⏱ '+Math.round(mins)+' min</span>';
       if(ped && ped.pagadoRepartidor) repTxt += ' <span style="color:var(--green);font-size:.7rem">· ✓ pagado</span>';
-      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid rgba(255,255,255,.05)">'+
+      var detId = d.ventaId || d.id, detAb = !!(window._delivDetAbierto || {})[detId];
+      if(ped && !ped.pagadoRepartidor && ped.repartidor) repTxt += ' <span style="color:var(--gold);font-size:.7rem">· ⏳ falta pagarle</span>';
+      return '<div onclick="toggleDetalleDelivery('+detId+')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid rgba(255,255,255,.05)">'+
         '<div style="min-width:0">'+
-          '<div style="font-size:.84rem;color:var(--white)">'+horaStr+' · '+repTxt+'</div>'+
+          '<div style="font-size:.84rem;color:var(--white)">'+horaStr+' · '+(ped ? escBaja(ped.nombre || '')+' · ' : '')+repTxt+' <span style="color:var(--gray);font-size:.7rem">'+(detAb ? '▲' : '▼ ver detalle')+'</span></div>'+
           '<div style="font-size:.72rem;color:var(--gray);margin-top:2px">Turno de '+(d.empleado||'—')+' · '+(esNoche?'🌙 ':'☀️ ')+(d.turno||'—')+'</div>'+
         '</div>'+
-        '<span style="font-family:Oswald,sans-serif;color:#E74C3C;white-space:nowrap">'+fmt(d.monto)+'</span>'+
-      '</div>';
+        '<span style="text-align:right;white-space:nowrap"><span style="font-family:Oswald,sans-serif;color:#E74C3C">'+fmt(d.monto)+'</span><br><span style="font-size:.62rem;color:var(--gray)">envío</span></span>'+
+      '</div>'+(detAb ? htmlDetalleDelivery(d, ped) : '');
     }).join('');
     return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">'+
       '<div onclick="toggleDiaDelivery(\''+clave+'\','+(abierto?'false':'true')+')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;cursor:pointer">'+
@@ -40387,6 +40393,94 @@ function renderDeliveryPanel() {
       filas+
     '</div>';
   }).join('');
+}
+
+// ── Lo que se les debe a los repartidores (de todas las fechas) ──
+// Bien a la vista arriba del historial: cuánto se le debe a cada uno, de qué
+// envíos (tocando el nombre) y el botón para registrar que se le pagó todo.
+function armarDeudaRepartidores(){
+  var porRep = {};
+  pedidosEntregadosEnRango({ desde: new Date(0), hasta: new Date() }).forEach(function(p){
+    if(p.pagadoRepartidor || !((p.envio || 0) > 0)) return;
+    (porRep[p.repartidor] || (porRep[p.repartidor] = [])).push(p);
+  });
+  var nombres = Object.keys(porRep).sort(function(a, b){ return porRep[b].length - porRep[a].length; });
+  var abiertos = window._delivDeudaAbierta || (window._delivDeudaAbierta = {});
+  var caja = 'background:var(--card);border:1.5px solid rgba(244,180,0,.55);border-radius:8px;padding:12px 14px;margin-bottom:12px';
+  if(!nombres.length) return '<div style="'+caja.replace('rgba(244,180,0,.55)', 'rgba(46,204,113,.4)')+'"><span style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1.5px;color:var(--green)">💵 REPARTIDORES: ESTÁS AL DÍA</span><div style="font-size:.72rem;color:var(--gray);margin-top:3px">No le debés ningún envío a nadie.</div></div>';
+  var totalDeuda = 0;
+  var filas = nombres.map(function(n){
+    var lista = porRep[n].slice().sort(function(a, b){ return new Date(a.entregadoEn || a.fecha) - new Date(b.entregadoEn || b.fecha); });
+    var monto = lista.reduce(function(s, p){ return s + (p.envio || 0); }, 0); totalDeuda += monto;
+    var nEsc = n.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    var abierto = !!abiertos[n];
+    return '<div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+        '<div onclick="window._delivDeudaAbierta[\''+nEsc+'\']='+(!abierto)+';renderDeliveryPanel()" style="cursor:pointer;min-width:0">'+
+          '<div style="font-size:.95rem;color:var(--white);font-weight:600">🛵 '+escBaja(n)+' '+(abierto ? '▲' : '▼')+'</div>'+
+          '<div style="font-size:.72rem;color:var(--gray)">'+lista.length+' envío'+(lista.length === 1 ? '' : 's')+' sin pagar · desde el '+new Date(lista[0].entregadoEn || lista[0].fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })+'</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-family:Oswald,sans-serif;font-size:1.25rem;color:var(--gold)">'+fmt(monto)+'</div>'+
+          '<button onclick="registrarPagoRepartidor(\''+nEsc+'\', true)" style="margin-top:3px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:6px 11px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.5px;cursor:pointer">✓ Le pagué todo</button>'+
+        '</div>'+
+      '</div>'+
+      (abierto ? '<div style="margin-top:6px;background:var(--dark);border-radius:6px;padding:4px 10px">'+lista.map(function(p){
+        var f = new Date(p.entregadoEn || p.fecha);
+        return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;color:var(--light);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">'+
+          '<span>'+f.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })+' '+f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })+' · '+escBaja(p.nombre || '')+'</span>'+
+          '<b style="font-family:Oswald,sans-serif;font-weight:400;color:var(--gold)">'+fmt(p.envio || 0)+'</b></div>';
+      }).join('')+'</div>' : '')+
+    '</div>';
+  }).join('');
+  return '<div style="'+caja+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px">'+
+      '<span style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1.5px;color:var(--gold)">💵 LE DEBÉS A LOS REPARTIDORES</span>'+
+      '<span style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold)">'+fmt(totalDeuda)+'</span>'+
+    '</div>'+
+    '<div style="font-size:.7rem;color:var(--gray)">Envíos entregados que todavía no les pagaste, de cualquier fecha. Tocá el nombre para ver cuáles.</div>'+
+    filas+'</div>';
+}
+// ── Detalle de un pedido del historial (se abre tocando la fila) ──
+function toggleDetalleDelivery(id){ var a = window._delivDetAbierto || (window._delivDetAbierto = {}); a[id] = !a[id]; renderDeliveryPanel(); }
+function htmlDetalleDelivery(d, ped){
+  var h2 = function(iso){ return iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''; };
+  var linea = function(t){ return '<div style="font-size:.76rem;color:var(--light);padding:2px 0">'+t+'</div>'; };
+  var tit = function(t){ return '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gold);margin:8px 0 2px;text-transform:uppercase">'+t+'</div>'; };
+  var h = '';
+  var venta = (typeof VENTAS !== 'undefined' ? VENTAS : []).find(function(v){ return v.id === (d.ventaId || d.id); }) || null;
+  if(ped){
+    h += tit('Cliente');
+    h += linea('👤 '+escBaja(ped.nombre || '—')+(ped.telefono ? ' · 📞 '+escBaja(ped.telefono) : ''));
+    if(ped.direccion) h += linea('📍 '+escBaja(ped.direccion)+(ped.referencia ? ' <span style="color:var(--gray)">('+escBaja(ped.referencia)+')</span>' : ''));
+    if(ped.gps) h += linea('<a href="https://maps.google.com/?q='+ped.gps.lat+','+ped.gps.lng+'" target="_blank" style="color:#38bdf8">🗺️ Ver en el mapa</a>'+(ped.distanciaKm ? ' · '+ped.distanciaKm+' km' : '')+(ped.zona && ped.zona !== 'urbana' ? ' · zona '+escBaja(ped.zona) : ''));
+  }
+  // Lo que se vendió de verdad (la venta); si no está, lo que pidió.
+  var items = venta && venta.items ? venta.items.map(function(i){ return [i.name, i.qty, i.subtotal]; })
+    : (ped ? (ped.items || []).map(function(i){ return [i.nombre, i.cantidad, (i.precio || 0) * (i.cantidad || 0)]; }).concat((ped.combos || []).map(function(c){ return [(c.emoji || '🎁')+' '+c.nombre, c.cantidad, (c.precio || 0) * (c.cantidad || 0)]; })) : []);
+  if(items.length){
+    h += tit('Qué llevó');
+    h += items.map(function(i){ return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.76rem;color:var(--light);padding:1px 0"><span>'+escBaja(i[0])+' ×'+i[1]+'</span><span style="font-family:Oswald,sans-serif">'+fmt(i[2] || 0)+'</span></div>'; }).join('');
+    if(ped) h += htmlCambiosPedidoWeb(ped);
+    var prod = venta ? (venta.total || 0) : (ped ? (ped.subtotal || 0) : 0);
+    h += '<div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--white);border-top:1px solid rgba(255,255,255,.08);margin-top:4px;padding-top:4px"><span>Productos '+fmt(prod)+' + envío '+fmt(d.monto || 0)+'</span><b style="font-family:Oswald,sans-serif">'+fmt(prod + (d.monto || 0))+'</b></div>';
+  }
+  h += tit('Pago');
+  if(ped && ped.pagoConfirmado) h += linea('✅ Cobrado'+(ped.cobroAuto ? ' solo por Mercado Pago' : ' por '+escBaja(ped.cobradoPor || 'el local'))+(ped.cobradoEn ? ' a las '+h2(ped.cobradoEn) : '')+' · '+escBaja((venta && venta.medio) || ped.medioPago || ''));
+  else if(venta) h += linea('✅ Cobrado por '+escBaja(venta.empleado || '—')+' · '+escBaja(venta.medio || ''));
+  else h += linea('<span style="color:var(--gold)">Sin datos del cobro</span>');
+  if(ped){
+    h += tit('Cómo fue');
+    var pasos = [['🧾 Recibido', ped.fecha], ['🙋 Lo tomó '+escBaja(ped.repartidor || ''), ped.tomadoEn], ['💰 Cobrado', ped.cobradoEn], ['📦 Lo retiró', ped.retiradoEn], ['🏠 Entregado', ped.entregadoEn]];
+    h += pasos.filter(function(x){ return x[1]; }).map(function(x){ return linea(x[0]+' <span style="color:var(--gray)">'+h2(x[1])+'</span>'); }).join('');
+    var mins = minutosEntrega(ped);
+    if(mins !== null) h += linea('⏱ <b>'+Math.round(mins)+' min</b> desde que entró hasta que se entregó');
+    h += tit('Envío al repartidor');
+    h += ped.pagadoRepartidor
+      ? linea('✅ Pagado'+(ped.pagadoRepartidorEn ? ' el '+new Date(ped.pagadoRepartidorEn).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '')+(ped.pagadoRepartidorPor ? ' por '+escBaja(ped.pagadoRepartidorPor) : ''))
+      : (ped.repartidor ? linea('<span style="color:var(--gold)">⏳ Falta pagarle '+fmt(d.monto || 0)+' a '+escBaja(ped.repartidor)+'</span>') : linea('<span style="color:var(--gray)">Sin repartidor en el sistema</span>'));
+  } else h += linea('<span style="color:var(--gray)">Cargado a mano en el mostrador (no vino del catálogo).</span>');
+  return '<div style="padding:4px 12px 10px 12px;background:rgba(0,0,0,.18)">'+h+'</div>';
 }
 
 // Resumen por repartidor del período elegido: cuántos pedidos entregó, cuánto
@@ -40447,12 +40541,12 @@ function armarResumenRepartidores(rango) {
   }
   return html + '</div>';
 }
-function registrarPagoRepartidor(nombre) {
-  var rango = getRangoDelivery();
+function registrarPagoRepartidor(nombre, todos) {
+  var rango = todos ? { desde: new Date(0), hasta: new Date() } : getRangoDelivery();
   var aPagar = pedidosEntregadosEnRango(rango).filter(function(p){ return p.repartidor === nombre && !p.pagadoRepartidor && (p.envio||0) > 0; });
-  if(!aPagar.length){ showToast('No hay envíos pendientes de pagar a '+nombre+' en este período'); return; }
+  if(!aPagar.length){ showToast('No hay envíos pendientes de pagar a '+nombre+(todos ? '' : ' en este período')); return; }
   var monto = aPagar.reduce(function(s,p){ return s+(p.envio||0); },0);
-  askConfirm('¿Registrás que le pagaste '+fmt(monto)+' a '+nombre+' por '+aPagar.length+' envío'+(aPagar.length===1?'':'s')+' del período elegido? Quedan marcados como pagados.').then(function(ok){
+  askConfirm('¿Registrás que le pagaste '+fmt(monto)+' a '+nombre+' por '+aPagar.length+' envío'+(aPagar.length===1?'':'s')+(todos ? ' (todo lo que se le debía)' : ' del período elegido')+'? Quedan marcados como pagados.').then(function(ok){
     if(!ok) return;
     var ids = {}; aPagar.forEach(function(p){ ids[p.id] = true; });
     var pedidos = getPedidosWeb();
