@@ -5856,6 +5856,8 @@ body.night-on{background:#080005}
       <div id="deliveryZonas" style="margin-bottom:12px"></div>
       <!-- Lo que se les debe a los repartidores: siempre a la vista -->
       <div id="deliveryDeuda"></div>
+      <!-- Cuánto vende el delivery -->
+      <div id="deliveryCanal"></div>
 
       <!-- Historial plegable -->
       <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 16px">
@@ -18348,6 +18350,7 @@ function _rentDatos(){
   // Envíos del período (son del repartidor).
   var rgE = x.exacto ? _balRango(x.mes) : null, frE = rgE ? null : getFechasRango(_periodoCurrent);
   d.envios = _rentEnvios(rgE ? rgE.d0 : frE.desde, rgE ? rgE.d1 : frE.hasta);
+  try{ d.canal = calcularCanalDelivery(rgE ? rgE.d0 : frE.desde, rgE ? rgE.d1 : frE.hasta); }catch(e){ d.canal = null; }
   // La mercadería (es la de hoy; el control, el del mes elegido).
   d.stock = _rentValorStock(); d.quieta = _rentQuieta();
   _rentGuardarFotoStock(x.L, d.stock);
@@ -18420,6 +18423,7 @@ function _rentPlataHtml(){
   if(en && (en.n || en.debeHoy)){
     h += titulo('🛵 Envíos del delivery');
     h += '<div class="rent-esc">';
+    if(d.canal && d.canal.n) h += fila('', '🛒 El delivery vendió', d.canal.ventas, { sub: d.canal.n+' pedido'+(d.canal.n === 1 ? '' : 's')+' · ya está dentro de "Vendiste" · el detalle, en la pestaña Delivery' });
     h += fila('', 'Envíos cobrados', en.cobrados, { sinPct: true, sub: en.n+' envío'+(en.n === 1 ? '' : 's')+' · no suman en la ganancia: son del repartidor' });
     h += fila('', '✅ Ya pagados al repartidor', en.pagados, { sinPct: true, color: 'var(--green)' });
     h += fila('', '⏳ Falta pagarle '+ab(_rentEnviosAbierto), en.pend, { sinPct: true, color: en.pend ? 'var(--gold)' : 'var(--gray)', sub: 'Tocá para ver por repartidor', click: '_rentEnviosAbierto=!_rentEnviosAbierto;renderRentabilidad()' });
@@ -40333,6 +40337,8 @@ function renderDeliveryPanel() {
   if(histRes) histRes.textContent = deliveries.length+' pedido'+(deliveries.length===1?'':'s')+' · '+fmt(total)+' · '+etiquetaPeriodo(_periodoDelivery==='custom'?'':_periodoDelivery).toLowerCase();
   var deudaEl = document.getElementById('deliveryDeuda');
   if(deudaEl) deudaEl.innerHTML = armarDeudaRepartidores();
+  var canalEl = document.getElementById('deliveryCanal');
+  if(canalEl) try{ canalEl.innerHTML = armarCanalDelivery(); }catch(e){ console.error('Cuánto vende el delivery', e); }
   resEl.innerHTML =
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+
       '<div style="background:var(--card);border:1px solid rgba(231,76,60,.3);border-radius:6px;padding:12px;text-align:center">'+
@@ -40409,6 +40415,72 @@ function renderDeliveryPanel() {
       filas+
     '</div>';
   }).join('');
+}
+
+// ── CUÁNTO VENDE EL DELIVERY (como canal de venta) ──────────────────────────
+// Ventas, pedidos, ticket promedio, margen, qué parte de lo vendido del local
+// es delivery, tiempos de entrega, cancelados y horarios y días con más
+// pedidos. Una venta es de delivery si vino de un pedido del catálogo o si se
+// le cargó envío en el mostrador. Lo vendido es sin el envío (que es del
+// repartidor) y sin el recargo del posnet, igual que en Rentabilidad.
+var _canalPer = 'mes';
+function rangoCanalDelivery(per){
+  var h = new Date(), ini = new Date(h); ini.setHours(0, 0, 0, 0);
+  if(per === 'hoy') return { desde: ini, hasta: h, txt: 'hoy' };
+  if(per === 'semana'){ var s = new Date(ini); s.setDate(s.getDate() - 6); return { desde: s, hasta: h, txt: 'los últimos 7 días' }; }
+  if(per === 'mespasado'){ var a = new Date(h.getFullYear(), h.getMonth() - 1, 1), b = new Date(h.getFullYear(), h.getMonth(), 0, 23, 59, 59); return { desde: a, hasta: b, txt: a.toLocaleDateString('es-AR', { month: 'long' }) }; }
+  return { desde: new Date(h.getFullYear(), h.getMonth(), 1), hasta: h, txt: 'este mes' };
+}
+function calcularCanalDelivery(desde, hasta){
+  var en = function(f){ var t = new Date(f); return t >= desde && t <= hasta; };
+  var neto = function(v){ return (Number(v.total) || 0) - (Number(v.recargo) || 0); };
+  var todas = (VENTAS || []).filter(function(v){ return v && !v.anulada && !v.fiadoCarga && !esCobroDeFiado(v) && !esCobroCefhas(v) && en(v.fecha); });
+  var deli = todas.filter(function(v){ return v.pedidoWebId || (Number(v.delivery) || 0) > 0; });
+  var o = { n: deli.length, ventas: 0, totalLocal: 0, margen: 0, margenPct: null, ticket: 0, envios: 0, catalogo: 0, mano: 0 };
+  todas.forEach(function(v){ o.totalLocal += neto(v); });
+  deli.forEach(function(v){ o.ventas += neto(v); o.envios += Number(v.delivery) || 0; if(v.pedidoWebId) o.catalogo++; else o.mano++; });
+  o.ticket = o.n ? o.ventas / o.n : 0;
+  o.pctLocal = o.totalLocal > 0 ? o.ventas / o.totalLocal * 100 : 0;
+  try{ var mg = calcularMargenBrutoDeVentas(deli); o.margen = mg.margenBruto; o.margenPct = mg.revConCosto > 0 ? mg.margenBruto / mg.revConCosto * 100 : null; }catch(e){}
+  // Pedidos del catálogo del período: tiempos, cancelados, horarios y días.
+  var peds = (getPedidosWeb() || []).filter(function(p){ return p && en(p.fecha); });
+  var mins = [];
+  peds.forEach(function(p){ if(!p.anulado && p.estadoDelivery === 'entregado'){ var m = minutosEntrega(p); if(m !== null) mins.push(m); } });
+  o.tiempoProm = mins.length ? mins.reduce(function(s, x){ return s + x; }, 0) / mins.length : null;
+  o.tiempoMax = mins.length ? Math.max.apply(null, mins) : null;
+  o.pedidos = peds.length; o.cancelados = peds.filter(function(p){ return p.anulado; }).length;
+  o.horas = []; for(var i = 0; i < 24; i++) o.horas.push(0);
+  o.dias = [0, 0, 0, 0, 0, 0, 0];
+  peds.forEach(function(p){ if(p.anulado) return; var d = new Date(p.fecha); o.horas[d.getHours()]++; o.dias[d.getDay()]++; });
+  return o;
+}
+function armarCanalDelivery(){
+  var r = rangoCanalDelivery(_canalPer), o = calcularCanalDelivery(r.desde, r.hasta);
+  var btn = function(k, t){ var on = _canalPer === k; return '<button onclick="_canalPer=\''+k+'\';renderDeliveryPanel()" style="flex:1;min-width:70px;background:'+(on ? 'var(--gold)' : 'transparent')+';color:'+(on ? '#111' : 'var(--gray)')+';border:1px solid '+(on ? 'var(--gold)' : 'var(--border)')+';border-radius:5px;padding:6px 8px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:1px;cursor:pointer">'+t+'</button>'; };
+  var kpi = function(t, v, sub, color){ return '<div style="background:var(--dark);border-radius:6px;padding:9px 10px;text-align:center"><div style="font-family:Oswald,sans-serif;font-size:.6rem;letter-spacing:1px;color:var(--gray);text-transform:uppercase">'+t+'</div><div style="font-family:Oswald,sans-serif;font-size:1.15rem;color:'+(color || 'var(--white)')+'">'+v+'</div>'+(sub ? '<div style="font-size:.62rem;color:var(--gray);margin-top:1px">'+sub+'</div>' : '')+'</div>'; };
+  var h = '<div style="background:var(--card);border:1px solid rgba(56,189,248,.45);border-radius:8px;padding:12px 14px;margin-bottom:12px">'+
+    '<div style="font-family:Oswald,sans-serif;font-size:.78rem;letter-spacing:1.5px;color:#38bdf8;margin-bottom:8px">📊 CUÁNTO VENDE EL DELIVERY</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+btn('hoy', 'Hoy')+btn('semana', '7 días')+btn('mes', 'Este mes')+btn('mespasado', 'Mes pasado')+'</div>';
+  if(!o.n && !o.pedidos) return h+'<div style="font-size:.78rem;color:var(--gray)">Sin pedidos de delivery en '+r.txt+'.</div></div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'+
+    kpi('Vendió', fmt(Math.round(o.ventas)), Math.round(o.pctLocal)+' % de lo que vendió el local', '#38bdf8')+
+    kpi('Pedidos', o.n, o.catalogo+' del catálogo'+(o.mano ? ' · '+o.mano+' a mano' : ''))+
+    kpi('Ticket promedio', fmt(Math.round(o.ticket)), 'por pedido, sin el envío')+
+    kpi('Le dejó', fmt(Math.round(o.margen)), o.margenPct != null ? Math.round(o.margenPct)+' % de margen' : 'margen bruto', 'var(--green)')+
+    kpi('Tiempo de entrega', o.tiempoProm != null ? Math.round(o.tiempoProm)+' min' : '—', o.tiempoMax != null ? 'promedio · el más largo '+Math.round(o.tiempoMax)+' min' : 'promedio')+
+    kpi('Cancelados', o.cancelados, o.pedidos ? Math.round(o.cancelados / o.pedidos * 100)+' % de los pedidos' : '', o.cancelados ? 'var(--gold)' : 'var(--white)')+
+  '</div>';
+  // Horarios: barras por hora del día; arriba, las 3 horas con más pedidos.
+  var maxH = Math.max.apply(null, o.horas.concat([1]));
+  var top = o.horas.map(function(n, i){ return [i, n]; }).filter(function(x){ return x[1] > 0; }).sort(function(a, b){ return b[1] - a[1]; }).slice(0, 3);
+  h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gold);margin:12px 0 4px">🕐 HORARIOS CON MÁS PEDIDOS</div>'+
+    (top.length ? '<div style="font-size:.74rem;color:var(--light);margin-bottom:6px">'+top.map(function(x){ return '<b>'+String(x[0]).padStart(2, '0')+' a '+String((x[0] + 1) % 24).padStart(2, '0')+' h</b> ('+x[1]+')'; }).join(' · ')+'</div>' : '')+
+    '<div style="display:flex;align-items:flex-end;gap:2px;height:46px">'+o.horas.map(function(n, i){ return '<div title="'+i+' h: '+n+'" style="flex:1;background:'+(n ? '#38bdf8' : 'rgba(255,255,255,.06)')+';height:'+Math.max(3, Math.round(n / maxH * 46))+'px;border-radius:2px 2px 0 0"></div>'; }).join('')+'</div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:.58rem;color:var(--gray);margin-top:2px"><span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>23 h</span></div>';
+  var nomD = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'], maxD = Math.max.apply(null, o.dias.concat([1]));
+  h += '<div style="font-family:Oswald,sans-serif;font-size:.66rem;letter-spacing:1.5px;color:var(--gold);margin:12px 0 4px">📅 DÍAS CON MÁS PEDIDOS</div>'+
+    '<div style="display:flex;gap:4px">'+[1, 2, 3, 4, 5, 6, 0].map(function(d){ var n = o.dias[d]; return '<div style="flex:1;text-align:center"><div style="height:34px;display:flex;align-items:flex-end"><div style="width:100%;background:'+(n === maxD && n ? 'var(--gold)' : (n ? '#38bdf8' : 'rgba(255,255,255,.06)'))+';height:'+Math.max(3, Math.round(n / maxD * 34))+'px;border-radius:2px 2px 0 0"></div></div><div style="font-size:.6rem;color:var(--gray);margin-top:2px">'+nomD[d]+'</div><div style="font-size:.62rem;color:var(--light)">'+n+'</div></div>'; }).join('')+'</div>';
+  return h+'</div>';
 }
 
 // ── Lo que se les debe a los repartidores (de todas las fechas) ──
