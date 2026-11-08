@@ -8755,6 +8755,7 @@ function addToCart(p) {
 }
 
 function updateCart() {
+  if(_pedidoWebEnCarrito && !cart.length && !_cargandoPedidoWeb && !window.__lrEsPuesto) soltarPedidoDelCarrito();
   var subtotal=cart.reduce(function(s,i){ return s+i.subtotal; },0);
   var delivery = _deliveryActivo ? _deliveryMonto : 0;
   var total = subtotal + delivery;
@@ -8783,6 +8784,14 @@ function renderCartItems() {
     return;
   }
   el.innerHTML='';
+  if(_pedidoWebEnCarrito && !window.__lrEsPuesto){
+    var _pw = getPedidosWeb().find(function(x){ return x.id === _pedidoWebEnCarrito; });
+    var ban = document.createElement('div');
+    ban.style.cssText = 'margin:0 0 8px;padding:9px 11px;border:1.5px solid #38bdf8;border-radius:7px;background:rgba(56,189,248,.1);font-size:.78rem;color:var(--white);line-height:1.35';
+    ban.innerHTML = '🛵 <b>Pedido web de '+escBaja(_pw ? _pw.nombre : '')+'</b><br><span style="color:var(--gray);font-size:.7rem">Este carrito es solo para ese pedido. Para atender a otro cliente, sacalo primero.</span>'+
+      '<button onclick="sacarPedidoDelCarrito()" style="display:block;width:100%;margin-top:7px;background:transparent;border:1px solid #38bdf8;color:#38bdf8;border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:.5px;cursor:pointer">✕ Sacar el pedido del carrito</button>';
+    el.appendChild(ban);
+  }
   cart.forEach(function(item,i){
     var div=document.createElement('div');
     div.className='cart-item';
@@ -35073,6 +35082,15 @@ var AVISO_SOLO_TRANSF = 'Los pedidos de delivery se cobran solo por transferenci
 function _confirmarConCandado(real){
   var id = _pedidoWebEnCarrito;
   if(!id) return real();
+  var _pAct = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(_pAct && !carritoTieneAlgoDelPedido(_pAct)){
+    askConfirm('⚠️ Este carrito no tiene ningún producto del pedido web de '+_pAct.nombre+'.\n\n¿Es la compra de un cliente del mostrador? Tocá Sí para cobrarla como venta normal: el pedido de '+_pAct.nombre+' vuelve a la lista, sin cobrar.').then(function(ok){
+      if(!ok) return;
+      soltarPedidoDelCarrito(true);
+      real();
+    });
+    return;
+  }
   if(pedidoSoloTransferencia(id) && (mixtoActivo || pagoSel !== 'Transferencia')){ showToast('🔒 '+AVISO_SOLO_TRANSF, true); return; }
   if(_cobroPedidoEnCurso) return;
   _cobroPedidoEnCurso = true;
@@ -35089,6 +35107,53 @@ function _confirmarConCandado(real){
 }
 function doConfirmarVenta(yaReservado){ return yaReservado ? _doConfirmarVentaSinCandado() : _confirmarConCandado(_doConfirmarVentaSinCandado); }
 function doConfirmarVenta2(yaReservado){ return yaReservado ? _doConfirmarVenta2SinCandado() : _confirmarConCandado(_doConfirmarVenta2SinCandado); }
+
+// ── SACAR UN PEDIDO WEB DEL CARRITO ─────────────────────────────────────────
+// Si el carrito se vacía (o se toca "Sacar el pedido"), el pedido se suelta:
+// vuelve a la lista de pedidos sin cobrar, sin los cambios que se le habían
+// hecho desde este carrito, y se saca el envío del carrito. Antes el carrito
+// seguía "atado" al pedido aunque estuviera vacío: si después se cargaba la
+// compra de un cliente del mostrador, esa venta quedaba como el cobro del
+// pedido web (y el pedido, cobrado con productos que no eran).
+var _cargandoPedidoWeb = false;
+function soltarPedidoDelCarrito(silencioso){
+  var id = _pedidoWebEnCarrito;
+  if(!id) return;
+  _pedidoWebEnCarrito = null;
+  clearTimeout(_syncPedidoTimer);
+  var pedidos = getPedidosWeb(), p = pedidos.find(function(x){ return x.id === id; });
+  if(p && !p.pagoConfirmado){
+    p.estado = 'pendiente';
+    delete p.cargadoCaja; delete p.cargadoPor; delete p.cargadoDisp; delete p.cargadoPuesto;
+    if(p.subtotalOriginal !== undefined){ p.subtotal = p.subtotalOriginal; p.total = p.subtotalOriginal + (p.envio || 0); delete p.subtotalOriginal; }
+    delete p.itemsAgregados; delete p.itemsQuitados; delete p.modificadoEnLocalPor;
+    savePedidosWeb(pedidos);
+  }
+  try{ resetDelivery(); }catch(e){}
+  if(!silencioso) showToast('🛵 El pedido de '+(p ? p.nombre : 'la web')+' salió del carrito: volvió a la lista de pedidos, sin cobrar');
+  if(typeof actualizarDeliveryPendBadge === 'function') try{ actualizarDeliveryPendBadge(); }catch(e){}
+}
+// Botón del cartel del carrito: saca el pedido y sus productos.
+function sacarPedidoDelCarrito(){
+  var p = _pedidoWebEnCarrito ? getPedidosWeb().find(function(x){ return x.id === _pedidoWebEnCarrito; }) : null;
+  askConfirm('¿Sacás el pedido web de '+(p ? p.nombre : 'la web')+' del carrito?\n\nSe vacía el carrito y el pedido vuelve a la lista, sin cobrar.').then(function(ok){
+    if(!ok) return;
+    soltarPedidoDelCarrito(true);
+    cart = []; pagoSel = null;
+    updateCart();
+    showToast('🛵 Pedido sacado del carrito: volvió a la lista, sin cobrar');
+  });
+}
+// ¿El carrito tiene algo de lo que pidió el cliente por la web?
+function carritoTieneAlgoDelPedido(p){
+  if(!p) return true;
+  var nombres = {};
+  (p.items || []).forEach(function(it){ nombres[it.nombre] = true; });
+  (p.combos || []).forEach(function(cb){ nombres[cb.nombre] = true; (cb.items || []).forEach(function(it){ nombres[it.nombre || it.name] = true; }); });
+  (p.notasManuales || []).forEach(function(n){ nombres[n.nombre] = true; });
+  if(!Object.keys(nombres).length) return true;
+  return cart.some(function(i){ return nombres[i.name] || nombres[String(i.name || '').replace(/^\S+\s/, '')] || (i.comboItems || []).some(function(ci){ return nombres[ci.nombre]; }); });
+}
 
 // Guarda qué pedido web está cargado en el carrito, para poder marcarlo como
 // cobrado automáticamente cuando se confirme la venta.
@@ -35221,6 +35286,7 @@ function cargarPedidoAlCarrito(id) {
     setTimeout(function(){ showToast('⚠️ Este pedido llegó sin ubicación: falta confirmar el envío (elegí la zona en Pedidos)', true); }, 600);
   }
 
+  _cargandoPedidoWeb = true;
   var _lp = lineasDePedidoWeb(cart, pedido);
   if(_lp.faltaPrecio > 0){
     showToast('⚠️ '+_lp.faltaPrecio+' producto(s) suelto(s) sin precio — cargalo a mano en el carrito antes de cobrar', true);
@@ -35238,6 +35304,7 @@ function cargarPedidoAlCarrito(id) {
   }
 
   updateCart();
+  _cargandoPedidoWeb = false;
   if(typeof syncConfirmarBtn==='function') syncConfirmarBtn();
 
   // Preseleccionar el medio de pago que el cliente ya eligió en el catálogo
