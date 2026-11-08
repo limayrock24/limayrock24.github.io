@@ -2,6 +2,64 @@
 <html lang="es">
 <head>
 <script>
+// ── HORA DE LA NUBE ─────────────────────────────────────────────────────────
+// Hay compus del local que no dejan corregir la hora (la de Pago Fácil, por
+// ejemplo). Con la hora mal, las ventas, los turnos, los retiros y los
+// pedidos quedaban guardados con la hora de esa compu y se desordenaba todo
+// (un retiro "antes" de que empezara el turno no se contaba). Ahora el
+// sistema le pregunta la hora real al servidor (la que manda en cada respuesta)
+// y corrige el reloj de la página: todo lo que pide la hora (Date) devuelve la
+// hora real, tenga la hora que tenga la compu. La corrección se guarda en el
+// equipo (sirve aunque se corte internet) y se vuelve a medir cada 10 minutos.
+// Diferencias de menos de un minuto no se tocan.
+(function(){
+  if(window.__lrRelojListo) return;
+  window.__lrRelojListo = true;
+  var D = window.Date, K = 'lr_reloj_ajuste', aj = 0;
+  try{ var g = JSON.parse(localStorage.getItem(K) || 'null'); if(g && typeof g.ms === 'number' && Math.abs(g.ms) < 30*86400000) aj = g.ms; }catch(e){}
+  window.__lrRelojAjuste = aj;
+  function ahora(){ return D.now() + aj; }
+  function LRDate(){
+    if(!(this instanceof LRDate)) return new D(ahora()).toString();
+    if(arguments.length === 0) return new D(ahora());
+    var a = [null]; for(var i = 0; i < arguments.length; i++) a.push(arguments[i]);
+    return new (Function.prototype.bind.apply(D, a))();
+  }
+  LRDate.prototype = D.prototype;
+  LRDate.now = ahora; LRDate.parse = D.parse; LRDate.UTC = D.UTC;
+  LRDate.relojDelEquipo = function(){ return D.now(); };
+  window.Date = LRDate;
+  var avisado = false;
+  function aviso(){
+    if(avisado || Math.abs(aj) < 120000 || !document.body) return;
+    avisado = true;
+    var min = Math.round(Math.abs(aj) / 60000), txt = min >= 90 ? Math.round(min / 6) / 10 + ' h' : min + ' min';
+    var b = document.createElement('div');
+    b.style.cssText = 'position:fixed;left:10px;bottom:52px;z-index:99999;max-width:330px;background:#1e293b;color:#e2e8f0;border:1px solid #38bdf8;border-radius:8px;padding:9px 12px;font:13px/1.35 sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.5)';
+    b.innerHTML = '🕐 <b>La hora de esta compu está '+(aj > 0 ? 'atrasada' : 'adelantada')+' '+txt+'.</b><br>No pasa nada: el sistema usa la hora real de internet.';
+    document.body.appendChild(b);
+    setTimeout(function(){ if(b.parentNode) b.parentNode.removeChild(b); }, 12000);
+  }
+  function medir(){
+    if(!window.fetch) return;
+    var t0 = D.now();
+    fetch(location.pathname + '?reloj=' + t0, { method: 'HEAD', cache: 'no-store' }).then(function(r){
+      var t1 = D.now(), h = r.headers.get('date');
+      if(!h || t1 - t0 > 15000) return;
+      var srv = D.parse(h);
+      if(isNaN(srv)) return;
+      var nuevo = srv + 500 - (t0 + t1) / 2;          // la hora del servidor viene en segundos enteros
+      if(Math.abs(nuevo) < 60000) nuevo = 0;
+      aj = nuevo; window.__lrRelojAjuste = aj;
+      try{ localStorage.setItem(K, JSON.stringify({ ms: aj, medido: srv })); }catch(e){}
+      if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', aviso); else aviso();
+    }).catch(function(){});
+  }
+  medir();
+  setInterval(medir, 10 * 60000);
+})();
+</script>
+<script>
 // Aviso de versión nueva. El catálogo no lo tenía, así que un cliente (o el
 // propio celular de Martín) podía quedarse días viendo una copia vieja guardada
 // por el navegador, sin enterarse de precios o combos nuevos.
