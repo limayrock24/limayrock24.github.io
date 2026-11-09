@@ -396,10 +396,11 @@ if(window.__lrSucursal === 2){
   window.__lrEsPanelAdmin = location.pathname.indexOf('/admin/') !== -1;
   // Puesto Delivery (tablet, link /puesto/): pantalla propia y carga liviana.
   window.__lrEsPuesto = !window.__lrEsPanelAdmin && /[?&]puesto=1/.test(location.search);
+  window.__lrPzCss = 'html.modo-puesto body>header,html.modo-puesto #combosSection,html.modo-puesto #favsSection,html.modo-puesto #main,html.modo-puesto #empty,html.modo-puesto #cartPanel,html.modo-puesto #cartPanel2,html.modo-puesto #ventaOk,html.modo-puesto #puestoBarra{display:none!important}#puestoApp{display:none;max-width:1280px;margin:0 auto;padding:14px 14px 90px;font-family:Barlow,system-ui,sans-serif;color:#eee}.pz-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#111;border:1px solid var(--gold);border-radius:12px;padding:12px 16px;margin-bottom:12px}.pz-tit{font-family:Oswald,sans-serif;font-size:1.35rem;letter-spacing:2px;color:var(--gold);font-weight:700}.pz-quien{font-size:.85rem;color:#bbb;margin-top:2px}.pz-quien b{color:#fff}.pz-top-der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pz-chip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#ccc;border-radius:20px;padding:7px 14px;font-size:.85rem}.pz-chip b{color:#22c55e}.pz-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.pz-tab{flex:1;min-width:170px;background:#161616;border:2px solid #2a2a2a;color:#aaa;border-radius:10px;padding:13px 10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer}.pz-tab.on{background:#1d1d1d}.pz-num{display:inline-block;min-width:26px;border-radius:13px;padding:1px 8px;margin-left:4px;font-weight:700}.pz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.pz-vacio{text-align:center;color:#999;padding:50px 20px;font-size:1.1rem}.pz-vacio span{font-size:.85rem;color:#666}.pz-card{background:var(--card);border:2px solid #2c2c2c;border-radius:12px;padding:14px}.pz-card.demora{border-color:rgba(248,113,113,.7)}.pz-card.cobrado{border-color:rgba(56,189,248,.45)}.pz-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.pz-nom{font-size:1.15rem;font-weight:700;color:#fff}.pz-tot{font-family:Oswald,sans-serif;font-size:1.45rem;color:var(--gold);font-weight:700;white-space:nowrap}.pz-sub{font-size:.82rem;color:#999;margin-top:3px}.pz-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-pill{border-radius:14px;padding:4px 10px;font-size:.78rem;font-weight:600}.pz-dir{font-size:.9rem;color:#ddd;margin-top:8px}.pz-dir span{color:var(--gold)}.pz-items{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.pz-it{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:.95rem;color:#eee}.pz-q{display:inline-block;min-width:30px;text-align:center;background:var(--gold);color:#111;border-radius:5px;font-family:Oswald,sans-serif;font-weight:700;padding:2px 4px}.pz-notas{background:rgba(210,32,31,.1);border:1px solid rgba(210,32,31,.35);border-radius:7px;padding:8px 10px;margin-top:8px;font-size:.85rem;color:#ddd}.pz-notas b{color:#f87171}.pz-btn-cobrar{display:block;width:100%;margin-top:12px;background:#22c55e;color:#052e16;border:none;border-radius:9px;padding:15px;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:1px;cursor:pointer}.pz-btn-cobrar.grande{font-size:1.35rem;padding:19px}.pz-btn-cobrar:disabled{opacity:.5}.pz-fila{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.pz-btn-sec{flex:1;min-width:120px;background:transparent;border:1px solid #444;color:#ccc;border-radius:7px;padding:11px 10px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer}.pz-cobrado{margin-top:12px;text-align:center;background:rgba(34,197,94,.12);color:#22c55e;border-radius:7px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px}.pz-trabado{margin-top:12px;text-align:center;border:1px dashed var(--gold);border-radius:7px;padding:10px;color:var(--gold);font-family:Oswald,sans-serif}.pz-trabado button{display:block;margin:6px auto 0;background:none;border:none;color:#999;text-decoration:underline;cursor:pointer}.pz-cobro .pz-ccab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.pz-cobro .pz-ccab .pz-btn-sec{flex:0 0 auto}.pz-ccols{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}@media(max-width:820px){.pz-ccols{grid-template-columns:1fr}}.pz-ccol{background:var(--card);border:1px solid #2c2c2c;border-radius:12px;padding:14px}.pz-sec{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:8px}.pz-cfila{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.pz-cnom{flex:1;font-size:1rem;color:#fff}.pz-cnom span{display:block;font-size:.75rem;color:#888}.pz-cqty{display:flex;align-items:center;gap:8px}.pz-cqty b{min-width:24px;text-align:center;font-size:1.1rem}.pz-cqty button{width:38px;height:38px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#fff;font-size:1.3rem;cursor:pointer}.pz-csub{min-width:90px;text-align:right;font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem}.pz-cdel{background:none;border:none;font-size:1.1rem;cursor:pointer;opacity:.7}.pz-busca{width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:12px;font-size:1rem;outline:none}.pz-resl{display:flex;flex-direction:column;gap:5px;margin-top:6px}.pz-res{text-align:left;background:#1a1a1a;border:1px solid #333;border-radius:7px;color:#ddd;padding:10px 12px;font-size:.92rem;cursor:pointer}.pz-res b{float:right;color:var(--gold)}.pz-envio{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}.pz-envio input{width:130px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:var(--gold);padding:9px;font-size:1rem;text-align:right}.pz-medios{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pz-medio{background:#1a1a1a;border:2px solid #333;border-radius:9px;color:#ccc;padding:15px 8px;font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;cursor:pointer}.pz-medio.on{border-color:var(--gold);background:rgba(244,180,0,.12);color:var(--gold)}.pz-extra{margin-top:12px;background:#151515;border-radius:9px;padding:12px}.pz-extra label{display:block;font-size:.85rem;color:#aaa;margin-bottom:5px}.pz-extra input{width:100%;background:#1f1f1f;border:1px solid #444;border-radius:7px;color:#fff;padding:12px;font-size:1.2rem;outline:none}.pz-rapidos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-rapidos button{flex:1;min-width:80px;background:#222;border:1px solid #444;border-radius:7px;color:#ddd;padding:9px 4px;font-size:.85rem;cursor:pointer}.pz-vuelto{margin-top:10px;font-size:1.15rem;color:#ddd}.pz-vuelto b{color:#22c55e;font-size:1.35rem}.pz-mix{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pz-mix label{flex:0 0 130px;margin:0}.pz-mix input{padding:9px;font-size:1rem}.pz-totales{margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:10px}.pz-totales div{display:flex;justify-content:space-between;font-size:.95rem;color:#bbb;padding:3px 0}.pz-totales .fin{font-size:1.25rem;color:#fff;margin-top:4px}.pz-totales .fin b{color:var(--gold);font-family:Oswald,sans-serif;font-size:1.6rem}.pz-ok{text-align:center;padding:70px 20px}.pz-ok-ico{font-size:4rem}.pz-ok-tit{font-family:Oswald,sans-serif;font-size:2.2rem;color:#22c55e;letter-spacing:2px;margin-top:8px}.pz-ok-sub{font-size:1.05rem;color:#ccc;margin-top:6px}.pz-ok-vuelto{display:inline-block;margin-top:16px;background:var(--gold);color:#111;border-radius:12px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700}.pz-msg-box{width:100%;max-width:640px;background:#141414;border:1px solid #38bdf8;border-radius:14px;padding:16px}.pz-msg-chip{background:#1c1c1c;border:2px solid #333;border-radius:20px;color:#ddd;padding:9px 14px;font-size:.92rem;cursor:pointer}.pz-msg-chip.on{border-color:#38bdf8;background:rgba(56,189,248,.15);color:#38bdf8}.pz-msg-rap{background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#ccc;padding:8px 10px;font-size:.82rem;cursor:pointer;text-align:left}.pz-msg-env{background:#1a1a1a;border:1px solid #2c2c2c;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:.85rem;color:#aaa}.pz-reps{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:9px 12px;margin-bottom:12px}.pz-reps-tit{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1.5px;color:#999;margin-right:4px}.pz-rep{display:inline-flex;align-items:center;gap:7px;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:7px 13px;color:#eee;font-size:.92rem;cursor:pointer}.pz-rep i{font-style:normal;font-size:.78rem}html.pedido-en-caja body>header,html.pedido-en-caja #combosSection,html.pedido-en-caja #favsSection,html.pedido-en-caja #main,html.pedido-en-caja #empty,html.pedido-en-caja #cartPanel,html.pedido-en-caja #cartPanel2,html.pedido-en-caja #ventaOk,html.pedido-en-caja #puestoBarra,html.pedido-en-caja #deliveryPendModal{display:none!important}';
   if(window.__lrEsPuesto){
     document.documentElement.classList.add('modo-puesto');
     var _pzCss = document.createElement('style'); _pzCss.id = 'puestoCss';
-    _pzCss.textContent = 'html.modo-puesto body>header,html.modo-puesto #combosSection,html.modo-puesto #favsSection,html.modo-puesto #main,html.modo-puesto #empty,html.modo-puesto #cartPanel,html.modo-puesto #cartPanel2,html.modo-puesto #ventaOk,html.modo-puesto #puestoBarra{display:none!important}#puestoApp{display:none;max-width:1280px;margin:0 auto;padding:14px 14px 90px;font-family:Barlow,system-ui,sans-serif;color:#eee}.pz-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#111;border:1px solid var(--gold);border-radius:12px;padding:12px 16px;margin-bottom:12px}.pz-tit{font-family:Oswald,sans-serif;font-size:1.35rem;letter-spacing:2px;color:var(--gold);font-weight:700}.pz-quien{font-size:.85rem;color:#bbb;margin-top:2px}.pz-quien b{color:#fff}.pz-top-der{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pz-chip{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#ccc;border-radius:20px;padding:7px 14px;font-size:.85rem}.pz-chip b{color:#22c55e}.pz-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}.pz-tab{flex:1;min-width:170px;background:#161616;border:2px solid #2a2a2a;color:#aaa;border-radius:10px;padding:13px 10px;font-family:Oswald,sans-serif;font-size:.95rem;letter-spacing:1px;cursor:pointer}.pz-tab.on{background:#1d1d1d}.pz-num{display:inline-block;min-width:26px;border-radius:13px;padding:1px 8px;margin-left:4px;font-weight:700}.pz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}.pz-vacio{text-align:center;color:#999;padding:50px 20px;font-size:1.1rem}.pz-vacio span{font-size:.85rem;color:#666}.pz-card{background:var(--card);border:2px solid #2c2c2c;border-radius:12px;padding:14px}.pz-card.demora{border-color:rgba(248,113,113,.7)}.pz-card.cobrado{border-color:rgba(56,189,248,.45)}.pz-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.pz-nom{font-size:1.15rem;font-weight:700;color:#fff}.pz-tot{font-family:Oswald,sans-serif;font-size:1.45rem;color:var(--gold);font-weight:700;white-space:nowrap}.pz-sub{font-size:.82rem;color:#999;margin-top:3px}.pz-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-pill{border-radius:14px;padding:4px 10px;font-size:.78rem;font-weight:600}.pz-dir{font-size:.9rem;color:#ddd;margin-top:8px}.pz-dir span{color:var(--gold)}.pz-items{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.pz-it{display:flex;align-items:center;gap:9px;padding:3px 0;font-size:.95rem;color:#eee}.pz-q{display:inline-block;min-width:30px;text-align:center;background:var(--gold);color:#111;border-radius:5px;font-family:Oswald,sans-serif;font-weight:700;padding:2px 4px}.pz-notas{background:rgba(210,32,31,.1);border:1px solid rgba(210,32,31,.35);border-radius:7px;padding:8px 10px;margin-top:8px;font-size:.85rem;color:#ddd}.pz-notas b{color:#f87171}.pz-btn-cobrar{display:block;width:100%;margin-top:12px;background:#22c55e;color:#052e16;border:none;border-radius:9px;padding:15px;font-family:Oswald,sans-serif;font-size:1.15rem;font-weight:700;letter-spacing:1px;cursor:pointer}.pz-btn-cobrar.grande{font-size:1.35rem;padding:19px}.pz-btn-cobrar:disabled{opacity:.5}.pz-fila{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.pz-btn-sec{flex:1;min-width:120px;background:transparent;border:1px solid #444;color:#ccc;border-radius:7px;padding:11px 10px;font-family:Oswald,sans-serif;font-size:.82rem;letter-spacing:.5px;cursor:pointer}.pz-cobrado{margin-top:12px;text-align:center;background:rgba(34,197,94,.12);color:#22c55e;border-radius:7px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px}.pz-trabado{margin-top:12px;text-align:center;border:1px dashed var(--gold);border-radius:7px;padding:10px;color:var(--gold);font-family:Oswald,sans-serif}.pz-trabado button{display:block;margin:6px auto 0;background:none;border:none;color:#999;text-decoration:underline;cursor:pointer}.pz-cobro .pz-ccab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}.pz-cobro .pz-ccab .pz-btn-sec{flex:0 0 auto}.pz-ccols{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}@media(max-width:820px){.pz-ccols{grid-template-columns:1fr}}.pz-ccol{background:var(--card);border:1px solid #2c2c2c;border-radius:12px;padding:14px}.pz-sec{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:2px;color:#999;text-transform:uppercase;margin-bottom:8px}.pz-cfila{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.pz-cnom{flex:1;font-size:1rem;color:#fff}.pz-cnom span{display:block;font-size:.75rem;color:#888}.pz-cqty{display:flex;align-items:center;gap:8px}.pz-cqty b{min-width:24px;text-align:center;font-size:1.1rem}.pz-cqty button{width:38px;height:38px;border-radius:8px;border:1px solid #444;background:#1c1c1c;color:#fff;font-size:1.3rem;cursor:pointer}.pz-csub{min-width:90px;text-align:right;font-family:Oswald,sans-serif;color:var(--gold);font-size:1.05rem}.pz-cdel{background:none;border:none;font-size:1.1rem;cursor:pointer;opacity:.7}.pz-busca{width:100%;background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#fff;padding:12px;font-size:1rem;outline:none}.pz-resl{display:flex;flex-direction:column;gap:5px;margin-top:6px}.pz-res{text-align:left;background:#1a1a1a;border:1px solid #333;border-radius:7px;color:#ddd;padding:10px 12px;font-size:.92rem;cursor:pointer}.pz-res b{float:right;color:var(--gold)}.pz-envio{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:1rem}.pz-envio input{width:130px;background:#1a1a1a;border:1px solid #444;border-radius:7px;color:var(--gold);padding:9px;font-size:1rem;text-align:right}.pz-medios{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pz-medio{background:#1a1a1a;border:2px solid #333;border-radius:9px;color:#ccc;padding:15px 8px;font-family:Oswald,sans-serif;font-size:1rem;letter-spacing:1px;cursor:pointer}.pz-medio.on{border-color:var(--gold);background:rgba(244,180,0,.12);color:var(--gold)}.pz-extra{margin-top:12px;background:#151515;border-radius:9px;padding:12px}.pz-extra label{display:block;font-size:.85rem;color:#aaa;margin-bottom:5px}.pz-extra input{width:100%;background:#1f1f1f;border:1px solid #444;border-radius:7px;color:#fff;padding:12px;font-size:1.2rem;outline:none}.pz-rapidos{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pz-rapidos button{flex:1;min-width:80px;background:#222;border:1px solid #444;border-radius:7px;color:#ddd;padding:9px 4px;font-size:.85rem;cursor:pointer}.pz-vuelto{margin-top:10px;font-size:1.15rem;color:#ddd}.pz-vuelto b{color:#22c55e;font-size:1.35rem}.pz-mix{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pz-mix label{flex:0 0 130px;margin:0}.pz-mix input{padding:9px;font-size:1rem}.pz-totales{margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:10px}.pz-totales div{display:flex;justify-content:space-between;font-size:.95rem;color:#bbb;padding:3px 0}.pz-totales .fin{font-size:1.25rem;color:#fff;margin-top:4px}.pz-totales .fin b{color:var(--gold);font-family:Oswald,sans-serif;font-size:1.6rem}.pz-ok{text-align:center;padding:70px 20px}.pz-ok-ico{font-size:4rem}.pz-ok-tit{font-family:Oswald,sans-serif;font-size:2.2rem;color:#22c55e;letter-spacing:2px;margin-top:8px}.pz-ok-sub{font-size:1.05rem;color:#ccc;margin-top:6px}.pz-ok-vuelto{display:inline-block;margin-top:16px;background:var(--gold);color:#111;border-radius:12px;padding:12px 26px;font-family:Oswald,sans-serif;font-size:1.8rem;font-weight:700}.pz-msg-box{width:100%;max-width:640px;background:#141414;border:1px solid #38bdf8;border-radius:14px;padding:16px}.pz-msg-chip{background:#1c1c1c;border:2px solid #333;border-radius:20px;color:#ddd;padding:9px 14px;font-size:.92rem;cursor:pointer}.pz-msg-chip.on{border-color:#38bdf8;background:rgba(56,189,248,.15);color:#38bdf8}.pz-msg-rap{background:#1a1a1a;border:1px solid #444;border-radius:8px;color:#ccc;padding:8px 10px;font-size:.82rem;cursor:pointer;text-align:left}.pz-msg-env{background:#1a1a1a;border:1px solid #2c2c2c;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:.85rem;color:#aaa}.pz-reps{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:9px 12px;margin-bottom:12px}.pz-reps-tit{font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1.5px;color:#999;margin-right:4px}.pz-rep{display:inline-flex;align-items:center;gap:7px;background:#1a1a1a;border:1px solid #333;border-radius:20px;padding:7px 13px;color:#eee;font-size:.92rem;cursor:pointer}.pz-rep i{font-style:normal;font-size:.78rem}';
+    _pzCss.textContent = window.__lrPzCss;
     document.head.appendChild(_pzCss);
   }
   // También en la app LR Admin: la primera vez baja todo y queda guardado en
@@ -1280,7 +1281,7 @@ if(window.__lrSucursal === 2){
       if(paneDeliv && paneDeliv.classList.contains('active')) renderDeliveryControl();
     }
     if(typeof actualizarEstadoRepartidores==='function') actualizarEstadoRepartidores();
-    if(window.__lrEsPuesto && typeof renderPuesto==='function'){ try{ renderPuesto(); }catch(e){} }
+    if((window.__lrEsPuesto || window.__lrPedidoEnCaja) && typeof renderPuesto==='function'){ try{ renderPuesto(); }catch(e){} }
     if(typeof apagarAvisosNoDisponibles==='function'){ try{ apagarAvisosNoDisponibles(); }catch(e){} }
     // El estado del catálogo (abierto/cerrado) también depende de cuántos
     // repartidores hay disponibles, así que se recalcula acá.
@@ -2141,7 +2142,7 @@ if(window.__lrSucursal === 2){
       try{ abrirDeliveryPendModal(); }catch(e){}
       modalPendDel.scrollTop = yPend;
     }
-    if(window.__lrEsPuesto && typeof renderPuesto === 'function'){ try{ renderPuesto(); }catch(e){ console.error('Puesto', e); } }
+    if((window.__lrEsPuesto || window.__lrPedidoEnCaja) && typeof renderPuesto === 'function'){ try{ renderPuesto(); }catch(e){ console.error('Puesto', e); } }
     // Panel del repartidor: que un pedido nuevo (o uno que otro repartidor
     // acaba de tomar) se refleje al instante, sin recargar nada.
     if(typeof actualizarContadorRepartidor==='function'){
@@ -8813,7 +8814,7 @@ function addToCart(p) {
 }
 
 function updateCart() {
-  if(_pedidoWebEnCarrito && !cart.length && !_cargandoPedidoWeb && !window.__lrEsPuesto) soltarPedidoDelCarrito();
+  if(_pedidoWebEnCarrito && !cart.length && !_cargandoPedidoWeb && !window.__lrEsPuesto && !window.__lrPedidoEnCaja) soltarPedidoDelCarrito();
   var subtotal=cart.reduce(function(s,i){ return s+i.subtotal; },0);
   var delivery = _deliveryActivo ? _deliveryMonto : 0;
   var total = subtotal + delivery;
@@ -8842,7 +8843,7 @@ function renderCartItems() {
     return;
   }
   el.innerHTML='';
-  if(_pedidoWebEnCarrito && !window.__lrEsPuesto){
+  if(_pedidoWebEnCarrito && !window.__lrEsPuesto && !window.__lrPedidoEnCaja){
     var _pw = getPedidosWeb().find(function(x){ return x.id === _pedidoWebEnCarrito; });
     var ban = document.createElement('div');
     ban.style.cssText = 'margin:0 0 8px;padding:9px 11px;border:1.5px solid #38bdf8;border-radius:7px;background:rgba(56,189,248,.1);font-size:.78rem;color:var(--white);line-height:1.35';
@@ -35024,26 +35025,20 @@ function abrirDeliveryPendModal() {
         // El LOCAL es el único que habla con el cliente: le pasa los datos de
         // pago y confirma el cobro. El repartidor solo lleva el pedido.
         (pedidoBloqueadoPorPuesto() ? '<div style="margin-top:8px;padding:10px;border:1px dashed var(--gold);border-radius:6px;text-align:center;color:var(--gold);font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:1px">🔒 '+(p.pagoConfirmado?'✓ COBRADO · ':'')+'Lo atiende y cobra el Puesto Delivery</div>' : '')+
-        '<div style="display:'+(pedidoBloqueadoPorPuesto()?'none':'flex')+';gap:6px;flex-wrap:wrap;margin-top:8px">'+
-          '<button onclick="enviarDatosCobro('+p.id+')" style="flex:1;min-width:130px;background:#25D366;color:#052e16;border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Pasar datos de pago</button>'+
-          '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid #25D366;color:#25D366;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">💬 Más mensajes</button>'+
+        '<div style="display:'+(pedidoBloqueadoPorPuesto()?'none':'block')+';margin-top:9px">'+
           (p.pagoConfirmado
-            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--green);font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700">✓ COBRADO'+(p.cobroAuto?' · 🤖 MP':'')+'</div>'
-            : p.mpPago
-            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.68rem">✅ Ya transfirió '+fmt(p.mpPago.monto)+'</div>'
-            : pedidoEsperaTransferencia(p)
-            ? '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.68rem">⏳ Esperando la transferencia (se cobra solo)</div>'
-            : '<div style="flex:1;min-width:110px;text-align:center;padding:9px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">⏳ Para cobrarlo: Cargar al carrito</div>')+
-          (pedidoTrabadoEnOtraCaja(p)
-            ? '<div style="flex:1;min-width:120px;text-align:center;padding:6px;border:1px dashed var(--gold);border-radius:5px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.68rem">🔒 Lo tiene cargado '+textoCargadoEn(p)+
-                '<div><button onclick="destrabarPedidoWeb('+p.id+')" style="margin-top:4px;background:none;border:none;color:var(--gray);text-decoration:underline;font-size:.62rem;cursor:pointer">Destrabar</button></div></div>'
-            : p.estado === 'cargado'
-            ? '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">Volver a cargar</button>'
-            : '<button onclick="cargarPedidoAlCarrito('+p.id+')" style="flex:1;min-width:120px;background:var(--green);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">Cargar al carrito</button>')+
-        '</div>'+
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+
-          '<button onclick="cerrarPedidoWebEntregado('+p.id+')" style="flex:1;min-width:110px;background:transparent;border:1px solid rgba(46,204,113,.5);color:var(--green);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">✓ Entregado</button>'+
-          '<button onclick="cancelarPedidoWeb('+p.id+')" style="flex:1;min-width:110px;background:transparent;border:1px solid rgba(204,0,0,.5);color:var(--red);border-radius:5px;padding:8px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">❌ Cancelar pedido</button>'+
+            ? '<div style="text-align:center;padding:7px;color:var(--green);font-family:Oswald,sans-serif;font-size:.74rem;font-weight:700">✓ COBRADO'+(p.cobroAuto?' · 🤖 MP':(p.cobradoPor?' por '+p.cobradoPor:''))+'</div>'+
+              '<button onclick="cerrarPedidoWebEntregado('+p.id+')" style="width:100%;background:transparent;border:2px solid var(--green);color:var(--green);border-radius:7px;padding:11px;font-family:Oswald,sans-serif;font-size:.85rem;font-weight:700;letter-spacing:1px;cursor:pointer">✓ ENTREGADO</button>'
+            : pedidoTrabadoEnOtraCaja(p)
+            ? '<div style="text-align:center;padding:9px;border:1px dashed var(--gold);border-radius:7px;color:var(--gold);font-family:Oswald,sans-serif;font-size:.72rem">🔒 Lo tiene abierto '+textoCargadoEn(p)+
+                '<div><button onclick="destrabarPedidoWeb('+p.id+')" style="margin-top:4px;background:none;border:none;color:var(--gray);text-decoration:underline;font-size:.64rem;cursor:pointer">Destrabar</button></div></div>'
+            : (p.mpPago ? '<div style="text-align:center;padding:5px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.7rem">✅ Ya transfirió '+fmt(p.mpPago.monto)+'</div>'
+                : pedidoEsperaTransferencia(p) ? '<div style="text-align:center;padding:5px;color:#38bdf8;font-family:Oswald,sans-serif;font-size:.7rem">⏳ Esperando la transferencia (se cobra sola)</div>' : '')+
+              '<button onclick="abrirPedidoEnCaja('+p.id+')" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:7px;padding:13px;font-family:Oswald,sans-serif;font-size:.92rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 ABRIR PEDIDO · revisar y cobrar</button>')+
+          '<div style="display:flex;gap:6px;margin-top:6px">'+
+            '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;background:transparent;border:1px solid rgba(37,211,102,.5);color:#25D366;border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.66rem;cursor:pointer">💬 Mensajes al cliente</button>'+
+            '<button onclick="cancelarPedidoWeb('+p.id+')" style="flex:1;background:transparent;border:1px solid rgba(204,0,0,.45);color:var(--red);border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.66rem;cursor:pointer">✕ Cancelar pedido</button>'+
+          '</div>'+
         '</div>'+
       '</div>';
     }).join('');
@@ -35051,6 +35046,50 @@ function abrirDeliveryPendModal() {
   // El registro de lo entregado hoy va siempre al final de la lista
   cont.innerHTML += armarEntregadosHoyHtml(entregadosHoy);
   document.getElementById('deliveryPendModal').classList.add('open');
+}
+
+// ── EL PEDIDO WEB EN SU PROPIA PANTALLA, TAMBIÉN EN LAS CAJAS ───────────────
+// Antes, en la caja el pedido se cargaba al MISMO carrito del mostrador: si
+// llegaba un cliente, se mezclaban (y una vez la compra del cliente quedó como
+// el cobro del pedido). Ahora "Abrir pedido" usa la misma pantalla del Puesto
+// Delivery: el carrito del mostrador se guarda tal como estaba, el pedido se
+// revisa, se cambia y se cobra aparte, y al salir vuelve todo como estaba.
+var _cajaMostrador = null;
+function asegurarCssPuesto(){
+  if(document.getElementById('puestoCss')) return;
+  var st = document.createElement('style'); st.id = 'puestoCss'; st.textContent = window.__lrPzCss || ''; document.head.appendChild(st);
+}
+function abrirPedidoEnCaja(id){
+  if(pedidoBloqueadoPorPuesto()){ showToast('🔒 Hoy los pedidos web se cobran en el Puesto Delivery', true); return; }
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  if(!p) return;
+  if(p.pagoConfirmado){ showToast('Ese pedido ya está cobrado'); return; }
+  if(pedidoTrabadoEnOtraCaja(p)){ showToast('🔒 Ese pedido lo tiene cargado '+textoCargadoEn(p), true); return; }
+  if(_pedidoWebEnCarrito){ showToast('Hay otro pedido web en el carrito: sacalo primero', true); return; }
+  _cajaMostrador = { cart: cart, pagoSel: pagoSel, tipoOp: tipoOp, dA: _deliveryActivo, dM: _deliveryMonto };
+  cart = []; pagoSel = null; tipoOp = 'venta';
+  window.__lrPedidoEnCaja = true;
+  asegurarCssPuesto();
+  document.documentElement.classList.add('pedido-en-caja');
+  abrirCobroPuesto(id);
+  if(!_pz.cobroId){ _cerrarPedidoEnCaja(); return; }
+  _pzShell().style.display = 'block';
+  window.scrollTo(0, 0);
+}
+function _cerrarPedidoEnCaja(){
+  if(!window.__lrPedidoEnCaja) return;
+  window.__lrPedidoEnCaja = false;
+  document.documentElement.classList.remove('pedido-en-caja');
+  var app = document.getElementById('puestoApp'); if(app){ app.style.display = 'none'; app.innerHTML = ''; }
+  var g = _cajaMostrador; _cajaMostrador = null;
+  try{ if(typeof resetMixto === 'function') resetMixto(); }catch(e){}
+  try{ resetDelivery(); }catch(e){}
+  if(g){
+    cart = g.cart || []; pagoSel = g.pagoSel; tipoOp = g.tipoOp || 'venta';
+    if(g.dA){ _deliveryActivo = true; _deliveryMonto = g.dM; var box = document.getElementById('deliveryBox'), inp = document.getElementById('deliveryMonto'), btn = document.getElementById('btnDelivery'); if(box) box.classList.add('show'); if(btn) btn.classList.add('active'); if(inp) inp.value = g.dM; }
+  }
+  try{ updateCart(); }catch(e){}
+  if(typeof actualizarDeliveryPendBadge === 'function') try{ actualizarDeliveryPendBadge(); }catch(e){}
 }
 
 // ── UN PEDIDO WEB SE COBRA UNA SOLA VEZ ─────────────────────────────────────
@@ -35380,7 +35419,7 @@ function cargarPedidoAlCarrito(id) {
   pedido.cargadoPuesto = !!window.__lrEsPuesto;
   savePedidosWeb(pedidos);
   document.getElementById('deliveryPendModal').classList.remove('open');
-  showToast('🛵 Pedido de '+pedido.nombre+' cargado al carrito');
+  showToast(window.__lrPedidoEnCaja || window.__lrEsPuesto ? '🛵 Pedido de '+pedido.nombre+' abierto' : '🛵 Pedido de '+pedido.nombre+' cargado al carrito');
   actualizarDeliveryPendBadge();
 }
 
@@ -38139,7 +38178,7 @@ function _pzHace(iso){
   var m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime())/60000));
   return m < 1 ? 'recién' : (m < 60 ? 'hace '+m+' min' : 'hace '+Math.floor(m/60)+' h '+(m%60)+' min');
 }
-function _pzActivo(){ return !!(window.__lrEsPuesto && typeof currentEmp !== 'undefined' && currentEmp && currentEmp._puesto); }
+function _pzActivo(){ return !!(window.__lrEsPuesto && typeof currentEmp !== 'undefined' && currentEmp && currentEmp._puesto) || !!(window.__lrPedidoEnCaja && _pz.cobroId); }
 function _pzListas(){
   var vivos = getPedidosWeb().filter(function(p){ return p.estado !== 'resuelto' && !p.anulado && p.estadoDelivery !== 'entregado'; });
   var hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -38160,7 +38199,7 @@ function _pzShell(){
 }
 function renderPuesto(){
   var app = _pzShell();
-  if(!_pzActivo()){ app.style.display = 'none'; return; }
+  if(!_pzActivo()){ app.style.display = 'none'; if(window.__lrPedidoEnCaja) _cerrarPedidoEnCaja(); return; }
   app.style.display = 'block';
   var b = document.getElementById('puestoBarra'); if(b) b.remove();
   if(_pz.cobroId){ if(!document.getElementById('pzCobro')) renderCobroPuesto(); else _pzRevisarCobroVigente(); return; }
