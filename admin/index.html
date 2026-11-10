@@ -6071,6 +6071,12 @@ body.night-on{background:#080005}
         <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Para cuando hacés un conteo físico: buscás el producto y cargás la cantidad real que contaste — reemplaza el número, no lo suma.</div>
         <button class="btn-save" style="width:100%;padding:10px;background:var(--green);color:var(--black);border:none" onclick="abrirCargaStock()">📋 Abrir Cargar Stock</button>
       </div>
+      <!-- CONTROL DE STOCK -->
+      <div style="background:rgba(244,180,0,.05);border:1px solid rgba(244,180,0,.3);border-radius:6px;padding:12px;margin-bottom:16px">
+        <div style="font-family:'Oswald',sans-serif;font-size:.8rem;color:var(--gold);font-weight:700;letter-spacing:1px;margin-bottom:4px">🔍 CONTROL DE STOCK</div>
+        <div style="font-size:.7rem;color:var(--gray);margin-bottom:10px">Para encontrar por qué el stock del sistema no coincide con el real.</div>
+        <div id="controlStockBody"></div>
+      </div>
       <hr style="border-color:var(--border);margin-bottom:16px">
 
       <!-- INGRESAR MERCADERÍA -->
@@ -9534,7 +9540,7 @@ function renderPestanaAdmin(tab) {
   else if(tab==='ventas'){ renderVentas(); renderTopProds(); }
   else if(tab==='empleados') renderEmpAdmin();
   else if(tab==='catalogo') initCatalogo();
-  else if(tab==='inventario'){ renderInventario(); renderStockAlerts(); renderStockVentasDia(); }
+  else if(tab==='inventario'){ renderInventario(); renderStockAlerts(); renderStockVentasDia(); try{ renderControlStock(); }catch(e){ console.error('Control de stock', e); } }
 }
 function closeAdmin() {
   document.getElementById('adminOverlay').classList.remove('open');
@@ -34593,7 +34599,163 @@ function seleccionarCargaStock(nombre) {
   setTimeout(function(){ inp.focus(); inp.select(); }, 100);
 }
 
-function guardarCargaStock() {
+// ── CONTROL DE STOCK ────────────────────────────────────────────────────────
+// Para encontrar por qué el stock del sistema se separa del real:
+//  1) "Ventas que no descontaron stock": ítems cargados a mano (sobre todo los
+//     que se parecen a un producto real), productos vendidos sin ficha de
+//     stock y componentes de combos que no existen como producto.
+//  2) "Historial de un producto": desde la última corrección o conteo, cada
+//     venta, consumo, fiado, ingreso y corrección, con cuánto debería haber.
+var _cs = { dias: 7, vista: '', prod: '', hist: null, histDesde: 0, cargandoHist: false };
+function _normCS(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s*[×x]\s*\d+\s*$/, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function parecidoAProducto(nombre){
+  // Se parece si casi todas las palabras de lo que se escribió a mano están en
+  // el nombre de un producto ("Quilmes 1L" → "Cerveza Quilmes 1L"), y no si
+  // solo comparte una palabra general ("Cigarrillos sueltos").
+  var n = _normCS(nombre); if(n.length < 4) return null;
+  var toks = n.split(' ').filter(function(t){ return t.length >= 2; });
+  if(!toks.length || !toks.some(function(t){ return t.length >= 4; })) return null;
+  var mejor = null, cob0 = 0, largo0 = 1e9;
+  (PRODUCTS || []).forEach(function(p){
+    var pn = ' '+_normCS(p.name)+' ', hits = 0;
+    toks.forEach(function(t){ if(pn.indexOf(' '+t+' ') !== -1) hits++; });
+    var cob = hits / toks.length;
+    if(cob > cob0 || (cob === cob0 && cob > 0 && pn.length < largo0)){ cob0 = cob; mejor = p.name; largo0 = pn.length; }
+  });
+  return cob0 >= 0.75 ? mejor : null;
+}
+// Todo lo que bajó stock en el período: ventas, fiados, consumos y consignaciones.
+function _salidasCS(desde){
+  var en = function(f){ return new Date(f).getTime() >= desde; }, out = [];
+  (VENTAS || []).forEach(function(v){ if(v && !v.fiadoCarga && !esCobroDeFiado(v) && en(v.fecha)) out.push({ origen: 'Venta', fecha: v.fecha, quien: v.empleado, items: v.items || [], anulada: !!v.anulada }); });
+  (getFiados() || []).forEach(function(f){ if(f && en(f.fecha)) out.push({ origen: 'Fiado', fecha: f.fecha, quien: f.empleado, items: f.items || [] }); });
+  (getConsumos() || []).forEach(function(c){ if(c && en(c.fecha)) out.push({ origen: 'Consumo', fecha: c.fecha, quien: c.empleado, items: c.items || [] }); });
+  (getConsignaciones() || []).forEach(function(c){ if(c && en(c.fecha)) out.push({ origen: 'Consignación', fecha: c.fecha, quien: c.empleado || c.responsable, items: c.items || [] }); });
+  return out;
+}
+// Cuántas unidades de un producto lleva una línea (suelto o dentro de un combo).
+function _unidadesDe(item, nombre){
+  if(!item || item.manual) return 0;
+  var q = Number(item.qty) || 1;
+  if(item.comboArmado) return 0;
+  if(item.esCombo && item.comboItems && item.comboItems.length) return item.comboItems.reduce(function(s, ci){ return s + (ci.tipo !== 'manual' && ci.nombre === nombre ? (Number(ci.qty) || 0) * q : 0); }, 0);
+  return item.name === nombre ? q : 0;
+}
+function analizarFugasStock(dias){
+  var desde = Date.now() - dias * 86400000, inv = getStockInv();
+  var manuales = {}, sinFicha = {}, comboSin = {};
+  var anota = function(mapa, k, nombre, q, monto, s){ var g = mapa[k] || (mapa[k] = { nombre: nombre, veces: 0, unidades: 0, monto: 0, quien: {}, ultima: '' }); g.veces++; g.unidades += q; g.monto += monto; if(s.quien) g.quien[s.quien] = true; if(String(s.fecha) > g.ultima) g.ultima = s.fecha; };
+  _salidasCS(desde).forEach(function(s){
+    if(s.anulada) return;
+    s.items.forEach(function(it){
+      if(!it || !it.name) return;
+      var q = Number(it.qty) || 1;
+      if(it.manual){ var base = String(it.name).replace(/\s*×\s*\d+\s*$/, ''); anota(manuales, _normCS(base), base, q, Number(it.subtotal) || 0, s); return; }
+      if(it.comboArmado) return;
+      if(it.esCombo && it.comboItems){ it.comboItems.forEach(function(ci){ if(ci.tipo !== 'manual' && ci.nombre && !inv[ci.nombre]) anota(comboSin, ci.nombre, ci.nombre+' (en '+it.name+')', (Number(ci.qty) || 1) * q, 0, s); }); return; }
+      if(!inv[it.name]) anota(sinFicha, it.name, it.name, q, Number(it.subtotal) || 0, s);
+    });
+  });
+  var lista = function(m){ return Object.keys(m).map(function(k){ return m[k]; }).sort(function(a, b){ return b.unidades - a.unidades; }); };
+  var man = lista(manuales); man.forEach(function(g){ g.parecido = parecidoAProducto(g.nombre); });
+  man.sort(function(a, b){ return (b.parecido ? 1 : 0) - (a.parecido ? 1 : 0) || b.unidades - a.unidades; });
+  return { manuales: man, sinFicha: lista(sinFicha), comboSin: lista(comboSin) };
+}
+// Correcciones y otros cambios de stock de un producto (historial de 7 días y
+// correcciones de Cargar Stock, que se guardan más tiempo).
+function cargarHistStockCS(){
+  if(_cs.cargandoHist) return;
+  var desde = Date.now() - 7 * 86400000;
+  if(_cs.hist && _cs.histDesde <= desde + 600000) return;
+  _cs.cargandoHist = true;
+  window.__lrDB.collection('historialCambios').where('ts', '>=', desde).get().then(function(snap){
+    var a = []; snap.forEach(function(d){ var x = d.data(); if(x && x.coleccion === 'inventario') a.push(x); });
+    _cs.hist = a; _cs.histDesde = desde; _cs.cargandoHist = false; renderControlStock();
+  }).catch(function(e){ console.warn('Control de stock: historial', e); _cs.hist = []; _cs.histDesde = desde; _cs.cargandoHist = false; renderControlStock(); });
+}
+function eventosStockProducto(nombre){
+  var desde = Date.now() - 7 * 86400000, ev = [];
+  (_cs.hist || []).forEach(function(h){
+    (h.cambios || []).forEach(function(c){
+      if(c.id !== nombre) return;
+      var antes = c.antes ? Number(c.antes.stock) || 0 : null, desp = c.despues ? Number(c.despues.stock) || 0 : null;
+      if(desp === null) return;
+      if(c.modo === 'fijo' || antes === null) ev.push({ t: h.ts, tipo: 'fijo', txt: 'Corrección / conteo: quedó en '+desp+(antes !== null ? ' (antes '+antes+')' : ''), valor: desp, quien: h.quien+' · '+(h.equipo || '') });
+      else if(desp !== antes) ev.push({ t: h.ts, tipo: 'suma', txt: (desp > antes ? 'Ingreso / devolución' : 'Baja') , delta: desp - antes, quien: h.quien+' · '+(h.equipo || '') });
+    });
+  });
+  // Correcciones de Cargar Stock (por si el historial de 7 días no las tiene)
+  var _vistos = {};
+  (getStockMovs() || []).forEach(function(m){
+    if(m.producto !== nombre || m.tipo !== 'correccion') return;
+    var _k = m.ts+'|'+m.stockDespues; if(_vistos[_k]) return; _vistos[_k] = true;
+    var t = new Date(m.ts).getTime(); if(!(t >= desde)) return;
+    if(ev.some(function(e){ return e.tipo === 'fijo' && Math.abs(e.t - t) < 15000; })) return;
+    ev.push({ t: t, tipo: 'fijo', txt: 'Conteo (Cargar Stock): quedó en '+m.stockDespues+' (antes '+m.stockAntes+')', valor: Number(m.stockDespues) || 0, quien: m.responsable || '' });
+  });
+  _salidasCS(desde).forEach(function(s){
+    var q = s.items.reduce(function(a, it){ return a + _unidadesDe(it, nombre); }, 0);
+    if(q) ev.push({ t: new Date(s.fecha).getTime(), tipo: 'salida', txt: s.origen+(s.anulada ? ' (después anulada: vuelve como ingreso)' : ''), delta: -q, quien: s.quien || '' });
+  });
+  ev.sort(function(a, b){ return a.t - b.t; });
+  var ultFijo = -1; ev.forEach(function(e, i){ if(e.tipo === 'fijo') ultFijo = i; });
+  var esperado = null;
+  if(ultFijo >= 0){ esperado = ev[ultFijo].valor; for(var i = ultFijo + 1; i < ev.length; i++) esperado += ev[i].delta || 0; }
+  var inv = getStockInv()[nombre];
+  return { ev: ev, ultFijo: ultFijo, esperado: esperado, sistema: inv ? Number(inv.stock) || 0 : null, tieneFicha: !!inv };
+}
+function renderControlStock(){
+  var el = document.getElementById('controlStockBody'); if(!el) return;
+  var btn = function(k, t){ var on = _cs.dias === k; return '<button onclick="_cs.dias='+k+';renderControlStock()" style="flex:1;background:'+(on ? 'var(--gold)' : 'transparent')+';color:'+(on ? '#111' : 'var(--gray)')+';border:1px solid '+(on ? 'var(--gold)' : 'var(--border)')+';border-radius:5px;padding:6px;font-family:Oswald,sans-serif;font-size:.68rem;cursor:pointer">'+t+'</button>'; };
+  var tab = function(k, t){ var on = _cs.vista === k; return '<button onclick="_cs.vista=_cs.vista===\''+k+'\'?\'\':\''+k+'\';renderControlStock()" style="flex:1;min-width:150px;background:'+(on ? 'rgba(244,180,0,.12)' : 'var(--card)')+';color:'+(on ? 'var(--gold)' : 'var(--light)')+';border:1px solid '+(on ? 'var(--gold)' : 'var(--border)')+';border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-size:.74rem;letter-spacing:.5px;cursor:pointer">'+t+'</button>'; };
+  var fila = function(izq, sub, der, color){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.06)"><div style="min-width:0"><div style="font-size:.8rem;color:var(--white)">'+izq+'</div>'+(sub ? '<div style="font-size:.66rem;color:var(--gray);margin-top:1px">'+sub+'</div>' : '')+'</div><div style="font-family:Oswald,sans-serif;font-size:.85rem;color:'+(color || 'var(--light)')+';white-space:nowrap;text-align:right">'+der+'</div></div>'; };
+  var tit = function(t, sub){ return '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:var(--gold);margin:12px 0 2px;text-transform:uppercase">'+t+'</div>'+(sub ? '<div style="font-size:.66rem;color:var(--gray);margin-bottom:4px">'+sub+'</div>' : ''); };
+  var fch = function(f){ var d = new Date(f); return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })+' '+d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }); };
+  var h = '<div style="display:flex;gap:8px;flex-wrap:wrap">'+tab('fugas', '🚨 Ventas que no descontaron stock')+tab('prod', '📈 Historial de un producto')+'</div>';
+  if(_cs.vista === 'fugas'){
+    var f = analizarFugasStock(_cs.dias);
+    h += '<div style="display:flex;gap:6px;margin-top:10px">'+btn(1, 'Hoy')+btn(7, '7 días')+btn(30, '30 días')+'</div>';
+    var conPar = f.manuales.filter(function(g){ return g.parecido; });
+    h += tit('Cargados a mano que se parecen a un producto ('+conPar.length+')', 'Se cobraron como "ítem manual": NO bajaron el stock del producto. Si eran ese producto, el sistema quedó con stock de más.');
+    h += conPar.length ? conPar.slice(0, 40).map(function(g){ return fila('✍️ '+escBaja(g.nombre)+' <span style="color:var(--gold)">→ ¿'+escBaja(g.parecido)+'?</span>', g.veces+' venta'+(g.veces === 1 ? '' : 's')+' · '+Object.keys(g.quien).map(escBaja).join(', ')+' · última '+fch(g.ultima), g.unidades+' u. · '+fmt(Math.round(g.monto)), 'var(--gold)'); }).join('') : '<div style="font-size:.74rem;color:var(--green)">✓ Ninguno</div>';
+    h += tit('Productos vendidos sin ficha de stock ('+f.sinFicha.length+')', 'Se vendieron pero no tienen stock cargado: sus ventas no se descuentan. Cargales el stock en "Cargar stock".');
+    h += f.sinFicha.length ? f.sinFicha.slice(0, 40).map(function(g){ return fila('📦 '+escBaja(g.nombre), g.veces+' venta'+(g.veces === 1 ? '' : 's')+' · última '+fch(g.ultima), g.unidades+' u.', 'var(--red)'); }).join('') : '<div style="font-size:.74rem;color:var(--green)">✓ Ninguno</div>';
+    h += tit('Combos con un componente que no existe ('+f.comboSin.length+')', 'Ese componente no se descuenta. Revisá el nombre en el combo.');
+    h += f.comboSin.length ? f.comboSin.slice(0, 30).map(function(g){ return fila('🎁 '+escBaja(g.nombre), g.veces+' venta'+(g.veces === 1 ? '' : 's'), g.unidades+' u.', 'var(--red)'); }).join('') : '<div style="font-size:.74rem;color:var(--green)">✓ Ninguno</div>';
+    var otros = f.manuales.filter(function(g){ return !g.parecido; });
+    if(otros.length) h += tit('Otros ítems cargados a mano ('+otros.length+')', 'Sueltos, fiambrería y similares: está bien que no descuenten stock.')+otros.slice(0, 25).map(function(g){ return fila('✍️ '+escBaja(g.nombre), g.veces+' venta'+(g.veces === 1 ? '' : 's'), g.unidades+' u. · '+fmt(Math.round(g.monto))); }).join('');
+  } else if(_cs.vista === 'prod'){
+    cargarHistStockCS();
+    h += '<div style="margin-top:10px"><input id="csBuscar" list="csProds" value="'+escBaja(_cs.prod)+'" placeholder="Escribí o elegí un producto…" onchange="_cs.prod=this.value;renderControlStock()" style="width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:5px;padding:9px 10px;color:var(--white);font-size:.85rem;outline:none">'+
+      '<datalist id="csProds">'+(PRODUCTS || []).map(function(p){ return '<option value="'+escBaja(p.name)+'">'; }).join('')+'</datalist></div>';
+    if(_cs.prod){
+      if(!_cs.hist) h += '<div style="font-size:.74rem;color:var(--gray);margin-top:8px">Cargando el historial…</div>';
+      else {
+        var r = eventosStockProducto(_cs.prod);
+        if(!r.tieneFicha) h += '<div style="margin-top:8px;font-size:.76rem;color:var(--red)">⚠ Este producto no tiene ficha de stock: sus ventas no se descuentan.</div>';
+        if(r.esperado !== null){
+          var dif = r.sistema - r.esperado, ok = Math.abs(dif) < 0.5;
+          h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'+
+            '<div style="background:var(--dark);border-radius:6px;padding:9px;text-align:center"><div style="font-size:.6rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px">DEBERÍA HABER</div><div style="font-family:Oswald,sans-serif;font-size:1.3rem;color:var(--white)">'+r.esperado+'</div><div style="font-size:.6rem;color:var(--gray)">desde la última corrección</div></div>'+
+            '<div style="background:var(--dark);border-radius:6px;padding:9px;text-align:center"><div style="font-size:.6rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px">EL SISTEMA DICE</div><div style="font-family:Oswald,sans-serif;font-size:1.3rem;color:'+(ok ? 'var(--green)' : 'var(--red)')+'">'+r.sistema+'</div><div style="font-size:.6rem;color:'+(ok ? 'var(--green)' : 'var(--red)')+'">'+(ok ? '✓ coincide' : 'diferencia '+(dif > 0 ? '+' : '')+dif)+'</div></div></div>';
+        } else h += '<div style="font-size:.72rem;color:var(--gray);margin-top:8px">No hay correcciones ni conteos de este producto en los últimos 7 días: se muestra lo que entró y salió.</div>';
+        var tot = { sal: 0, ent: 0 }; r.ev.forEach(function(e, i){ if(i > r.ultFijo){ if((e.delta || 0) < 0) tot.sal -= e.delta; else tot.ent += e.delta || 0; } });
+        h += '<div style="font-size:.72rem;color:var(--light);margin:10px 0 4px">'+(r.ultFijo >= 0 ? 'Desde la última corrección: ' : 'Últimos 7 días: ')+'<b style="color:var(--red)">salieron '+tot.sal+'</b> · <b style="color:var(--green)">entraron '+tot.ent+'</b></div>';
+        h += r.ev.slice().reverse().slice(0, 80).map(function(e, k){ var i = r.ev.length - 1 - k; return fila((e.tipo === 'fijo' ? '📋 ' : (e.delta < 0 ? '➖ ' : '➕ '))+escBaja(e.txt), fch(e.t)+' · '+escBaja(e.quien || ''), e.tipo === 'fijo' ? '= '+e.valor : (e.delta > 0 ? '+' : '')+e.delta, e.tipo === 'fijo' ? 'var(--gold)' : (e.delta < 0 ? 'var(--red)' : 'var(--green)')) + (i === r.ultFijo ? '<div style="font-size:.62rem;color:var(--gold);padding:2px 0 6px">▲ desde acá se cuenta "debería haber"</div>' : ''); }).join('') || '<div style="font-size:.74rem;color:var(--gray)">Sin movimientos en los últimos 7 días.</div>';
+      }
+    }
+  }
+  el.innerHTML = h;
+}
+// Al cargar un conteo: si hubo ventas de ese producto en los últimos 20
+// minutos, se pregunta si se contó antes o después (si fue antes, se
+// descuentan: si no, el conteo "borraba" esas ventas).
+function vendidoRecienteDe(nombre, minutos){
+  var desde = Date.now() - minutos * 60000;
+  return _salidasCS(desde).reduce(function(s, x){ return x.anulada ? s : s + x.items.reduce(function(a, it){ return a + _unidadesDe(it, nombre); }, 0); }, 0);
+}
+
+function guardarCargaStock(yaPreguntado) {
   if(!_cargaStockProdSel) return;
   var inp = document.getElementById('cargaStockEditorInput');
   var nuevo = parseInt(inp.value);
@@ -34614,6 +34776,16 @@ function guardarCargaStock() {
     buscar0.focus();
     filtrarCargaStock('');
     return;
+  }
+  if(!yaPreguntado){
+    var _rec = vendidoRecienteDe(_cargaStockProdSel, 20);
+    if(_rec > 0){
+      askConfirm('En los últimos 20 minutos se vendieron '+_rec+' de '+_cargaStockProdSel+'.\n\n¿Contaste ANTES de esas ventas?\n\n• Sí: se descuentan y queda en '+Math.max(0, nuevo - _rec)+'.\n• No (contaste después): queda en '+nuevo+'.').then(function(antes){
+        if(antes) inp.value = Math.max(0, nuevo - _rec);
+        guardarCargaStock(true);
+      });
+      return;
+    }
   }
   inp.dataset.alAbrir = '';
   var stockDespues = nuevo;
