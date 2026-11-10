@@ -594,6 +594,14 @@ let CAT_ORDEN = [];  // orden manual de las pestañas de categorías, elegido de
 let CAT_ICONOS = {}; // { "Nombre de pestaña": "🍬" } — emoji opcional por pestaña
 let CARRITO_COMBOS = {};   // { nombreCombo: cantidad }
 let STOCK = {};
+// Stock que muestra el catálogo = stock del local − lo apartado para pedidos
+// web que todavía no se cobraron (lo publica la caja en config/deliveryActivo).
+let STOCK_BASE = {}, RESERVAS = {};
+function aplicarReservas(){
+  var s = {};
+  Object.keys(STOCK_BASE).forEach(function(n){ s[n] = Math.max(0, (STOCK_BASE[n] || 0) - (Number(RESERVAS[n]) || 0)); });
+  STOCK = s;
+}
 let CARRITO = {};
 let CARRITO_MANUAL = {}; // { itemId: {nombre, categoria, texto} }
 let _manualModo = {}; // { itemId: 'peso' | 'monto' } — cómo está pidiendo ese suelto ahora mismo
@@ -892,6 +900,9 @@ db.collection('config').doc('deliveryActivo').onSnapshot(function(doc){
   var activo = doc.exists ? (doc.data().activo !== false) : true;
   COSTO_ENVIO = doc.exists ? (doc.data().costoEnvio || 0) : 0;
   ZONA_CFG = doc.exists ? (doc.data().zonaCfg || null) : null;
+  RESERVAS = doc.exists ? (doc.data().reservas || {}) : {};
+  aplicarReservas();
+  if(stockListos && document.getElementById('mainContent').style.display==='block') renderList();
   // El precio nocturno (productos Y envío) se decide por la HORA, igual que
   // en el panel de venta: de 00:00 a 08:00 rigen los nocturnos. Antes
   // dependía de que alguien se acordara de tildar la casilla en el admin, y
@@ -946,7 +957,8 @@ db.collection('inventario').onSnapshot(function(snap){
     var d = doc.data();
     inv[d.nombre] = d.stock || 0;
   });
-  STOCK = inv;
+  STOCK_BASE = inv;
+  aplicarReservas();
   stockListos = true;
   chequearListo();
   if(document.getElementById('mainContent').style.display==='block') renderList();
@@ -1900,6 +1912,12 @@ function cambiarCantidad(nombre, delta){
   if(!prod) return;
   var precioUsar = PRECIO_NOCTURNO ? prod.precioNoc : prod.precio;
   if(!CARRITO[nombre]) CARRITO[nombre] = {nombre:nombre, precio:precioUsar, cantidad:0};
+  // No se puede pedir más de lo que hay disponible.
+  if(delta > 0 && (nombre in STOCK) && CARRITO[nombre].cantidad + delta > STOCK[nombre]){
+    if(!CARRITO[nombre].cantidad) delete CARRITO[nombre];
+    alert(STOCK[nombre] > 0 ? 'De '+nombre+' quedan solo '+STOCK[nombre]+' disponibles.' : nombre+' está sin stock en este momento.');
+    return;
+  }
   CARRITO[nombre].cantidad += delta;
   if(CARRITO[nombre].cantidad <= 0) delete CARRITO[nombre];
   if(delta > 0) armarCombosAutoCatalogo();

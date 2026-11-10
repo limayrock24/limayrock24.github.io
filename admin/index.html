@@ -1965,6 +1965,9 @@ if(window.__lrSucursal === 2){
   // Delivery activo/inactivo + costo de envío + precio nocturno del catálogo
   window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').onSnapshot(function(doc){
     window.__lrDeliveryActivo = doc.exists ? (doc.data().activo !== false) : true;
+    window.__lrReservasNube = doc.exists ? (doc.data().reservas || {}) : {};
+    window.__lrReservasLeidas = true;
+    if(typeof programarPublicarReservas === 'function') programarPublicarReservas();
     // Cuántos pedidos puede tener tomados a la vez cada repartidor (0 = sin límite).
     var _mx = doc.exists ? doc.data().maxPedidosRep : undefined;
     window.__lrMaxPedidosRep = (_mx === undefined || _mx === null || _mx === '') ? 2 : Number(_mx);
@@ -2126,6 +2129,7 @@ if(window.__lrSucursal === 2){
     }
     window.__lrSync.ultimoPedidosWebSnapshot = mapa;
     window.__lrSync.pedidosWebListos = true;
+    if(typeof programarPublicarReservas === 'function') programarPublicarReservas();
     if(!soloUbicacion && typeof sincronizarSeguimiento === 'function') sincronizarSeguimiento(lista);
     if(soloUbicacion){
       if(typeof actualizarUbicacionesEnVivo==='function') actualizarUbicacionesEnVivo();
@@ -21654,6 +21658,15 @@ function addToCart(p) {
   if(existing){ existing.qty++; existing.subtotal=existing.precio*existing.qty; }
   else { destino.push({name:p.name, precio:precio, qty:1, subtotal:precio, cat:p.cat}); }
   var combosArmados = (typeof armarCombosAuto==='function') ? armarCombosAuto(destino) : [];
+  // Venta del mostrador de algo apartado para un pedido web: se avisa.
+  var avisoApartado = false;
+  try{
+    var _ap = apartadoDe(p.name);
+    if(_ap > 0 && s && !window.__lrPedidoEnCaja && !window.__lrEsPuesto && !(destino === cart && _pedidoWebEnCarrito)){
+      var _enC = (destino.find(function(i){ return i.name === p.name && !i.esCombo; }) || {}).qty || 0;
+      if(_enC > Number(s.stock) - _ap){ avisoStock = '⚠ '+_ap+' de '+p.name+' '+(_ap === 1 ? 'está apartada' : 'están apartadas')+' para pedidos web: quedan '+Math.max(0, Number(s.stock) - _ap)+' libres'; avisoApartado = true; }
+    }
+  }catch(e){}
 
   if(destino===cart2){
     updateCart2();
@@ -21668,7 +21681,7 @@ function addToCart(p) {
   }
   // Flash visual en favoritos
   buildFavs();
-  if(avisoStock) showToast(avisoStock+(destino===cart2?' (Carrito 2)':''), s.stock <= 0);
+  if(avisoStock) showToast(avisoStock+(destino===cart2?' (Carrito 2)':''), s.stock <= 0 || avisoApartado);
   else if(!combosArmados.length) showToast('⚡ '+p.name+' agregado'+(destino===cart2?' (Carrito 2)':''));
 }
 
@@ -35204,6 +35217,45 @@ function _confirmarConCandado(real){
 }
 function doConfirmarVenta(yaReservado){ return yaReservado ? _doConfirmarVentaSinCandado() : _confirmarConCandado(_doConfirmarVentaSinCandado); }
 function doConfirmarVenta2(yaReservado){ return yaReservado ? _doConfirmarVenta2SinCandado() : _confirmarConCandado(_doConfirmarVenta2SinCandado); }
+
+// ── STOCK APARTADO PARA LOS PEDIDOS WEB ─────────────────────────────────────
+// Lo que pidió un cliente por la web queda "apartado" mientras el pedido está
+// vivo (sin cobrar, sin cancelar): la caja publica la lista de lo apartado en
+// config/deliveryActivo (que el catálogo puede leer) y el catálogo lo descuenta
+// del stock que muestra. Cuando el pedido se cobra, el stock baja de verdad y
+// deja de estar apartado; si se cancela, vuelve solo. Un pedido de más de 12
+// horas ya no aparta nada. En la caja se avisa si se vende algo apartado.
+var RESERVA_HORAS = 12, _reservasTimer = null;
+function _ordenadoRes(o){ var r = {}; Object.keys(o || {}).sort().forEach(function(k){ r[k] = o[k]; }); return JSON.stringify(r); }
+function calcularReservasPedidos(){
+  var r = {}, lim = Date.now() - RESERVA_HORAS * 3600000;
+  var suma = function(n, q){ if(!n || !q) return; r[n] = (r[n] || 0) + q; };
+  (getPedidosWeb() || []).forEach(function(p){
+    if(!p || p.anulado || p.pagoConfirmado || p.ventaId || p.estado === 'resuelto' || p.estadoDelivery === 'entregado') return;
+    if(!(new Date(p.fecha).getTime() >= lim)) return;
+    (p.items || []).forEach(function(it){ suma(it.nombre, Number(it.cantidad) || 1); });
+    (p.combos || []).forEach(function(cb){ var k = Number(cb.cantidad) || 1; (cb.items || []).forEach(function(it){ suma(it.nombre, (Number(it.qty || it.cant) || 1) * k); }); });
+    (p.itemsAgregados || []).forEach(function(it){ suma(it.nombre, Number(it.cantidad) || 0); });
+    (p.itemsQuitados || []).forEach(function(it){ suma(it.nombre, -(Number(it.cantidad) || 0)); });
+  });
+  Object.keys(r).forEach(function(k){ if(!(r[k] > 0)) delete r[k]; });
+  return r;
+}
+function programarPublicarReservas(){
+  if(window.__lrEsPanelAdmin || (window.__lrSucursal || 1) !== 1) return;
+  clearTimeout(_reservasTimer);
+  _reservasTimer = setTimeout(publicarReservas, 2500);
+}
+function publicarReservas(){
+  if(!(window.__lrSync && window.__lrSync.pedidosWebListos) || !window.__lrDB || !window.__lrReservasLeidas) return;
+  var r = calcularReservasPedidos();
+  if(_ordenadoRes(r) === _ordenadoRes(window.__lrReservasNube)) return;
+  window.__lrReservasNube = r;
+  window.__lrDB.collection(window.__lrCOL.config).doc('deliveryActivo').update({ reservas: r, reservasEn: new Date().toISOString() })
+    .catch(function(e){ console.warn('Stock apartado', e); });
+}
+setInterval(programarPublicarReservas, 5 * 60000);
+function apartadoDe(nombre){ return Number((window.__lrReservasNube || {})[nombre]) || 0; }
 
 // ── SACAR UN PEDIDO WEB DEL CARRITO ─────────────────────────────────────────
 // Si el carrito se vacía (o se toca "Sacar el pedido"), el pedido se suelta:
