@@ -9655,6 +9655,7 @@ function switchTab(tab) {
   // las pestañas al abrir el panel, cosa que ya no hace.
   if(tab==='ventas'){ renderVentas(); renderTopProds(); }
   if(tab==='inventario'){
+    try{ renderControlStock(); }catch(e){ console.error('Control de stock', e); }
     renderInventario(); renderStockAlerts();
     renderStockVentasDia();
   }
