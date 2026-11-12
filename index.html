@@ -960,7 +960,8 @@ if(window.__lrSucursal === 2){
 
     var ovAdm = document.getElementById('adminOverlay');
     var ovCarga = document.getElementById('cargaStockOverlay');
-    if((ovAdm && ovAdm.classList.contains('open')) || (ovCarga && ovCarga.classList.contains('open'))){
+    var ovCtrl = document.getElementById('ctrlStockEmpOverlay');
+    if((ovAdm && ovAdm.classList.contains('open')) || (ovCarga && ovCarga.classList.contains('open')) || (ovCtrl && ovCtrl.classList.contains('open'))){
       window.__lrVentaNecesitaRefresco = true;
       return;
     }
@@ -1255,6 +1256,13 @@ if(window.__lrSucursal === 2){
         if(ovR && ovR.classList.contains('open')){
           ovR.classList.remove('open');
           if(typeof showToast==='function') showToast('El administrador te quitó el acceso a Recepción', true);
+        }
+      }
+      if(!currentEmp.accesoControlStock && currentEmp.rol !== 'admin'){
+        var ovC = document.getElementById('ctrlStockEmpOverlay');
+        if(ovC && ovC.classList.contains('open')){
+          if(typeof cerrarControlStockEmp==='function') cerrarControlStockEmp();
+          if(typeof showToast==='function') showToast('El administrador te quitó el acceso a Control de stock', true);
         }
       }
       if(!currentEmp.accesoStock){
@@ -4338,6 +4346,7 @@ body.night-on{background:#080005}
           <button class="herr-item" id="btnAnularUltimas" onclick="cerrarHerramientas();abrirAnularUltimas()" style="color:#ff6b6b">↩ Anular venta</button>
           <button class="herr-item" id="btnGoRecepcion" style="display:none" onclick="cerrarHerramientas();abrirRecepDesdeApp()">📦 Recepción de mercadería</button>
           <button class="herr-item" id="btnGoCargaStock" style="display:none" onclick="cerrarHerramientas();abrirCargaStock()">📋 Cargar stock</button>
+          <button class="herr-item" id="btnGoControlStock" style="display:none" onclick="cerrarHerramientas();abrirControlStockEmp()">🔎 Control de stock</button>
           <div class="herr-sep"></div>
           <button class="herr-item" id="btnCerrarTurnoMenu" onclick="cerrarHerramientas();cerrarTurno()">⏹ Cerrar turno</button>
         </div>
@@ -5024,6 +5033,14 @@ body.night-on{background:#080005}
             <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Puede corregir cantidades de stock (buscando o escaneando), sin ver ventas, cierres ni rentabilidad</div>
           </div>
           <div class="recep-toggle-switch" id="emStockToggle" onclick="toggleStockAcceso()"></div>
+        </div>
+        <!-- Acceso a Control de stock (solo ver y sugerir) -->
+        <div class="recep-toggle">
+          <div>
+            <div style="font-family:'Oswald',sans-serif;font-size:.78rem;letter-spacing:1px;text-transform:uppercase;color:var(--white)">🔎 Acceso a Control de stock</div>
+            <div style="font-size:.68rem;color:var(--gray);margin-top:2px">Solo ve cuánto stock marca el sistema y puede sugerir un cambio. El stock cambia recién cuando lo confirmás vos.</div>
+          </div>
+          <div class="recep-toggle-switch" id="emCtrlStockToggle" onclick="this.classList.toggle('on')"></div>
         </div>
         <!-- Herramientas que ve en el menú 🧰 Herramientas -->
         <div id="emHerrTitulo" style="font-family:'Oswald',sans-serif;font-size:.7rem;letter-spacing:2px;color:var(--gold);text-transform:uppercase;margin:14px 0 4px">🧰 Herramientas que ve</div>
@@ -7086,6 +7103,44 @@ body.night-on{background:#080005}
   </div>
 </div>
 
+<!-- CONTROL DE STOCK DEL EMPLEADO — solo ver el stock y sugerir un cambio (lo confirma el dueño) -->
+<div class="prod-modal-overlay" id="ctrlStockEmpOverlay" style="z-index:2100">
+  <div class="prod-modal-box" style="max-width:480px;max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+    <div style="padding:16px 16px 10px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-family:Oswald,sans-serif;font-size:.95rem;color:var(--gold);font-weight:700;letter-spacing:1px">🔎 CONTROL DE STOCK</div>
+        <button onclick="cerrarControlStockEmp()" style="background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:4px;padding:4px 10px;font-size:.7rem;cursor:pointer">✕ Cerrar</button>
+      </div>
+      <input type="text" id="ctrlEmpBuscar" placeholder="🔍 Buscá por nombre o escaneá el código de barras..."
+        oninput="filtrarControlEmp(this.value)" onkeydown="if(event.key==='Enter') controlEmpEnter(this.value)"
+        style="width:100%;background:var(--dark);border:1.5px solid var(--border);border-radius:6px;padding:11px 12px;color:var(--white);font-family:Barlow,sans-serif;font-size:.9rem;outline:none"
+        autocomplete="off">
+      <div style="font-size:.65rem;color:var(--gray);margin-top:6px">Mirá cuánto marca el sistema antes de reponer: si en la góndola ya está todo, no hace falta ir al depósito. Si al contar hay otra cantidad, sugerí el cambio.</div>
+    </div>
+    <div id="ctrlEmpLista" style="flex:1;overflow-y:auto;padding:6px 10px"></div>
+    <div id="ctrlEmpEditor" style="display:none;border-top:2px solid var(--gold);padding:14px 16px;background:var(--card)">
+      <div id="ctrlEmpNombre" style="font-family:Oswald,sans-serif;font-size:.95rem;color:var(--white);margin-bottom:6px"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--dark);border-radius:6px;padding:8px 12px">
+        <span style="font-size:.7rem;color:var(--gray);font-family:Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase">El sistema dice que hay</span>
+        <span id="ctrlEmpSistema" style="font-family:Oswald,sans-serif;font-size:1.6rem;font-weight:700;color:var(--gold)">0</span>
+      </div>
+      <div id="ctrlEmpPend" style="font-size:.68rem;color:var(--gold);margin-top:6px"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="document.getElementById('ctrlEmpEditor').style.display='none';_ctrlEmpSel=null;var b=document.getElementById('ctrlEmpBuscar');b.value='';b.focus();filtrarControlEmp('')" style="flex:1;background:var(--green);color:var(--black);border:none;border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;font-size:.78rem;letter-spacing:1px;cursor:pointer">✓ ESTÁ BIEN</button>
+        <button onclick="abrirSugerirControlEmp()" style="flex:1;background:transparent;color:var(--gold);border:1.5px solid var(--gold);border-radius:6px;padding:10px;font-family:Oswald,sans-serif;font-weight:700;font-size:.78rem;letter-spacing:1px;cursor:pointer">✏️ SUGERIR CAMBIO</button>
+      </div>
+      <div id="ctrlEmpSugerir" style="display:none;margin-top:12px">
+        <div style="font-size:.7rem;color:var(--light);margin-bottom:6px">¿Cuántos hay <b>en total</b>? (góndola + depósito)</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="number" id="ctrlEmpInput" min="0" inputmode="numeric" onkeydown="if(event.key==='Enter'){event.preventDefault();enviarSugerenciaStock();}" style="flex:1;background:var(--dark);border:2px solid var(--gold);border-radius:6px;padding:10px;color:var(--white);font-family:Oswald,sans-serif;font-size:1.3rem;text-align:center;outline:none">
+          <button onclick="enviarSugerenciaStock()" style="background:var(--gold);color:var(--black);border:none;border-radius:6px;padding:10px 16px;font-family:Oswald,sans-serif;font-weight:700;font-size:.78rem;letter-spacing:1px;cursor:pointer">📨 ENVIAR</button>
+        </div>
+        <div style="font-size:.64rem;color:var(--gray);margin-top:6px;text-align:center">El stock no cambia todavía: le llega al dueño para que lo confirme.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- CANTIDAD ESCANEADA EN RECEPCIÓN (nivel body) -->
 <div class="prod-modal-overlay" id="recepQtyOverlay" style="z-index:2000">
   <div class="prod-modal-box" style="max-width:320px;text-align:center">
@@ -8513,6 +8568,7 @@ function refrescarPermisosCurrentEmp(){
   currentEmp.accesoRecepcion = !!fresco.accesoRecepcion;
   currentEmp.accesoPedidos   = !!fresco.accesoPedidos;
   currentEmp.accesoStock     = !!fresco.accesoStock;
+  currentEmp.accesoControlStock = !!fresco.accesoControlStock;
   currentEmp.accesoDelivery  = !!fresco.accesoDelivery;
   currentEmp.topeConsumo     = fresco.topeConsumo;
   currentEmp.permCargaVirtual = fresco.permCargaVirtual;
@@ -13731,6 +13787,10 @@ function alertasTablero(){
     });
     if(esperando.length) al.push({ n:'rojo', t:'🛵 '+esperando.length+' pedido'+(esperando.length===1?'':'s')+' esperando repartidor hace más de 15 minutos' });
   }
+  // Sugerencias de stock de los empleados, sin confirmar
+  escucharSugerenciasStock();
+  var _sug = window.__lrSugStock || [];
+  if(_sug.length) al.push({ n:'amarillo', t:'📨 '+_sug.length+' sugerencia'+(_sug.length===1?'':'s')+' de stock para confirmar ('+_sug.slice(0,3).map(function(x){ return escBaja(x.producto)+': '+x.contado; }).join(', ')+(_sug.length>3?'…':'')+') <button onclick="irASugerenciasStock()" style="background:none;border:1px solid var(--gold);color:var(--gold);border-radius:10px;padding:1px 8px;font-size:.66rem;cursor:pointer;margin-left:4px">Revisar →</button>' });
   // Turnos abiertos hace mucho
   var ses = window.__lrSesionesActivasCache || {};
   Object.keys(ses).forEach(function(n){
@@ -29366,7 +29426,7 @@ function cerrarTodosLosOverlays() {
   [
     'adminPinOverlay','adminSelOverlay','ajusteStockModal','archivarOverlay',
     'armarPedidoOverlay','arqueoModal','aumentoMasivoOverlay','cambioEfectivoModal',
-    'campanaModalOverlay','cargaStockOverlay','cargaVirtualModal','cartelitosOverlay',
+    'campanaModalOverlay','cargaStockOverlay','ctrlStockEmpOverlay','cargaVirtualModal','cartelitosOverlay',
     'catModalOverlay','cierreMesModal','clienteModalOverlay','cobroOverlay',
     'consignModalOverlay','consignCobroOverlay','consignDevolOverlay',
     'comboModalOverlay','comboVarOverlay','corregirCierreModal','corregirIniModal','deliveryPendModal','devolucionPrestamoModal',
@@ -31178,6 +31238,8 @@ function abrirEmpModal(idx) {
     var pedSw = document.getElementById('emPedidosToggle');
     if(pedSw) pedSw.classList.toggle('on', !!emp.accesoPedidos);
     if(stockSw) stockSw.classList.toggle('on', !!emp.accesoStock);
+    var ctrlSw = document.getElementById('emCtrlStockToggle');
+    if(ctrlSw) ctrlSw.classList.toggle('on', !!emp.accesoControlStock);
     if(delivSw) delivSw.classList.toggle('on', !!emp.accesoDelivery);
     if(consumoDelivSw) consumoDelivSw.classList.toggle('on', !!emp.permiteConsumo);
     [['emPermCargaToggle','permCargaVirtual'],['emPermCambioToggle','permCambio'],['emPermAnularToggle','permAnular']].forEach(function(p){
@@ -31187,6 +31249,7 @@ function abrirEmpModal(idx) {
     ['emPermCargaToggle','emPermCambioToggle','emPermAnularToggle'].forEach(function(id){
       var sw = document.getElementById(id); if(sw) sw.classList.add('on');
     });
+    var ctrlSw0 = document.getElementById('emCtrlStockToggle'); if(ctrlSw0) ctrlSw0.classList.remove('on');
     document.getElementById('emNombre').value = '';
     _emPinBuf = '';
     _emRol    = 'empleado';
@@ -31253,11 +31316,12 @@ function selEmpRol(rol) {
     if(swDeliv) swDeliv.classList.add('on');
     if(swRecep) swRecep.classList.remove('on');
     if(swStock) swStock.classList.remove('on');
+    var swCtrl = document.getElementById('emCtrlStockToggle'); if(swCtrl) swCtrl.classList.remove('on');
     var swPed = document.getElementById('emPedidosToggle');
     if(swPed) swPed.classList.remove('on');
   }
   // Ocultar las filas de permisos que no corresponden a un repartidor
-  [['emRecepToggle', esRep], ['emStockToggle', esRep], ['emPedidosToggle', esRep], ['emPermCargaToggle', esRep || rol==='admin'], ['emPermCambioToggle', esRep || rol==='admin'], ['emPermAnularToggle', esRep || rol==='admin']].forEach(function(par){
+  [['emRecepToggle', esRep], ['emStockToggle', esRep], ['emCtrlStockToggle', esRep || rol==='admin'], ['emPedidosToggle', esRep], ['emPermCargaToggle', esRep || rol==='admin'], ['emPermCambioToggle', esRep || rol==='admin'], ['emPermAnularToggle', esRep || rol==='admin']].forEach(function(par){
     var sw = document.getElementById(par[0]);
     var fila = sw ? sw.closest('.recep-toggle') : null;
     if(fila) fila.style.display = par[1] ? 'none' : '';
@@ -31403,6 +31467,7 @@ function guardarEmpModal() {
   var recepOn = document.getElementById('emRecepToggle').classList.contains('on');
   var pedidosOn = !!(document.getElementById('emPedidosToggle') && document.getElementById('emPedidosToggle').classList.contains('on'));
   var stockOn = document.getElementById('emStockToggle').classList.contains('on');
+  var ctrlStockOn = !!(document.getElementById('emCtrlStockToggle') && document.getElementById('emCtrlStockToggle').classList.contains('on'));
   var deliveryOn = document.getElementById('emDeliveryToggle').classList.contains('on');
   var consumoDelivOn = document.getElementById('emConsumoToggle') ? document.getElementById('emConsumoToggle').classList.contains('on') : false;
   var funcion = document.getElementById('emFuncion') ? document.getElementById('emFuncion').value : '';
@@ -31411,9 +31476,9 @@ function guardarEmpModal() {
   // El rol Repartidor define sus permisos solo, sin depender de los switches
   // (que están ocultos para ese rol). "Permitir consumos" solo aplica (y solo
   // se guarda en true) cuando el rol es Delivery.
-  if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; deliveryOn = true; pedidosOn = false; }
+  if(_emRol === 'repartidor'){ recepOn = false; stockOn = false; ctrlStockOn = false; deliveryOn = true; pedidosOn = false; }
   else { consumoDelivOn = false; }
-  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoPedidos: pedidosOn, accesoStock: stockOn, accesoDelivery: deliveryOn,
+  var empData = {nombre:nombre, pin:pin, rol:_emRol, funcion:funcion, accesoRecepcion: recepOn, accesoPedidos: pedidosOn, accesoStock: stockOn, accesoControlStock: ctrlStockOn, accesoDelivery: deliveryOn,
     permiteConsumo: consumoDelivOn, topeConsumo: topeConsumo||null, margenAviso: margenAviso||null,
     permCargaVirtual: !!(document.getElementById('emPermCargaToggle') && document.getElementById('emPermCargaToggle').classList.contains('on')),
     permCambio: !!(document.getElementById('emPermCambioToggle') && document.getElementById('emPermCambioToggle').classList.contains('on')),
@@ -31558,7 +31623,7 @@ function _histTexto(col, c){
   } else if(col === 'empleados'){
     if(a.pin !== b.pin) partes.push('cambió el PIN');
     if(a.rol !== b.rol) partes.push('rol '+_histEsc(a.rol)+' → '+_histEsc(b.rol));
-    ['accesoRecepcion','accesoPedidos','accesoStock','accesoDelivery','permCargaVirtual','permCambio','permAnular'].forEach(function(k){ if(!!a[k] !== !!b[k]) partes.push(k.replace(/^acceso|^perm/,'').replace(/([A-Z])/g,' $1').trim().toLowerCase()+(b[k]?' ✓':' ✗')); });
+    ['accesoRecepcion','accesoPedidos','accesoStock','accesoControlStock','accesoDelivery','permCargaVirtual','permCambio','permAnular'].forEach(function(k){ if(!!a[k] !== !!b[k]) partes.push(k.replace(/^acceso|^perm/,'').replace(/([A-Z])/g,' $1').trim().toLowerCase()+(b[k]?' ✓':' ✗')); });
     if((a.topeConsumo||null) !== (b.topeConsumo||null)) partes.push('tope de consumo');
     if(!!a.sinPedidos !== !!b.sinPedidos) partes.push(b.sinPedidos ? 'le sacó la vista de pedidos' : 'le devolvió la vista de pedidos');
   }
@@ -34815,7 +34880,8 @@ function renderControlStock(){
   var fila = function(izq, sub, der, color){ return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.06)"><div style="min-width:0"><div style="font-size:.8rem;color:var(--white)">'+izq+'</div>'+(sub ? '<div style="font-size:.66rem;color:var(--gray);margin-top:1px">'+sub+'</div>' : '')+'</div><div style="font-family:Oswald,sans-serif;font-size:.85rem;color:'+(color || 'var(--light)')+';white-space:nowrap;text-align:right">'+der+'</div></div>'; };
   var tit = function(t, sub){ return '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:var(--gold);margin:12px 0 2px;text-transform:uppercase">'+t+'</div>'+(sub ? '<div style="font-size:.66rem;color:var(--gray);margin-bottom:4px">'+sub+'</div>' : ''); };
   var fch = function(f){ var d = new Date(f); return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })+' '+d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }); };
-  var h = '<div style="display:flex;gap:8px;flex-wrap:wrap">'+tab('fugas', '🚨 Ventas que no descontaron stock')+tab('prod', '📈 Historial de un producto')+'</div>';
+  escucharSugerenciasStock();
+  var h = htmlSugerenciasStock() + '<div style="display:flex;gap:8px;flex-wrap:wrap">'+tab('fugas', '🚨 Ventas que no descontaron stock')+tab('prod', '📈 Historial de un producto')+'</div>';
   if(_cs.vista === 'fugas'){
     var f = analizarFugasStock(_cs.dias);
     h += '<div style="display:flex;gap:6px;margin-top:10px">'+btn(1, 'Hoy')+btn(7, '7 días')+btn(30, '30 días')+'</div>';
@@ -34923,6 +34989,234 @@ function guardarCargaStock(yaPreguntado) {
   filtrarCargaStock('');
 }
 
+// ── CONTROL DE STOCK DEL EMPLEADO (Herramientas) ────────────────────────────
+// El empleado con permiso ve cuánto stock marca el sistema de un producto (para
+// controlar la góndola o saber si tiene que ir al depósito a reponer). Si al
+// contar hay otra cantidad, manda una SUGERENCIA: el stock no cambia hasta que
+// el dueño la confirma en Productos → Stock → Control de stock.
+//
+// La sugerencia guarda lo que decía el sistema al contar. Al confirmar se aplica
+// solo la diferencia sobre el stock de ese momento: si a las 18 el sistema decía
+// 10 y contaron 6 (faltan 4), y hasta las 22 se vendieron 2 (el sistema dice 8),
+// al confirmar queda 8 − 4 = 4. Queda anotado con la hora del conteo.
+var SUG_STOCK_COL = 'sugerenciasStock';
+window.__lrSugStock = window.__lrSugStock || [];
+var _ctrlEmpSel = null;
+function escucharSugerenciasStock(){
+  if(window.__lrSugStockEscucha || !window.__lrDB) return;
+  window.__lrSugStockEscucha = true;
+  window.__lrDB.collection(SUG_STOCK_COL).where('estado', '==', 'pendiente').onSnapshot(function(snap){
+    var a = []; snap.forEach(function(d){ var x = d.data(); x._id = d.id; a.push(x); });
+    a.sort(function(x, y){ return (x.ts || 0) - (y.ts || 0); });
+    window.__lrSugStock = a;
+    try{ renderControlStock(); }catch(e){}
+    try{ if(_ctrlEmpSel) seleccionarControlEmp(_ctrlEmpSel, true); }catch(e){}
+    try{ var pd = document.getElementById('pane-dashboard'); if(pd && pd.classList.contains('active') && pd.offsetParent && typeof renderDashboard === 'function') renderDashboard(); }catch(e){}
+  }, function(e){ window.__lrSugStockEscucha = false; console.warn('Sugerencias de stock', e); });
+}
+function sugStockPendienteDe(nombre){
+  var l = (window.__lrSugStock || []).filter(function(s){ return s.producto === nombre; });
+  return l.length ? l[l.length - 1] : null;
+}
+function puedeControlStock(){
+  if(window.__lrAdminSinTurno) return true;
+  return !!(currentEmp && (currentEmp.accesoControlStock || currentEmp.rol === 'admin'));
+}
+function abrirControlStockEmp(){
+  if(!puedeControlStock()) return;
+  escucharSugerenciasStock();
+  document.getElementById('ctrlStockEmpOverlay').classList.add('open');
+  document.body.classList.add('carga-stock-abierta');
+  var b = document.getElementById('ctrlEmpBuscar'); b.value = '';
+  document.getElementById('ctrlEmpEditor').style.display = 'none';
+  _ctrlEmpSel = null;
+  filtrarControlEmp('');
+  setTimeout(function(){ b.focus(); }, 150);
+}
+function cerrarControlStockEmp(){
+  document.getElementById('ctrlStockEmpOverlay').classList.remove('open');
+  document.body.classList.remove('carga-stock-abierta');
+  _ctrlEmpSel = null;
+  if(window.__lrVentaNecesitaRefresco && typeof window.__lrRefrescarVenta === 'function') window.__lrRefrescarVenta();
+}
+function filtrarControlEmp(term){
+  term = (term || '').toLowerCase().trim();
+  var lista = document.getElementById('ctrlEmpLista');
+  if(!term){ lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">Escribí el nombre o escaneá el código para ver cuánto stock marca el sistema</div>'; return; }
+  var inv = getStockInv();
+  var prods = PRODUCTS.filter(function(p){ return p.name.toLowerCase().includes(term) || (p.codigo && String(p.codigo).toLowerCase().includes(term)); });
+  if(!window._lrCollatorEs) window._lrCollatorEs = new Intl.Collator('es');
+  prods.sort(function(a, b){ return window._lrCollatorEs.compare(a.name, b.name); });
+  prods = prods.slice(0, 60);
+  if(!prods.length){ lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray);font-size:.8rem">Sin resultados para "'+escBaja(term)+'"</div>'; return; }
+  lista.innerHTML = prods.map(function(p){
+    var i = inv[p.name], st = i ? (Number(i.stock) || 0) : null, min = i ? (Number(i.minimo) || 0) : 0;
+    var col = st === null ? 'var(--gray)' : (st <= 0 ? 'var(--red)' : (min && st <= min ? 'var(--gold)' : 'var(--green)'));
+    var pend = sugStockPendienteDe(p.name);
+    return '<div onclick="seleccionarControlEmp(\''+p.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;')+'\')" style="display:flex;justify-content:space-between;align-items:center;padding:10px 6px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer">'+
+      '<div><div style="font-size:.85rem;color:var(--white)">'+escBaja(p.name)+'</div>'+
+        (pend ? '<div style="font-size:.62rem;color:var(--gold)">⏳ Sugerencia enviada: '+pend.contado+'</div>' : (p.codigo ? '<div style="font-size:.62rem;color:var(--gray)">'+escBaja(p.codigo)+'</div>' : ''))+'</div>'+
+      '<div style="font-family:Oswald,sans-serif;font-size:1.05rem;color:'+col+'">'+(st === null ? 'sin stock cargado' : st)+'</div>'+
+    '</div>';
+  }).join('');
+}
+function controlEmpEnter(term){
+  term = (term || '').trim(); if(!term) return;
+  var ex = PRODUCTS.filter(function(p){ return p.codigo && String(p.codigo) === term; });
+  if(ex.length === 1) seleccionarControlEmp(ex[0].name);
+}
+function seleccionarControlEmp(nombre, soloRefrescar){
+  if(!PRODUCTS.some(function(p){ return p.name === nombre; })) return;
+  _ctrlEmpSel = nombre;
+  var i = getStockInv()[nombre], st = i ? (Number(i.stock) || 0) : 0;
+  document.getElementById('ctrlEmpNombre').textContent = nombre;
+  document.getElementById('ctrlEmpSistema').textContent = st;
+  var pend = sugStockPendienteDe(nombre);
+  document.getElementById('ctrlEmpPend').innerHTML = pend
+    ? '⏳ Ya hay una sugerencia sin confirmar: <b>'+pend.contado+'</b> ('+escBaja(pend.empleado || '')+', '+new Date(pend.ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })+'). Si mandás otra, reemplaza a esa.'
+    : '';
+  document.getElementById('ctrlEmpEditor').style.display = 'block';
+  if(!soloRefrescar){
+    document.getElementById('ctrlEmpSugerir').style.display = 'none';
+    document.getElementById('ctrlEmpInput').value = '';
+  }
+}
+function abrirSugerirControlEmp(){
+  document.getElementById('ctrlEmpSugerir').style.display = 'block';
+  var inp = document.getElementById('ctrlEmpInput');
+  setTimeout(function(){ inp.focus(); }, 80);
+}
+function enviarSugerenciaStock(){
+  if(!_ctrlEmpSel) return;
+  var inp = document.getElementById('ctrlEmpInput');
+  var contado = parseInt(inp.value, 10);
+  if(isNaN(contado) || contado < 0){ showToast('Poné cuántos hay en total (góndola + depósito)', true); return; }
+  var nombre = _ctrlEmpSel;
+  var i = getStockInv()[nombre], sistema = i ? (Number(i.stock) || 0) : 0;
+  if(contado === sistema){ showToast('Coincide con el sistema ('+sistema+'): no hace falta sugerir nada ✓'); document.getElementById('ctrlEmpSugerir').style.display = 'none'; return; }
+  var ahora = Date.now();
+  var sug = { producto: nombre, contado: contado, sistema: sistema, ts: ahora, fecha: new Date(ahora).toISOString(),
+    empleado: currentEmp ? currentEmp.nombre : 'Admin', caja: (typeof cajaTurnoActual === 'function' ? cajaTurnoActual() : 1), estado: 'pendiente' };
+  var col = window.__lrDB.collection(SUG_STOCK_COL);
+  var viejas = (window.__lrSugStock || []).filter(function(s){ return s.producto === nombre; });
+  var lote = window.__lrDB.batch();
+  viejas.forEach(function(s){ lote.update(col.doc(s._id), { estado: 'reemplazada', resueltaTs: ahora }); });
+  lote.set(col.doc(String(ahora)+'_'+Math.random().toString(36).slice(2, 7)), sug);
+  lote.commit().then(function(){
+    showToast('📨 Sugerencia enviada: '+nombre+' → '+contado+' (el sistema decía '+sistema+')');
+  }).catch(function(e){ console.error('Sugerencia de stock', e); showToast('❌ No se pudo enviar (revisá la conexión) — probá de nuevo', true); });
+  document.getElementById('ctrlEmpEditor').style.display = 'none';
+  _ctrlEmpSel = null;
+  var b = document.getElementById('ctrlEmpBuscar'); b.value = ''; b.focus();
+  filtrarControlEmp('');
+}
+
+// ── Lado del dueño: confirmar, corregir o rechazar ─────────────────────────
+// Cuánto quedaría hoy si se confirma: el stock actual más la diferencia que
+// encontró el empleado al contar.
+function resultadoSugStock(s, contado){
+  var i = getStockInv()[s.producto], actual = i ? (Number(i.stock) || 0) : 0;
+  var dif = (contado != null ? contado : s.contado) - (Number(s.sistema) || 0);
+  return { actual: actual, dif: dif, final: Math.max(0, actual + dif) };
+}
+// ¿Alguien cargó un conteo de ese producto después de la sugerencia? Entonces
+// aplicar la diferencia corregiría dos veces.
+function conteoPosteriorSug(s){
+  return (getStockMovs() || []).filter(function(m){ return m.producto === s.producto && m.tipo === 'correccion' && new Date(m.ts).getTime() > s.ts && !m.sugerenciaId; }).pop() || null;
+}
+function htmlSugerenciasStock(){
+  var l = window.__lrSugStock || [];
+  var t = '<div style="font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1.5px;color:var(--gold);margin:0 0 4px;text-transform:uppercase">📨 Sugerencias de los empleados ('+l.length+')</div>';
+  if(!l.length) return t+'<div style="font-size:.74rem;color:var(--green);margin-bottom:10px">✓ No hay sugerencias pendientes</div>';
+  return t+'<div style="font-size:.66rem;color:var(--gray);margin-bottom:6px">Al confirmar se aplica la diferencia que encontraron al contar, sobre el stock de ahora (lo vendido después ya está descontado).</div>'+
+    l.map(function(s){
+      var r = resultadoSugStock(s), id = String(s._id).replace(/'/g, '');
+      var d = new Date(s.ts), cuando = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })+' '+d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      var post = conteoPosteriorSug(s);
+      return '<div style="background:var(--dark);border:1px solid rgba(244,180,0,.35);border-radius:6px;padding:9px 10px;margin-bottom:8px">'+
+        '<div style="font-size:.86rem;color:var(--white);font-weight:600">'+escBaja(s.producto)+'</div>'+
+        '<div style="font-size:.72rem;color:var(--light);margin-top:3px">'+escBaja(s.empleado || '')+' contó <b style="color:var(--gold)">'+s.contado+'</b> · el sistema decía '+s.sistema+' <span style="color:'+(r.dif < 0 ? 'var(--red)' : 'var(--green)')+'">('+(r.dif > 0 ? '+' : '')+r.dif+')</span></div>'+
+        '<div style="font-size:.66rem;color:var(--gray);margin-top:2px">'+cuando+(s.caja ? ' · Caja '+s.caja : '')+' · hoy el sistema dice '+r.actual+' → <b style="color:var(--white)">quedaría en '+r.final+'</b></div>'+
+        (post ? '<div style="font-size:.66rem;color:var(--red);margin-top:3px">⚠ Después se cargó un conteo de este producto ('+escBaja(post.responsable || '')+', quedó en '+post.stockDespues+'). Si confirmás, la diferencia se aplica igual.</div>' : '')+
+        '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+          '<button onclick="confirmarSugStock(\''+id+'\')" style="flex:1;min-width:90px;background:var(--green);color:#111;border:none;border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.7rem;font-weight:700;cursor:pointer">✅ Confirmar</button>'+
+          '<button onclick="corregirSugStock(\''+id+'\')" style="flex:1;min-width:90px;background:transparent;color:var(--gold);border:1px solid var(--gold);border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">✏️ Corregir número</button>'+
+          '<button onclick="rechazarSugStock(\''+id+'\')" style="flex:1;min-width:90px;background:transparent;color:var(--red);border:1px solid rgba(231,76,60,.6);border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.7rem;cursor:pointer">❌ Rechazar</button>'+
+        '</div></div>';
+    }).join('');
+}
+function _sugPorId(id){ return (window.__lrSugStock || []).find(function(s){ return String(s._id) === String(id); }); }
+function confirmarSugStock(id, contadoCorregido){
+  var s = _sugPorId(id); if(!s){ showToast('Esa sugerencia ya no está pendiente', true); return; }
+  var contado = contadoCorregido != null ? contadoCorregido : s.contado;
+  var r = resultadoSugStock(s, contado);
+  askConfirm(s.producto+'\n\nAl contar: '+contado+' (el sistema decía '+s.sistema+', diferencia '+(r.dif > 0 ? '+' : '')+r.dif+').\nHoy el sistema dice '+r.actual+'.\n\nQueda en '+r.final+'. ¿Confirmás?').then(function(ok){
+    if(!ok) return;
+    var quien = currentEmp ? currentEmp.nombre : 'Admin';
+    var ahora = Date.now();
+    // Que nadie más la confirme al mismo tiempo (otra compu del dueño).
+    var ref = window.__lrDB.collection(SUG_STOCK_COL).doc(s._id);
+    window.__lrDB.runTransaction(function(tx){
+      return tx.get(ref).then(function(d){
+        if(!d.exists || d.data().estado !== 'pendiente') throw new Error('ya-resuelta');
+        tx.update(ref, { estado: 'confirmada', resueltaTs: ahora, resueltaPor: quien, contadoFinal: contado });
+      });
+    }).then(function(){
+      var r2 = resultadoSugStock(s, contado);   // por si se vendió mientras se confirmaba
+      var inv = getStockInv();
+      if(!inv[s.producto]) inv[s.producto] = { stock: 0, minimo: 0 };
+      var antes = Number(inv[s.producto].stock) || 0;
+      inv[s.producto].stock = r2.final;
+      (window.__lrStockFijar = window.__lrStockFijar || {})[s.producto] = true;
+      window.__lrStockInvCache = inv;
+      guardarOperacionProtegida('StockInv', getStockInv, s.producto+': '+antes+' → '+r2.final+' (sugerencia de '+(s.empleado || '')+')');
+      // Anotado con la hora del CONTEO: así el Control de stock y los
+      // movimientos del turno lo ubican cuando de verdad se contó.
+      var movs = getStockMovs();
+      movs.push({ id: ahora, ts: new Date(s.ts).toISOString(), producto: s.producto, tipo: 'correccion',
+        stockAntes: Number(s.sistema) || 0, stockDespues: contado, diferencia: r2.dif, sugerenciaId: s._id,
+        nota: 'Conteo de '+(s.empleado || '')+' (Control de stock), confirmado por '+quien+' el '+new Date(ahora).toLocaleString('es-AR'),
+        responsable: (s.empleado || '')+' ✓ '+quien });
+      if(movs.length > 500) movs = movs.slice(-500);
+      saveStockMovs(movs);
+      var mm = getMovimientos();
+      mm.push({ id: ahora + Math.random(), fecha: new Date(s.ts).toISOString(), tipo: 'ajuste-stock', producto: s.producto,
+        cantidad: r2.dif, stockAntes: Number(s.sistema) || 0, stockDespues: contado, caja: s.caja || 1,
+        responsable: (s.empleado || '')+' (confirmó '+quien+')' });
+      if(mm.length > 2000) mm = mm.slice(-2000);
+      saveMovimientos(mm);
+      autoSaveNow();
+      showToast('✅ '+s.producto+' quedó en '+r2.final);
+    }).catch(function(e){
+      if(e && e.message === 'ya-resuelta') showToast('Esa sugerencia ya la resolvió otro equipo', true);
+      else { console.error('Confirmar sugerencia', e); showToast('❌ No se pudo confirmar (revisá la conexión)', true); }
+    });
+  });
+}
+function corregirSugStock(id){
+  var s = _sugPorId(id); if(!s) return;
+  var v = prompt(s.producto+'\n\n¿Cuántos había en total al momento del conteo ('+new Date(s.ts).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })+')?\n(El empleado puso '+s.contado+'; el sistema decía '+s.sistema+')', String(s.contado));
+  if(v === null) return;
+  var n = parseInt(v, 10);
+  if(isNaN(n) || n < 0){ showToast('Número inválido', true); return; }
+  confirmarSugStock(id, n);
+}
+function rechazarSugStock(id){
+  var s = _sugPorId(id); if(!s) return;
+  askConfirm('¿Rechazás la sugerencia de '+(s.empleado || '')+' para '+s.producto+' ('+s.contado+')?\n\nEl stock no cambia.').then(function(ok){
+    if(!ok) return;
+    window.__lrDB.collection(SUG_STOCK_COL).doc(s._id).update({ estado: 'rechazada', resueltaTs: Date.now(), resueltaPor: currentEmp ? currentEmp.nombre : 'Admin' })
+      .then(function(){ showToast('Sugerencia rechazada'); })
+      .catch(function(e){ console.error(e); showToast('❌ No se pudo rechazar (revisá la conexión)', true); });
+  });
+}
+function irASugerenciasStock(){
+  try{
+    switchTab('inventario');
+    setTimeout(function(){ var el = document.getElementById('controlStockBody'); if(el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+  }catch(e){ console.warn(e); }
+}
+
 // Herramientas que el admin le habilita a cada empleado (ficha del empleado).
 // Si nunca se tocó, se ve (así nadie pierde lo que ya usaba). Los admin ven todo.
 function permHerramienta(campo){
@@ -34950,6 +35244,8 @@ function updateRecepBtn() {
   if(btn) btn.style.display = (currentEmp && (currentEmp.accesoRecepcion || currentEmp.accesoPedidos)) ? 'inline-block' : 'none';
   var btnStock = document.getElementById('btnGoCargaStock');
   if(btnStock) btnStock.style.display = (currentEmp && currentEmp.accesoStock) ? 'inline-block' : 'none';
+  var btnCtrl = document.getElementById('btnGoControlStock');
+  if(btnCtrl) btnCtrl.style.display = (currentEmp && (currentEmp.accesoControlStock || currentEmp.rol === 'admin')) ? 'inline-block' : 'none';
   var btnDeliv = document.getElementById('btnGoDelivery');
   if(btnDeliv) btnDeliv.style.display = (currentEmp && currentEmp.accesoDelivery) ? 'inline-block' : 'none';
   // El botón de anular solo tiene sentido con un turno abierto, y nunca en la
