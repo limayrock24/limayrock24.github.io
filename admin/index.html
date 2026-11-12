@@ -14089,6 +14089,25 @@ function toggleMovTurno(clave, fila){
   if(corto) corto.style.display = ab ? 'none' : '';
   if(largo) largo.style.display = ab ? '' : 'none';
 }
+window.__lrMovTandas = window.__lrMovTandas || {};
+function botonMasMovTurno(claveBase, total, visibles){
+  var quedan = total - visibles;
+  if(quedan <= 0) return '';
+  return '<div data-mt-mas style="text-align:center;padding:8px 0">'+
+    '<button onclick="event.stopPropagation();verMasMovTurno(\''+String(claveBase).replace(/'/g,"\\'")+'\',this)" style="background:none;border:1px solid var(--border);color:var(--gold);border-radius:6px;padding:5px 14px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:1px;cursor:pointer">'+
+      '▼ Ver '+Math.min(25, quedan)+' más (quedan '+quedan+')</button></div>';
+}
+function verMasMovTurno(claveBase, boton){
+  window.__lrMovTandas[claveBase] = (window.__lrMovTandas[claveBase] || 1) + 1;
+  var visibles = window.__lrMovTandas[claveBase] * 25;
+  var cont = boton && boton.closest('[data-mt-mas]');
+  var lista = cont && cont.parentElement;
+  if(!lista) return;
+  var filas = lista.querySelectorAll('[data-mt-fila]');
+  filas.forEach(function(f){ if(Number(f.getAttribute('data-mt-fila')) < visibles) f.style.display = 'flex'; });
+  var nuevo = botonMasMovTurno(claveBase, filas.length, visibles);
+  if(nuevo) cont.outerHTML = nuevo; else cont.remove();
+}
 function htmlMovimientosTurno(ini, fin, cajaSes, variasCajas, claveBase){
   var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
   var nombresTipo = {venta:'ventas', consumo:'consumos', fiado:'fiados', 'carga-virtual':'cargas virtuales', egreso:'egresos', 'ingreso-caja':'ingresos de caja', retiro:'retiros', prestamo:'préstamos', 'transfer-cuentas':'transferencias internas', suelto:'sueltos', 'ajuste-stock':'ajustes de stock', 'baja-stock':'bajas de stock', ingreso:'ingresos de mercadería', traspaso:'traspasos', armado:'combos armados'};
@@ -14138,11 +14157,17 @@ function htmlMovimientosTurno(ini, fin, cajaSes, variasCajas, claveBase){
           var nt = cuenta[t]===1 ? (singularTipo[t]||nombresTipo[t]||t) : (nombresTipo[t]||t);
           return (iconosTipo[t]||'•')+' '+cuenta[t]+' '+nt;
         }).join(' · ')+
-        ' <span style="opacity:.8">· tocá un renglón largo para verlo completo</span></div>'
+        ' <span style="opacity:.8">· se ven de a 25 · tocá un renglón largo para verlo completo</span></div>'
     : '';
 
+  // Se muestran de a 25 (los más nuevos primero); con "Ver 25 más" aparece
+  // la tanda siguiente. Cuántas tandas se abrieron queda guardado, así no se
+  // cierran solas cuando la pantalla se actualiza.
+  var TANDA_MOV = 25;
+  var visibles = (window.__lrMovTandas[claveBase] || 1) * TANDA_MOV;
   var html = lista.length
-    ? lista.map(function(m){
+    ? lista.map(function(m, iFila){
+        var ocultaFila = iFila >= visibles ? 'display:none;' : 'display:flex;';
         var hora = new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
         var icono = iconosTipo[m.tipo] || '•';
         var ventaAnulada = m.tipo==='venta' && m.refId && VENTAS.some(function(v){ return v.id===m.refId && v.anulada; });
@@ -14163,21 +14188,21 @@ function htmlMovimientosTurno(ini, fin, cajaSes, variasCajas, claveBase){
         } else {
           cuerpo = texto;
         }
-        var clic = largo ? ' onclick="event.stopPropagation();toggleMovTurno(\''+claveFila.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\',this)" style="cursor:pointer;' : ' style="';
+        var clic = ' data-mt-fila="'+iFila+'"'+(largo ? ' onclick="event.stopPropagation();toggleMovTurno(\''+claveFila.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\',this)" style="cursor:pointer;' : ' style="')+ocultaFila;
         var montoHtml = (m.unidades != null)
           ? '<span style="color:var(--gold);white-space:nowrap">'+m.unidades+'</span>'
           : '<span style="color:var(--white);white-space:nowrap">'+fmt(montoNeto)+'</span>';
         if(ventaAnulada){
-          return '<div'+clic+'display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem;opacity:.5;text-decoration:line-through">'+
+          return '<div'+clic+'justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem;opacity:.5;text-decoration:line-through">'+
             '<span style="color:var(--light)">'+hora+' '+icono+' '+cuerpo+medioTxt+' <span style="text-decoration:none;color:var(--red);font-weight:700">❌ ANULADA</span></span>'+
             montoHtml+
           '</div>';
         }
-        return '<div'+clic+'display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
+        return '<div'+clic+'justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.78rem">'+
           '<span style="color:var(--light)">'+hora+' '+icono+' '+cuerpo+medioTxt+'</span>'+
           montoHtml+
         '</div>';
-      }).join('')
+      }).join('') + botonMasMovTurno(claveBase, lista.length, visibles)
     : '<div style="color:var(--gray);font-size:.78rem;padding:6px 0">Todavía no hubo movimientos en este turno</div>';
 
   return {html: html, cantidad: lista.length, resumen: resumen};
