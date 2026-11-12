@@ -28968,6 +28968,37 @@ function renderDashboard() {
       // plata que entró igual, y así el número refleja todo lo generado.
       totalVentasTurnoVivo += gananciaCargasTurno;
 
+      // Lo vendido en el turno separado por medio de pago, para controlar cada
+      // cosa contra lo suyo: el efectivo contra el cajón, Mercado Pago contra
+      // la app y el Posnet contra el cierre del Posnet. El Posnet va sin el
+      // recargo (eso se lo lleva la comisión). Un pago mixto se reparte.
+      var mediosTurno = {Efectivo:0, Transferencia:0, 'Débito':0};
+      ventasTurnoVivo.forEach(function(v){
+        if(v.medio === 'Mixto' && v.mixto){
+          mediosTurno.Efectivo += (v.mixto.efectivo||0);
+          mediosTurno.Transferencia += (v.mixto.transferencia||0);
+          mediosTurno['Débito'] += (v.mixto.debito||0);
+        } else if(v.medio === 'Débito'){
+          mediosTurno['Débito'] += (v.total||0) - (v.recargo||0);
+        } else {
+          mediosTurno[v.medio||'Otro'] = (mediosTurno[v.medio||'Otro']||0) + (v.total||0) - (v.recargo||0);
+        }
+      });
+      var etiqMedio = {Efectivo:'💵 Efectivo', Transferencia:'📲 Mercado Pago', 'Débito':'💳 Posnet'};
+      var colorMedio = {Efectivo:'var(--green)', Transferencia:'#1e90ff', 'Débito':'var(--gold)'};
+      var mediosTurnoHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin:-4px 0 8px">'+
+        Object.keys(mediosTurno).filter(function(k){ return k==='Efectivo' || k==='Transferencia' || k==='Débito' || mediosTurno[k]; }).map(function(k){
+          return '<div style="background:var(--dark);border-radius:6px;padding:6px 10px;text-align:center">'+
+            '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">'+(etiqMedio[k]||k)+'</div>'+
+            '<div style="font-family:Oswald,sans-serif;font-size:.95rem;font-weight:700;color:'+(colorMedio[k]||'var(--white)')+'">'+fmt(mediosTurno[k])+'</div>'+
+          '</div>';
+        }).join('')+
+        (gananciaCargasTurno ? '<div style="background:var(--dark);border-radius:6px;padding:6px 10px;text-align:center">'+
+            '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📱 Ganancia cargas</div>'+
+            '<div style="font-family:Oswald,sans-serif;font-size:.95rem;font-weight:700;color:var(--white)">'+fmt(gananciaCargasTurno)+'</div>'+
+          '</div>' : '')+
+      '</div>';
+
       var movsTurno = htmlMovimientosTurno(inicioTs, Infinity, cajaSes, variasCajas, claveExpandido);
       var detalleHtml = movsTurno.html;
 
@@ -28987,6 +29018,7 @@ function renderDashboard() {
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
         '</div>'+
+        mediosTurnoHtml+
         (variasCajas ? '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">💵 Efectivo que debería haber en la Caja '+cajaSes+'</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--green);font-weight:700">'+fmt(calcularLiquidez(cajaSes).efectivoCaja)+'</span>'+
