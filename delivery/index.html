@@ -253,7 +253,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "30"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "31"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -1050,6 +1050,7 @@ function renderPanelRepartidor() {
       (itemsTxt ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">'+
         '<div style="font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">🛍 Productos</div>'+itemsTxt+'</div>' : '')+
       (arm || '')+
+      htmlCambioPedidoRep(p)+
       (arm ? '' : ((p.itemsAgregados && p.itemsAgregados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#22c55e;font-weight:700;margin-bottom:2px">➕ SUMADO EN EL LOCAL</div>'+p.itemsAgregados.map(function(it){ return filaProdDelivery(it.cantidad, it.nombre, '#22c55e'); }).join('')+'</div>' : '')+
       ((p.itemsQuitados && p.itemsQuitados.length) ? '<div style="margin-top:6px"><div style="font-size:.72rem;color:#f87171;font-weight:700;margin-bottom:2px">➖ SACADO (no va)</div>'+p.itemsQuitados.map(function(it){ return filaProdDelivery(it.cantidad, '<s>'+it.nombre+'</s>', '#f87171'); }).join('')+'</div>' : ''))+
       ((p.envioAConfirmar && !p.envioConfirmado) ? '<div style="font-size:.74rem;color:#F4B400;margin-top:5px">Envío: a confirmar por el local (el cliente no mandó la ubicación)</div>' : '')+
@@ -1082,6 +1083,19 @@ function fotoProdDelivery(nombre, img){
   if(img) return img;
   var mapa = window.IMAGENES_PRODUCTOS;
   return (mapa && mapa[nombre]) ? '../catalogo/' + mapa[nombre] : null;
+}
+// El local modificó el pedido (faltaba algo y se cambió), o falta arreglar
+// una diferencia de plata con el cliente.
+function htmlCambioPedidoRep(p){
+  var h = '';
+  if(p.modificadoPor) h += '<div style="font-size:.74rem;color:#38bdf8;margin-top:6px">✏️ El local modificó el pedido ('+_escDel(p.modificadoPor)+'): la lista de arriba ya está actualizada</div>';
+  var d = p.difPendiente;
+  if(d && d.estado === 'pendiente'){
+    h += d.tipo === 'cobrar'
+      ? '<div style="font-size:.78rem;margin-top:6px;padding:7px 9px;border-radius:6px;background:rgba(244,180,0,.12);border:1px solid rgba(244,180,0,.6);color:#F4B400;font-weight:700">💲 Falta que el cliente transfiera '+fmt(d.monto)+' — lo confirma el local. Si llegás antes, avisale al local.</div>'
+      : '<div style="font-size:.78rem;margin-top:6px;padding:7px 9px;border-radius:6px;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.6);color:#38bdf8;font-weight:700">↩ Al cliente se le devuelven '+fmt(d.monto)+' por transferencia (lo hace el local)</div>';
+  }
+  return h;
 }
 function listaParaArmar(p){
   var filas = [], porNombre = {};

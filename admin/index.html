@@ -10498,7 +10498,9 @@ function toggleDetalle(id) {
 function buildTurnoFilter() { /* legacy — replaced */ }
 
 function anularVenta(id) {
-  askConfirm('¿Anulás esta venta? Esto va a devolver el stock de los productos.').then(function(ok){
+  var _pv = pedidoVivoDeVenta(VENTAS.find(function(x){ return x.id === id; }));
+  askConfirm(_pv ? '⚠️ Esta venta es del pedido de delivery de '+_pv.nombre+'.\n\nSi la anulás, también se CANCELA el pedido: desaparece del puesto y del repartidor.\n\nSi solo hay que cambiar un producto, tocá Cancelar y usá ✏️ Modificar pedido.\n\n¿Anulás la venta Y cancelás el pedido?'
+    : '¿Anulás esta venta? Esto va a devolver el stock de los productos.').then(function(ok){
     if(!ok) return;
     anularVentaDirecto(id);
   });
@@ -14169,9 +14171,9 @@ function verMasMovTurno(claveBase, boton){
   if(nuevo) cont.outerHTML = nuevo; else cont.remove();
 }
 function htmlMovimientosTurno(ini, fin, cajaSes, variasCajas, claveBase){
-  var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
-  var nombresTipo = {venta:'ventas', consumo:'consumos', fiado:'fiados', 'carga-virtual':'cargas virtuales', egreso:'egresos', 'ingreso-caja':'ingresos de caja', retiro:'retiros', prestamo:'préstamos', 'transfer-cuentas':'transferencias internas', suelto:'sueltos', 'ajuste-stock':'ajustes de stock', 'baja-stock':'bajas de stock', ingreso:'ingresos de mercadería', traspaso:'traspasos', armado:'combos armados'};
-  var singularTipo = {venta:'venta', consumo:'consumo', fiado:'fiado', 'carga-virtual':'carga virtual', egreso:'egreso', 'ingreso-caja':'ingreso de caja', retiro:'retiro', prestamo:'préstamo', 'transfer-cuentas':'transferencia interna', suelto:'suelto', 'ajuste-stock':'ajuste de stock', 'baja-stock':'baja de stock', ingreso:'ingreso de mercadería', traspaso:'traspaso', armado:'combo armado'};
+  var iconosTipo = {'ajuste-pedido':'✏️', venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
+  var nombresTipo = {'ajuste-pedido':'pedidos modificados', venta:'ventas', consumo:'consumos', fiado:'fiados', 'carga-virtual':'cargas virtuales', egreso:'egresos', 'ingreso-caja':'ingresos de caja', retiro:'retiros', prestamo:'préstamos', 'transfer-cuentas':'transferencias internas', suelto:'sueltos', 'ajuste-stock':'ajustes de stock', 'baja-stock':'bajas de stock', ingreso:'ingresos de mercadería', traspaso:'traspasos', armado:'combos armados'};
+  var singularTipo = {'ajuste-pedido':'pedido modificado', venta:'venta', consumo:'consumo', fiado:'fiado', 'carga-virtual':'carga virtual', egreso:'egreso', 'ingreso-caja':'ingreso de caja', retiro:'retiro', prestamo:'préstamo', 'transfer-cuentas':'transferencia interna', suelto:'suelto', 'ajuste-stock':'ajuste de stock', 'baja-stock':'baja de stock', ingreso:'ingreso de mercadería', traspaso:'traspaso', armado:'combo armado'};
   var deSuCaja = function(r){ return !variasCajas || cajaDe(r) === cajaSes; };
   // Retiros/ingresos: la caja que vale es la del registro real (el renglón
   // del historial podía quedar con la caja del equipo desde donde se cargó).
@@ -28971,7 +28973,7 @@ function renderDashboard() {
 
   if(nombresConTurno.length > 0) {
     var liqVivo = calcularLiquidez();
-    var iconosTipo = {venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
+    var iconosTipo = {'ajuste-pedido':'✏️', venta:'🛒', consumo:'🍪', fiado:'💳', 'carga-virtual':'📱', egreso:'💸', 'ingreso-caja':'💵', retiro:'💵', prestamo:'🤝', 'transfer-cuentas':'🔁', suelto:'📦', 'ajuste-stock':'📋', 'baja-stock':'🗑️', ingreso:'📥', traspaso:'🔁', armado:'📦'};
 
     // Plata del negocio entero — no es "por turno", es una sola caja/cuentas
     // compartidas, así que se muestra una sola vez arriba de todo. Mismas 4
@@ -34639,10 +34641,15 @@ function abrirAnularUltimas() {
         '</div>'+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);white-space:nowrap">'+fmt(v.total)+'</div>'+
       '</div>'+
+      (pedidoVivoDeVenta(v) ? '<div style="font-size:.7rem;color:#38bdf8;margin-top:8px">🛵 Es del pedido de '+_escMsg(pedidoVivoDeVenta(v).nombre)+'. Para cambiar productos usá ✏️ Modificar pedido: anular también cancela el pedido.</div>'+
+        '<div style="display:flex;gap:7px;margin-top:8px">'+
+          '<button onclick="cerrarAnularUltimas();abrirModificarPedido('+pedidoVivoDeVenta(v).id+')" style="flex:1;background:var(--gold);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;font-weight:700;letter-spacing:.5px;cursor:pointer">✏️ Modificar pedido</button>'+
+          '<button onclick="anularDesdeVenta('+v.id+')" style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:.5px;cursor:pointer">✕ Anular y cancelar el pedido</button>'+
+        '</div>' :
       '<div style="display:flex;gap:7px;margin-top:10px">'+
         '<button onclick="anularYRehacer('+v.id+')" style="flex:1;background:var(--gold);color:var(--black);border:none;border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;font-weight:700;letter-spacing:.5px;cursor:pointer">↻ Anular y rehacer</button>'+
         '<button onclick="anularDesdeVenta('+v.id+')" style="flex:1;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:9px;font-family:Oswald,sans-serif;font-size:.68rem;letter-spacing:.5px;cursor:pointer">✕ Solo anular</button>'+
-      '</div>'+
+      '</div>')+
     '</div>';
   }).join('') + (htmlRecargas ? '<div style="height:6px"></div>'+htmlRecargas : '');
 }
@@ -34663,6 +34670,9 @@ function anularDesdeVenta(id){
 function anularYRehacer(id){
   var v = VENTAS.find(function(x){ return x.id===id; });
   if(!v) return;
+  // Un pedido de delivery no se rehace anulando (eso lo cancela): se modifica.
+  var _pv = pedidoVivoDeVenta(v);
+  if(_pv){ cerrarAnularUltimas(); abrirModificarPedido(_pv.id); return; }
   var itemsCopia = JSON.parse(JSON.stringify(v.items||[]));
   cerrarAnularUltimas();
 
@@ -35596,6 +35606,8 @@ function abrirDeliveryPendModal() {
         htmlAvisosCliente(p)+
         (itemsTxt ? '<div style="font-size:.78rem;color:var(--gray);margin:4px 0">'+itemsTxt+'</div>' : '')+
         htmlCambiosPedidoWeb(p)+
+        htmlModificadoPedido(p)+
+        htmlDifPendientePedido(p)+
         notasHtml+
         '<div style="font-family:Oswald,sans-serif;color:var(--gold);font-weight:700;margin-top:8px">'+fmt(p.total)+envioTxt+' · '+hora+'</div>'+
         // El LOCAL es el único que habla con el cliente: le pasa los datos de
@@ -35613,6 +35625,7 @@ function abrirDeliveryPendModal() {
               '<button onclick="abrirPedidoEnCaja('+p.id+')" style="width:100%;background:var(--green);color:var(--black);border:none;border-radius:7px;padding:13px;font-family:Oswald,sans-serif;font-size:.92rem;font-weight:700;letter-spacing:1px;cursor:pointer">🛵 ABRIR PEDIDO · revisar y cobrar</button>')+
           '<div style="display:flex;gap:6px;margin-top:6px">'+
             '<button onclick="abrirMensajesCliente('+p.id+')" style="flex:1;background:transparent;border:1px solid rgba(37,211,102,.5);color:#25D366;border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.66rem;cursor:pointer">💬 Mensajes al cliente</button>'+
+            '<button onclick="abrirModificarPedido('+p.id+')" style="flex:1;background:transparent;border:1px solid rgba(244,180,0,.5);color:#F4B400;border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.66rem;cursor:pointer">✏️ Modificar pedido</button>'+
             '<button onclick="cancelarPedidoWeb('+p.id+')" style="flex:1;background:transparent;border:1px solid rgba(204,0,0,.45);color:var(--red);border-radius:5px;padding:7px;font-family:Oswald,sans-serif;font-size:.66rem;cursor:pointer">✕ Cancelar pedido</button>'+
           '</div>'+
         '</div>'+
@@ -35974,6 +35987,287 @@ function lineasDePedidoWeb(dest, pedido){
   var envioDelPedido = (typeof pedido.envio === 'number') ? pedido.envio
     : (pedido.total||0) - (pedido.items||[]).reduce(function(s,it){ return s+(it.precio*it.cantidad); },0);
   return { faltaPrecio: faltaConfirmarPrecio, envio: envioDelPedido };
+}
+
+// ── MODIFICAR UN PEDIDO WEB (sin anularlo) ─────────────────────────────────
+// Para cuando falta un producto y se cambia por otro, o un suelto no llega al
+// peso/monto pedido. El pedido sigue vivo (no desaparece del puesto ni del
+// repartidor) y queda anotado quién lo cambió y cómo era antes.
+//  • Sin cobrar: se cambia el pedido y su total (el cliente transfiere el nuevo).
+//  • Ya cobrado: se corrige la venta (productos, total y stock) y la diferencia
+//    se arregla por transferencia, como pagó: si sale más caro el cliente
+//    transfiere la diferencia; si sale más barato se le devuelve. Queda
+//    pendiente en el pedido hasta que el local confirma que se hizo.
+var _mp = null;   // { id, lineas, antes, ventaId }
+function _mpPrecioProd(prod){ return (isNocturno() && prod.pnoc) ? prod.pnoc : prod.pventa; }
+function _mpVentaDePedido(p){
+  return (VENTAS || []).find(function(v){ return !v.anulada && (v.pedidoWebId === p.id || (p.ventaId && v.id === p.ventaId)); }) || null;
+}
+function _mpSub(lineas){ return lineas.reduce(function(s, i){ return s + (Number(i.subtotal) || 0); }, 0); }
+function puedeModificarPedido(p){
+  if(!p) return 'Ese pedido ya no está';
+  if(p.anulado) return 'Ese pedido está cancelado';
+  if(p.estadoDelivery === 'entregado') return 'Ese pedido ya se entregó';
+  if(!p.pagoConfirmado){
+    if(p.mpPago) return 'Ya llegó la transferencia y se está registrando el cobro: esperá unos segundos';
+    if(p.estado === 'cargado' && p.cargadoDisp) return 'Está abierto en '+textoCargadoEn(p)+': cambialo ahí, o cerralo primero';
+  } else if(!_mpVentaDePedido(p)) return 'No encuentro la venta de este pedido en esta compu';
+  return '';
+}
+function abrirModificarPedido(id){
+  var p = getPedidosWeb().find(function(x){ return x.id === id; });
+  var motivo = puedeModificarPedido(p);
+  if(motivo){ showToast('✋ '+motivo, true); return; }
+  var lineas;
+  var v = p.pagoConfirmado ? _mpVentaDePedido(p) : null;
+  if(v) lineas = JSON.parse(JSON.stringify(v.items || []));
+  else { lineas = []; lineasDePedidoWeb(lineas, p); }
+  lineas.forEach(function(l){ l._orig = { qty: l.qty, precio: l.precio }; });
+  _mp = { id: id, lineas: lineas, antes: _mpSub(lineas), ventaId: v ? v.id : null, busca: '' };
+  var ov = document.getElementById('modPedidoOverlay');
+  if(!ov){
+    ov = document.createElement('div'); ov.id = 'modPedidoOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:6000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:16px 10px';
+    document.body.appendChild(ov);
+  }
+  ov.style.display = 'flex';
+  renderModificarPedido();
+}
+function cerrarModificarPedido(){ var ov = document.getElementById('modPedidoOverlay'); if(ov) ov.style.display = 'none'; _mp = null; }
+function renderModificarPedido(){
+  var ov = document.getElementById('modPedidoOverlay'); if(!ov || !_mp) return;
+  var p = getPedidosWeb().find(function(x){ return x.id === _mp.id; }); if(!p){ cerrarModificarPedido(); return; }
+  var cobrado = !!_mp.ventaId, ahora = _mpSub(_mp.lineas), dif = ahora - _mp.antes;
+  var e = _escMsg;
+  var filas = _mp.lineas.map(function(l, k){
+    var cambiado = l.qty !== l._orig.qty || l.precio !== l._orig.precio || l._nuevo;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.84rem;color:'+(cambiado?'var(--gold)':'var(--white)')+'">'+(l.manual?'✍ ':'')+e(l.name)+(l._nuevo?' <span style="color:var(--green);font-size:.7rem">(nuevo)</span>':'')+'</div>'+
+        (l.manual
+          ? '<div style="font-size:.7rem;color:var(--gray);margin-top:3px">Monto $ <input type="number" inputmode="numeric" min="0" value="'+(l.precio||0)+'" onchange="mpPrecio('+k+',this.value)" style="width:90px;background:var(--dark);border:1px solid var(--gold);border-radius:4px;color:var(--white);padding:3px 5px;font-size:.8rem"> '+(l._orig.precio !== l.precio && !l._nuevo ? '<span>(pidió '+fmt(l._orig.precio)+')</span>' : '')+'</div>'
+          : '<div style="font-size:.68rem;color:var(--gray)">'+fmt(l.precio)+' c/u</div>')+
+      '</div>'+
+      (l.manual ? '' : '<div style="display:flex;align-items:center;gap:6px"><button onclick="mpCant('+k+',-1)" style="width:30px;height:30px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--white);cursor:pointer">−</button><b style="min-width:20px;text-align:center;color:var(--white)">'+l.qty+'</b><button onclick="mpCant('+k+',1)" style="width:30px;height:30px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--white);cursor:pointer">+</button></div>')+
+      '<div style="width:78px;text-align:right;font-family:Oswald,sans-serif;color:var(--white)">'+fmt(l.subtotal)+'</div>'+
+      '<button onclick="mpCant('+k+',-9999)" title="Sacar" style="background:none;border:none;color:#f87171;font-size:1rem;cursor:pointer">🗑</button>'+
+    '</div>';
+  }).join('') || '<div style="color:var(--gray);font-size:.8rem;padding:10px 0">Sin productos</div>';
+  var q = (_mp.busca || '').trim().toLowerCase();
+  var res = q.length >= 2 ? (PRODUCTS || []).filter(function(x){ return x && x.name && x.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 8) : [];
+  var inv = getStockInv();
+  var resHtml = res.map(function(x){
+    var st = inv[x.name] ? Number(inv[x.name].stock) || 0 : null;
+    return '<button onclick="mpAgregar(\''+encodeURIComponent(x.name).replace(/'/g, '%27')+'\')" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:7px 9px;margin-top:4px;cursor:pointer;font-size:.8rem"><span>＋ '+e(x.name)+(st !== null ? ' <span style="color:'+(st > 0 ? 'var(--gray)' : 'var(--red)')+';font-size:.7rem">(stock '+st+')</span>' : '')+'</span><b>'+fmt(_mpPrecioProd(x))+'</b></button>';
+  }).join('');
+  var difTxt = !dif ? '<span style="color:var(--green)">✓ Mismo total: no hay diferencia de plata</span>'
+    : (cobrado
+        ? (dif > 0 ? '<span style="color:var(--gold)">💲 El cliente tiene que <b>transferir '+fmt(dif)+'</b> más</span>' : '<span style="color:#38bdf8">↩ Hay que <b>devolverle '+fmt(-dif)+'</b> por transferencia</span>')
+        : '<span style="color:var(--gold)">El cliente va a tener que transferir <b>'+fmt(ahora + (p.envio || 0))+'</b> (antes '+fmt(_mp.antes + (p.envio || 0))+')</span>');
+  ov.innerHTML = '<div style="background:var(--card);border:1px solid var(--gold);border-radius:10px;max-width:560px;width:100%;padding:16px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-family:Oswald,sans-serif;color:var(--gold);font-size:1rem;letter-spacing:1px">✏️ MODIFICAR PEDIDO</div>'+
+      '<button onclick="cerrarModificarPedido()" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:5px;padding:4px 10px;cursor:pointer">✕</button></div>'+
+    '<div style="font-size:.8rem;color:var(--light);margin-top:4px">👤 '+e(p.nombre)+(cobrado ? ' · <span style="color:var(--green)">✅ ya cobrado ('+fmt(_mp.antes)+' de productos)</span>' : ' · sin cobrar')+'</div>'+
+    '<div style="font-size:.7rem;color:var(--gray);margin-top:4px">Cambiá cantidades, sacá lo que no hay, corregí el monto de los sueltos o agregá un reemplazo. El pedido no se cancela: el repartidor ve la lista nueva al instante.</div>'+
+    '<div style="margin-top:10px">'+filas+'</div>'+
+    '<div style="margin-top:12px;font-size:.72rem;color:var(--gold);font-family:Oswald,sans-serif;letter-spacing:1px">＋ AGREGAR UN REEMPLAZO</div>'+
+    '<input id="mpBusca" value="'+e(_mp.busca)+'" oninput="_mp.busca=this.value;mpBuscar()" placeholder="Buscar producto…" autocomplete="off" style="width:100%;margin-top:4px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:9px;font-size:.85rem">'+
+    '<div id="mpRes">'+resHtml+'</div>'+
+    '<div style="margin-top:14px;padding:10px;background:var(--dark);border-radius:7px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--gray)"><span>Productos antes</span><span>'+fmt(_mp.antes)+'</span></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--white);font-weight:700;margin-top:3px"><span>Productos ahora</span><span>'+fmt(ahora)+'</span></div>'+
+      '<div style="font-size:.8rem;margin-top:7px">'+difTxt+'</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+
+      '<button onclick="cerrarModificarPedido()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--gray);border-radius:6px;padding:11px;font-family:Oswald,sans-serif;cursor:pointer">Cancelar</button>'+
+      '<button onclick="guardarModificarPedido()" style="flex:2;background:var(--gold);color:#111;border:none;border-radius:6px;padding:11px;font-family:Oswald,sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer">✓ GUARDAR CAMBIOS</button>'+
+    '</div></div>';
+}
+function mpBuscar(){
+  var y = document.getElementById('mpBusca'); var pos = y ? y.selectionStart : null;
+  renderModificarPedido();
+  var x = document.getElementById('mpBusca'); if(x){ x.focus(); if(pos !== null) try{ x.setSelectionRange(pos, pos); }catch(e){} }
+}
+function mpCant(k, d){
+  var l = _mp && _mp.lineas[k]; if(!l) return;
+  l.qty = Math.max(0, (Number(l.qty) || 0) + d);
+  if(l.qty === 0 || l.manual && d < 0) _mp.lineas.splice(k, 1);
+  else l.subtotal = l.precio * l.qty;
+  renderModificarPedido();
+}
+function mpPrecio(k, val){
+  var l = _mp && _mp.lineas[k]; if(!l) return;
+  var n = Math.max(0, Math.round(Number(val) || 0));
+  l.precio = n; l.subtotal = n * (l.qty || 1);
+  renderModificarPedido();
+}
+function mpAgregar(nomEnc){
+  var nombre = decodeURIComponent(nomEnc);
+  var prod = (PRODUCTS || []).find(function(x){ return x.name === nombre; }); if(!prod || !_mp) return;
+  var ex = _mp.lineas.find(function(l){ return l.name === nombre && !l.manual && !l.esCombo; });
+  if(ex){ ex.qty++; ex.subtotal = ex.precio * ex.qty; }
+  else { var pr = _mpPrecioProd(prod); _mp.lineas.push({ name: nombre, precio: pr, qty: 1, subtotal: pr, cat: prod.cat || '', _nuevo: true, _orig: { qty: 0, precio: pr } }); }
+  _mp.busca = '';
+  renderModificarPedido();
+}
+// Lo que cambió, línea por línea (para el stock y para anotarlo).
+function _mpDiferencias(antes, ahora){
+  var key = function(l){ return (l.manual ? 'm|' : (l.esCombo ? 'c|' : 'p|')) + l.name; };
+  var A = {}, B = {};
+  antes.forEach(function(l){ var k = key(l); if(!A[k]) A[k] = { l: l, q: 0, s: 0 }; A[k].q += Number(l.qty) || 0; A[k].s += Number(l.subtotal) || 0; });
+  ahora.forEach(function(l){ var k = key(l); if(!B[k]) B[k] = { l: l, q: 0, s: 0 }; B[k].q += Number(l.qty) || 0; B[k].s += Number(l.subtotal) || 0; });
+  var sacados = [], sumados = [], texto = [];
+  Object.keys(A).concat(Object.keys(B)).filter(function(k, i, a){ return a.indexOf(k) === i; }).forEach(function(k){
+    var a = A[k] || { q: 0, s: 0, l: B[k].l }, b = B[k] || { q: 0, s: 0, l: A[k].l };
+    var base = JSON.parse(JSON.stringify(a.l || b.l)); delete base._orig; delete base._nuevo;
+    if(base.manual){
+      if(a.s !== b.s) texto.push((b.q ? '✍ '+base.name+': '+fmt(a.s)+' → '+fmt(b.s) : '− '+base.name));
+      return;
+    }
+    if(b.q > a.q){ var x = JSON.parse(JSON.stringify(base)); x.qty = b.q - a.q; x.subtotal = x.precio * x.qty; sumados.push(x); texto.push('+ '+base.name+' ×'+x.qty); }
+    if(a.q > b.q){ var y = JSON.parse(JSON.stringify(base)); y.qty = a.q - b.q; y.subtotal = y.precio * y.qty; sacados.push(y); texto.push('− '+base.name+' ×'+y.qty); }
+  });
+  return { sacados: sacados, sumados: sumados, texto: texto };
+}
+// El pedido queda con la lista nueva como "lo que pidió" (así la caja, el
+// puesto y el repartidor ven lo mismo). Cómo era antes queda guardado.
+function _mpAplicarAlPedido(p, lineas){
+  if(!p.versiones) p.versiones = [];
+  p.versiones.push({ en: new Date().toISOString(), por: currentEmp ? currentEmp.nombre : 'Local',
+    items: p.items || [], combos: p.combos || [], notasManuales: p.notasManuales || [], total: p.total || 0,
+    itemsAgregados: p.itemsAgregados || null, itemsQuitados: p.itemsQuitados || null });
+  if(p.versiones.length > 10) p.versiones = p.versiones.slice(-10);
+  var notasOrig = {}; (p.notasManuales || []).forEach(function(n){ notasOrig[n.nombre + (n.texto ? ' ('+n.texto+')' : '')] = n; });
+  var combosOrig = {}; (p.combos || []).forEach(function(cb){ combosOrig[(cb.emoji || '🎁')+' '+cb.nombre] = cb; });
+  var items = [], combos = {}, notas = [];
+  lineas.forEach(function(l){
+    if(l.manual){
+      var n0 = notasOrig[l.name] || { nombre: l.name, categoria: l.cat || 'Manual' };
+      var n = JSON.parse(JSON.stringify(n0)); n.precio = l.subtotal; notas.push(n); return;
+    }
+    if(l.esCombo){
+      var c0 = combosOrig[l.name];
+      if(!combos[l.name]) combos[l.name] = c0 ? JSON.parse(JSON.stringify(c0)) : { nombre: l.name.replace(/^\S+\s/, ''), emoji: '🎁', precio: l.precio, items: l.comboItems || [] };
+      combos[l.name]._q = (combos[l.name]._q || 0) + (Number(l.qty) || 1);
+      return;
+    }
+    var ex = items.find(function(i){ return i.nombre === l.name; });
+    if(ex){ ex.cantidad += l.qty; return; }
+    var it = { nombre: l.name, cantidad: l.qty, precio: l.precio };
+    var img = imgAbsProducto(l.name); if(img) it.img = img;
+    items.push(it);
+  });
+  p.items = items;
+  p.combos = Object.keys(combos).map(function(k){ var c = combos[k]; c.cantidad = c._q; delete c._q; return c; });
+  p.notasManuales = notas;
+  delete p.itemsAgregados; delete p.itemsQuitados; delete p.subtotalOriginal;
+  p.subtotal = _mpSub(lineas);
+  p.total = p.subtotal + (p.envio || 0);
+  p.modificadoEn = new Date().toISOString();
+  p.modificadoPor = currentEmp ? currentEmp.nombre : 'Local';
+  // El "lo tengo / no hay" del repartidor se rehace con la lista nueva.
+  if(p.armado){
+    var nombres = lineas.map(function(l){ return l.name; });
+    Object.keys(p.armado).forEach(function(k){ if(nombres.indexOf(k) === -1) delete p.armado[k]; });
+    p.armadoTotal = nombres.filter(function(n, i, a){ return a.indexOf(n) === i; }).length;
+    delete p.armadoEn;
+  }
+}
+function guardarModificarPedido(){
+  if(!_mp) return;
+  var pedidos = getPedidosWeb();
+  var p = pedidos.find(function(x){ return x.id === _mp.id; });
+  var motivo = puedeModificarPedido(p);
+  if(motivo){ showToast('✋ '+motivo, true); return; }
+  var lineas = _mp.lineas.filter(function(l){ return (Number(l.qty) || 0) > 0 && !(l.manual && !(l.subtotal > 0)); });
+  if(!lineas.length){ showToast('El pedido quedó sin productos: si no se lleva nada, cancelalo', true); return; }
+  var antesLineas = [];
+  var v = _mp.ventaId ? VENTAS.find(function(x){ return x.id === _mp.ventaId && !x.anulada; }) : null;
+  if(_mp.ventaId && !v){ showToast('La venta de este pedido ya no está activa', true); return; }
+  if(v) antesLineas = JSON.parse(JSON.stringify(v.items || [])); else lineasDePedidoWeb(antesLineas, p);
+  var difs = _mpDiferencias(antesLineas, lineas);
+  var antes = _mpSub(antesLineas), ahora = _mpSub(lineas), dif = ahora - antes;
+  if(!difs.texto.length){ showToast('No cambiaste nada'); cerrarModificarPedido(); return; }
+  var msg = 'Pedido de '+p.nombre+'\n\n'+difs.texto.join('\n')+'\n\n'+
+    (v ? (dif > 0 ? 'El cliente tiene que transferir '+fmt(dif)+' más.' : (dif < 0 ? 'Hay que devolverle '+fmt(-dif)+' por transferencia.' : 'Mismo total: no hay diferencia de plata.'))
+       : 'Nuevo total a transferir: '+fmt(ahora + (p.envio || 0))+'.')+'\n\n¿Guardás los cambios?';
+  askConfirm(msg).then(function(ok){
+    if(!ok) return;
+    var quien = currentEmp ? currentEmp.nombre : 'Admin', ahoraIso = new Date().toISOString();
+    var limpias = lineas.map(function(l){ var x = JSON.parse(JSON.stringify(l)); delete x._orig; delete x._nuevo; return x; });
+    if(v){
+      // Stock: vuelve lo que se sacó y se descuenta lo que se sumó.
+      if(difs.sacados.length){
+        var inv = getStockInv(); devolverStockItems(inv, difs.sacados); window.__lrStockInvCache = inv;
+        guardarOperacionProtegida('StockInv', getStockInv, 'Pedido de '+p.nombre+' modificado — stock devuelto', true);
+      }
+      if(difs.sumados.length) descontarStock(difs.sumados, 'venta');
+      if(!v.ajustesPedido) v.ajustesPedido = [];
+      v.ajustesPedido.push({ en: ahoraIso, por: quien, antes: antes, despues: ahora, diferencia: dif, cambios: difs.texto, itemsAntes: antesLineas });
+      v.items = limpias;
+      v.subtotal = (Number(v.subtotal) || 0) + dif;
+      // La diferencia va por transferencia, como pagó el cliente.
+      if(dif){
+        if(v.medio === 'Transferencia') v.total = (Number(v.total) || 0) + dif;
+        else {
+          var m = v.mixto ? JSON.parse(JSON.stringify(v.mixto)) : { efectivo: v.medio === 'Efectivo' ? (Number(v.total) || 0) : 0, transferencia: 0, debito: v.medio === 'Débito' ? (Number(v.total) || 0) - (Number(v.recargo) || 0) : 0 };
+          m.transferencia = (Number(m.transferencia) || 0) + dif;
+          v.mixto = m; v.medio = 'Mixto'; v.total = (Number(v.total) || 0) + dif;
+        }
+      }
+      saveVentas(VENTAS, [v.id]);
+      registrarOperacion('ajuste-pedido', difs.texto.map(function(t){ return { name: t, qty: 1 }; }), dif, quien, 'Pedido de '+p.nombre+(dif ? (dif > 0 ? ' · falta que transfiera '+fmt(dif) : ' · devolverle '+fmt(-dif)) : ' · sin diferencia'), 0, v.id);
+      if(dif) p.difPendiente = { monto: Math.abs(dif), tipo: dif > 0 ? 'cobrar' : 'devolver', estado: 'pendiente', desde: ahoraIso, por: quien };
+      else if(p.difPendiente && p.difPendiente.estado === 'pendiente'){ /* queda la anterior */ }
+    }
+    _mpAplicarAlPedido(p, limpias);
+    savePedidosWeb(pedidos);
+    autoSaveNow();
+    cerrarModificarPedido();
+    showToast('✏️ Pedido de '+p.nombre+' modificado — el repartidor ya ve la lista nueva');
+    try{ if(typeof renderPuesto === 'function' && (window.__lrEsPuesto || window.__lrPedidoEnCaja)) renderPuesto(); }catch(e){}
+    try{ var md = document.getElementById('deliveryPendModal'); if(md && md.classList.contains('open')) abrirDeliveryPendModal(); }catch(e){}
+    // Avisarle al cliente por WhatsApp (opcional).
+    var txt = v
+      ? (dif > 0 ? 'Hola '+p.nombre+'! 👋 Te cambiamos el pedido: '+difs.texto.join(', ')+'. Queda una diferencia de '+fmt(dif)+': ¿nos la transferís por favor? ¡Gracias!'
+        : (dif < 0 ? 'Hola '+p.nombre+'! 👋 Te cambiamos el pedido: '+difs.texto.join(', ')+'. Te tenemos que devolver '+fmt(-dif)+': pasanos tu alias o CBU y te lo transferimos. ¡Gracias!'
+        : 'Hola '+p.nombre+'! 👋 Te cambiamos el pedido: '+difs.texto.join(', ')+'. El total queda igual. ¡Gracias!'))
+      : 'Hola '+p.nombre+'! 👋 Te cambiamos el pedido: '+difs.texto.join(', ')+'. El total nuevo es '+fmt(p.total || 0)+'. ¡Gracias!';
+    setTimeout(function(){ askConfirm('¿Le mandás un WhatsApp al cliente con el cambio?').then(function(si){ if(si) whatsappCliente(p, txt); }); }, 300);
+  });
+}
+// Diferencia de plata pendiente (pedido ya cobrado que se modificó).
+function htmlDifPendientePedido(p){
+  var d = p && p.difPendiente; if(!d) return '';
+  if(d.estado !== 'pendiente') return '<div style="font-size:.72rem;color:var(--green);margin-top:5px">✓ '+(d.tipo === 'cobrar' ? 'El cliente transfirió la diferencia de ' : 'Se le devolvieron ')+fmt(d.monto)+(d.hechaPor ? ' ('+_escMsg(d.hechaPor)+')' : '')+'</div>';
+  var cobrar = d.tipo === 'cobrar';
+  return '<div style="margin-top:7px;padding:8px 10px;border-radius:6px;border:1px solid '+(cobrar ? 'rgba(244,180,0,.6)' : 'rgba(56,189,248,.6)')+';background:'+(cobrar ? 'rgba(244,180,0,.08)' : 'rgba(56,189,248,.08)')+'">'+
+    '<div style="font-size:.78rem;font-weight:700;color:'+(cobrar ? '#F4B400' : '#38bdf8')+'">'+(cobrar ? '💲 Falta que el cliente transfiera '+fmt(d.monto) : '↩ Hay que devolverle '+fmt(d.monto)+' por transferencia')+'</div>'+
+    '<div style="font-size:.68rem;color:var(--gray);margin-top:2px">Se modificó el pedido ya cobrado ('+_escMsg(d.por || '')+')</div>'+
+    '<button onclick="confirmarDifPedido('+p.id+')" style="margin-top:6px;background:transparent;border:1px solid var(--green);color:var(--green);border-radius:5px;padding:6px 10px;font-size:.72rem;font-weight:700;cursor:pointer">✓ '+(cobrar ? 'Ya transfirió' : 'Ya se le devolvió')+'</button>'+
+  '</div>';
+}
+function confirmarDifPedido(id){
+  var pedidos = getPedidosWeb(), p = pedidos.find(function(x){ return x.id === id; });
+  if(!p || !p.difPendiente || p.difPendiente.estado !== 'pendiente') return;
+  var d = p.difPendiente;
+  askConfirm(d.tipo === 'cobrar' ? '¿Llegó la transferencia de '+fmt(d.monto)+' de '+p.nombre+'?' : '¿Ya le transferiste '+fmt(d.monto)+' a '+p.nombre+'?').then(function(ok){
+    if(!ok) return;
+    d.estado = 'hecha'; d.hechaEn = new Date().toISOString(); d.hechaPor = currentEmp ? currentEmp.nombre : 'Local';
+    savePedidosWeb(pedidos);
+    showToast('✓ Listo');
+    try{ if(typeof renderPuesto === 'function' && (window.__lrEsPuesto || window.__lrPedidoEnCaja)) renderPuesto(); }catch(e){}
+    try{ var md = document.getElementById('deliveryPendModal'); if(md && md.classList.contains('open')) abrirDeliveryPendModal(); }catch(e){}
+  });
+}
+function htmlModificadoPedido(p){
+  if(!p || !p.modificadoPor) return '';
+  return '<div style="font-size:.7rem;color:#38bdf8;margin-top:4px">✏️ Pedido modificado por '+_escMsg(p.modificadoPor)+(p.modificadoEn ? ' a las '+new Date(p.modificadoEn).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '')+'</div>';
+}
+// Una venta que viene de un pedido web: ¿cuál es su pedido (si sigue vivo)?
+function pedidoVivoDeVenta(v){
+  if(!v) return null;
+  var p = getPedidosWeb().find(function(x){ return (v.pedidoWebId && x.id === v.pedidoWebId) || x.ventaId === v.id; });
+  return (p && !p.anulado) ? p : null;
 }
 
 function cargarPedidoAlCarrito(id) {
@@ -38899,6 +39193,7 @@ function _pzTarjeta(p){
       '<div class="pz-cobrado">✅ COBRADO'+(p.cobroAuto?' SOLO POR MERCADO PAGO':(p.cobradoPor?' por '+_pzEsc(p.cobradoPor):''))+' · '+_pzHora(p.cobradoEn)+'</div>'+
       '<div class="pz-fila">'+
         '<button onclick="abrirMensajesCliente('+p.id+')" class="pz-btn-sec">💬 Mensajes al cliente</button>'+
+        '<button onclick="abrirModificarPedido('+p.id+')" class="pz-btn-sec" style="color:#F4B400;border-color:rgba(244,180,0,.5)">✏️ Modificar pedido</button>'+
         '<button onclick="cerrarPedidoWebEntregado('+p.id+')" class="pz-btn-sec" style="color:#22c55e;border-color:rgba(34,197,94,.5)">✓ Entregado</button>'+
       '</div>';
   } else if(trabado){
@@ -38910,6 +39205,7 @@ function _pzTarjeta(p){
       '<div class="pz-fila">'+
         '<button onclick="enviarDatosCobro('+p.id+')" class="pz-btn-sec" style="color:#25D366;border-color:rgba(37,211,102,.5)">💬 Pasar datos de pago</button>'+
         '<button onclick="abrirMensajesCliente('+p.id+')" class="pz-btn-sec">💬 Más mensajes</button>'+
+        '<button onclick="abrirModificarPedido('+p.id+')" class="pz-btn-sec" style="color:#F4B400;border-color:rgba(244,180,0,.5)">✏️ Modificar</button>'+
         '<button onclick="cancelarPedidoWeb('+p.id+')" class="pz-btn-sec" style="color:#f87171;border-color:rgba(248,113,113,.45)">❌ Cancelar</button>'+
       '</div>';
   }
@@ -38928,6 +39224,8 @@ function _pzTarjeta(p){
     (items ? '<div class="pz-items">'+items+'</div>' : '')+
     notas+
     htmlCambiosPedidoWeb(p)+
+    htmlModificadoPedido(p)+
+    htmlDifPendientePedido(p)+
     htmlArmadoPedido(p)+
     htmlAvisosCliente(p)+
     acciones+
