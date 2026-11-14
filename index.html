@@ -36064,7 +36064,11 @@ function renderModificarPedido(){
   var q = (_mp.busca || '').trim().toLowerCase();
   var res = q.length >= 2 ? (PRODUCTS || []).filter(function(x){ return x && x.name && x.name.toLowerCase().indexOf(q) >= 0; }).slice(0, 8) : [];
   var inv = getStockInv();
-  var resHtml = res.map(function(x){
+  var sueltos = q.length >= 2 ? getItemsManuales().filter(function(x){ return x && x.nombre && x.nombre.toLowerCase().indexOf(q) >= 0; }).slice(0, 6) : [];
+  var resSueltos = sueltos.map(function(x){
+    return '<button onclick="mpAgregarSuelto(\''+encodeURIComponent(x.nombre).replace(/'/g, '%27')+'\',\''+encodeURIComponent(x.categoria || '').replace(/'/g, '%27')+'\')" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:var(--dark);border:1px solid rgba(244,180,0,.4);border-radius:5px;color:var(--white);padding:7px 9px;margin-top:4px;cursor:pointer;font-size:.8rem"><span>＋ ✍ '+e(x.nombre)+' <span style="color:var(--gray);font-size:.7rem">(suelto'+(x.categoria ? ' · '+e(x.categoria) : '')+')</span></span><b style="color:var(--gold)">poner monto</b></button>';
+  }).join('');
+  var resHtml = resSueltos + res.map(function(x){
     var st = inv[x.name] ? Number(inv[x.name].stock) || 0 : null;
     return '<button onclick="mpAgregar(\''+encodeURIComponent(x.name).replace(/'/g, '%27')+'\')" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:7px 9px;margin-top:4px;cursor:pointer;font-size:.8rem"><span>＋ '+e(x.name)+(st !== null ? ' <span style="color:'+(st > 0 ? 'var(--gray)' : 'var(--red)')+';font-size:.7rem">(stock '+st+')</span>' : '')+'</span><b>'+fmt(_mpPrecioProd(x))+'</b></button>';
   }).join('');
@@ -36079,8 +36083,9 @@ function renderModificarPedido(){
     '<div style="font-size:.7rem;color:var(--gray);margin-top:4px">Cambiá cantidades, sacá lo que no hay, corregí el monto de los sueltos o agregá un reemplazo. El pedido no se cancela: el repartidor ve la lista nueva al instante.</div>'+
     '<div style="margin-top:10px">'+filas+'</div>'+
     '<div style="margin-top:12px;font-size:.72rem;color:var(--gold);font-family:Oswald,sans-serif;letter-spacing:1px">＋ AGREGAR UN REEMPLAZO</div>'+
-    '<input id="mpBusca" value="'+e(_mp.busca)+'" oninput="_mp.busca=this.value;mpBuscar()" placeholder="Buscar producto…" autocomplete="off" style="width:100%;margin-top:4px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:9px;font-size:.85rem">'+
+    '<input id="mpBusca" value="'+e(_mp.busca)+'" oninput="_mp.busca=this.value;mpBuscar()" placeholder="Buscar producto o suelto (milanesas, tomate…)" autocomplete="off" style="width:100%;margin-top:4px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--white);padding:9px;font-size:.85rem">'+
     '<div id="mpRes">'+resHtml+'</div>'+
+    '<button onclick="mpAgregarSuelto()" style="margin-top:6px;background:transparent;border:1px dashed var(--gold);color:var(--gold);border-radius:5px;padding:7px 10px;font-size:.74rem;cursor:pointer;width:100%">✍ Agregar otro suelto a mano (nombre y monto)</button>'+
     '<div style="margin-top:14px;padding:10px;background:var(--dark);border-radius:7px">'+
       '<div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--gray)"><span>Productos antes</span><span>'+fmt(_mp.antes)+'</span></div>'+
       '<div style="display:flex;justify-content:space-between;font-size:.9rem;color:var(--white);font-weight:700;margin-top:3px"><span>Productos ahora</span><span>'+fmt(ahora)+'</span></div>'+
@@ -36118,6 +36123,26 @@ function mpAgregar(nomEnc){
   _mp.busca = '';
   renderModificarPedido();
 }
+// Un suelto (fiambrería, verdulería, carnicería…): se pone el monto en pesos
+// y, si se quiere, cuánto es (ej: "500 g"). No descuenta stock, igual que en
+// el mostrador.
+function mpAgregarSuelto(nomEnc, catEnc){
+  if(!_mp) return;
+  var nombre = nomEnc ? decodeURIComponent(nomEnc) : prompt('¿Qué suelto agregás? (ej: Tomate, Milanesas de pollo)');
+  if(nombre === null) return;
+  nombre = String(nombre || '').trim(); if(!nombre){ showToast('Poné el nombre del suelto', true); return; }
+  var monto = prompt('¿Cuánto cobrás de '+nombre+'? (en pesos, solo el número)');
+  if(monto === null) return;
+  monto = Math.round(Number(String(monto).replace(/[^\d]/g, '')) || 0);
+  if(!(monto > 0)){ showToast('Poné un monto válido', true); return; }
+  var texto = prompt('¿Cuánto es? (opcional, ej: 500 g, 1 kg, 3 unidades)', '') || '';
+  texto = String(texto).trim();
+  var cat = catEnc ? decodeURIComponent(catEnc) : 'Manual';
+  _mp.lineas.push({ name: nombre + (texto ? ' ('+texto+')' : ''), precio: monto, qty: 1, subtotal: monto, cat: cat || 'Manual', manual: true,
+    _suelto: { nombre: nombre, texto: texto, categoria: cat || 'Manual' }, _nuevo: true, _orig: { qty: 0, precio: 0 } });
+  _mp.busca = '';
+  renderModificarPedido();
+}
 // Lo que cambió, línea por línea (para el stock y para anotarlo).
 function _mpDiferencias(antes, ahora){
   var key = function(l){ return (l.manual ? 'm|' : (l.esCombo ? 'c|' : 'p|')) + l.name; };
@@ -36127,9 +36152,9 @@ function _mpDiferencias(antes, ahora){
   var sacados = [], sumados = [], texto = [];
   Object.keys(A).concat(Object.keys(B)).filter(function(k, i, a){ return a.indexOf(k) === i; }).forEach(function(k){
     var a = A[k] || { q: 0, s: 0, l: B[k].l }, b = B[k] || { q: 0, s: 0, l: A[k].l };
-    var base = JSON.parse(JSON.stringify(a.l || b.l)); delete base._orig; delete base._nuevo;
+    var base = JSON.parse(JSON.stringify(a.l || b.l)); delete base._orig; delete base._nuevo; delete base._suelto;
     if(base.manual){
-      if(a.s !== b.s) texto.push((b.q ? '✍ '+base.name+': '+fmt(a.s)+' → '+fmt(b.s) : '− '+base.name));
+      if(a.s !== b.s) texto.push(!a.q ? '+ ✍ '+base.name+' '+fmt(b.s) : (b.q ? '✍ '+base.name+': '+fmt(a.s)+' → '+fmt(b.s) : '− '+base.name));
       return;
     }
     if(b.q > a.q){ var x = JSON.parse(JSON.stringify(base)); x.qty = b.q - a.q; x.subtotal = x.precio * x.qty; sumados.push(x); texto.push('+ '+base.name+' ×'+x.qty); }
@@ -36150,7 +36175,7 @@ function _mpAplicarAlPedido(p, lineas){
   var items = [], combos = {}, notas = [];
   lineas.forEach(function(l){
     if(l.manual){
-      var n0 = notasOrig[l.name] || { nombre: l.name, categoria: l.cat || 'Manual' };
+      var n0 = notasOrig[l.name] || l._suelto || { nombre: l.name, categoria: l.cat || 'Manual' };
       var n = JSON.parse(JSON.stringify(n0)); n.precio = l.subtotal; notas.push(n); return;
     }
     if(l.esCombo){
@@ -36202,7 +36227,7 @@ function guardarModificarPedido(){
   askConfirm(msg).then(function(ok){
     if(!ok) return;
     var quien = currentEmp ? currentEmp.nombre : 'Admin', ahoraIso = new Date().toISOString();
-    var limpias = lineas.map(function(l){ var x = JSON.parse(JSON.stringify(l)); delete x._orig; delete x._nuevo; return x; });
+    var limpias = lineas.map(function(l){ var x = JSON.parse(JSON.stringify(l)); delete x._orig; delete x._nuevo; delete x._suelto; return x; });
     if(v){
       // Stock: vuelve lo que se sacó y se descuenta lo que se sumó.
       if(difs.sacados.length){
@@ -36228,7 +36253,7 @@ function guardarModificarPedido(){
       if(dif) p.difPendiente = { monto: Math.abs(dif), tipo: dif > 0 ? 'cobrar' : 'devolver', estado: 'pendiente', desde: ahoraIso, por: quien };
       else if(p.difPendiente && p.difPendiente.estado === 'pendiente'){ /* queda la anterior */ }
     }
-    _mpAplicarAlPedido(p, limpias);
+    _mpAplicarAlPedido(p, lineas);
     savePedidosWeb(pedidos);
     autoSaveNow();
     cerrarModificarPedido();
