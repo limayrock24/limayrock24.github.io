@@ -1363,10 +1363,11 @@ if(window.__lrSucursal === 2){
   // trae el historial completo (reportes de meses anteriores). El panel de
   // admin propio (/admin/) trae todo desde el principio, como siempre.
   var DIAS_CAJA = 45;
-  // En la app LR Admin del celu se arranca con lo reciente (bajar todo de una
-  // vez la dejaba trabada) y, al abrir el admin, se trae el historial completo
-  // de fondo, igual que cuando se abre el admin desde la caja.
-  window.__lrAppLiviana = /LimayRockAdminApp/.test(navigator.userAgent);
+  // El admin (/admin/ y la app LR Admin del celu) arranca con lo reciente y
+  // trae el historial completo de fondo, igual que cuando se abre el admin
+  // desde la caja. Bajar todo de una vez dejaba trabadas a las compus y
+  // celulares más débiles (la netbook quedaba +10 min "poniéndose al día").
+  window.__lrAppLiviana = /LimayRockAdminApp/.test(navigator.userAgent) || !!window.__lrEsPanelAdmin;
   window.__lrHistorialCompleto = !!window.__lrEsPanelAdmin && !window.__lrAppLiviana;
   window.__lrHistorialCompletoListo = window.__lrHistorialCompleto;
   var _histListos = { ventas: false, movimientos: false };
