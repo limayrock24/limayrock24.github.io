@@ -11504,7 +11504,8 @@ function _doConfirmarVentaSinCandado() {
 // la clienta pidió más cosas por WhatsApp y el cajero las agregó al carrito).
 // ── UBICACIÓN EN VIVO DEL REPARTIDOR ───────────────────────────────────────
 // El celular del repartidor (página de delivery) manda su posición al pedido
-// cada ~20 s mientras lo lleva (campo ubicacionRep). Acá se muestra si está
+// cada ~20 s desde que lo toma hasta que lo entrega (campo ubicacionRep): así
+// se ve también por dónde viene a buscarlo. Acá se muestra si está
 // llegando bien y se abre un mapa que se actualiza solo. Si pasan más de 2
 // minutos sin datos, se marca en rojo: el repartidor cerró la página,
 // bloqueó el celular o se quedó sin señal.
@@ -11553,7 +11554,7 @@ function actualizarUbicacionesEnVivo() {
   // Si un pedido recién empieza a mandar ubicación, la fila todavía no existe:
   // ahí sí se redibuja la lista de pedidos en curso.
   var faltan = getPedidosWeb().some(function(p){
-    return p.ubicacionRep && p.repartidor && p.retiradoEn && p.estadoDelivery !== 'entregado' && !document.querySelector('.gps-fila button[onclick="abrirMapaRepartidor('+p.id+')"]');
+    return p.ubicacionRep && p.repartidor && p.estadoDelivery !== 'entregado' && !document.querySelector('.gps-fila button[onclick="abrirMapaRepartidor('+p.id+')"]');
   });
   var modalPend = document.getElementById('deliveryPendModal');
   if(faltan && modalPend && modalPend.classList.contains('open') && typeof abrirDeliveryPendModal==='function'){
@@ -11674,7 +11675,8 @@ function htmlEstadoPedidoWeb(p) {
       h += fila('#38bdf8', '📦 Lo retiró del local a las '+hh(p.retiradoEn)+' · <b>en camino</b>');
       h += htmlFilaGPSPedido(p);
     } else {
-      h += fila('var(--gray)', '📦 Todavía no lo retiró del local (la ubicación se ve desde que lo retira)');
+      h += fila('var(--gray)', '📦 Todavía no lo retiró del local · <b>viene a buscarlo</b>');
+      h += htmlFilaGPSPedido(p);
     }
   } else {
     h += fila('var(--gold)', '⏳ Ningún repartidor lo tomó todavía'+(p.liberadoEn?' (un repartidor lo soltó a las '+hh(p.liberadoEn)+')':''));
@@ -35599,9 +35601,7 @@ function abrirDeliveryPendModal() {
         pasoHtml(entregado, cobrado && !entregado, entregado ? 'Entregado' : 'En camino al cliente', hh(p.entregadoEn))+
         // Dónde anda el repartidor (lo mismo que se ve en el panel admin).
         (tomado && !entregado
-          ? (p.retiradoEn
-              ? htmlFilaGPSPedido(p)
-              : '<div style="font-size:.7rem;color:var(--gray);margin-top:3px">📦 Todavía no lo retiró del local (la ubicación se ve desde que lo retira)</div>')
+          ? (p.retiradoEn ? '' : '<div style="font-size:.7rem;color:var(--gray);margin-top:3px">📦 Todavía no lo retiró · viene a buscarlo</div>') + htmlFilaGPSPedido(p)
           : '')+
       '</div>';
       return '<div style="background:var(--card);border:1px solid '+(p.repartidor?'rgba(30,144,255,.4)':'var(--border)')+';border-radius:8px;padding:12px;margin-bottom:10px">'+
@@ -39264,7 +39264,7 @@ function _pzTarjeta(p){
       (p.repartidor ? '<button onclick="abrirMensajesPuesto(this.getAttribute(\'data-n\'))" data-n="'+_pzEsc(p.repartidor)+'" class="pz-pill" style="background:rgba(56,189,248,.12);color:#38bdf8;border:1px solid rgba(56,189,248,.4);cursor:pointer">✉️ Mensaje a '+_pzEsc(p.repartidor)+'</button>' : '')+
     '</div>'+
     (dir ? '<div class="pz-dir">📍 '+_pzEsc(dir)+(p.referencia?' <span>· '+_pzEsc(p.referencia)+'</span>':'')+'</div>' : '')+
-    (p.repartidor && cobrado && p.estadoDelivery !== 'entregado' && p.retiradoEn ? htmlFilaGPSPedido(p) : '')+
+    (p.repartidor && p.estadoDelivery !== 'entregado' ? (p.retiradoEn ? '' : '<div class="pz-sub" style="margin-top:6px">📦 Todavía no lo retiró · viene a buscarlo</div>') + htmlFilaGPSPedido(p) : '')+
     htmlAjusteEnvio(p)+
     (items ? '<div class="pz-items">'+items+'</div>' : '')+
     notas+

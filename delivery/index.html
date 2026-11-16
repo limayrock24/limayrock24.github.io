@@ -253,7 +253,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "31"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "32"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -1498,6 +1498,7 @@ function tomarPedido(id) {
     if(q && !q.repartidor){ q.repartidor = yo; q.estadoDelivery = 'aceptado'; q.tomadoEn = ahora; }
     showToast('🛵 Tomaste el pedido de '+p.nombre);
     setFiltroRepartidor('mios');
+    try{ actualizarGPSRepartidor(); }catch(e){}
   }).catch(function(e){
     delete _tomando[id];
     if(e && e.tomadoPor){ showToast('✋ Ese pedido ya fue tomado — ¡estate atento a los próximos!', true); renderPanelRepartidor(); return; }
@@ -1626,7 +1627,8 @@ function actualizarContadorRepartidor() {
 }
 
 // ── UBICACIÓN EN VIVO (por seguridad) ─────────────────────────────────────
-// Desde que el repartidor retira el pedido del local hasta que lo entrega, este celular
+// Desde que el repartidor TOMA el pedido (así el local ve por dónde viene a
+// buscarlo) hasta que lo entrega, este celular
 // manda su ubicación cada ~20 segundos al pedido (campo ubicacionRep), y el
 // local la ve en el mapa del admin. Al entregar o soltar el pedido se deja de
 // mandar y se borra del pedido. Es una página web: si se bloquea el celular o se cambia
@@ -1635,7 +1637,7 @@ var _gpsWatch = null, _gpsTimer = null, _gpsUltPos = null, _gpsUltEnvio = 0, _gp
 function _gpsPedidosActivos() {
   if(!currentEmp) return [];
   return getPedidosWeb().filter(function(p){
-    return p.repartidor === currentEmp.nombre && p.retiradoEn && p.estadoDelivery !== 'entregado' && !p.anulado && p.estado !== 'resuelto';
+    return p.repartidor === currentEmp.nombre && p.estadoDelivery !== 'entregado' && !p.anulado && p.estado !== 'resuelto';
   });
 }
 function actualizarGPSRepartidor() {
@@ -1766,7 +1768,7 @@ function pintarAvisoGPS(n) {
   if(!el) return;
   if(!n){ el.style.display = 'none'; return; }
   var est = {
-    ok:        ['rgba(34,197,94,.10)','rgba(34,197,94,.45)','#22c55e', esAppDelivery() ? '📍 Compartiendo tu ubicación con el local hasta que entregues el pedido. Podés usar Google Maps tranquilo.' : '📍 Compartiendo tu ubicación con el local mientras llevás el pedido. <b>Dejá esta página abierta</b> hasta entregarlo.'],
+    ok:        ['rgba(34,197,94,.10)','rgba(34,197,94,.45)','#22c55e', esAppDelivery() ? '📍 Compartiendo tu ubicación con el local desde que tomaste el pedido hasta que lo entregues. Podés usar Google Maps tranquilo.' : '📍 Compartiendo tu ubicación con el local desde que tomaste el pedido. <b>Dejá esta página abierta</b> hasta entregarlo.'],
     buscando:  ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 Buscando tu ubicación… Si el celular te pregunta, tocá <b>Permitir</b>.'],
     denegado:  ['rgba(204,0,0,.12)','rgba(204,0,0,.5)','#f87171', esAppDelivery() ? '📍 <b>La ubicación está bloqueada.</b> El local la necesita por seguridad mientras llevás el pedido. <button type="button" onclick="abrirAjustesUbicacion()" style="margin-top:6px;display:block;background:#f87171;color:#000;border:none;border-radius:4px;padding:6px 10px;font-weight:700">Abrir ajustes y permitir ubicación</button>' : '📍 <b>La ubicación está bloqueada.</b> El local la necesita por seguridad mientras repartís. Activala en los permisos del navegador para esta página y recargá.'],
     error:     ['rgba(245,194,0,.10)','rgba(245,194,0,.45)','var(--gold)','📍 No se pudo leer la ubicación. Revisá que el GPS del celular esté prendido.'],
