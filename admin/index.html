@@ -3436,6 +3436,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 .rent-esc .det div{display:flex;justify-content:space-between;gap:10px;font-size:.74rem;color:var(--gray);padding:3px 0}
 .rent-esc .det div b{font-weight:400;color:var(--light);font-family:'Oswald',sans-serif;white-space:nowrap}
 .rent-esc .aviso{padding:6px 12px 8px 34px;font-size:.66rem;color:var(--gold);line-height:1.35}
+.rent-cuad{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;gap:10px;margin-bottom:12px}.rent-cuad .c{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:13px 12px;text-align:center;min-width:0}.rent-cuad .c.click{cursor:pointer}.rent-cuad .c.click:hover{border-color:rgba(244,180,0,.6)}.rent-cuad .c.full,.rent-cuad .c.tot{grid-column:1/-1}.rent-cuad .c.tot{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.2)}.rent-cuad .rl{font-family:'Oswald',sans-serif;font-size:.64rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--gray);margin-bottom:5px;line-height:1.35}.rent-cuad .c.tot .rl{color:var(--white);font-size:.72rem}.rent-cuad .rl .sg{display:inline-block;min-width:14px;border-radius:3px;background:rgba(255,255,255,.08);color:var(--light);font-size:.7rem;padding:0 3px}.rent-cuad .rv{font-family:'Oswald',sans-serif;font-size:1.4rem;line-height:1.15}.rent-cuad .c.tot .rv{font-size:1.85rem}.rent-cuad .rp{font-size:.62rem;color:var(--gray);margin-top:2px}.rent-cuad .c small{display:block;font-size:.64rem;color:var(--gray);margin-top:5px;line-height:1.35}.rent-cuad .det{grid-column:1/-1;background:rgba(0,0,0,.18);border:1px dashed var(--border);border-radius:8px;padding:6px 12px}.rent-cuad .det div{display:flex;justify-content:space-between;gap:10px;font-size:.74rem;color:var(--gray);padding:3px 0}.rent-cuad .det div b{font-weight:400;color:var(--light);font-family:'Oswald',sans-serif;white-space:nowrap}.rent-cuad .aviso{grid-column:1/-1;font-size:.66rem;color:var(--gold);line-height:1.35;padding:0 4px}
 .rent-mas{margin-top:18px;border:1px solid var(--border);border-radius:8px;padding:0 12px}
 .rent-mas>summary{cursor:pointer;padding:12px 0;font-family:'Oswald',sans-serif;font-size:.72rem;letter-spacing:1.5px;color:var(--gray);text-transform:uppercase}
 .rent-mas[open]>summary{color:var(--gold)}
@@ -18629,14 +18630,19 @@ function _rentPlataHtml(){
     return '<div class="rent-box"><div class="rl">'+tit+'</div><div class="rv" style="color:'+color+'">'+$(monto)+'</div>'+
       (txt ? '<div style="font-size:.66rem;color:var(--gray);margin-top:4px;line-height:1.35">'+txt+'</div>' : '')+'</div>';
   };
-  // Una fila de la escalera: signo, qué es, cuánto y qué % de lo vendido.
+  // Un cuadrito: qué es, cuánto y qué % de lo vendido. Los totales (=) ocupan
+  // todo el ancho y se destacan; lo que resta se ve en rojo. El signo queda
+  // como etiqueta chica, para seguir la cuenta de arriba hacia abajo.
   var fila = function(signo, tit, monto, opt){
     opt = opt || {};
     var color = opt.color || (signo === '−' ? 'var(--red)' : signo === '=' ? col(monto) : 'var(--white)');
-    return '<div class="f'+(opt.tot ? ' tot' : '')+(opt.click ? ' click' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
-      '<span class="s">'+signo+'</span><span class="t">'+tit+(opt.sub ? '<small>'+opt.sub+'</small>' : '')+'</span>'+
-      '<span class="m" style="color:'+color+'">'+((signo === '−' ? Math.round(monto) > 0 : Math.round(monto) < 0) ? '−' : '')+$(Math.abs(monto))+'</span>'+
-      '<span class="p">'+(opt.sinPct ? '' : pct(Math.abs(monto)))+'</span></div>';
+    var neg = signo === '−' ? false : Math.round(monto) < 0;
+    var p = opt.sinPct ? '' : pct(Math.abs(monto));
+    return '<div class="c'+(opt.tot ? ' tot' : '')+(opt.full ? ' full' : '')+(opt.click ? ' click' : '')+'"'+(opt.click ? ' onclick="'+opt.click+'"' : '')+'>'+
+      '<div class="rl">'+(signo && signo !== '=' ? '<span class="sg">'+signo+'</span> ' : '')+tit+'</div>'+
+      '<div class="rv" style="color:'+color+'">'+(neg ? '−' : '')+$(Math.abs(monto))+'</div>'+
+      (p ? '<div class="rp">'+p+' de lo vendido</div>' : '')+
+      (opt.sub ? '<small>'+opt.sub+'</small>' : '')+'</div>';
   };
   var detalle = function(lista){
     lista = lista.filter(function(g){ return Math.round(g[1]) !== 0; });
@@ -18649,12 +18655,12 @@ function _rentPlataHtml(){
     '<div style="font-size:.68rem;color:var(--gray);margin-bottom:8px;line-height:1.45">Limay '+x.L+' · ¿El negocio gana plata? '+(x.exacto
       ? 'Mismos números que el Balance mensual.'+(v.enCurso ? ' Mes en curso: van '+v.diasTrans+' de '+v.diasMes+' días.' : '')
       : 'Aproximado: cada pago cuenta el día que se pagó. Para el número oficial elegí un mes.')+'</div>';
-  h += '<div class="rent-esc">';
+  h += '<div class="rent-cuad">';
   h += fila('', '🛒 Vendiste', r.ventas, { sub: 'Sin el recargo del posnet · el fiado cuenta el día que se fía' });
   h += fila('−', 'Costo de lo vendido', v.costo, { sub: 'Lo que te costó al proveedor lo que vendiste' });
-  if(Math.round(d.sinCosto) !== 0) h += fila('−', 'Ventas sin costo cargado', d.sinCosto, { sub: 'No se cuentan como ganancia hasta que cargues el costo', color: 'var(--gold)' });
+  if(Math.round(d.sinCosto) !== 0) h += fila('−', 'Ventas sin costo cargado', d.sinCosto, { sub: 'No se cuentan como ganancia hasta que cargues el costo', color: 'var(--gold)', full: true });
   h += fila('=', '📈 Margen bruto', r.margen, { tot: true, sub: 'Lo que te dejó la mercadería' });
-  if(Math.round(r.otrosIng)) h += fila('+', 'Otros ingresos', r.otrosIng, { sub: 'Ganancia de cargas virtuales y cambio de efectivo', color: 'var(--green)' });
+  if(Math.round(r.otrosIng)) h += fila('+', 'Otros ingresos', r.otrosIng, { sub: 'Ganancia de cargas virtuales y cambio de efectivo', color: 'var(--green)', full: true });
   h += fila('−', 'Gastos variables '+ab(_rentVarAbierto), d.totVars, { sub: 'Suben si vendés más', click: '_rentVarAbierto=!_rentVarAbierto;renderRentabilidad()' });
   if(_rentVarAbierto) h += detalle(d.vars);
   h += fila('−', 'Gastos fijos '+ab(_rentGastosAbierto), d.totFijos, { sub: 'Se pagan vendas o no', click: '_rentGastosAbierto=!_rentGastosAbierto;renderRentabilidad()' });
@@ -18672,7 +18678,7 @@ function _rentPlataHtml(){
 
   // ── 2) La plata del período ──
   h += titulo('🔄 La plata de '+escBaja(d.titPer));
-  h += '<div class="rent-esc">';
+  h += '<div class="rent-cuad">';
   h += fila('+', '💵 Entró', d.entro, { color: 'var(--green)', sinPct: true, sub: 'Ventas cobradas y fiados cobrados'+(Math.round(r.otrosIng) ? ', más cargas virtuales y cambio' : '') });
   h += fila('−', 'Salió '+ab(_rentSalioAbierto), d.totSalio, { sinPct: true, sub: 'Tocá para ver a qué se fue', click: '_rentSalioAbierto=!_rentSalioAbierto;renderRentabilidad()' });
   if(_rentSalioAbierto) h += detalle(d.salio);
@@ -18683,7 +18689,7 @@ function _rentPlataHtml(){
   var en = d.envios;
   if(en && (en.n || en.debeHoy)){
     h += titulo('🛵 Envíos del delivery');
-    h += '<div class="rent-esc">';
+    h += '<div class="rent-cuad">';
     if(d.canal && d.canal.n) h += fila('', '🛒 El delivery vendió', d.canal.ventas, { sub: d.canal.n+' pedido'+(d.canal.n === 1 ? '' : 's')+' · ya está dentro de "Vendiste" · el detalle, en la pestaña Delivery' });
     h += fila('', 'Envíos cobrados', en.cobrados, { sinPct: true, sub: en.n+' envío'+(en.n === 1 ? '' : 's')+' · no suman en la ganancia: son del repartidor' });
     h += fila('', '✅ Ya pagados al repartidor', en.pagados, { sinPct: true, color: 'var(--green)' });
@@ -18696,19 +18702,19 @@ function _rentPlataHtml(){
   // ── La mercadería ──
   var sv = d.stock, q = d.quieta, ct = d.control;
   h += titulo('📦 La mercadería');
-  h += '<div class="rent-esc">';
+  h += '<div class="rent-cuad">';
   h += fila('', '📦 Plata en mercadería hoy', sv.valor, { sinPct: true, sub: 'Stock × precio de costo de cada producto'+(sv.sinCosto ? ' · <span style="color:var(--gold)">'+sv.sinCosto+' producto'+(sv.sinCosto === 1 ? '' : 's')+' con stock sin costo cargado no se cuentan</span>' : '') });
   h += fila('', '🧊 Mercadería quieta '+ab(_rentQuietaAbierto), q.total, { sinPct: true, color: q.total ? 'var(--gold)' : 'var(--gray)', sub: 'Sin ventas en los últimos '+RENT_DIAS_QUIETA+' días'+(sv.valor > 0 ? ' · '+Math.round(q.total / sv.valor * 100)+' % de tu mercadería' : '')+' · tocá para ver cuáles', click: '_rentQuietaAbierto=!_rentQuietaAbierto;renderRentabilidad()' });
   if(_rentQuietaAbierto) h += detalle(q.lista.slice(0, 15));
   h += '</div>';
   if(ct && ct.B){
     h += '<div style="font-size:.68rem;color:var(--gray);margin:2px 0 6px">🔍 <b style="color:var(--light)">Control de la mercadería</b> · ¿se te está yendo mercadería sin vender?</div>';
-    h += '<div class="rent-esc">';
+    h += '<div class="rent-cuad">';
     h += fila('', 'Al empezar ('+_rentFechaCorta(ct.A.ts)+')', ct.A.v, { sinPct: true, sub: 'Plata en mercadería ese día' });
     h += fila('+', 'Compraste', ct.compras, { sinPct: true, color: 'var(--white)', sub: 'Pagos de mercadería a proveedores' });
-    h += fila('−', 'Costo de lo vendido', ct.costo, { sinPct: true, sub: 'Lo que salió vendido, a precio de costo' });
+    h += fila('−', 'Costo de lo vendido', ct.costo, { sinPct: true, full: true, sub: 'Lo que salió vendido, a precio de costo' });
     h += fila('=', 'Te debería quedar', ct.deberia, { tot: true, sinPct: true, color: 'var(--white)' });
-    h += fila('', 'Quedó de verdad ('+_rentFechaCorta(ct.B.ts)+')', ct.real, { sinPct: true });
+    h += fila('', 'Quedó de verdad ('+_rentFechaCorta(ct.B.ts)+')', ct.real, { sinPct: true, full: true });
     h += fila('=', (Math.abs(ct.dif) < 1 ? '✅' : ct.dif < 0 ? '⚠' : 'ℹ')+' Diferencia', ct.dif, { tot: true, sinPct: true, sub: Math.abs(ct.dif) < 1 ? 'Todo cierra: no falta ni sobra mercadería.' : ct.dif < 0 ? 'Mercadería que falta: vencida, rota, faltante o stock mal cargado. También cuenta si bajaste costos.' : 'Sobra mercadería: stock mal cargado, compras sin cargar como egreso o costos que subiste.' });
     h += '</div>';
   } else h += '<div style="font-size:.68rem;color:var(--gray);margin:-4px 0 10px;line-height:1.45">🔍 Control de la mercadería: '+(ct ? 'el sistema guardó el valor el '+_rentFechaCorta(ct.A.ts)+'; el control aparece cuando haya otra foto para comparar.' : (d.enCursoMes ? 'arranca hoy: el sistema guarda el valor de la mercadería y desde ahora compara lo que debería quedar con lo que quedó.' : 'no hay fotos de la mercadería de ese mes (se guardan desde noviembre de 2026).'))+'</div>';
@@ -18716,7 +18722,7 @@ function _rentPlataHtml(){
   // ── 3) Plata libre para decidir (la plata de hoy) ──
   if(d.liq){
     h += titulo('🟢 Plata libre para decidir');
-    h += '<div class="rent-esc">';
+    h += '<div class="rent-cuad">';
     h += fila('', '🏦 Plata que hay hoy', d.hoy, { sinPct: true, sub: 'Caja '+$(d.liq.efectivoCaja)+' · Fuera de la caja '+$(d.liq.efectivoFuera)+' · Mercado Pago '+$(d.liq.mercadoPago) });
     if(d.enCursoMes){
       h += fila('−', 'Falta pagar este mes '+ab(_rentLibreAbierto), d.totFalta, { sinPct: true, sub: 'Gastos fijos que todavía no cargaste, tomando lo del mes pasado', click: '_rentLibreAbierto=!_rentLibreAbierto;renderRentabilidad()' });
