@@ -3220,7 +3220,7 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 /* z-index alto: tiene que quedar por encima de TODOS los overlays (panel de
    repartidor 2150, cargar stock 2100, etc). Con 1100 quedaba por detrás y los
    botones de confirmar parecían no funcionar, porque el cartel era invisible. */
-.confirm-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:2400;display:none;align-items:center;justify-content:center;padding:20px}
+.confirm-modal{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99990;display:none;align-items:center;justify-content:center;padding:20px}
 .confirm-modal.open{display:flex}
 .confirm-modal-box{background:var(--surface);border:2px solid var(--red);border-radius:6px;padding:24px;width:100%;max-width:340px;text-align:center}
 .confirm-modal-box p{font-family:'Barlow',sans-serif;font-size:.95rem;color:var(--light);margin-bottom:18px;line-height:1.5}
