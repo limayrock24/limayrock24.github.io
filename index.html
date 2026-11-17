@@ -42958,9 +42958,12 @@ function descontarStock(items, tipoMov) {
 
 
 function autoDetectTurno() {
-  var h = new Date().getHours();
-  var esNocturno = (h >= 23 || h < 8);
+  // Misma regla que el cambio automático: nocturno de 00:00 a 08:00. Antes
+  // acá decía "desde las 23", y quien abría caja entre las 23 y las 00 quedaba
+  // con los precios nocturnos una hora antes.
+  var esNocturno = nocturnoSegunHora();
   nightMode = esNocturno;
+  _ultimoAutoNocturno = esNocturno;
   var btn = document.getElementById('nightBtn');
   if(btn){
     btn.classList.toggle('on', nightMode);
