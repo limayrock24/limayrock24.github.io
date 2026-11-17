@@ -253,7 +253,7 @@ body{background:var(--black);color:var(--white);font-family:'Barlow',sans-serif;
 <div class="toast" id="toast"></div>
 
 <script>
-window.__LR_BUILD = "32"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
+window.__LR_BUILD = "33"; // versión de ESTA página — se bumpea a mano acá (ver delivery/version.json)
 
   // ── AVISO DE ACTUALIZACIÓN DISPONIBLE (versión propia, separada de la del
   // sistema grande — así no se dispara un aviso falso cada vez que cambia
@@ -582,7 +582,7 @@ window.__lrActivarNotificaciones = function(destino, quien){
   return new Promise(function(resolve, reject){
     if(!('Notification' in window) || !firebase.messaging){ reject(new Error('Este navegador no soporta notificaciones')); return; }
     if(!window.__LR_VAPID_KEY){ reject(new Error('Falta configurar la clave de notificaciones')); return; }
-    Notification.requestPermission().then(function(permiso){
+    (Notification.permission === 'granted' ? Promise.resolve('granted') : Notification.requestPermission()).then(function(permiso){
       if(permiso !== 'granted'){ reject(new Error('No diste permiso para recibir notificaciones')); return; }
       navigator.serviceWorker.register('/sw.js?v=4', { updateViaCache: 'none' })
         .then(function(reg){ return navigator.serviceWorker.ready.then(function(){ return reg; }); })
@@ -592,6 +592,7 @@ window.__lrActivarNotificaciones = function(destino, quien){
         })
         .then(function(token){
           if(!token) throw new Error('No se pudo registrar el dispositivo');
+          try{ localStorage.setItem('lr_fcm_token', token); }catch(e){}
           try{
             window.__lrDB.collection('fcmTokens')
               .where('dispositivo', '==', navigator.userAgent.slice(0,120))
@@ -734,8 +735,22 @@ function restaurarEstadoNotificaciones(destino, quien, btnId){
   window.__lrActivarNotificaciones(destino, quien)
     .then(function(){ window.__lrEscucharNotifsEnVivo(); })
     .catch(function(e){
-      if(btn){ btn.textContent = '⚠️ Reactivar avisos'; btn.style.borderColor = 'var(--gold)'; btn.style.color = 'var(--gold)'; }
       console.warn('No se pudo re-registrar para notificaciones:', e);
+      // En iPhone, renovar el registro sin que la persona toque un botón falla
+      // siempre (regla de Apple), pero el registro anterior sigue andando: los
+      // avisos llegan igual. Se sigue usando ese, con el destino al día, y no
+      // se muestra un "Reactivar" que no hace falta.
+      var tk = null; try{ tk = localStorage.getItem('lr_fcm_token'); }catch(x){}
+      if(tk && window.__lrDB){
+        window.__lrDB.collection('fcmTokens').doc(tk.slice(-40)).set({
+          token: tk, destino: destino, quien: quien || '',
+          dispositivo: navigator.userAgent.slice(0, 120), fecha: new Date().toISOString()
+        }, { merge: true }).then(function(){ window.__lrEscucharNotifsEnVivo(); }).catch(function(){
+          if(btn){ btn.textContent = '⚠️ Reactivar avisos'; btn.style.borderColor = 'var(--gold)'; btn.style.color = 'var(--gold)'; }
+        });
+        return;
+      }
+      if(btn){ btn.textContent = '⚠️ Reactivar avisos'; btn.style.borderColor = 'var(--gold)'; btn.style.color = 'var(--gold)'; }
     });
 }
 function activarNotifsRepartidor(){
