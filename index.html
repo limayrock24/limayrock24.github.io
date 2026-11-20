@@ -2478,6 +2478,8 @@ if(window.__lrSucursal === 2){
         .then(function(d){
           if(d.exists) return;
           if(typeof currentEmp === 'undefined' || !currentEmp || currentEmp.nombre !== nombreTurno || !currentEmp.turnoInicio) return;
+          // Si no figura porque ya se cerró en otro lado, no se "repara": se sale.
+          if(typeof turnoYaCerrado === 'function' && turnoYaCerrado(currentEmp)) return guardarSesionActiva();
           window.__lrSesionReparaciones = (window.__lrSesionReparaciones||0) + 1;
           window.__lrSesionUltimaReparacion = new Date().toISOString();
           console.warn('El turno no figuraba en la nube — se vuelve a publicar');
@@ -8305,9 +8307,45 @@ function pintarCajaEquipo(){
 }
 
 var SK_SESION_ACTIVA = 'lr_sesion_activa';
+// ¿Este turno ya se cerró (en otra compu, o en otra pestaña de esta)? Pasó que
+// Facundo cerró su turno en una compu y la otra, que seguía con su turno
+// abierto, lo volvía a publicar cada 30 segundos: el turno "resucitaba" y la
+// caja quedaba con dos turnos abiertos.
+function turnoYaCerrado(emp){
+  if(!emp || !emp.turnoInicio) return null;
+  return (typeof getCierres === 'function' ? getCierres() : []).find(function(c){
+    return c && c.empleado === emp.nombre && c.horaInicio === emp.turnoInicio;
+  }) || null;
+}
+// Este equipo tenía abierto un turno que ya se cerró en otro lado: se sale
+// solo (sin borrar nada de la nube que no sea ese mismo turno viejo).
+function salirPorTurnoCerradoEnOtroLado(cierre){
+  if(!currentEmp || window.__lrSaliendoTurnoCerrado) return;
+  window.__lrSaliendoTurnoCerrado = true;
+  var nombre = currentEmp.nombre, ini = currentEmp.turnoInicio;
+  try{ localStorage.removeItem(SK_SESION_ACTIVA); }catch(e){}
+  try{
+    var ref = window.__lrDB.collection('sesionesActivas').doc(String(nombre).replace(/\//g,'-'));
+    window.__lrDB.runTransaction(function(t){
+      return t.get(ref).then(function(d){ if(d.exists && d.data().turnoInicio === ini) t.delete(ref); });
+    }).catch(function(){});
+  }catch(e){}
+  if(window.__lrSesionesActivasCache && window.__lrSesionesActivasCache[nombre] && window.__lrSesionesActivasCache[nombre].turnoInicio === ini) delete window.__lrSesionesActivasCache[nombre];
+  var rB = document.getElementById('btnRetiroCaja'); if(rB) rB.style.display = 'none';
+  currentEmp = null; cart = []; pagoSel = null;
+  try{ updateCart(); }catch(e){}
+  ['adminOverlay','cartPanel','confirmOverlay','arqueoModal'].forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.remove('open'); });
+  var ea = document.getElementById('empActual'); if(ea) ea.textContent = '—';
+  try{ initLogin(); }catch(e){}
+  window.__lrSaliendoTurnoCerrado = false;
+  var h = cierre && cierre.horaFin ? new Date(cierre.horaFin).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  alert('👤 El turno de '+nombre+' ya se cerró'+(h ? ' a las '+h : '')+' en otra compu (o en otra pestaña).\n\nEsta pantalla lo tenía abierto todavía: se cerró sola. Para seguir vendiendo, entrá con tu PIN.');
+}
 function guardarSesionActiva() {
   if(!currentEmp) return;
   if(window.__lrEsPuesto) return; // la tablet usa el turno de la caja: no lo pisa
+  var _cerrado = turnoYaCerrado(currentEmp);
+  if(_cerrado){ salirPorTurnoCerradoEnOtroLado(_cerrado); return; }
   localStorage.setItem(SK_SESION_ACTIVA, JSON.stringify(currentEmp));
   if(window.__lrSaveSesionActiva) {
     window.__lrSaveSesionActiva({
@@ -8358,6 +8396,23 @@ function limpiarSesionActiva(nombre) {
     window.__lrSesionesVigentes = restantes;
   }
   if(window.__lrBorrarSesionActiva) return window.__lrBorrarSesionActiva(nombre);
+}
+// Saca de "turnos abiertos" un turno que ya tiene su cierre. Solo lo borra si
+// sigue siendo ese mismo turno (si la persona ya abrió otro, no se toca).
+function quitarTurnoFantasma(nombre){
+  var sv = (window.__lrSesionesActivasCache || {})[nombre];
+  if(!sv || !turnoYaCerrado(sv)){ showToast('Ese turno no tiene cierre: si hay que cerrarlo, se cierra desde la caja', true); return; }
+  askConfirm('¿Sacás el turno de '+nombre+' de la lista de turnos abiertos?\n\nYa tiene su cierre hecho: no se borra ninguna venta ni el cierre.\n\nSi vuelve a aparecer, hay una compu o pestaña que todavía lo tiene abierto: recargala.').then(function(ok){
+    if(!ok) return;
+    var ref = window.__lrDB.collection('sesionesActivas').doc(String(nombre).replace(/\//g,'-')), ini = sv.turnoInicio;
+    window.__lrDB.runTransaction(function(t){
+      return t.get(ref).then(function(d){ if(d.exists && d.data().turnoInicio === ini) t.delete(ref); });
+    }).then(function(){
+      if(window.__lrSesionesActivasCache && window.__lrSesionesActivasCache[nombre] && window.__lrSesionesActivasCache[nombre].turnoInicio === ini) delete window.__lrSesionesActivasCache[nombre];
+      showToast('✓ Turno de '+nombre+' sacado de la lista');
+      try{ renderDashboard(); }catch(e){}
+    }).catch(function(e){ console.error(e); showToast('❌ No se pudo (revisá la conexión)', true); });
+  });
 }
 // Reloj en vivo del turno abierto, visible en el panel admin (local o
 // remoto). Corre siempre en segundo plano; no hace nada si el panel admin
@@ -29083,6 +29138,15 @@ function renderDashboard() {
       var detalleHtml = movsTurno.html;
 
       var expandido = !!(window.__lrTurnoVivoExpandido && window.__lrTurnoVivoExpandido[claveExpandido]);
+      // Turno que ya tiene su cierre pero sigue figurando (quedó abierto en
+      // otra compu o pestaña que lo volvía a publicar).
+      var cierreFantasma = sesionViva.demo ? null : turnoYaCerrado(sesionViva);
+      var avisoFantasma = cierreFantasma
+        ? '<div style="margin:0 0 8px;padding:9px 11px;border:1px solid var(--red);border-radius:6px;background:rgba(210,32,31,.1);font-size:.76rem;color:#f87171;line-height:1.45">'+
+            '⚠ <b>Este turno ya se cerró</b> a las '+new Date(cierreFantasma.horaFin).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',hour12:false})+' (tiene su cierre en Cierres). Sigue figurando porque quedó abierto en otra compu o pestaña. No suma nada: es solo esta tarjeta.'+
+            '<div><button onclick="event.stopPropagation();quitarTurnoFantasma(\''+nombreEmp.replace(/'/g,"\\'")+'\')" style="margin-top:7px;background:var(--red);border:none;color:#fff;border-radius:5px;padding:6px 12px;font-family:Oswald,sans-serif;font-size:.7rem;letter-spacing:.5px;cursor:pointer">Quitar de turnos abiertos</button></div>'+
+          '</div>'
+        : '';
 
       return '<div style="background:var(--card);border:1px solid rgba(46,204,113,.4);border-radius:8px;padding:12px 16px;margin-bottom:10px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+
@@ -29094,6 +29158,7 @@ function renderDashboard() {
           '</div>'+
           '<div class="turnoVivoClock" data-inicio="'+inicioTs+'" style="font-family:Oswald,sans-serif;font-size:1.1rem;color:var(--gold);font-weight:700">--:--</div>'+
         '</div>'+
+        avisoFantasma+
         '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--dark);border-radius:6px;padding:8px 10px;margin-bottom:8px">'+
           '<span style="font-size:.72rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">🛒 Ventas de este turno</span>'+
           '<span style="font-family:Oswald,sans-serif;font-size:1rem;color:var(--white);font-weight:700">'+fmt(totalVentasTurnoVivo)+' · '+ventasTurnoVivo.length+' venta'+(ventasTurnoVivo.length===1?'':'s')+'</span>'+
