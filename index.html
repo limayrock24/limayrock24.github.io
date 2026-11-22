@@ -374,6 +374,50 @@ if(window.__lrSucursal === 2){
       });
     }catch(e){ console.warn('No se pudo escuchar notificaciones en vivo:', e); }
   };
+  // ── DIAGNÓSTICO DE CARGA ──
+  // Anota, para cada cosa que se escucha en vivo de la nube, cuándo llegó lo
+  // guardado en el equipo, cuándo lo confirmó la nube y cuántos registros
+  // trajo. Sirve para ver qué se traba cuando queda "Poniéndose al día".
+  (function(){
+    try{
+      var t0 = window.__lrDiagT0 = Date.now(), reg = window.__lrDiagCarga = {};
+      var nombre = function(q){
+        try{ if(q.path) return q.path; }catch(e){}
+        try{ return q._delegate._query.path.canonicalString(); }catch(e){}
+        return '?';
+      };
+      var envolver = function(proto){
+        var orig = proto.onSnapshot;
+        if(!orig || orig.__lrDiag) return;
+        proto.onSnapshot = function(){
+          var args = Array.prototype.slice.call(arguments), n = nombre(this), k = n;
+          var i = 2; while(reg[k]) k = n+' #'+(i++);
+          var r = reg[k] = { pide: Date.now() - t0, local: null, nube: null, docs: 0, error: null };
+          for(var j = 0; j < args.length; j++){
+            if(typeof args[j] === 'function'){
+              (function(fn, esErr){
+                args[j] = function(x){
+                  try{
+                    if(esErr) r.error = (x && (x.code || x.message)) || 'error';
+                    else if(x && x.metadata){
+                      r.docs = (typeof x.size === 'number') ? x.size : (x.exists ? 1 : 0);
+                      if(x.metadata.fromCache){ if(r.local === null) r.local = Date.now() - t0; }
+                      else if(r.nube === null) r.nube = Date.now() - t0;
+                    }
+                  }catch(e){}
+                  return fn.apply(this, arguments);
+                };
+              })(args[j], j > 0 && typeof args[j-1] === 'function');
+            }
+          }
+          return orig.apply(this, args);
+        };
+        proto.onSnapshot.__lrDiag = true;
+      };
+      envolver(firebase.firestore.Query.prototype);
+      envolver(firebase.firestore.DocumentReference.prototype);
+    }catch(e){ console.warn('Diagnóstico de carga', e); }
+  })();
   window.__lrDB = firebase.firestore();
   window.__lrStorage = firebase.storage();
   // En redes de datos móviles (4G) con proxy/NAT de operador, el transporte
@@ -9638,6 +9682,28 @@ function programarHistorialCompleto(){
     }
     setTimeout(revisar, 1500);
   })();
+}
+// Lista de lo que se escucha de la nube: qué ya confirmó y qué sigue
+// esperando (para mandarle una foto al que arregla el sistema).
+function verDiagnosticoCarga(){
+  var reg = window.__lrDiagCarga || {}, ahora = Date.now() - (performance.timeOrigin ? 0 : 0);
+  var seg = function(ms){ return ms === null ? '—' : (ms/1000).toFixed(1)+' s'; };
+  var filas = Object.keys(reg).map(function(k){ var r = reg[k]; return { k: k, r: r }; })
+    .sort(function(a, b){ var pa = a.r.nube === null ? 0 : 1, pb = b.r.nube === null ? 0 : 1; return pa - pb || (b.r.nube || 0) - (a.r.nube || 0); });
+  var faltan = filas.filter(function(f){ return f.r.nube === null; }).length;
+  var con = navigator.connection ? (navigator.connection.effectiveType || '')+(navigator.connection.downlink ? ' · '+navigator.connection.downlink+' Mb/s' : '') : '';
+  var ov = document.getElementById('diagCargaOv');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'diagCargaOv'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99995;overflow:auto;padding:14px'; document.body.appendChild(ov); }
+  ov.innerHTML = '<div style="max-width:620px;margin:0 auto;background:#151515;border:1px solid var(--gold);border-radius:10px;padding:14px;font-family:system-ui,sans-serif;color:#ddd">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="color:var(--gold)">🔍 Diagnóstico de carga</b>'+
+      '<span><button onclick="verDiagnosticoCarga()" style="background:none;border:1px solid #555;color:#ccc;border-radius:5px;padding:4px 9px;cursor:pointer">Actualizar</button> '+
+      '<button onclick="document.getElementById(\'diagCargaOv\').remove()" style="background:none;border:1px solid #555;color:#ccc;border-radius:5px;padding:4px 9px;cursor:pointer">✕</button></span></div>'+
+    '<div style="font-size:.75rem;color:#999;margin:6px 0 10px">Mandale una foto de esto a quien arregla el sistema. '+(faltan ? '<b style="color:#f87171">'+faltan+' sin confirmar</b>' : '<b style="color:#22c55e">todo confirmado</b>')+
+      ' · abierto hace '+seg(Date.now() - (window.__lrDiagT0 || Date.now()))+(con ? ' · conexión '+con : '')+(/LimayRockAdminApp/.test(navigator.userAgent) ? ' · app' : '')+'</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:.74rem"><tr style="color:#888;text-align:left"><th>Qué</th><th>Equipo</th><th>Nube</th><th style="text-align:right">Registros</th></tr>'+
+    filas.map(function(f){ var r = f.r, mal = r.nube === null;
+      return '<tr style="border-top:1px solid #2a2a2a;color:'+(r.error ? '#f87171' : mal ? '#F4B400' : '#ccc')+'"><td style="padding:3px 4px">'+escBaja(f.k)+'</td><td>'+seg(r.local)+'</td><td>'+(r.error ? '❌ '+escBaja(r.error) : mal ? '⏳ esperando' : seg(r.nube))+'</td><td style="text-align:right">'+r.docs+'</td></tr>'; }).join('')+
+    '</table></div>';
 }
 function openAdmin() {
   // El puesto no baja el historial: el admin se abre desde la caja o /admin/.
@@ -29234,7 +29300,7 @@ function renderDashboard() {
     avisoTurnoFantasma = '';
   }
   var avisoSinConfirmar = ((window.__lrVentasDesdeNube !== true && !window.__lrVentasRecientesOk) || window.__lrSesionesDesdeNube !== true)
-    ? '<div style="background:rgba(245,194,0,.12);border:1px solid var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:10px;color:var(--gold);font-size:.78rem">⏳ Poniéndose al día con el local — ventas y saldos pueden estar atrasados unos minutos. Se actualiza solo.</div>'
+    ? '<div style="background:rgba(245,194,0,.12);border:1px solid var(--gold);border-radius:8px;padding:8px 12px;margin-bottom:10px;color:var(--gold);font-size:.78rem">⏳ Poniéndose al día con el local — ventas y saldos pueden estar atrasados unos minutos. Se actualiza solo. <a href="#" onclick="event.preventDefault();verDiagnosticoCarga()" style="color:var(--gold);text-decoration:underline;white-space:nowrap">🔍 ver qué falta</a></div>'
     : '';
 
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
