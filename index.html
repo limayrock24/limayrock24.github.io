@@ -9618,13 +9618,34 @@ function esperarCargaCompleta(fn) {
   }, 250);
 }
 
+// El historial viejo se pide recién cuando ya llegó de la nube lo de hoy (el
+// turno en curso y las ventas recientes). En la tablet y el celu (app del
+// admin) la conexión espera a que termine esa descarga grande antes de traer
+// lo nuevo: si se pedía apenas se abría, el admin quedaba minutos en
+// "Poniéndose al día" y "Confirmando el turno en curso". En la caja (que no
+// usa ese modo) se pide enseguida, como siempre.
+function programarHistorialCompleto(){
+  if(!window.__lrCargarHistorialCompleto || window.__lrHistorialCompleto || window.__lrHistEsperando) return;
+  if(!window.__lrAppLiviana){ window.__lrCargarHistorialCompleto(); return; }
+  window.__lrHistEsperando = true;
+  var desde = Date.now();
+  (function revisar(){
+    var listo = window.__lrSesionesDesdeNube === true && (window.__lrVentasRecientesOk || window.__lrVentasDesdeNube === true);
+    // Con 2 minutos sin respuesta (sin internet, por ejemplo) se pide igual.
+    if(listo || Date.now() - desde > 120000){
+      setTimeout(function(){ window.__lrHistEsperando = false; window.__lrCargarHistorialCompleto(); }, listo ? 3000 : 0);
+      return;
+    }
+    setTimeout(revisar, 1500);
+  })();
+}
 function openAdmin() {
   // El puesto no baja el historial: el admin se abre desde la caja o /admin/.
   if(window.__lrEsPuesto){ showToast('El panel admin se abre desde la caja o desde /admin/', true); return; }
   // El admin (dashboard, movimientos, log, cierres del mes, respaldos) usa el
   // historial completo: si todavía está llegando, se espera. En la caja,
   // que trae solo lo reciente, al abrir el admin se pide el resto.
-  if(window.__lrCargarHistorialCompleto) window.__lrCargarHistorialCompleto();
+  programarHistorialCompleto();
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
   // Mientras llega el historial viejo (solo pasa en la caja), un aviso arriba.
   if(!window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
