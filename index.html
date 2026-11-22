@@ -453,7 +453,13 @@ if(window.__lrSucursal === 2){
   // Limay 2 guarda su copia local aparte: si en el mismo equipo hay una
   // pestaña de Limay 1 abierta, no comparten la copia (si la comparten, la
   // pestaña de Limay 1 maneja la conexión de las dos y Limay 2 se traba).
-  window.__lrDB.enablePersistence({synchronizeTabs: window.__lrSucursal !== 2}).then(function(){
+  // El admin (link /admin/ y la app del admin en tablet y celu) NO guarda la
+  // copia en el equipo: en la tablet leer esa copia (9.000 ventas, 11.000
+  // movimientos) tardaba 30 segundos y ponerse al día con días de atraso no
+  // terminaba nunca. Sin copia, cada vez baja solo lo reciente y abre rápido.
+  // Las cajas la siguen usando (venden aunque se corte internet).
+  if(window.__lrEsPanelAdmin || /LimayRockAdminApp/.test(navigator.userAgent)){ window.__lrPersistInfo = 'admin: sin copia local (baja lo reciente cada vez)'; }
+  else window.__lrDB.enablePersistence({synchronizeTabs: window.__lrSucursal !== 2}).then(function(){
     window.__lrPersistInfo = 'copia local ok';
   }).catch(function(e){
     window.__lrPersistInfo = 'copia local: '+e.code;
@@ -9671,6 +9677,11 @@ function esperarCargaCompleta(fn) {
 function programarHistorialCompleto(){
   if(!window.__lrCargarHistorialCompleto || window.__lrHistorialCompleto || window.__lrHistEsperando) return;
   if(!window.__lrAppLiviana){ window.__lrCargarHistorialCompleto(); return; }
+  // En el admin el historial viejo ya no se baja solo: mientras se descarga,
+  // la nube no confirma NADA (ni el turno ni las ventas de hoy) hasta que
+  // termina. Se trae cuando hace falta (un período de hace más de 45 días)
+  // o con el botón "Traer todo el historial".
+  return;
   window.__lrHistEsperando = true;
   var desde = Date.now();
   (function revisar(){
@@ -9705,6 +9716,26 @@ function verDiagnosticoCarga(){
       return '<tr style="border-top:1px solid #2a2a2a;color:'+(r.error ? '#f87171' : mal ? '#F4B400' : '#ccc')+'"><td style="padding:3px 4px">'+escBaja(f.k)+'</td><td>'+seg(r.local)+'</td><td>'+(r.error ? '❌ '+escBaja(r.error) : mal ? '⏳ esperando' : seg(r.nube))+'</td><td style="text-align:right">'+r.docs+'</td></tr>'; }).join('')+
     '</table></div>';
 }
+// Trae el historial completo (ventas y movimientos de todos los meses).
+function pedirHistorialCompleto(){
+  if(!window.__lrCargarHistorialCompleto || window.__lrHistorialCompleto) return;
+  window.__lrCargarHistorialCompleto();
+  if(!document.getElementById('lrAvisoHistCompleto')){
+    var _av = document.createElement('div');
+    _av.id = 'lrAvisoHistCompleto';
+    _av.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:6px 14px;font-size:.74rem;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+    _av.textContent = '⏳ Trayendo el historial completo… los reportes de meses anteriores se completan solos (puede tardar un rato)';
+    document.body.appendChild(_av);
+  }
+  try{ if(typeof renderDashboard === 'function') renderDashboard(); }catch(e){}
+}
+// Si se elige un período de hace más de 45 días, se trae el historial.
+function asegurarHistorialDesde(desde){
+  try{
+    if(window.__lrHistorialCompleto || !window.__lrAppLiviana || !desde) return;
+    if(new Date(desde).getTime() < Date.now() - 44*86400000) pedirHistorialCompleto();
+  }catch(e){}
+}
 function openAdmin() {
   // El puesto no baja el historial: el admin se abre desde la caja o /admin/.
   if(window.__lrEsPuesto){ showToast('El panel admin se abre desde la caja o desde /admin/', true); return; }
@@ -9713,8 +9744,8 @@ function openAdmin() {
   // que trae solo lo reciente, al abrir el admin se pide el resto.
   programarHistorialCompleto();
   if(window.__lrCargaCompleta && !window.__lrCargaCompleta()){ esperarCargaCompleta(openAdmin); return; }
-  // Mientras llega el historial viejo (solo pasa en la caja), un aviso arriba.
-  if(!window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
+  // Mientras llega el historial viejo, un aviso arriba.
+  if(window.__lrHistorialCompleto && !window.__lrHistorialCompletoListo && !document.getElementById('lrAvisoHistCompleto')){
     var _av = document.createElement('div');
     _av.id = 'lrAvisoHistCompleto';
     _av.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2600;background:#1a1405;border:1px solid var(--gold);color:var(--gold);border-radius:20px;padding:6px 14px;font-size:.74rem;box-shadow:0 4px 16px rgba(0,0,0,.5)';
@@ -18142,6 +18173,11 @@ var _selMesPendiente = false;
 })();
 
 function getFechasRango(periodo) {
+  var r = _getFechasRangoBase(periodo);
+  asegurarHistorialDesde(r.desde);
+  return r;
+}
+function _getFechasRangoBase(periodo) {
   var hoy = new Date();
   hoy.setHours(0,0,0,0);
   var desde, hasta;
@@ -25542,6 +25578,7 @@ function toggleBalanceMensualSection() {
 }
 function _balRango(mes){
   var y = +mes.slice(0,4), m = +mes.slice(5,7) - 1;
+  asegurarHistorialDesde(new Date(y, m, 1));
   return { d0: new Date(y, m, 1), d1: new Date(y, m+1, 0, 23, 59, 59, 999) };
 }
 function _balLeerLocal(n, r){
@@ -29304,7 +29341,10 @@ function renderDashboard() {
     : '';
 
   // Si se pudo reconstruir el turno, ese reemplaza al "no hay turno abierto"
-  el.innerHTML = avisoSinConfirmar + tableroHtml() + (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
+  var avisoHist = (window.__lrAppLiviana && !window.__lrHistorialCompleto)
+    ? '<div style="font-size:.72rem;color:var(--gray);margin:-2px 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📚 Para abrir rápido se muestran los últimos 45 días. Si elegís un período más viejo, se trae solo. <button onclick="pedirHistorialCompleto()" style="background:none;border:1px solid var(--border);color:var(--gray);border-radius:12px;padding:2px 10px;font-size:.68rem;cursor:pointer">Traer todo el historial</button></div>'
+    : '';
+  el.innerHTML = avisoSinConfirmar + avisoHist + tableroHtml() + (avisoTurnoFantasma ? avisoTurnoFantasma : turnoVivoHtml) + retiroBtn +
     '<div class="dash-grid">'+
       dc('green full centrado','ventas',
         dv('💰 Neto cobrado hoy', fmt(netoReal), 'green',
