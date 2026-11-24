@@ -1422,7 +1422,11 @@ if(window.__lrSucursal === 2){
   var _histListos = { ventas: false, movimientos: false };
   function _consultaReciente(nombreCol){
     var q = window.__lrDB.collection(nombreCol);
-    if(!window.__lrHistorialCompleto) q = q.where('id', '>=', Date.now() - (window.__lrEsPuesto ? 1 : DIAS_CAJA)*24*3600000);
+    if(!window.__lrHistorialCompleto){
+      var _corte = Date.now() - (window.__lrEsPuesto ? 1 : DIAS_CAJA)*24*3600000;
+      if(nombreCol === window.__lrCOL.ventas) window.__lrVentanaDesde = _corte;
+      q = q.where('id', '>=', _corte);
+    }
     return q;
   }
   function _marcarHistListo(cual){
@@ -29183,7 +29187,7 @@ function renderDashboard() {
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center">'+
           '<div style="font-size:.62rem;color:var(--gray);text-transform:uppercase;letter-spacing:1px">📲 Mercado Pago</div>'+
-          (esEquipoDueno() ? '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>'
+          (esEquipoDueno() ? (liqVivo.mpIncompleto ? '<div style="font-size:.7rem;color:var(--gold);margin-top:3px">⏳ calculando…</div>' : '<div style="font-family:Oswald,sans-serif;font-size:1rem;color:#1e90ff;font-weight:700">'+fmt(isFinite(liqVivo.mercadoPago)?liqVivo.mercadoPago:0)+'</div>')
             : '<div style="font-size:.66rem;color:var(--gray);margin-top:3px">🔒 Completo solo en el equipo del dueño</div>')+
         '</div>'+
         '<div style="background:var(--dark);border-radius:6px;padding:8px 10px;text-align:center;border:1px solid var(--border)">'+
@@ -43210,6 +43214,49 @@ function getCierresMes() {
 }
 function saveCierresMes(c) { window.__lrCierresMesCache = c; if(window.__lrSaveCierresMes) window.__lrSaveCierresMes(c); }
 
+// ── VENTAS VIEJAS PARA LA LIQUIDEZ (admin liviano) ──
+// Mercado Pago se calcula desde la última vez que se configuraron los saldos.
+// El admin liviano trae solo los últimos 45 días de ventas: lo de antes se
+// pide UNA vez (solo la suma por medio de pago), se guarda en el equipo y
+// después se agrega solo lo de los días nuevos que van quedando afuera.
+var SK_VENTAS_VIEJAS = 'lr_ventas_viejas_liq';
+function _vvLeer(){ try{ return JSON.parse(localStorage.getItem(SK_VENTAS_VIEJAS + (window.__lrSucursal === 2 ? '_2' : '')) || 'null'); }catch(e){ return null; } }
+function _vvGuardar(o){ try{ localStorage.setItem(SK_VENTAS_VIEJAS + (window.__lrSucursal === 2 ? '_2' : ''), JSON.stringify(o)); }catch(e){} }
+function ventasViejasParaLiquidez(desdeMs){
+  var hasta = window.__lrVentanaDesde;
+  var c = _vvLeer();
+  if(c && c.desde === desdeMs && c.hasta >= hasta - 60000) return c;
+  if(!window.__lrVVPidiendo) _vvPedir(desdeMs, hasta, (c && c.desde === desdeMs) ? c : null);
+  return null;
+}
+function _vvPedir(desdeMs, hasta, previo){
+  // Se pide recién cuando ya llegó lo de hoy, para no demorar la pantalla.
+  if(!(window.__lrSesionesDesdeNube === true && (window.__lrVentasRecientesOk || window.__lrVentasDesdeNube === true))){
+    window.__lrVVPidiendo = true;
+    setTimeout(function(){ window.__lrVVPidiendo = false; _vvPedir(desdeMs, hasta, previo); }, 2000);
+    return;
+  }
+  window.__lrVVPidiendo = true;
+  var ini = previo ? previo.hasta : desdeMs;
+  window.__lrDB.collection(window.__lrCOL.ventas).where('id', '>=', ini).where('id', '<', hasta).get().then(function(snap){
+    var o = previo ? { desde: desdeMs, hasta: hasta, tr: previo.tr, deb: previo.deb, n: previo.n } : { desde: desdeMs, hasta: hasta, tr: 0, deb: 0, n: 0 };
+    snap.forEach(function(d){
+      var v = d.data(); if(!v || v.anulada) return;
+      if(v.medio === 'Transferencia') o.tr += (v.total || 0);
+      else if(v.medio === 'Débito') o.deb += (v.total || 0);
+      else if(v.medio === 'Mixto' && v.mixto) o.tr += (v.mixto.transferencia || 0);
+      o.n++;
+    });
+    _vvGuardar(o);
+    window.__lrVVPidiendo = false;
+    try{ if(typeof renderDashboard === 'function') renderDashboard(); }catch(e){}
+    try{ if(typeof renderLiquidez === 'function' && document.getElementById('pane-dinero') && document.getElementById('pane-dinero').classList.contains('active')) renderLiquidez(); }catch(e){}
+  }).catch(function(e){
+    console.warn('Ventas viejas para la liquidez', e);
+    setTimeout(function(){ window.__lrVVPidiendo = false; }, 30000);
+  });
+}
+
 // Calcula los saldos actuales de cada "bolsa"
 // Última red de seguridad: si por cualquier motivo (un registro viejo con un
 // campo incompleto, algo no previsto) el cálculo diera NaN, esto lo vuelve 0
@@ -43323,6 +43370,17 @@ function calcularLiquidez(cajaPedida) {
   });
   var ventasLC = 0, ventasMP = 0, ventasTransferAMP = 0;
   var extraTransferVaAMP = (cfg.destinoTransfer === 'MercadoPago');
+  // Admin liviano (solo los últimos 45 días de ventas): lo de antes, desde
+  // la última configuración de saldos, se suma con el total que se trajo
+  // aparte (ver ventasViejasParaLiquidez). Mientras no llega, se marca.
+  var _mpIncompleto = false;
+  if(!window.__lrHistorialCompleto && window.__lrVentanaDesde && desdeTs.getTime() < window.__lrVentanaDesde){
+    var _g = ventasViejasParaLiquidez(desdeTs.getTime());
+    if(_g){
+      ventasMP += _g.deb;
+      if(extraTransferVaAMP) ventasTransferAMP += _g.tr; else ventasLC += _g.tr;
+    } else _mpIncompleto = true;
+  }
   ventas.forEach(function(v){
     if(v.medio==='Transferencia'){ if(extraTransferVaAMP) ventasTransferAMP += (v.total||0); else ventasLC += (v.total||0); }
     else if(v.medio==='Débito') ventasMP += (v.total||0);
@@ -43366,7 +43424,8 @@ function calcularLiquidez(cajaPedida) {
     prestamosPendiente: getPrestamosPendiente(),
     prestamosPorCobrar: getPrestamosPorCobrar(),
     periodoDesde:  desdeTs.toISOString(),
-    comisionMP:    parseFloat(cfg.comisionMP)||10
+    comisionMP:    parseFloat(cfg.comisionMP)||10,
+    mpIncompleto:  _mpIncompleto
   };
 }
 
