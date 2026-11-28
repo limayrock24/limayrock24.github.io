@@ -27384,18 +27384,17 @@ function agregarFilaRmProd(prod, idx) {
 }
 
 function abrirRecepQty(prod) {
-  if(_rmProvActual === null) return;
   var provs = getProveedores();
-  var prov = provs[_rmProvActual];
+  var prov = rmProv();
   if(!prov) return;
 
   prov.productos = prov.productos || [];
-  var idx = prov.productos.indexOf(prod.name);
+  var idx = _rmLista.indexOf(prod.name);
   if(idx === -1) {
     // Producto nuevo para este proveedor: se agrega a su lista habitual sin borrar lo ya cargado
-    prov.productos.push(prod.name);
-    saveProveedores(provs);
-    idx = prov.productos.length - 1;
+    if(prov.productos.indexOf(prod.name) === -1){ prov.productos.push(prod.name); saveProveedores(provs); }
+    _rmLista.push(prod.name);
+    idx = _rmLista.length - 1;
     agregarFilaRmProd(prod, idx);
   }
 
@@ -32016,6 +32015,7 @@ function closeRecepScreen() {
   document.getElementById('recepScreen').classList.remove('open');
   _recepEmp = null;
   _rmProvActual = null;
+  _rmProvNombre = null;
   _recepMinimizada = false;
   pintarPildoraRecep();
 }
@@ -32264,7 +32264,7 @@ function pintarPildoraRecep() {
   }
   var carritoAbierto = !!document.querySelector('#cartPanel.open, #cartPanel2.open');
   if(!_recepMinimizada || carritoAbierto){ el.style.display = 'none'; return; }
-  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  var prov = rmProv();
   var n = 0;
   document.querySelectorAll('#rmItemsList input[type=number]').forEach(function(i){ if(parseFloat(i.value)>0) n++; });
   var html = '<button type="button" onclick="retomarRecepcion()" style="background:#1d1d1d;border:1.5px solid var(--green);color:var(--green);border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.5);padding:9px 16px;font-family:Oswald,sans-serif;font-size:.8rem;letter-spacing:1px;cursor:pointer">📦 Recepción'+(prov?' '+prov.nombre:'')+(n?' · '+n+' prod.':'')+' — Retomar</button>';
@@ -32288,9 +32288,9 @@ function escribirBorradoresRecep(b) {
 }
 // Se llama cada vez que cambia la cantidad de un producto en la lista.
 function rmCantCambio(i) {
-  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  var prov = rmProv();
   if(!prov) return;
-  var nombre = (prov.productos||[])[i];
+  var nombre = _rmLista[i];
   var inp = document.getElementById('rmCant'+i);
   if(!nombre || !inp) return;
   var pos = _rmOrden.indexOf(nombre);
@@ -32299,10 +32299,10 @@ function rmCantCambio(i) {
   guardarBorradorRecep();
 }
 function guardarBorradorRecep() {
-  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  var prov = rmProv();
   if(!prov) return;
   var cant = {};
-  (prov.productos||[]).forEach(function(nombre, i){
+  _rmLista.forEach(function(nombre, i){
     var inp = document.getElementById('rmCant'+i);
     var v = inp ? parseFloat(inp.value) : 0;
     if(v > 0) cant[nombre] = v;
@@ -32318,7 +32318,7 @@ function restaurarBorradorRecep(prov) {
   var aviso = document.getElementById('rmAvisoBorrador');
   var bor = leerBorradoresRecep()[prov.nombre];
   if(!bor){ if(aviso) aviso.style.display = 'none'; return; }
-  (prov.productos||[]).forEach(function(nombre, i){
+  _rmLista.forEach(function(nombre, i){
     var inp = document.getElementById('rmCant'+i);
     if(inp && bor.cant[nombre]) inp.value = bor.cant[nombre];
   });
@@ -32331,11 +32331,11 @@ function restaurarBorradorRecep(prov) {
   }
 }
 function descartarBorradorRecep() {
-  var prov = (_rmProvActual !== null) ? getProveedores()[_rmProvActual] : null;
+  var prov = rmProv();
   if(!prov) return;
   if(!confirm('¿Borrar todo lo cargado en esta recepción y empezar de cero?')) return;
   var b = leerBorradoresRecep(); delete b[prov.nombre]; escribirBorradoresRecep(b);
-  abrirRecepMercProveedor(_rmProvActual);
+  abrirRecepMercProveedor(prov.nombre);
 }
 
 function selRecepTab(tab) {
@@ -32347,7 +32347,7 @@ function selRecepTab(tab) {
     if(pane) pane.classList.toggle('active', t===tab);
   });
   if(tab==='merc'){
-    if(_rmProvActual !== null && getProveedores()[_rmProvActual]) abrirRecepMercProveedor(_rmProvActual);
+    if(rmProv()) abrirRecepMercProveedor(_rmProvNombre);
     else initRecepMerc();
   }
   if(tab==='precios') initRecepCatalogo();
@@ -32359,10 +32359,26 @@ function selRecepTab(tab) {
 
 
 // ── RECEPCIÓN DE MERCADERÍA (POR PROVEEDOR) ────────────────────────────────
-var _rmProvActual = null;
+// El proveedor abierto se sigue por su NOMBRE, no por su posición en la
+// lista: la lista llega de la nube y su orden cambia si en otro equipo se
+// crea o borra un proveedor. Antes, con la recepción minimizada, eso hacía
+// que al confirmar se cargara en OTRO proveedor (y en otros productos).
+// _rmLista es la lista de productos tal como se dibujó en pantalla: la fila
+// i (rmCant+i) es siempre _rmLista[i], aunque la lista del proveedor cambie.
+var _rmProvActual = null;   // posición (se recalcula desde el nombre)
+var _rmProvNombre = null;
+var _rmLista = [];
+function rmProv() {
+  if(_rmProvNombre === null) return null;
+  var ps = getProveedores();
+  for(var i=0;i<ps.length;i++){ if(ps[i] && ps[i].nombre === _rmProvNombre){ _rmProvActual = i; return ps[i]; } }
+  return null;
+}
 
 function initRecepMerc() {
   _rmProvActual = null;
+  _rmProvNombre = null;
+  _rmLista = [];
   renderRecepMercSelector();
 }
 
@@ -32386,7 +32402,8 @@ function renderRecepMercSelector() {
     '<div class="rm-prov-grid">'+
       provs.map(function(p,i){
         var aMedias = leerBorradoresRecep()[p.nombre];
-        return '<div class="rm-prov-btn" onclick="abrirRecepMercProveedor('+i+')">🚚 '+p.nombre+
+        var nEsc = String(p.nombre).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return '<div class="rm-prov-btn" onclick="abrirRecepMercProveedor(\''+nEsc+'\')">🚚 '+p.nombre+
           '<div class="sub">'+(p.productos||[]).length+' productos</div>'+
           (aMedias ? '<div class="sub" style="color:var(--gold)">📝 a medias: '+Object.keys(aMedias.cant).length+' cargados</div>' : '')+
           '</div>';
@@ -32395,13 +32412,18 @@ function renderRecepMercSelector() {
 }
 
 function abrirRecepMercProveedor(idx) {
-  _rmProvActual = idx;
-  var prov = getProveedores()[idx];
+  // Acepta el nombre del proveedor (lo normal) o su posición.
+  var provs = getProveedores();
+  var prov = (typeof idx === 'number') ? provs[idx] : provs.find(function(p){ return p && p.nombre === idx; });
   var el = document.getElementById('recepMercContent');
   if(!prov || !el) return;
+  _rmProvNombre = prov.nombre;
+  _rmProvActual = provs.indexOf(prov);
+  idx = _rmProvActual;
+  _rmLista = (prov.productos||[]).slice();
 
   var inv = getStockInv();
-  var itemsHtml = (prov.productos||[]).map(function(name, i){
+  var itemsHtml = _rmLista.map(function(name, i){
     var p = PRODUCTS.find(function(x){return x.name===name;});
     if(!p) return '';
     var stockActual = inv[p.name] ? inv[p.name].stock : 0;
@@ -32430,10 +32452,10 @@ function abrirRecepMercProveedor(idx) {
       '<span>Producto</span><span style="text-align:center">Stock</span><span style="text-align:center">Cantidad</span>'+
     '</div>'+
     '<div id="rmItemsList">'+itemsHtml+'</div>'+
-    '<button class="rm-add-prod-btn" onclick="mostrarBuscadorRmProd('+idx+')">+ Agregar producto de este proveedor</button>'+
+    '<button class="rm-add-prod-btn" onclick="mostrarBuscadorRmProd(rmProv()?_rmProvActual:-1)">+ Agregar producto de este proveedor</button>'+
     '<button class="rm-add-prod-btn" onclick="crearProductoDesdeRecep()">✚ Crear producto nuevo (no está en el sistema)</button>'+
     '<div id="rmAddProdBox"></div>'+
-    '<button class="rm-confirm-btn" onclick="confirmarRecepcionMerc('+idx+')">✓ Confirmar recepción</button>';
+    '<button class="rm-confirm-btn" onclick="confirmarRecepcionMerc()">✓ Confirmar recepción</button>';
   restaurarBorradorRecep(prov);
 }
 
@@ -32504,6 +32526,7 @@ function mostrarBuscadorRmProd(provIdx) {
   document.getElementById('addProdProvTitulo').textContent = 'Agregar productos — '+prov.nombre;
   document.getElementById('addProdProvSearch').value = '';
   window._addProdProvIdx = provIdx;
+  window._addProdProvNombre = prov.nombre;
   window._addProdProvTiene = yaTiene.slice();
   renderAddProdProvList('');
   overlay.style.display = 'flex';
@@ -32563,7 +32586,8 @@ function confirmarAddProdProv() {
   if(!checkboxes.length) { showToast('Tildá al menos un producto nuevo', true); return; }
 
   var provs = getProveedores();
-  var prov = provs[window._addProdProvIdx];
+  var prov = provs.find(function(p){ return p && p.nombre === window._addProdProvNombre; });
+  if(!prov){ showToast('⚠ No se encontró el proveedor. Volvé a abrirlo.', true); cerrarAddProdProv(); return; }
   if(!prov.productos) prov.productos = [];
   var agregados = 0;
   checkboxes.forEach(function(cb){
@@ -32575,22 +32599,26 @@ function confirmarAddProdProv() {
   saveProveedores(provs);
   cerrarAddProdProv();
   showToast('✅ '+agregados+' producto'+(agregados!==1?'s':'')+' agregado'+(agregados!==1?'s':'')+' a '+prov.nombre);
-  abrirRecepMercProveedor(window._addProdProvIdx);
+  guardarBorradorRecep();
+  abrirRecepMercProveedor(prov.nombre);
 }
 
 function agregarProdARm(name) {
   var provs = getProveedores();
-  var prov = provs[_rmProvActual];
+  var prov = rmProv();
+  if(!prov) return;
   if(!prov.productos) prov.productos=[];
   if(prov.productos.indexOf(name)===-1) prov.productos.push(name);
   saveProveedores(provs);
   showToast('✅ '+name+' agregado a '+prov.nombre);
-  abrirRecepMercProveedor(_rmProvActual);
+  guardarBorradorRecep();
+  abrirRecepMercProveedor(prov.nombre);
 }
 
-function confirmarRecepcionMerc(provIdx) {
-  var prov = getProveedores()[provIdx];
-  var items = prov.productos||[];
+function confirmarRecepcionMerc() {
+  var prov = rmProv();
+  if(!prov){ showToast('⚠ No se encontró el proveedor de esta recepción. No se cargó nada: volvé a abrirlo.', true); return; }
+  var items = _rmLista;
   var inv = getStockInv();
   var movItems = [];
   var totalCosto = 0;
@@ -33189,13 +33217,13 @@ function crearProductoDesdeRecep() {
 }
 function agregarNuevoARecep(nombre) {
   var provs = getProveedores();
-  var prov = provs[_rmProvActual];
+  var prov = rmProv();
   if(!prov) return;
   if(!prov.productos) prov.productos = [];
   if(prov.productos.indexOf(nombre) === -1) prov.productos.push(nombre);
   saveProveedores(provs);
-  abrirRecepMercProveedor(_rmProvActual);
-  var i = prov.productos.indexOf(nombre);
+  abrirRecepMercProveedor(prov.nombre);
+  var i = _rmLista.indexOf(nombre);
   var inp = document.getElementById('rmCant'+i);
   if(inp){
     var fila = document.getElementById('rmItem'+i);
