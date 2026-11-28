@@ -24046,7 +24046,7 @@ function renderMovimientos() {
     // secciones distintas; adentro cada uno se distingue por su etiqueta.
     var coincideTipo;
     // Lo de mercadería (ingresos, correcciones, bajas) está en Productos → Movimientos.
-    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado') return false;
+    if(m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado' || m.tipo==='anulacion-recepcion') return false;
     if(!tipoFil) coincideTipo = true;
     else if(tipoFil === 'fiados') coincideTipo = (m.tipo==='fiado' || m.tipo==='cobro-fiado' || m.tipo==='fiado-parcial');
     else if(tipoFil === 'consignaciones') coincideTipo = (m.tipo==='consignacion' || m.tipo==='cobro-consignacion' || m.tipo==='devolucion-consignacion');
@@ -28861,7 +28861,7 @@ function construirMovProductos(desde, hasta) {
   var bajasInfo = getStockMovs().filter(function(x){ return x.tipo === 'baja'; });
   var movs = getMovimientos().filter(function(m){
     var tm = new Date(m.fecha).getTime();
-    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado') && tm >= desde && tm <= hasta;
+    return (m.tipo==='ingreso' || m.tipo==='ajuste-stock' || m.tipo==='baja-stock' || m.tipo==='traspaso' || m.tipo==='armado' || m.tipo==='anulacion-recepcion') && tm >= desde && tm <= hasta;
   }).slice().sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
   var lote = null;
   movs.forEach(function(m){
@@ -28870,9 +28870,18 @@ function construirMovProductos(desde, hasta) {
       lote = null;
       var prov = (m.extra && m.extra !== 'Recepción de mercadería') ? m.extra : '';
       var items = m.items.map(function(it){ return { nombre: it.nombre, txt: '+'+it.qty+' u.', extra: (it.stock!=null ? 'queda '+it.stock : '') }; });
-      ev.push({ t:t, cat:'ingreso', icono:'📥', quien:m.responsable,
-        titulo: items.length === 1 ? (items[0].txt+' '+items[0].nombre+(prov?' · '+prov:'')) : ('Recepción'+(prov?' '+prov:'')+' · '+items.length+' productos'),
-        items: items.length > 1 ? items : null, nombres: m.items.map(function(it){ return it.nombre; }) });
+      var tituloRec = items.length === 1 ? (items[0].txt+' '+items[0].nombre+(prov?' · '+prov:'')) : ('Recepción'+(prov?' '+prov:'')+' · '+items.length+' productos');
+      ev.push({ t:t, cat:'ingreso', icono:(m.anulada ? '↩️' : '📥'), quien:m.responsable,
+        titulo: m.anulada ? '<s style="color:var(--gray)">'+tituloRec+'</s> <span style="color:var(--red);font-family:Oswald,sans-serif;font-size:.7rem">ANULADA</span>' : tituloRec,
+        // Con detalle siempre (aunque sea 1 producto), para poder anularla.
+        items: items, nombres: m.items.map(function(it){ return it.nombre; }), movId: m.id, anulada: m.anulada || null });
+      return;
+    }
+    if(m.tipo === 'anulacion-recepcion'){
+      lote = null;
+      var anIt = (m.items||[]).map(function(it){ return { nombre: it.nombre, txt: '−'+it.qty+' u.', extra: (it.stock!=null ? 'queda '+it.stock : '') }; });
+      ev.push({ t:t, cat:'ingreso', icono:'↩️', quien:m.responsable, titulo: m.resumen || 'Recepción anulada',
+        items: anIt.length ? anIt : null, nombres: (m.items||[]).map(function(it){ return it.nombre; }) });
       return;
     }
     if(m.tipo === 'ingreso'){
@@ -28942,6 +28951,52 @@ function construirMovProductos(desde, hasta) {
   });
   return ev.sort(function(a,b){ return b.t - a.t; });
 }
+// Anular una recepción cargada por error: resta del stock lo que sumó (como
+// resta, así no pisa las ventas que hubo después), la deja marcada como
+// ANULADA (no se borra nada) y anota el movimiento de la anulación.
+function puedeAnularRecepcion() {
+  return !!((typeof esEquipoDueno === 'function' && esEquipoDueno()) || (currentEmp && currentEmp.rol === 'admin'));
+}
+function anularRecepcion(movId) {
+  if(!puedeAnularRecepcion()){ showToast('Solo el administrador puede anular una recepción', true); return; }
+  var movs = getMovimientos();
+  var m = movs.find(function(x){ return String(x.id) === String(movId); });
+  if(!m || m.tipo !== 'ingreso' || !m.items || !m.items.length){ showToast('No se encontró esa recepción', true); return; }
+  if(m.anulada){ showToast('Esa recepción ya estaba anulada', true); return; }
+  var inv = getStockInv();
+  var lineas = m.items.map(function(it){
+    var s = inv[it.nombre] ? Number(inv[it.nombre].stock)||0 : 0;
+    return '• '+it.nombre+': −'+it.qty+' (hay '+s+' → queda '+Math.max(0, s - it.qty)+')';
+  }).join('\n');
+  var hora = new Date(m.fecha).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  if(!confirm('¿Anular la '+(m.resumen||'recepción')+' ('+hora+', '+(m.responsable||'—')+')?\n\nSe resta del stock:\n'+lineas+'\n\nLa recepción queda en el historial marcada como ANULADA.')) return;
+  var quien = currentEmp ? currentEmp.nombre : 'Admin';
+  var items = [];
+  m.items.forEach(function(it){
+    var q = Number(it.qty)||0;
+    if(!q) return;
+    if(!inv[it.nombre]) inv[it.nombre] = {stock:0, minimo:5};
+    var antes = Number(inv[it.nombre].stock)||0;
+    var despues = Math.max(0, antes - q);
+    inv[it.nombre].stock = despues;
+    items.push({ nombre: it.nombre, qty: antes - despues, stock: despues });
+  });
+  window.__lrStockInvCache = inv;
+  guardarOperacionProtegida('StockInv', getStockInv, 'Anulación: '+(m.resumen||'recepción'));
+  m.anulada = { por: quien, en: new Date().toISOString() };
+  movs.push({
+    id: Date.now(), fecha: new Date().toISOString(), tipo: 'anulacion-recepcion',
+    resumen: 'Anulada: '+(m.resumen||'recepción')+' (la de las '+new Date(m.fecha).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})+')',
+    total: 0, responsable: quien, extra: m.extra || '', anulaA: m.id, items: items
+  });
+  if(movs.length > 2000) movs = movs.slice(-2000);
+  saveMovimientos(movs);
+  autoSaveNow();
+  if(typeof filterAll === 'function') filterAll();
+  if(typeof renderInventario === 'function') try{ renderInventario(); }catch(e){}
+  renderLogCatalogo();
+  showToast('↩ Recepción anulada — se restó del stock');
+}
 function cambiarMovProd(campo, valor) {
   if(campo === 'periodo') _movProdPeriodo = valor;
   if(campo === 'tipo') _movProdTipo = valor;
@@ -28994,7 +29049,11 @@ function renderLogCatalogo() {
           (it.txt ? '<span style="min-width:52px;font-family:Oswald,sans-serif;color:var(--green)">'+it.txt+'</span>' : '')+
           '<span style="flex:1;color:var(--light)">'+it.nombre+'</span>'+
           (it.extra ? '<span style="color:var(--gray);white-space:nowrap">'+it.extra+'</span>' : '')+'</div>';
-      }).join('')+'</div>' : '';
+      }).join('')+
+        (e.movId && puedeAnularRecepcion() ? (e.anulada
+          ? '<div style="font-size:.7rem;color:var(--gray);padding-top:6px">↩️ Anulada por '+(e.anulada.por||'—')+' · '+new Date(e.anulada.en).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div>'
+          : '<button type="button" onclick="event.stopPropagation();anularRecepcion(\''+String(e.movId)+'\')" style="margin-top:8px;background:none;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:7px 12px;font-family:Oswald,sans-serif;font-size:.72rem;letter-spacing:.5px;cursor:pointer">↩ Anular esta recepción (se resta del stock)</button>') : '')+
+        '</div>' : '';
       return '<div style="border-top:1px solid rgba(255,255,255,.05)">'+
         '<div '+(tieneDet ? 'onclick="toggleMovProdItem(\''+key+'\')" ' : '')+'style="display:flex;align-items:center;gap:8px;padding:8px 10px;'+(tieneDet?'cursor:pointer':'')+'">'+
           '<span style="font-family:Oswald,sans-serif;font-size:.74rem;color:var(--gray);min-width:38px">'+hora+'</span>'+
@@ -29397,7 +29456,7 @@ function renderDashboard() {
       var movs = getMovimientos();
       var hoyStr = fechaLocalStr(hoy);
       var movsHoy = movs.filter(function(m){ return new Date(m.fecha)>=hoy && new Date(m.fecha)<=fin; });
-      var ingresos = movsHoy.filter(function(m){ return m.tipo==='ingreso'; });
+      var ingresos = movsHoy.filter(function(m){ return m.tipo==='ingreso' && !m.anulada; });
       var egresosRecep = movsHoy.filter(function(m){ return m.tipo==='egreso'; });
       var logCat = getLogCatalogo().filter(function(l){ return new Date(l.fecha)>=hoy && new Date(l.fecha)<=fin; });
 
