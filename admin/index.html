@@ -8031,14 +8031,17 @@ function onSeleccionarImagenProd(input) {
   var file = input.files && input.files[0];
   input.value = ''; // para poder elegir el mismo archivo de nuevo si hace falta
   if(!file) return;
-  var idx = parseInt(document.getElementById('prodModalIdx').value);
+  var idx = idxProdModalAbierto();
+  if(idx === -2){ showToast('Ese producto cambió desde otro equipo: cerrá la ficha y abrila de nuevo', true); return; }
   if(!(idx>=0 && PRODUCTS[idx])){
     showToast('Guardá el producto primero, así la foto queda ligada a él', true);
     return;
   }
-  var p = PRODUCTS[idx];
+  var p = PRODUCTS[idx], nombreFoto = p.name;
   showToast('⏳ Subiendo foto...');
   subirImagenProducto(file, p.name).then(function(url){
+    // Mientras subía, la lista pudo renovarse: se vuelve a buscar por nombre.
+    p = PRODUCTS.find(function(x){ return x.name === nombreFoto; }) || p;
     p.imgUrl = url;
     window.__lrProductosTocados = [p.name];
     saveLocalConBorrado('✅ Foto guardada');
@@ -8058,8 +8061,19 @@ function onSeleccionarImagenProd(input) {
 // seteado explícitamente a null (se manda ese valor a propósito, no se
 // borra el campo, para que quede claro que fue una decisión y no que
 // nunca se cargó).
+// Posición ACTUAL del producto abierto en la ficha, buscada por su nombre
+// (la lista llega de la nube y su orden cambia si en otro equipo se crea o
+// borra un producto). -1 = producto nuevo; -2 = ya no está (no tocar nada).
+function idxProdModalAbierto() {
+  var idxAbierto = parseInt(document.getElementById('prodModalIdx').value);
+  var nombreOriginal = document.getElementById('prodModalNombreOriginal').value;
+  if(!nombreOriginal) return (idxAbierto >= 0 && PRODUCTS[idxAbierto]) ? -2 : -1;
+  var i = PRODUCTS.findIndex(function(p){ return p.name === nombreOriginal; });
+  return i === -1 ? -2 : i;
+}
 function quitarImagenProd() {
-  var idx = parseInt(document.getElementById('prodModalIdx').value);
+  var idx = idxProdModalAbierto();
+  if(idx === -2){ showToast('Ese producto cambió desde otro equipo: cerrá la ficha y abrila de nuevo', true); return; }
   if(!(idx>=0 && PRODUCTS[idx])) return;
   var p = PRODUCTS[idx];
   p.imgUrl = null;
@@ -12889,7 +12903,7 @@ function buscarProdCorrCierre() {
     div.textContent=m.p.name+' — '+fmt(m.p.pventa||0);
     div.onmouseover=function(){this.style.background='rgba(204,0,0,.1)'};
     div.onmouseout=function(){this.style.background='transparent'};
-    div.onclick=function(){ seleccionarProdCorrCierre(m.idx); };
+    div.onclick=function(){ seleccionarProdCorrCierre(PRODUCTS.findIndex(function(x){ return x.name === m.p.name; })); };
     sugg.appendChild(div);
   });
 }
@@ -27216,9 +27230,11 @@ function filtrarProdCodigos() {
   box.style.display = 'block';
 }
 
+var _codigosProdNombre = null;
 function seleccionarProdCodigo(idx) {
   _codigosProdIdx = idx;
   var p = PRODUCTS[idx];
+  _codigosProdNombre = p ? p.name : null;
   var wrap = document.getElementById('codigosSelWrap');
   var nom  = document.getElementById('codigosSelNombre');
   var act  = document.getElementById('codigosSelCodActual');
@@ -27242,6 +27258,9 @@ function codigosInputChange() {
 
 function guardarCodigoProd() {
   if(_codigosProdIdx < 0) return;
+  // Se vuelve a ubicar por nombre: la lista pudo renovarse desde otro equipo.
+  _codigosProdIdx = PRODUCTS.findIndex(function(p){ return p.name === _codigosProdNombre; });
+  if(_codigosProdIdx < 0){ showToast('Ese producto ya no está en el catálogo', true); return; }
   var codigo = (document.getElementById('codigosInput').value||'').trim();
   if(!codigo) { showToast('Ingresá o escaneá el código', true); return; }
 
@@ -27485,6 +27504,9 @@ function filtrarAsignarCodigo() {
     div.onmouseover = function(){ div.style.background='rgba(245,194,0,.08)'; };
     div.onmouseout  = function(){ div.style.background=''; };
     div.onclick = function(){
+      var idx = PRODUCTS.findIndex(function(x){ return x.name === p.name; });
+      if(idx === -1){ showToast('Ese producto ya no está en el catálogo', true); return; }
+      p = PRODUCTS[idx];
       PRODUCTS[idx].codigo = window._scanCodigo;
       saveLocal();
       showToast('✅ Código asignado a '+p.name+' — agregado al carrito');
@@ -30530,9 +30552,11 @@ var _editCatIdx = -1;
 // filtrar nunca puede afectar lo que queda guardado.
 var _editCatSel = {};
 
+var _editCatNombre = null;
 function editarCategoria(i) {
   _editCatIdx = i;
   var cat = ALL_CATS[i];
+  _editCatNombre = cat;
   var margenActual = (window.MARGINS && MARGINS[cat]) ? MARGINS[cat] : 50;
 
   document.getElementById('editCatNombre').value = cat;
@@ -30638,6 +30662,10 @@ function editCatMarcarVisibles(marcar) {
 function guardarEditCat() {
   if(window.__lrSucursal === 2){ showToast('Las categorías se crean y editan desde Limay Rock 1', true); return; }
   if(_editCatIdx < 0) return;
+  // Se ubica por nombre: si la lista cambió desde otro equipo, la posición
+  // vieja apuntaría a OTRA categoría y se le sacarían todos sus productos.
+  _editCatIdx = ALL_CATS.indexOf(_editCatNombre);
+  if(_editCatIdx < 0){ showToast('Esa categoría cambió desde otro equipo. No se guardó nada: cerrá y volvé a abrirla.', true); return; }
   var catVieja = ALL_CATS[_editCatIdx];
   var catNueva = (document.getElementById('editCatNombre').value||'').trim();
   var margen   = parseInt(document.getElementById('editCatMargen').value)||50;
@@ -30690,7 +30718,8 @@ function eliminarCategoria(i) {
   function aplicarEliminar() {
     // Mover productos a "Sin categoría"
     PRODUCTS.forEach(function(p){ if(p.cat===cat) p.cat='Sin categoría'; });
-    ALL_CATS.splice(i,1);
+    var iAhora = ALL_CATS.indexOf(cat);
+    if(iAhora !== -1) ALL_CATS.splice(iAhora,1);
     // Asegurar que "Sin categoría" esté en ALL_CATS si hay productos ahí
     if(enUso.length > 0 && ALL_CATS.indexOf('Sin categoría') === -1) {
       ALL_CATS.push('Sin categoría');
@@ -30785,11 +30814,8 @@ function guardarProdModal() {
   // El índice puede haber quedado desactualizado si el catálogo se
   // actualizó en vivo (desde otro dispositivo) mientras el modal estaba
   // abierto. Se busca la posición REAL por nombre, que es estable.
-  var idx = idxAbierto;
-  if(nombreOriginal){
-    var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombreOriginal; });
-    if(idxReal!==-1) idx = idxReal;
-  }
+  var idx = idxProdModalAbierto();
+  if(idx === -2){ showToast('Ese producto se borró o cambió desde otro equipo. No se guardó nada: cerrá la ficha y abrila de nuevo.', true); return; }
   if(!nombre){ showToast('Ingresá el nombre',true); return; }
   if(!cat){ showToast('Seleccioná una categoría',true); return; }
     var esBebAlc = (cat === 'Bebidas Alcohólicas');
@@ -30961,12 +30987,8 @@ function guardarProdModal() {
 function eliminarProdModal() {
   var idxAbierto=parseInt(document.getElementById('prodModalIdx').value); if(idxAbierto<0) return;
   var nombreOriginal=document.getElementById('prodModalNombreOriginal').value;
-  var idx = idxAbierto;
-  if(nombreOriginal){
-    var idxReal = PRODUCTS.findIndex(function(p){ return p.name===nombreOriginal; });
-    if(idxReal!==-1) idx = idxReal;
-  }
-  if(!PRODUCTS[idx]){ showToast('No se encontró el producto, cerrá y volvé a intentar', true); return; }
+  var idx = idxProdModalAbierto();
+  if(!(idx>=0 && PRODUCTS[idx])){ showToast('No se encontró el producto, cerrá y volvé a intentar', true); return; }
   var nombre = PRODUCTS[idx].name; // capturado ANTES de esperar la confirmación
   askConfirm('¿Eliminás "'+nombre+'" del catálogo?').then(function(ok){
     if(!ok) return;
@@ -31472,6 +31494,9 @@ function abrirEmpModal(idx) {
   if(_fpW) _fpW.style.display = esEquipoDueno() ? '' : 'none';
   if(_fp){ var _pp = (idx !== null && EMPLEADOS[idx]) ? window.__lrEmpPriv[EMPLEADOS[idx].nombre] : null; _fp.value = (_pp && _pp.formaPago) || ''; }
   document.getElementById('empModalIdx').value = idx!==null ? idx : -1;
+  // Se recuerda el NOMBRE: si en otro equipo se agrega o borra a alguien,
+  // la posición cambia y se editaría a otra persona.
+  window._emModalNombre = (idx!==null && EMPLEADOS[idx]) ? EMPLEADOS[idx].nombre : null;
   var pinInp = document.getElementById('emPin');
   if(pinInp) pinInp.value = _emPinBuf;
   var pinAdmInp = document.getElementById('emPinAdmin');
@@ -31558,7 +31583,8 @@ function updateEmPinDisplay() {
 function guardarEmpModal() {
   var nombre = document.getElementById('emNombre').value.trim();
   var pin    = String(document.getElementById('emPin').value||'').padStart(0,'');
-  var idx    = parseInt(document.getElementById('empModalIdx').value);
+  var idx    = idxEmpModalAbierto();
+  if(idx === -2){ showToast('Esa ficha cambió desde otro equipo. No se guardó nada: cerrala y abrila de nuevo.', true); return; }
   if(!nombre){ showToast('Ingresá el nombre del empleado',true); return; }
   if(!/^\d{4}$/.test(pin)){ showToast('El PIN debe tener exactamente 4 dígitos',true); return; }
 
@@ -31976,12 +32002,22 @@ function saveEmpleados(emps, nombresABorrar) {
   return Promise.resolve();
 }
 
+// Posición ACTUAL del empleado abierto en la ficha (por nombre).
+// -1 = empleado nuevo; -2 = ya no está.
+function idxEmpModalAbierto() {
+  var n = window._emModalNombre;
+  if(!n) return parseInt(document.getElementById('empModalIdx').value) >= 0 ? -2 : -1;
+  var i = EMPLEADOS.findIndex(function(e){ return e.nombre === n; });
+  return i === -1 ? -2 : i;
+}
 function eliminarEmpModal() {
-  var idx  = parseInt(document.getElementById('empModalIdx').value);
-  var nombre = EMPLEADOS[idx] ? EMPLEADOS[idx].nombre : '?';
+  var idx  = idxEmpModalAbierto();
   if(idx<0) return;
+  var nombre = EMPLEADOS[idx].nombre;
   askConfirm('¿Eliminás a '+nombre+' del equipo?').then(function(ok){
     if(!ok) return;
+    idx = EMPLEADOS.findIndex(function(e){ return e.nombre === nombre; });
+    if(idx === -1){ showToast(nombre+' ya no está en la lista', true); return; }
     EMPLEADOS.splice(idx,1);
     function intentarBorrarEmp(){
       showToast('⏳ Borrando en la nube...');
@@ -33296,12 +33332,14 @@ function updateRecepNocPreview() {
 }
 
 // ── Guardar edición de producto existente ─────────────────────────────────
+// Recepción → editar/ingresar un producto: se busca por el nombre de la
+// ficha abierta, nunca por la posición que tenía al abrirla.
+function idxRecepProdAbierto() {
+  var n = (document.getElementById('recepNombreOriginal')||{}).value;
+  return n ? PRODUCTS.findIndex(function(x){ return x.name===n; }) : -1;
+}
 function guardarRecepEdicion(idx) {
-  var nombreOriginal = (document.getElementById('recepNombreOriginal')||{}).value;
-  if(nombreOriginal){
-    var idxReal = PRODUCTS.findIndex(function(x){ return x.name===nombreOriginal; });
-    if(idxReal!==-1) idx = idxReal;
-  }
+  idx = idxRecepProdAbierto();
   var p = PRODUCTS[idx];
   if(!p){ showToast('El producto ya no existe, cerrá y volvé a intentar', true); return; }
   var costoAntes  = p.costo;
@@ -33380,7 +33418,9 @@ function guardarRecepNuevo() {
 function confirmarIngresoRecep(idx) {
   var cant = parseFloat(document.getElementById('recepCantIngreso').value)||0;
   if(cant<=0){ showToast('Ingresá una cantidad válida',true); return; }
+  idx = idxRecepProdAbierto();
   var p = PRODUCTS[idx];
+  if(!p){ showToast('El producto ya no existe, cerrá y volvé a intentar', true); return; }
   var costo = parseFloat(document.getElementById('recepCosto').value)||p.costo||0;
 
   var inv = getStockInv();
@@ -37085,6 +37125,9 @@ var _pvProductos = [];
 
 function abrirProvModal(idx) {
   document.getElementById('provModalIdx').value = idx!==null ? idx : -1;
+  // Se recuerda el NOMBRE del proveedor abierto: la lista llega de la nube y
+  // su orden cambia si en otro equipo se crea o borra un proveedor.
+  window._provModalNombre = (idx!==null && PROVEEDORES[idx]) ? PROVEEDORES[idx].nombre : null;
   var del = document.getElementById('provModalDel');
   var tit = document.getElementById('provModalTitulo');
   var search = document.getElementById('pvAddSearch');
@@ -37226,32 +37269,46 @@ function quitarPvProd(i) {
 
 function guardarProvModal() {
   var nombre = document.getElementById('pvNombre').value.trim();
-  var idx = parseInt(document.getElementById('provModalIdx').value);
+  // Siempre sobre la lista ACTUAL y ubicando por nombre (nunca la posición
+  // vieja ni una copia vieja de la lista, que pisaría cambios de otro equipo).
+  PROVEEDORES = getProveedores();
+  var nombreAbierto = window._provModalNombre;
+  var idx = nombreAbierto ? PROVEEDORES.findIndex(function(p){ return p.nombre === nombreAbierto; }) : -1;
+  if(nombreAbierto && idx === -1){ showToast('Ese proveedor se borró desde otro equipo. No se guardó nada.', true); return; }
   if(!nombre){ showToast('Ingresá el nombre del proveedor',true); return; }
+  var dupProv = PROVEEDORES.findIndex(function(p, i){ return i !== idx && p.nombre === nombre; });
+  if(dupProv !== -1){ showToast('Ya existe un proveedor llamado '+nombre, true); return; }
   var data = {
     nombre: nombre,
     productos: _pvProductos.slice(),
     diaPedido: document.getElementById('pvDiaPedido').value || '',
     diaEntrega: document.getElementById('pvDiaEntrega').value || ''
   };
+  var borrarViejo = [];
   if(idx>=0 && PROVEEDORES[idx]){
-    PROVEEDORES[idx]=data;
+    // Se conservan los datos que no están en esta ficha (ej. deudas o notas).
+    PROVEEDORES[idx]=Object.assign({}, PROVEEDORES[idx], data);
+    // Renombrado: cada proveedor se guarda bajo su nombre, así que hay que
+    // borrar el registro viejo (si no, quedaba duplicado).
+    if(nombreAbierto !== nombre) borrarViejo = [nombreAbierto];
     showToast('✅ '+nombre+' actualizado');
   } else {
     PROVEEDORES.push(data);
     showToast('✅ '+nombre+' agregado');
   }
-  saveProveedores(PROVEEDORES);
+  saveProveedores(PROVEEDORES, borrarViejo);
   closeProvModal();
   renderProveedores();
 }
 
 function eliminarProvModal() {
-  var idx = parseInt(document.getElementById('provModalIdx').value);
-  if(idx<0) return;
-  var nombre = PROVEEDORES[idx].nombre;
+  var nombre = window._provModalNombre;
+  if(!nombre) return;
   askConfirm('¿Eliminás al proveedor '+nombre+'?').then(function(ok){
     if(!ok) return;
+    PROVEEDORES = getProveedores();
+    var idx = PROVEEDORES.findIndex(function(p){ return p.nombre === nombre; });
+    if(idx === -1){ showToast(nombre+' ya no estaba en la lista', true); closeProvModal(); renderProveedores(); return; }
     PROVEEDORES.splice(idx,1);
     saveProveedores(PROVEEDORES, [nombre]);
     closeProvModal();
